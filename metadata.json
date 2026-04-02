@@ -1,0 +1,5 @@
+{
+  "name": "LocalEats Vendor Dashboard",
+  "description": "A professional full-stack vendor dashboard for LocalEats, featuring real-time order management, menu curation, and business insights.",
+  "requestFramePermissions": []
+}
