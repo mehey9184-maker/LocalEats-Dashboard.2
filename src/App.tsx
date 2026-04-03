@@ -191,7 +191,6 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  console.log('Auth Ready:', isAuthReady);
   // Removed unused handleQuickSignIn and handleQuickCreate
 
   const handleSignIn = async (e: React.FormEvent) => {
