@@ -51,7 +51,13 @@ import {
   ShieldCheck,
   Zap,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Volume2,
+  VolumeX,
+  Instagram,
+  Facebook,
+  MessageCircle,
+  Image as ImageIcon
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -75,6 +81,7 @@ export interface Shop {
   id: number;
   name: string;
   logo_url: string | null;
+  banner_url?: string | null;
   description: string;
   location: string;
   category: string;
@@ -84,6 +91,11 @@ export interface Shop {
   rating?: number;
   opening_time?: string;
   closing_time?: string;
+  phone?: string;
+  email?: string;
+  instagram?: string;
+  facebook?: string;
+  whatsapp?: string;
   subscription_status?: 'trial' | 'active' | 'past_due' | 'expired';
   trial_start_date?: string;
   last_payment_date?: string;
@@ -1751,6 +1763,8 @@ const CreateShop = ({ user, onShopCreated }: { user: User | null, onShopCreated:
     description: '',
     location: '',
     category: 'Restaurant',
+    phone: '',
+    email: '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1781,7 +1795,7 @@ const CreateShop = ({ user, onShopCreated }: { user: User | null, onShopCreated:
     <motion.div 
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="max-w-2xl mx-auto bg-surface-container-lowest p-8 md:p-12 rounded-[2.5rem] shadow-xl border border-outline-variant/10"
+      className="max-w-3xl mx-auto bg-surface-container-lowest p-8 md:p-12 rounded-[2.5rem] shadow-xl border border-outline-variant/10"
     >
       <div className="text-center mb-10">
         <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -1792,35 +1806,15 @@ const CreateShop = ({ user, onShopCreated }: { user: User | null, onShopCreated:
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="space-y-2">
-          <label className="block text-sm font-semibold text-on-surface ml-1">Shop Name</label>
-          <input 
-            required
-            className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
-            placeholder="e.g. Mama's Kitchen"
-            value={formData.name}
-            onChange={e => setFormData({ ...formData, name: e.target.value })}
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="block text-sm font-semibold text-on-surface ml-1">Description</label>
-          <textarea 
-            required
-            className="w-full p-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all min-h-[120px]"
-            placeholder="Tell customers what makes your shop special..."
-            value={formData.description}
-            onChange={e => setFormData({ ...formData, description: e.target.value })}
-          />
-        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
-            <label className="block text-sm font-semibold text-on-surface ml-1">Location</label>
+            <label className="block text-sm font-semibold text-on-surface ml-1">Shop Name</label>
             <input 
               required
               className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
-              placeholder="e.g. Soweto, Johannesburg"
-              value={formData.location}
-              onChange={e => setFormData({ ...formData, location: e.target.value })}
+              placeholder="e.g. Mama's Kitchen"
+              value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
             />
           </div>
           <div className="space-y-2">
@@ -1838,6 +1832,52 @@ const CreateShop = ({ user, onShopCreated }: { user: User | null, onShopCreated:
             </select>
           </div>
         </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-on-surface ml-1">Description</label>
+          <textarea 
+            required
+            className="w-full p-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all min-h-[100px]"
+            placeholder="Tell customers what makes your shop special..."
+            value={formData.description}
+            onChange={e => setFormData({ ...formData, description: e.target.value })}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-on-surface ml-1">Location</label>
+          <input 
+            required
+            className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+            placeholder="e.g. Soweto, Johannesburg"
+            value={formData.location}
+            onChange={e => setFormData({ ...formData, location: e.target.value })}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-on-surface ml-1">Contact Phone</label>
+            <input 
+              type="tel"
+              className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+              placeholder="e.g. +27 12 345 6789"
+              value={formData.phone}
+              onChange={e => setFormData({ ...formData, phone: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-on-surface ml-1">Contact Email</label>
+            <input 
+              type="email"
+              className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+              placeholder="e.g. hello@mamas.co.za"
+              value={formData.email}
+              onChange={e => setFormData({ ...formData, email: e.target.value })}
+            />
+          </div>
+        </div>
+
         <button 
           disabled={loading}
           className="w-full h-14 bg-gradient-to-br from-primary to-primary-container text-on-primary font-bold text-lg rounded-full shadow-lg hover:scale-[0.98] active:scale-95 transition-all disabled:opacity-50 mt-4"
@@ -2647,7 +2687,288 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
   );
 };
 
-const OrdersManagement = ({ orders, onUpdateStatus, onDeleteAllOrders, loading, onRefresh, kitchenMode, setKitchenMode }: { orders: Order[], onUpdateStatus: (id: string, status: OrderStatus, message?: string) => void, onDeleteAllOrders: () => void, loading: boolean, onRefresh: () => void, kitchenMode: boolean, setKitchenMode: (val: boolean) => void }) => {
+const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void }) => {
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: shop.name || '',
+    description: shop.description || '',
+    location: shop.location || '',
+    category: shop.category || 'Restaurant',
+    phone: shop.phone || '',
+    email: shop.email || '',
+    instagram: shop.instagram || '',
+    facebook: shop.facebook || '',
+    whatsapp: shop.whatsapp || '',
+    logo_url: shop.logo_url || '',
+    banner_url: shop.banner_url || '',
+  });
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('shops')
+        .update(formData)
+        .eq('id', shop.id);
+
+      if (error) throw error;
+      toast.success('Shop profile updated successfully!');
+      onRefresh();
+    } catch (err: unknown) {
+      toast.error(`Failed to update profile: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'banner') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${shop.id}-${type}-${Math.random()}.${fileExt}`;
+      const filePath = `shop-assets/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('menu-items')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('menu-items')
+        .getPublicUrl(filePath);
+
+      setFormData(prev => ({
+        ...prev,
+        [type === 'logo' ? 'logo_url' : 'banner_url']: publicUrl
+      }));
+      
+      toast.success(`${type === 'logo' ? 'Logo' : 'Banner'} uploaded! Save to apply changes.`);
+    } catch (err: unknown) {
+      toast.error(`Upload failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8 pb-20">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-headline font-black text-on-surface tracking-tight">Storefront Profile</h2>
+          <p className="text-on-surface-variant">Customize how your shop appears to customers.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className={cn(
+            "px-4 py-2 rounded-2xl text-xs font-bold uppercase tracking-widest flex items-center gap-2",
+            shop.is_active ? "bg-emerald-100 text-emerald-600" : "bg-error/10 text-error"
+          )}>
+            <div className={cn("w-2 h-2 rounded-full", shop.is_active ? "bg-emerald-500 animate-pulse" : "bg-error")} />
+            {shop.is_active ? 'Live on App' : 'Hidden'}
+          </div>
+        </div>
+      </header>
+
+      <form onSubmit={handleUpdate} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-6">
+          <section className="bg-surface-container-lowest p-8 rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              <Store size={20} className="text-primary" />
+              Basic Information
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Shop Name</label>
+                <input 
+                  className="w-full h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+                  value={formData.name}
+                  onChange={e => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Category</label>
+                <select 
+                  className="w-full h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+                  value={formData.category}
+                  onChange={e => setFormData({ ...formData, category: e.target.value })}
+                >
+                  <option>Restaurant</option>
+                  <option>Bakery</option>
+                  <option>Cafe</option>
+                  <option>Street Food</option>
+                  <option>Home Kitchen</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Description</label>
+              <textarea 
+                className="w-full p-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all min-h-[100px]"
+                value={formData.description}
+                onChange={e => setFormData({ ...formData, description: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Location Address</label>
+              <div className="relative">
+                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={18} />
+                <input 
+                  className="w-full h-12 pl-12 pr-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+                  value={formData.location}
+                  onChange={e => setFormData({ ...formData, location: e.target.value })}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className="bg-surface-container-lowest p-8 rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              <Phone size={20} className="text-primary" />
+              Contact & Socials
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Phone Number</label>
+                <input 
+                  className="w-full h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+                  value={formData.phone}
+                  onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Email Address</label>
+                <input 
+                  className="w-full h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+                  value={formData.email}
+                  onChange={e => setFormData({ ...formData, email: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1 flex items-center gap-1">
+                  <Instagram size={12} /> Instagram
+                </label>
+                <input 
+                  placeholder="@username"
+                  className="w-full h-10 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm"
+                  value={formData.instagram}
+                  onChange={e => setFormData({ ...formData, instagram: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1 flex items-center gap-1">
+                  <Facebook size={12} /> Facebook
+                </label>
+                <input 
+                  placeholder="page name"
+                  className="w-full h-10 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm"
+                  value={formData.facebook}
+                  onChange={e => setFormData({ ...formData, facebook: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1 flex items-center gap-1">
+                  <MessageCircle size={12} /> WhatsApp
+                </label>
+                <input 
+                  placeholder="number"
+                  className="w-full h-10 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm"
+                  value={formData.whatsapp}
+                  onChange={e => setFormData({ ...formData, whatsapp: e.target.value })}
+                />
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="space-y-6">
+          <section className="bg-surface-container-lowest p-8 rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              <ImageIcon size={20} className="text-primary" />
+              Visuals
+            </h3>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Shop Logo</label>
+                <div className="relative group">
+                  <div className="w-24 h-24 rounded-2xl bg-surface-container-low overflow-hidden border-2 border-dashed border-outline-variant/20 flex items-center justify-center">
+                    {formData.logo_url ? (
+                      <img src={formData.logo_url} className="w-full h-full object-cover" alt="Logo" />
+                    ) : (
+                      <Store size={32} className="text-on-surface-variant/20" />
+                    )}
+                  </div>
+                  <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
+                    <Upload size={20} />
+                    <input type="file" className="hidden" accept="image/*" onChange={e => handleImageUpload(e, 'logo')} />
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Banner Image</label>
+                <div className="relative group aspect-video rounded-2xl bg-surface-container-low overflow-hidden border-2 border-dashed border-outline-variant/20 flex items-center justify-center">
+                  {formData.banner_url ? (
+                    <img src={formData.banner_url} className="w-full h-full object-cover" alt="Banner" />
+                  ) : (
+                    <ImageIcon size={32} className="text-on-surface-variant/20" />
+                  )}
+                  <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                    <Upload size={24} />
+                    <input type="file" className="hidden" accept="image/*" onChange={e => handleImageUpload(e, 'banner')} />
+                  </label>
+                </div>
+                <p className="text-[10px] text-on-surface-variant italic">Recommended: 1200x400px</p>
+              </div>
+            </div>
+          </section>
+
+          <button 
+            type="submit"
+            disabled={loading}
+            className="w-full py-4 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? <RefreshCw className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+            Save Profile Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+const OrdersManagement = ({ 
+  orders, 
+  onUpdateStatus, 
+  onDeleteAllOrders, 
+  loading, 
+  onRefresh, 
+  kitchenMode, 
+  setKitchenMode,
+  soundAlerts,
+  setSoundAlerts
+}: { 
+  orders: Order[], 
+  onUpdateStatus: (id: string, status: OrderStatus, message?: string) => void, 
+  onDeleteAllOrders: () => void, 
+  loading: boolean, 
+  onRefresh: () => void, 
+  kitchenMode: boolean, 
+  setKitchenMode: (val: boolean) => void,
+  soundAlerts: boolean,
+  setSoundAlerts: (val: boolean) => void
+}) => {
   const [viewMode, setViewMode] = useState<'active' | 'history'>('active');
   const [searchTerm, setSearchTerm] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
@@ -2661,13 +2982,9 @@ const OrdersManagement = ({ orders, onUpdateStatus, onDeleteAllOrders, loading, 
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [recentlyChangedOrders, setRecentlyChangedOrders] = useState<Record<string, boolean>>({});
-  const [newOrderAlert, setNewOrderAlert] = useState(false);
   const prevOrdersRef = useRef<Order[]>([]);
   const [maxConcurrentOrders, setMaxConcurrentOrders] = useState(() => {
     return Number(localStorage.getItem('maxConcurrentOrders')) || 10;
-  });
-  const [soundAlerts, setSoundAlerts] = useState(() => {
-    return localStorage.getItem('soundAlerts') !== 'false';
   });
 
   useEffect(() => {
@@ -2699,26 +3016,6 @@ const OrdersManagement = ({ orders, onUpdateStatus, onDeleteAllOrders, loading, 
   useEffect(() => {
     localStorage.setItem('maxConcurrentOrders', maxConcurrentOrders.toString());
   }, [maxConcurrentOrders]);
-
-  useEffect(() => {
-    localStorage.setItem('soundAlerts', soundAlerts.toString());
-  }, [soundAlerts]);
-
-  // Sound alert logic
-  const prevPendingCount = useRef(orders.filter(o => o.status === 'pending').length);
-  useEffect(() => {
-    const currentPendingCount = orders.filter(o => o.status === 'pending').length;
-    if (soundAlerts && currentPendingCount > prevPendingCount.current) {
-      const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-      audio.play().catch(e => console.log('Audio play blocked:', e));
-      toast.info('New order received!', { icon: <Bell className="text-primary" /> });
-      setTimeout(() => {
-        setNewOrderAlert(true);
-      }, 0);
-      setTimeout(() => setNewOrderAlert(false), 5000);
-    }
-    prevPendingCount.current = currentPendingCount;
-  }, [orders, soundAlerts]);
 
   const activeCount = orders.filter(o => o.status !== 'completed').length;
   const isLimitReached = activeCount >= maxConcurrentOrders;
@@ -3054,30 +3351,6 @@ const OrdersManagement = ({ orders, onUpdateStatus, onDeleteAllOrders, loading, 
                       />
                     </div>
                   </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence>
-              {newOrderAlert && (
-                <motion.div 
-                  initial={{ height: 0, opacity: 0, y: -20 }}
-                  animate={{ height: 'auto', opacity: 1, y: 0 }}
-                  exit={{ height: 0, opacity: 0, y: -20 }}
-                  className="bg-primary text-on-primary p-4 rounded-2xl flex items-center justify-between shadow-lg mb-6"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="bg-white/20 p-2 rounded-full">
-                      <Bell className="animate-bounce" size={20} />
-                    </div>
-                    <div>
-                      <p className="font-bold">New Order Received!</p>
-                      <p className="text-xs opacity-90">A new customer has just placed an order.</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setNewOrderAlert(false)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
-                    <X size={20} />
-                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -4266,6 +4539,10 @@ export default function App() {
   const [signupEmail, setSignupEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [soundAlerts, setSoundAlerts] = useState(() => {
+    return localStorage.getItem('soundAlerts') !== 'false';
+  });
+  const prevPendingCount = useRef(0);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [kitchenMode, setKitchenMode] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
@@ -4398,23 +4675,28 @@ export default function App() {
     // Check current session with a timeout
     const getSessionWithTimeout = async () => {
       try {
+        // Increased timeout to 15 seconds for slower networks
+        const timeout = 15000;
         const sessionPromise = supabase.auth.getSession();
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Session check timed out')), 5000)
+          setTimeout(() => reject(new Error('Session check timed out')), timeout)
         );
 
         const result = await Promise.race([sessionPromise, timeoutPromise]) as { data: { session: { user: User } | null } };
         const { data: { session } } = result;
-        setUser(session?.user ?? null);
-        setIsAuthReady(true);
-        if (session?.user?.user_metadata?.dark_mode !== undefined) {
-          setDarkMode(session.user.user_metadata.dark_mode);
+        
+        if (session?.user) {
+          setUser(session.user);
+          if (session.user.user_metadata?.dark_mode !== undefined) {
+            setDarkMode(session.user.user_metadata.dark_mode);
+          }
         }
       } catch (err) {
-        console.error('Auth initialization error:', err);
-        setUser(null);
-        setIsAuthReady(true);
+        // Log as warning instead of error to reduce noise, as onAuthStateChange is a fallback
+        console.warn('Auth initialization status:', err instanceof Error ? err.message : err);
       } finally {
+        // Ensure we mark auth as ready so the app can render
+        setIsAuthReady(true);
         setLoading(false);
       }
     };
@@ -4478,6 +4760,39 @@ export default function App() {
     
     return () => clearInterval(interval);
   }, [user, shops, user?.user_metadata?.operating_hours]);
+
+  useEffect(() => {
+    localStorage.setItem('soundAlerts', soundAlerts.toString());
+  }, [soundAlerts]);
+
+  const playNotificationSound = () => {
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
+    audio.volume = 0.8;
+    audio.play().catch(e => console.log('Audio play blocked:', e));
+  };
+
+  // Sound alert logic for new orders
+  useEffect(() => {
+    if (!user) return;
+    const currentPendingCount = orders.filter(o => o.status === 'pending').length;
+    
+    // Only trigger if count increased and sound is enabled
+    if (soundAlerts && currentPendingCount > prevPendingCount.current) {
+      playNotificationSound();
+      
+      toast.success('New Order Received!', {
+        description: `You have ${currentPendingCount} pending ${currentPendingCount === 1 ? 'order' : 'orders'}.`,
+        duration: 10000,
+        icon: <Bell className="text-primary animate-bounce" />,
+        action: {
+          label: 'View Orders',
+          onClick: () => setActiveTab('orders')
+        }
+      });
+    }
+    
+    prevPendingCount.current = currentPendingCount;
+  }, [orders, soundAlerts, user]);
 
   const fetchOrders = useCallback(async () => {
     if (!user) return;
@@ -4801,10 +5116,13 @@ export default function App() {
     );
   }
 
+  const pendingOrdersCount = orders.filter(o => o.status === 'pending').length;
+
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'storefront', label: 'Storefront', icon: Store },
     { id: 'menu', label: 'Menu', icon: UtensilsCrossed },
-    { id: 'orders', label: 'Orders', icon: ReceiptText },
+    { id: 'orders', label: 'Orders', icon: ReceiptText, badge: pendingOrdersCount > 0 ? pendingOrdersCount : null },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'insights', label: 'Insights', icon: TrendingUp },
   ];
@@ -4853,16 +5171,37 @@ export default function App() {
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
                 className={cn(
-                  "px-3 py-1 rounded-lg transition-colors font-medium text-sm",
+                  "px-3 py-1 rounded-lg transition-colors font-medium text-sm flex items-center gap-2 relative",
                   activeTab === item.id ? "text-primary font-bold" : "text-on-surface/60 hover:bg-surface-container-low dark:hover:bg-surface-container-high"
                 )}
               >
                 {item.label}
+                {item.badge && (
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white animate-pulse">
+                    {item.badge}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
 
           <div className="flex items-center gap-4">
+            <button 
+              onClick={() => {
+                setSoundAlerts(!soundAlerts);
+                if (!soundAlerts) playNotificationSound();
+              }}
+              className={cn(
+                "p-2 transition-colors relative group",
+                soundAlerts ? "text-primary" : "text-on-surface-variant/40"
+              )}
+              title={soundAlerts ? "Mute Order Alerts" : "Unmute Order Alerts"}
+            >
+              {soundAlerts ? <Volume2 size={20} /> : <VolumeX size={20} />}
+              <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-surface-container-high text-on-surface text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                {soundAlerts ? "Sound On" : "Sound Off"}
+              </span>
+            </button>
             <button 
               onClick={() => setDarkMode(!darkMode)}
               className="p-2 text-on-surface-variant hover:text-primary transition-colors"
@@ -4938,6 +5277,12 @@ export default function App() {
                 }} 
               />
             )}
+            {activeTab === 'storefront' && currentShop && (
+              <ShopProfile 
+                shop={currentShop} 
+                onRefresh={fetchShops} 
+              />
+            )}
             {activeTab === 'orders' && (
               <OrdersManagement 
                 orders={orders} 
@@ -4947,6 +5292,8 @@ export default function App() {
                 onRefresh={fetchOrders}
                 kitchenMode={kitchenMode}
                 setKitchenMode={setKitchenMode}
+                soundAlerts={soundAlerts}
+                setSoundAlerts={setSoundAlerts}
               />
             )}
             {activeTab === 'insights' && <Insights orders={orders} menuItems={menuItems} loading={loading} />}
@@ -4964,12 +5311,17 @@ export default function App() {
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               className={cn(
-                "flex flex-col items-center justify-center px-5 py-2 rounded-2xl transition-all active:scale-90 duration-200",
+                "flex flex-col items-center justify-center px-5 py-2 rounded-2xl transition-all active:scale-90 duration-200 relative",
                 activeTab === item.id ? "bg-orange-50 dark:bg-primary/10 text-primary" : "text-secondary hover:text-primary"
               )}
             >
               <item.icon size={24} className={cn("mb-1", activeTab === item.id && "fill-current")} />
               <span className="font-inter text-[10px] uppercase tracking-wider font-semibold">{item.label}</span>
+              {item.badge && (
+                <span className="absolute top-2 right-4 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white font-black">
+                  {item.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
