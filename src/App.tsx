@@ -1146,7 +1146,7 @@ const OnboardingChecklist = ({ shops, user, onNavigate, onEditProfile, hasMenu }
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button 
-          onClick={() => onNavigate('shops')}
+          onClick={() => onNavigate('menu')}
           className={cn(
             "flex items-center justify-between p-5 rounded-2xl border transition-all",
             hasShop ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-white border-outline-variant hover:border-primary group"
@@ -1755,6 +1755,10 @@ const CreateShop = ({ user, onShopCreated }: { user: User | null, onShopCreated:
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+      toast.error('You must be logged in to create a shop.');
+      return;
+    }
     setLoading(true);
     try {
       const { error } = await supabase.from('shops').insert({
@@ -4923,7 +4927,17 @@ export default function App() {
                 currentShop={currentShop}
               />
             )}
-            {activeTab === 'menu' && <MenuManagement shops={shops} loading={loading} user={user} onRefreshMenu={fetchAllMenuItems} />}
+            {activeTab === 'menu' && (
+              <MenuManagement 
+                shops={shops} 
+                loading={loading} 
+                user={user} 
+                onRefreshMenu={() => {
+                  fetchAllMenuItems();
+                  fetchShops();
+                }} 
+              />
+            )}
             {activeTab === 'orders' && (
               <OrdersManagement 
                 orders={orders} 
