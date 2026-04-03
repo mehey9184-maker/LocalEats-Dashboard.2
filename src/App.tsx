@@ -1118,19 +1118,19 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
 // --- Components ---
 
 const StatCard = ({ title, value, change, icon: Icon, colorClass }: { title: string, value: string | number, change?: string, icon: React.ElementType, colorClass: string }) => (
-  <div className="bg-surface-container-lowest p-8 rounded-xl shadow-sm border border-outline-variant/10 group hover:shadow-md transition-all duration-300">
-    <div className="flex justify-between items-start mb-4">
-      <div className={cn("p-3 rounded-2xl", colorClass)}>
-        <Icon size={24} />
+  <div className="bg-surface-container-lowest p-4 md:p-8 rounded-xl shadow-sm border border-outline-variant/10 group hover:shadow-md transition-all duration-300">
+    <div className="flex justify-between items-start mb-2 md:mb-4">
+      <div className={cn("p-2 md:p-3 rounded-2xl", colorClass)}>
+        <Icon size={20} className="md:w-6 md:h-6" />
       </div>
-      <span className={cn("text-xs font-bold px-2 py-1 rounded-full", 
-        change.startsWith('+') ? "text-emerald-600 bg-emerald-50" : "text-primary bg-primary-fixed"
+      <span className={cn("text-[10px] font-bold px-2 py-0.5 md:py-1 rounded-full", 
+        change?.startsWith('+') ? "text-emerald-600 bg-emerald-50" : "text-primary bg-primary-fixed"
       )}>
         {change}
       </span>
     </div>
-    <p className="text-on-surface-variant text-sm font-semibold uppercase tracking-wider mb-1">{title}</p>
-    <p className="text-3xl font-headline font-extrabold text-on-surface">{value}</p>
+    <p className="text-on-surface-variant text-[10px] md:text-sm font-semibold uppercase tracking-wider mb-1">{title}</p>
+    <p className="text-xl md:text-3xl font-headline font-extrabold text-on-surface">{value}</p>
   </div>
 );
 
@@ -1147,75 +1147,75 @@ const OnboardingChecklist = ({ shops, user, onNavigate, onEditProfile, hasMenu }
     <motion.div 
       initial={{ opacity: 0, y: 20 }} 
       animate={{ opacity: 1, y: 0 }}
-      className="bg-primary/5 border border-primary/20 rounded-3xl p-8 mb-12"
+      className="bg-primary/5 border border-primary/20 rounded-2xl md:rounded-3xl p-4 md:p-8 mb-8 md:mb-12"
     >
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2 bg-primary/10 rounded-lg">
-          <Rocket className="text-primary" size={24} />
+      <div className="flex items-center gap-3 mb-4 md:mb-6">
+        <div className="p-1.5 md:p-2 bg-primary/10 rounded-lg">
+          <Rocket className="text-primary w-5 h-5 md:w-6 md:h-6" />
         </div>
-        <h2 className="text-2xl font-headline font-bold text-on-surface">Getting Started</h2>
+        <h2 className="text-xl md:text-2xl font-headline font-bold text-on-surface">Getting Started</h2>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
         <button 
           onClick={() => onNavigate('menu')}
           className={cn(
-            "flex items-center justify-between p-5 rounded-2xl border transition-all",
+            "flex items-center justify-between p-4 md:p-5 rounded-xl md:rounded-2xl border transition-all",
             hasShop ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-white border-outline-variant hover:border-primary group"
           )}
         >
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 md:gap-4">
             <div className={cn("p-2 rounded-full", hasShop ? "bg-emerald-100" : "bg-surface-container-high group-hover:bg-primary/10")}>
-              {hasShop ? <CheckCircle2 size={20} /> : <Store size={20} />}
+              {hasShop ? <CheckCircle2 size={18} /> : <Store size={18} />}
             </div>
             <div className="text-left">
-              <p className="font-bold">Create your first Shop</p>
-              <p className="text-xs opacity-70">{hasShop ? 'Completed' : 'Required to start selling'}</p>
+              <p className="font-bold text-sm md:text-base">Create your first Shop</p>
+              <p className="text-[10px] md:text-xs opacity-70">{hasShop ? 'Completed' : 'Required to start selling'}</p>
             </div>
           </div>
-          {!hasShop && <ChevronRight size={20} className="text-primary" />}
+          {!hasShop && <ChevronRight size={18} className="text-primary" />}
         </button>
 
         <button 
           onClick={onEditProfile}
           className={cn(
-            "flex items-center justify-between p-5 rounded-2xl border transition-all",
+            "flex items-center justify-between p-4 md:p-5 rounded-xl md:rounded-2xl border transition-all",
             hasOperatingHours ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-white border-outline-variant hover:border-primary group"
           )}
         >
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 md:gap-4">
             <div className={cn("p-2 rounded-full", hasOperatingHours ? "bg-emerald-100" : "bg-surface-container-high group-hover:bg-primary/10")}>
-              {hasOperatingHours ? <CheckCircle2 size={20} /> : <Clock size={20} />}
+              {hasOperatingHours ? <CheckCircle2 size={18} /> : <Clock size={18} />}
             </div>
             <div className="text-left">
-              <p className="font-bold">Set Operating Hours</p>
-              <p className="text-xs opacity-70">{hasOperatingHours ? 'Completed' : 'Automate your shop status'}</p>
+              <p className="font-bold text-sm md:text-base">Set Operating Hours</p>
+              <p className="text-[10px] md:text-xs opacity-70">{hasOperatingHours ? 'Completed' : 'Automate your shop status'}</p>
             </div>
           </div>
-          {!hasOperatingHours && <ChevronRight size={20} className="text-primary" />}
+          {!hasOperatingHours && <ChevronRight size={18} className="text-primary" />}
         </button>
 
         <button 
           onClick={() => onNavigate('menu')}
           className={cn(
-            "flex items-center justify-between p-5 rounded-2xl border transition-all",
+            "flex items-center justify-between p-4 md:p-5 rounded-xl md:rounded-2xl border transition-all",
             hasMenu ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-white border-outline-variant hover:border-primary group"
           )}
         >
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 md:gap-4">
             <div className={cn("p-2 rounded-full", hasMenu ? "bg-emerald-100" : "bg-surface-container-high group-hover:bg-primary/10")}>
-              {hasMenu ? <CheckCircle2 size={20} /> : <UtensilsCrossed size={20} />}
+              {hasMenu ? <CheckCircle2 size={18} /> : <UtensilsCrossed size={18} />}
             </div>
             <div className="text-left">
-              <p className="font-bold">Add Menu Items</p>
-              <p className="text-xs opacity-70">{hasMenu ? 'Completed' : 'Upload your delicious dishes'}</p>
+              <p className="font-bold text-sm md:text-base">Add Menu Items</p>
+              <p className="text-[10px] md:text-xs opacity-70">{hasMenu ? 'Completed' : 'Upload your delicious dishes'}</p>
             </div>
           </div>
-          {!hasMenu && <ChevronRight size={20} className="text-primary" />}
+          {!hasMenu && <ChevronRight size={18} className="text-primary" />}
         </button>
       </div>
       {!hasOperatingHours && hasShop && (
-        <p className="mt-4 text-xs text-orange-600 font-medium flex items-center gap-1.5 bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl">
+        <p className="mt-4 text-[10px] md:text-xs text-orange-600 font-medium flex items-center gap-1.5 bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl">
           <AlertCircle size={14} />
           Your shop will remain closed until you set operating hours in your profile.
         </p>
@@ -1490,19 +1490,19 @@ const DashboardOverview = ({
   }
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-8 md:space-y-12">
       <motion.section initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="flex justify-between items-start">
+        <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div>
-            <h1 className="text-4xl md:text-5xl font-headline font-extrabold text-on-surface tracking-tight mb-2">Good morning, Chef!</h1>
-            <p className="text-on-surface-variant font-medium opacity-80">Here is what's happening in your kitchen today.</p>
+            <h1 className="text-3xl md:text-5xl font-headline font-extrabold text-on-surface tracking-tight mb-2">Good morning, Chef!</h1>
+            <p className="text-sm md:text-base text-on-surface-variant font-medium opacity-80">Here is what's happening in your kitchen today.</p>
           </div>
           <button 
             onClick={() => {
               onRefresh();
               toast.success('Dashboard refreshed');
             }}
-            className="p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm"
+            className="p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm self-end sm:self-auto"
             title="Refresh Dashboard"
           >
             <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
@@ -1512,7 +1512,7 @@ const DashboardOverview = ({
 
       <OnboardingChecklist shops={shops} user={user} onNavigate={onNavigate} onEditProfile={onEditProfile} hasMenu={hasMenu} />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <StatCard 
             title="Total Sales" 
@@ -1524,7 +1524,7 @@ const DashboardOverview = ({
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
           <StatCard 
-            title="Number of Orders" 
+            title="Orders" 
             value={orderCount} 
             change="0%" 
             icon={ReceiptText} 
@@ -1533,7 +1533,7 @@ const DashboardOverview = ({
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
           <StatCard 
-            title="Low Stock Items" 
+            title="Low Stock" 
             value={menuItems.filter(i => (i.stock_quantity || 0) < 5).length} 
             change="Alert" 
             icon={AlertCircle} 
@@ -1542,7 +1542,7 @@ const DashboardOverview = ({
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
           <StatCard 
-            title="Avg. Prep Time" 
+            title="Avg. Prep" 
             value="--" 
             change="0" 
             icon={Clock} 
@@ -2040,7 +2040,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
 
       if (uploadError) {
         console.error('Upload Error:', uploadError);
-        toast.error('Failed to upload image. Please ensure "menu-images" bucket exists in Supabase.');
+        toast.error('Failed to upload image. Please ensure "menu-images" bucket exists in Supabase and is set to Public.');
         setUploading(false);
         return;
       }
@@ -2434,9 +2434,9 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
 
         <section className="lg:col-span-7 space-y-6">
           <div className="flex flex-col gap-4">
-            <div className="bg-surface-container-low p-6 rounded-3xl border border-outline-variant/10 space-y-4">
+            <div className="bg-surface-container-low p-4 md:p-6 rounded-2xl md:rounded-3xl border border-outline-variant/10 space-y-4">
               <div className="flex flex-col md:flex-row gap-4 items-end">
-                <div className="flex-1 space-y-1.5">
+                <div className="w-full md:flex-1 space-y-1.5">
                   <label className="text-[10px] font-bold uppercase text-on-surface-variant/60 ml-1">Search Items</label>
                   <div className="relative">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={18} />
@@ -2445,7 +2445,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
                       placeholder="Search name or description..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-2.5 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none text-sm"
+                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none text-sm"
                     />
                   </div>
                 </div>
@@ -2455,7 +2455,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
                   <select 
                     value={filterCategory}
                     onChange={(e) => setFilterCategory(e.target.value)}
-                    className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all appearance-none"
+                    className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all appearance-none"
                   >
                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -2466,18 +2466,18 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
                   <div className="flex items-center gap-2">
                     <input 
                       type="number" 
-                      placeholder="Min Price" 
+                      placeholder="Min" 
                       value={priceRange.min}
                       onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
-                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all"
+                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all"
                     />
                     <span className="text-on-surface-variant/40">-</span>
                     <input 
                       type="number" 
-                      placeholder="Max Price" 
+                      placeholder="Max" 
                       value={priceRange.max}
                       onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
-                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all"
+                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all"
                     />
                   </div>
                 </div>
@@ -2487,7 +2487,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
                   <select 
                     value={stockFilter}
                     onChange={(e) => setStockFilter(e.target.value as 'All' | 'Low Stock' | 'In Stock')}
-                    className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all appearance-none"
+                    className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all appearance-none"
                   >
                     <option value="All">All Items</option>
                     <option value="Low Stock">Low Stock (&lt; 5)</option>
@@ -2592,11 +2592,11 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
             {filteredItems.length === 0 ? (
-              <div className="col-span-full py-20 text-center bg-surface-container-low rounded-[2rem] border-2 border-dashed border-outline-variant/20">
-                <p className="text-on-surface-variant font-medium">No items found matching your criteria.</p>
-                <button onClick={() => { setSearchTerm(''); setFilterCategory('All'); }} className="mt-4 text-primary font-bold underline">Clear all filters</button>
+              <div className="col-span-full py-12 md:py-20 text-center bg-surface-container-low rounded-2xl md:rounded-[2rem] border-2 border-dashed border-outline-variant/20">
+                <p className="text-on-surface-variant font-medium text-sm md:text-base">No items found matching your criteria.</p>
+                <button onClick={() => { setSearchTerm(''); setFilterCategory('All'); }} className="mt-4 text-primary font-bold underline text-sm md:text-base">Clear all filters</button>
               </div>
             ) : filteredItems.map((item, i) => (
               <motion.div 
@@ -2605,7 +2605,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
                 transition={{ delay: i * 0.05 }}
                 key={item.id} 
                 className={cn(
-                  "group relative bg-surface-container-lowest rounded-[2rem] overflow-hidden shadow-sm hover:shadow-[0_8px_32px_-8px_rgba(167,52,0,0.15)] transition-all duration-300 border border-outline-variant/10",
+                  "group relative bg-surface-container-lowest rounded-2xl md:rounded-[2rem] overflow-hidden shadow-sm hover:shadow-[0_8px_32px_-8px_rgba(167,52,0,0.15)] transition-all duration-300 border border-outline-variant/10",
                   selectedItems.includes(item.id) && "ring-2 ring-primary ring-offset-2"
                 )}
               >
@@ -2618,39 +2618,39 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
                 >
                   {selectedItems.includes(item.id) ? <CheckSquare size={16} /> : <Square size={16} />}
                 </button>
-                <div className="relative h-48">
+                <div className="relative h-40 md:h-48">
                   <img className={cn("w-full h-full object-cover", !item.is_available && "grayscale opacity-50")} src={item.image_url} alt={item.name} />
                   {!item.is_available && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                      <span className="bg-error text-white px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest shadow-lg">Out of Stock</span>
+                      <span className="bg-error text-white px-3 md:px-4 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-widest shadow-lg">Out of Stock</span>
                     </div>
                   )}
-                  <div className="absolute top-4 right-4 bg-surface/90 backdrop-blur-md px-3 py-1 rounded-full text-primary font-bold text-sm shadow-sm">
+                  <div className="absolute top-3 right-3 md:top-4 md:right-4 bg-surface/90 backdrop-blur-md px-2.5 py-1 rounded-full text-primary font-bold text-xs md:text-sm shadow-sm">
                     R {Number(item.price).toFixed(2)}
                   </div>
                 </div>
-                <div className="p-6 space-y-3">
-                  <div className="flex justify-between items-start">
-                    <h4 className="font-headline font-bold text-lg leading-tight">{item.name}</h4>
-                    <div className="flex gap-1 items-center">
+                <div className="p-4 md:p-6 space-y-2 md:space-y-3">
+                  <div className="flex justify-between items-start gap-2">
+                    <h4 className="font-headline font-bold text-base md:text-lg leading-tight line-clamp-1">{item.name}</h4>
+                    <div className="flex gap-1 items-center shrink-0">
                       <button 
                         onClick={() => toggleAvailability(item)}
                         className={cn(
-                          "flex items-center gap-1.5 px-2 py-1 rounded-full transition-all text-[10px] font-bold uppercase tracking-tighter",
+                          "flex items-center gap-1 px-1.5 py-0.5 md:py-1 rounded-full transition-all text-[9px] md:text-[10px] font-bold uppercase tracking-tighter",
                           item.is_available 
                             ? "bg-primary/10 text-primary hover:bg-primary/20" 
                             : "bg-on-surface-variant/10 text-on-surface-variant hover:bg-on-surface-variant/20"
                         )}
                         title={item.is_available ? "Mark as Unavailable" : "Mark as Available"}
                       >
-                        {item.is_available ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-                        {item.is_available ? 'Available' : 'Unavailable'}
+                        {item.is_available ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+                        <span className="hidden xs:inline">{item.is_available ? 'Available' : 'Unavailable'}</span>
                       </button>
                       <button 
                         onClick={() => handleEdit(item)}
-                        className="p-2 text-on-surface-variant/40 hover:text-primary transition-colors"
+                        className="p-1.5 md:p-2 text-on-surface-variant/40 hover:text-primary transition-colors"
                       >
-                        <Edit2 size={18} />
+                        <Edit2 size={16} className="md:w-[18px] md:h-[18px]" />
                       </button>
                       <button 
                         onClick={() => {
@@ -2658,22 +2658,22 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
                             handleDelete(item.id);
                           }
                         }} 
-                        className="p-2 text-on-surface-variant/40 hover:text-error transition-colors"
+                        className="p-1.5 md:p-2 text-on-surface-variant/40 hover:text-error transition-colors"
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={16} className="md:w-[18px] md:h-[18px]" />
                       </button>
                     </div>
                   </div>
-                  <p className="text-on-surface-variant text-sm line-clamp-2">{item.description || "No description provided."}</p>
-                  <div className="flex gap-2 pt-2 items-center justify-between">
-                    <span className="px-3 py-1 bg-surface-container-high rounded-full text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{item.category || "General"}</span>
+                  <p className="text-on-surface-variant text-[10px] md:text-xs line-clamp-2 min-h-[2.5em]">{item.description || "No description provided."}</p>
+                  <div className="flex gap-2 pt-2 items-center justify-between border-t border-outline-variant/5">
+                    <span className="px-2 py-0.5 bg-surface-container-high rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{item.category || "General"}</span>
                     <span className={cn(
-                      "text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md flex items-center gap-1",
+                      "text-[9px] md:text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-1",
                       (item.stock_quantity || 0) < 5 ? "bg-error text-on-error animate-pulse shadow-[0_0_12px_rgba(255,0,0,0.3)]" : "bg-emerald-100 text-emerald-600"
                     )}>
                       {(item.stock_quantity || 0) < 5 && <AlertCircle size={10} />}
                       Stock: {item.stock_quantity || 0}
-                      {(item.stock_quantity || 0) < 5 && <span className="ml-1 text-[8px] font-black underline">LOW STOCK</span>}
+                      {(item.stock_quantity || 0) < 5 && <span className="ml-1 text-[8px] font-black underline hidden xs:inline">LOW STOCK</span>}
                     </span>
                   </div>
                 </div>
@@ -2689,6 +2689,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
 
 const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void }) => {
   const [loading, setLoading] = useState(false);
+  const [uploadingType, setUploadingType] = useState<'logo' | 'banner' | null>(null);
   const [formData, setFormData] = useState({
     name: shop.name || '',
     description: shop.description || '',
@@ -2726,20 +2727,25 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setLoading(true);
+    setUploadingType(type);
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${shop.id}-${type}-${Math.random()}.${fileExt}`;
       const filePath = `shop-assets/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('menu-items')
+        .from('shop-assets')
         .upload(filePath, file);
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        if (uploadError.message.includes('bucket not found')) {
+          throw new Error('Storage bucket "shop-assets" not found. Please create it in Supabase Storage and set it to Public.');
+        }
+        throw uploadError;
+      }
 
       const { data: { publicUrl } } = supabase.storage
-        .from('menu-items')
+        .from('shop-assets')
         .getPublicUrl(filePath);
 
       setFormData(prev => ({
@@ -2751,49 +2757,49 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
     } catch (err: unknown) {
       toast.error(`Upload failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
-      setLoading(false);
+      setUploadingType(null);
     }
   };
 
   return (
-    <div className="space-y-8 pb-20">
+    <div className="space-y-6 md:space-y-8 pb-24 md:pb-20">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-headline font-black text-on-surface tracking-tight">Storefront Profile</h2>
-          <p className="text-on-surface-variant">Customize how your shop appears to customers.</p>
+          <h2 className="text-2xl md:text-3xl font-headline font-black text-on-surface tracking-tight">Storefront Profile</h2>
+          <p className="text-xs md:text-sm text-on-surface-variant">Customize how your shop appears to customers.</p>
         </div>
         <div className="flex items-center gap-3">
           <div className={cn(
-            "px-4 py-2 rounded-2xl text-xs font-bold uppercase tracking-widest flex items-center gap-2",
+            "px-3 md:px-4 py-1.5 md:py-2 rounded-2xl text-[10px] md:text-xs font-bold uppercase tracking-widest flex items-center gap-2",
             shop.is_active ? "bg-emerald-100 text-emerald-600" : "bg-error/10 text-error"
           )}>
-            <div className={cn("w-2 h-2 rounded-full", shop.is_active ? "bg-emerald-500 animate-pulse" : "bg-error")} />
+            <div className={cn("w-1.5 md:w-2 h-1.5 md:h-2 rounded-full", shop.is_active ? "bg-emerald-500 animate-pulse" : "bg-error")} />
             {shop.is_active ? 'Live on App' : 'Hidden'}
           </div>
         </div>
       </header>
 
-      <form onSubmit={handleUpdate} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <form onSubmit={handleUpdate} className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
         <div className="lg:col-span-2 space-y-6">
-          <section className="bg-surface-container-lowest p-8 rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
-            <h3 className="text-lg font-bold flex items-center gap-2">
-              <Store size={20} className="text-primary" />
+          <section className="bg-surface-container-lowest p-5 md:p-8 rounded-2xl md:rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
+            <h3 className="text-base md:text-lg font-bold flex items-center gap-2">
+              <Store size={18} className="text-primary md:w-5 md:h-5" />
               Basic Information
             </h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Shop Name</label>
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Shop Name</label>
                 <input 
-                  className="w-full h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+                  className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
                   value={formData.name}
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Category</label>
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Category</label>
                 <select 
-                  className="w-full h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+                  className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
                   value={formData.category}
                   onChange={e => setFormData({ ...formData, category: e.target.value })}
                 >
@@ -2807,20 +2813,20 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Description</label>
+              <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Description</label>
               <textarea 
-                className="w-full p-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all min-h-[100px]"
+                className="w-full p-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all min-h-[80px] md:min-h-[100px] text-sm md:text-base"
                 value={formData.description}
                 onChange={e => setFormData({ ...formData, description: e.target.value })}
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Location Address</label>
+              <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Location Address</label>
               <div className="relative">
-                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={18} />
+                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={16} className="md:w-[18px] md:h-[18px]" />
                 <input 
-                  className="w-full h-12 pl-12 pr-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+                  className="w-full h-10 md:h-12 pl-10 md:pl-12 pr-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
                   value={formData.location}
                   onChange={e => setFormData({ ...formData, location: e.target.value })}
                 />
@@ -2828,25 +2834,25 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
             </div>
           </section>
 
-          <section className="bg-surface-container-lowest p-8 rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
-            <h3 className="text-lg font-bold flex items-center gap-2">
-              <Phone size={20} className="text-primary" />
+          <section className="bg-surface-container-lowest p-5 md:p-8 rounded-2xl md:rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
+            <h3 className="text-base md:text-lg font-bold flex items-center gap-2">
+              <Phone size={18} className="text-primary md:w-5 md:h-5" />
               Contact & Socials
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Phone Number</label>
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Phone Number</label>
                 <input 
-                  className="w-full h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+                  className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
                   value={formData.phone}
                   onChange={e => setFormData({ ...formData, phone: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Email Address</label>
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Email Address</label>
                 <input 
-                  className="w-full h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+                  className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
                   value={formData.email}
                   onChange={e => setFormData({ ...formData, email: e.target.value })}
                 />
@@ -2855,7 +2861,7 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1 flex items-center gap-1">
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1 flex items-center gap-1">
                   <Instagram size={12} /> Instagram
                 </label>
                 <input 
@@ -2866,7 +2872,7 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1 flex items-center gap-1">
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1 flex items-center gap-1">
                   <Facebook size={12} /> Facebook
                 </label>
                 <input 
@@ -2877,7 +2883,7 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1 flex items-center gap-1">
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1 flex items-center gap-1">
                   <MessageCircle size={12} /> WhatsApp
                 </label>
                 <input 
@@ -2892,41 +2898,67 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
         </div>
 
         <div className="space-y-6">
-          <section className="bg-surface-container-lowest p-8 rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
-            <h3 className="text-lg font-bold flex items-center gap-2">
-              <ImageIcon size={20} className="text-primary" />
+          {/* Live Preview Card */}
+          <div className="bg-surface-container-lowest p-6 rounded-[2rem] border border-outline-variant/10 shadow-sm overflow-hidden hidden lg:block">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 mb-4 ml-1">Live App Preview</h3>
+            <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-surface-container-low mb-4 shadow-inner">
+              <img src={formData.banner_url || "https://picsum.photos/seed/banner/800/400"} className="w-full h-full object-cover" alt="Banner" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+              <div className="absolute bottom-4 left-4 right-4 flex items-end gap-3">
+                <div className="w-12 h-12 rounded-xl bg-white p-1 shadow-lg shrink-0">
+                  <img src={formData.logo_url || "https://picsum.photos/seed/logo/200/200"} className="w-full h-full object-cover rounded-lg" alt="Logo" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-white font-bold text-lg leading-tight truncate">{formData.name || "Shop Name"}</h4>
+                  <div className="flex items-center gap-1 text-white/70 text-[10px] truncate">
+                    <MapPin size={10} />
+                    {formData.location || "Location"}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p className="text-[10px] text-on-surface-variant text-center italic leading-tight">This is how your shop card appears to customers in the LocalEats app.</p>
+          </div>
+
+          <section className="bg-surface-container-lowest p-5 md:p-8 rounded-2xl md:rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
+            <h3 className="text-base md:text-lg font-bold flex items-center gap-2">
+              <ImageIcon size={18} className="text-primary md:w-5 md:h-5" />
               Visuals
             </h3>
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Shop Logo</label>
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Shop Logo</label>
                 <div className="relative group">
-                  <div className="w-24 h-24 rounded-2xl bg-surface-container-low overflow-hidden border-2 border-dashed border-outline-variant/20 flex items-center justify-center">
-                    {formData.logo_url ? (
+                  <div className="w-16 md:w-24 h-16 md:h-24 rounded-2xl bg-surface-container-low overflow-hidden border-2 border-dashed border-outline-variant/20 flex items-center justify-center">
+                    {uploadingType === 'logo' ? (
+                      <RefreshCw className="animate-spin text-primary" size={24} />
+                    ) : formData.logo_url ? (
                       <img src={formData.logo_url} className="w-full h-full object-cover" alt="Logo" />
                     ) : (
-                      <Store size={32} className="text-on-surface-variant/20" />
+                      <Store size={24} className="text-on-surface-variant/20 md:w-8 md:h-8" />
                     )}
                   </div>
                   <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
-                    <Upload size={20} />
-                    <input type="file" className="hidden" accept="image/*" onChange={e => handleImageUpload(e, 'logo')} />
+                    <Upload size={18} className="md:w-5 md:h-5" />
+                    <input type="file" className="hidden" accept="image/*" onChange={e => handleImageUpload(e, 'logo')} disabled={!!uploadingType} />
                   </label>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Banner Image</label>
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Banner Image</label>
                 <div className="relative group aspect-video rounded-2xl bg-surface-container-low overflow-hidden border-2 border-dashed border-outline-variant/20 flex items-center justify-center">
-                  {formData.banner_url ? (
+                  {uploadingType === 'banner' ? (
+                    <RefreshCw className="animate-spin text-primary" size={32} />
+                  ) : formData.banner_url ? (
                     <img src={formData.banner_url} className="w-full h-full object-cover" alt="Banner" />
                   ) : (
-                    <ImageIcon size={32} className="text-on-surface-variant/20" />
+                    <ImageIcon size={24} className="text-on-surface-variant/20 md:w-8 md:h-8" />
                   )}
                   <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                    <Upload size={24} />
-                    <input type="file" className="hidden" accept="image/*" onChange={e => handleImageUpload(e, 'banner')} />
+                    <Upload size={20} className="md:w-6 md:h-6" />
+                    <input type="file" className="hidden" accept="image/*" onChange={e => handleImageUpload(e, 'banner')} disabled={!!uploadingType} />
                   </label>
                 </div>
                 <p className="text-[10px] text-on-surface-variant italic">Recommended: 1200x400px</p>
@@ -2937,10 +2969,10 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
           <button 
             type="submit"
             disabled={loading}
-            className="w-full py-4 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-3 md:py-4 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {loading ? <RefreshCw className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
-            Save Profile Changes
+            {loading ? <RefreshCw className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}
+            Save Changes
           </button>
         </div>
       </form>
@@ -5159,10 +5191,10 @@ export default function App() {
       {/* TopAppBar */}
       {!kitchenMode && (
         <header className="fixed top-0 w-full z-50 bg-white/70 dark:bg-surface-container-lowest/70 backdrop-blur-xl shadow-sm shadow-orange-900/5">
-        <div className="flex justify-between items-center px-6 h-16 max-w-7xl mx-auto">
-          <div className="flex items-center gap-3">
-            <UtensilsCrossed className="text-primary" size={24} />
-            <span className="font-headline tracking-tight font-bold text-2xl font-black text-on-surface">LocalEats</span>
+        <div className="flex justify-between items-center px-4 md:px-6 h-16 max-w-7xl mx-auto">
+          <div className="flex items-center gap-2 md:gap-3">
+            <UtensilsCrossed className="text-primary w-5 h-5 md:w-6 md:h-6" />
+            <span className="font-headline tracking-tight font-bold text-xl md:text-2xl font-black text-on-surface">LocalEats</span>
           </div>
           
           <nav className="hidden md:flex items-center gap-8">
@@ -5185,7 +5217,7 @@ export default function App() {
             ))}
           </nav>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1 md:gap-4">
             <button 
               onClick={() => {
                 setSoundAlerts(!soundAlerts);
@@ -5197,33 +5229,30 @@ export default function App() {
               )}
               title={soundAlerts ? "Mute Order Alerts" : "Unmute Order Alerts"}
             >
-              {soundAlerts ? <Volume2 size={20} /> : <VolumeX size={20} />}
-              <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-surface-container-high text-on-surface text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                {soundAlerts ? "Sound On" : "Sound Off"}
-              </span>
+              {soundAlerts ? <Volume2 size={18} className="md:w-5 md:h-5" /> : <VolumeX size={18} className="md:w-5 md:h-5" />}
             </button>
             <button 
               onClick={() => setDarkMode(!darkMode)}
               className="p-2 text-on-surface-variant hover:text-primary transition-colors"
               title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
             >
-              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+              {darkMode ? <Sun size={18} className="md:w-5 md:h-5" /> : <Moon size={18} className="md:w-5 md:h-5" />}
             </button>
             <button 
               onClick={() => setIsEditingProfile(true)}
-              className="p-2 text-on-surface-variant hover:text-primary transition-colors"
+              className="hidden sm:block p-2 text-on-surface-variant hover:text-primary transition-colors"
               title="Edit Profile"
             >
-              <UserIcon size={20} />
+              <UserIcon size={18} className="md:w-5 md:h-5" />
             </button>
             <button 
               onClick={handleSignOut}
               className="p-2 text-on-surface-variant hover:text-primary transition-colors"
               title="Sign Out"
             >
-              <LogOut size={20} />
+              <LogOut size={18} className="md:w-5 md:h-5" />
             </button>
-            <div className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center overflow-hidden border-2 border-primary/10">
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary-fixed flex items-center justify-center overflow-hidden border-2 border-primary/10">
               <img 
                 alt="Profile" 
                 className="w-full h-full object-cover" 
@@ -5239,7 +5268,7 @@ export default function App() {
       </header>
       )}
 
-      <main className={cn("px-6 max-w-7xl mx-auto", kitchenMode ? "pt-6 pb-6" : "pt-24 pb-32")}>
+      <main className={cn("px-4 md:px-6 max-w-7xl mx-auto", kitchenMode ? "pt-6 pb-6" : "pt-20 md:pt-24 pb-32")}>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -5304,21 +5333,21 @@ export default function App() {
 
       {/* BottomNavBar */}
       {!kitchenMode && (
-        <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 bg-white/70 dark:bg-surface-container-lowest/70 backdrop-blur-xl rounded-t-3xl border-t border-outline-variant/10 shadow-[0_-8px_24px_-4px_rgba(167,52,0,0.12)]">
-        <div className="flex justify-around items-center px-4 pb-8 pt-4">
+        <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 bg-white/70 dark:bg-surface-container-lowest/70 backdrop-blur-xl rounded-t-2xl md:rounded-t-3xl border-t border-outline-variant/10 shadow-[0_-8px_24px_-4px_rgba(167,52,0,0.12)]">
+        <div className="flex justify-around items-center px-2 pb-6 pt-3">
           {navItems.map(item => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               className={cn(
-                "flex flex-col items-center justify-center px-5 py-2 rounded-2xl transition-all active:scale-90 duration-200 relative",
+                "flex flex-col items-center justify-center px-3 py-1.5 rounded-xl transition-all active:scale-90 duration-200 relative",
                 activeTab === item.id ? "bg-orange-50 dark:bg-primary/10 text-primary" : "text-secondary hover:text-primary"
               )}
             >
-              <item.icon size={24} className={cn("mb-1", activeTab === item.id && "fill-current")} />
-              <span className="font-inter text-[10px] uppercase tracking-wider font-semibold">{item.label}</span>
+              <item.icon size={20} className={cn("mb-1", activeTab === item.id && "fill-current")} />
+              <span className="font-inter text-[9px] uppercase tracking-wider font-bold">{item.label}</span>
               {item.badge && (
-                <span className="absolute top-2 right-4 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white font-black">
+                <span className="absolute top-1 right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[8px] text-white font-black">
                   {item.badge}
                 </span>
               )}
