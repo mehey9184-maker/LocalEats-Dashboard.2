@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, DASHBOARD_URL } from '../lib/supabase';
 import { ArrowLeft } from 'lucide-react';
 
 interface SignUpProps {
@@ -25,6 +25,9 @@ export const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
           data: {
             full_name: 'Mehey',
           },
+          emailRedirectTo: window.location.origin.includes('localhost') 
+            ? window.location.origin 
+            : DASHBOARD_URL
         },
       });
       if (error) setError(error.message);
@@ -49,6 +52,9 @@ export const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
           data: {
             full_name: name,
           },
+          emailRedirectTo: window.location.origin.includes('localhost') 
+            ? window.location.origin 
+            : DASHBOARD_URL
         },
       });
 

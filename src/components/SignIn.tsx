@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, DASHBOARD_URL } from '../lib/supabase';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -61,6 +61,11 @@ export const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
   const handleGoogleSignIn = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
+      options: {
+        redirectTo: window.location.origin.includes('localhost') 
+          ? window.location.origin 
+          : DASHBOARD_URL
+      }
     });
   };
 

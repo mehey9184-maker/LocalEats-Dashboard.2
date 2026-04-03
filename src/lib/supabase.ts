@@ -26,3 +26,6 @@ if (isProbablyNotSupabaseKey) {
 console.log('Supabase initialized with URL:', supabaseUrl ? `${supabaseUrl.substring(0, 10)}...` : 'MISSING');
 
 export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
+
+// The official dashboard URL for LocalEats South Africa
+export const DASHBOARD_URL = 'https://dashboard.localeatssa.co.za';
