@@ -48,6 +48,7 @@ import {
   Layers,
   CreditCard,
   Ticket,
+  Users,
   ShieldCheck,
   Zap,
   ToggleLeft,
@@ -57,12 +58,16 @@ import {
   Instagram,
   Facebook,
   MessageCircle,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Settings
 } from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
   XAxis, 
+  YAxis,
+  AreaChart,
+  Area,
   Tooltip, 
   ResponsiveContainer,
   Cell,
@@ -174,6 +179,47 @@ if (isProbablyNotSupabaseKey) {
 }
 
 console.log('Supabase initialized with URL:', supabaseUrl ? `${supabaseUrl.substring(0, 10)}...` : 'MISSING');
+
+export interface Review {
+  id: string;
+  shop_id: number;
+  user_id: string;
+  customer_name: string;
+  rating: number;
+  comment: string;
+  response: string | null;
+  created_at: string;
+}
+
+export interface Announcement {
+  id: string;
+  shop_id: number;
+  title: string;
+  content: string;
+  type: 'deal' | 'info' | 'event';
+  created_at: string;
+}
+
+export interface Coupon {
+  id: string;
+  shop_id: number;
+  code: string;
+  discount_type: 'percentage' | 'fixed';
+  discount_value: number;
+  min_order_value: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface Message {
+  id: string;
+  order_id: string;
+  shop_id: number;
+  user_id: string;
+  sender_type: 'merchant' | 'customer';
+  content: string;
+  created_at: string;
+}
 
 const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
 
@@ -1130,7 +1176,7 @@ const StatCard = ({ title, value, change, icon: Icon, colorClass }: { title: str
       </span>
     </div>
     <p className="text-on-surface-variant text-[10px] md:text-sm font-semibold uppercase tracking-wider mb-1">{title}</p>
-    <p className="text-xl md:text-3xl font-headline font-extrabold text-on-surface">{value}</p>
+    <p className="text-xl md:text-3xl font-headline font-bold text-on-surface">{value}</p>
   </div>
 );
 
@@ -1153,7 +1199,7 @@ const OnboardingChecklist = ({ shops, user, onNavigate, onEditProfile, hasMenu }
         <div className="p-1.5 md:p-2 bg-primary/10 rounded-lg">
           <Rocket className="text-primary w-5 h-5 md:w-6 md:h-6" />
         </div>
-        <h2 className="text-xl md:text-2xl font-headline font-bold text-on-surface">Getting Started</h2>
+        <h2 className="text-xl md:text-2xl font-headline font-bold text-on-surface tracking-tight">Getting Started</h2>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
@@ -1169,7 +1215,7 @@ const OnboardingChecklist = ({ shops, user, onNavigate, onEditProfile, hasMenu }
               {hasShop ? <CheckCircle2 size={18} /> : <Store size={18} />}
             </div>
             <div className="text-left">
-              <p className="font-bold text-sm md:text-base">Create your first Shop</p>
+              <p className="font-semibold text-sm md:text-base">Create your first Shop</p>
               <p className="text-[10px] md:text-xs opacity-70">{hasShop ? 'Completed' : 'Required to start selling'}</p>
             </div>
           </div>
@@ -1188,7 +1234,7 @@ const OnboardingChecklist = ({ shops, user, onNavigate, onEditProfile, hasMenu }
               {hasOperatingHours ? <CheckCircle2 size={18} /> : <Clock size={18} />}
             </div>
             <div className="text-left">
-              <p className="font-bold text-sm md:text-base">Set Operating Hours</p>
+              <p className="font-semibold text-sm md:text-base">Set Operating Hours</p>
               <p className="text-[10px] md:text-xs opacity-70">{hasOperatingHours ? 'Completed' : 'Automate your shop status'}</p>
             </div>
           </div>
@@ -1207,7 +1253,7 @@ const OnboardingChecklist = ({ shops, user, onNavigate, onEditProfile, hasMenu }
               {hasMenu ? <CheckCircle2 size={18} /> : <UtensilsCrossed size={18} />}
             </div>
             <div className="text-left">
-              <p className="font-bold text-sm md:text-base">Add Menu Items</p>
+              <p className="font-semibold text-sm md:text-base">Add Menu Items</p>
               <p className="text-[10px] md:text-xs opacity-70">{hasMenu ? 'Completed' : 'Upload your delicious dishes'}</p>
             </div>
           </div>
@@ -1286,9 +1332,9 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
 
   return (
     <div className="space-y-8">
-      <section>
-        <h2 className="text-3xl font-headline font-extrabold text-on-surface tracking-tight mb-2">Payment History</h2>
-        <p className="text-on-surface-variant">View and manage your subscription payments and transactions.</p>
+      <section className="space-y-1">
+        <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Payment History</h2>
+        <p className="text-sm text-on-surface-variant font-medium">View and manage your subscription payments and transactions.</p>
       </section>
 
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
@@ -1438,6 +1484,56 @@ const DashboardOverview = ({
   const orderCount = orders.length;
   const hasMenu = menuItems.length > 0;
   const [timeframe, setTimeframe] = useState<'weekly' | 'monthly'>('monthly');
+  const [followerCount, setFollowerCount] = useState<number | string>('--');
+  const [followerTrend, setFollowerTrend] = useState<string>('0');
+  const [recentFollowers, setRecentFollowers] = useState<{ id: string; created_at: string }[]>([]);
+
+  useEffect(() => {
+    const fetchFollowers = async () => {
+      if (!currentShop?.id) return;
+      
+      try {
+        const { count, error } = await supabase
+          .from('shop_followers')
+          .select('*', { count: 'exact', head: true })
+          .eq('shop_id', currentShop.id);
+        
+        if (error) throw error;
+        setFollowerCount(count || 0);
+
+        // Fetch followers from last 24h for trend
+        const yesterday = new Date();
+        yesterday.setHours(yesterday.getHours() - 24);
+        
+        const { count: recentCount, error: trendError } = await supabase
+          .from('shop_followers')
+          .select('*', { count: 'exact', head: true })
+          .eq('shop_id', currentShop.id)
+          .gt('created_at', yesterday.toISOString());
+
+        if (!trendError) {
+          setFollowerTrend(`+${recentCount || 0}`);
+        }
+
+        // Fetch last 5 followers
+        const { data: recentData, error: recentError } = await supabase
+          .from('shop_followers')
+          .select('id, created_at')
+          .eq('shop_id', currentShop.id)
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (!recentError && recentData) {
+          setRecentFollowers(recentData);
+        }
+      } catch (err) {
+        console.error('Error fetching followers:', err);
+        setFollowerCount(0);
+      }
+    };
+
+    fetchFollowers();
+  }, [currentShop?.id]);
   
   // Use real trend data from the last 7 days
   const trendData = useMemo(() => {
@@ -1493,9 +1589,9 @@ const DashboardOverview = ({
     <div className="space-y-8 md:space-y-12">
       <motion.section initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
         <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-          <div>
-            <h1 className="text-3xl md:text-5xl font-headline font-extrabold text-on-surface tracking-tight mb-2">Good morning, Chef!</h1>
-            <p className="text-sm md:text-base text-on-surface-variant font-medium opacity-80">Here is what's happening in your kitchen today.</p>
+          <div className="space-y-1">
+            <h1 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Good morning, Chef!</h1>
+            <p className="text-sm text-on-surface-variant font-medium">Here is what's happening in your kitchen today.</p>
           </div>
           <button 
             onClick={() => {
@@ -1538,6 +1634,15 @@ const DashboardOverview = ({
             change="Alert" 
             icon={AlertCircle} 
             colorClass="bg-error/10 text-error"
+          />
+        </motion.div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
+          <StatCard 
+            title="Followers" 
+            value={followerCount} 
+            change={followerTrend} 
+            icon={Users} 
+            colorClass="bg-blue-50 text-blue-600"
           />
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
@@ -1713,45 +1818,87 @@ const DashboardOverview = ({
       )}
 
       {/* Recent Activity Feed */}
-      <motion.section 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="bg-surface-container-lowest rounded-[2rem] p-8 border border-outline-variant/10"
-      >
-        <div className="flex justify-between items-center mb-8">
-          <h2 className="text-xl font-headline font-bold text-on-surface">Recent Activity</h2>
-          <button onClick={() => onNavigate('orders')} className="text-xs font-bold text-primary hover:underline">View All Activity</button>
-        </div>
-        <div className="space-y-6">
-          {orders.slice(0, 5).map((order) => (
-            <div key={order.id} className="flex items-center justify-between group">
-              <div className="flex items-center gap-4">
-                <div className={cn(
-                  "w-10 h-10 rounded-full flex items-center justify-center",
-                  order.status === 'completed' ? "bg-emerald-100 text-emerald-600" : 
-                  order.status === 'pending' ? "bg-primary/10 text-primary" : "bg-blue-100 text-blue-600"
-                )}>
-                  {order.status === 'completed' ? <CheckCircle2 size={18} /> : <Clock size={18} />}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <motion.section 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="lg:col-span-8 bg-surface-container-lowest rounded-[2rem] p-8 border border-outline-variant/10 shadow-sm"
+        >
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-xl font-headline font-bold text-on-surface">Recent Activity</h2>
+            <button onClick={() => onNavigate('orders')} className="text-xs font-bold text-primary hover:underline">View All Activity</button>
+          </div>
+          <div className="space-y-6">
+            {orders.slice(0, 5).map((order) => (
+              <div key={order.id} className="flex items-center justify-between group">
+                <div className="flex items-center gap-4">
+                  <div className={cn(
+                    "w-10 h-10 rounded-full flex items-center justify-center",
+                    order.status === 'completed' ? "bg-emerald-100 text-emerald-600" : 
+                    order.status === 'pending' ? "bg-primary/10 text-primary" : "bg-blue-100 text-blue-600"
+                  )}>
+                    {order.status === 'completed' ? <CheckCircle2 size={18} /> : <Clock size={18} />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-on-surface">
+                      Order <span className="text-primary">#{order.id}</span> {order.status === 'completed' ? 'completed' : 'received'}
+                    </p>
+                    <p className="text-xs text-on-surface-variant">{order.product_name} • {format(new Date(order.created_at), 'h:mm a')}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-on-surface">
-                    Order <span className="text-primary">#{order.id}</span> {order.status === 'completed' ? 'completed' : 'received'}
-                  </p>
-                  <p className="text-xs text-on-surface-variant">{order.product_name} • {format(new Date(order.created_at), 'h:mm a')}</p>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-on-surface">R {Number(order.total_price).toFixed(2)}</p>
+                  <p className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-widest">{order.status}</p>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-sm font-bold text-on-surface">R {Number(order.total_price).toFixed(2)}</p>
-                <p className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-widest">{order.status}</p>
-              </div>
+            ))}
+            {orders.length === 0 && (
+              <div className="py-12 text-center text-on-surface-variant italic">No recent activity to show.</div>
+            )}
+          </div>
+        </motion.section>
+
+        <motion.section 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+          className="lg:col-span-4 bg-surface-container-lowest rounded-[2rem] p-8 border border-outline-variant/10 shadow-sm"
+        >
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-xl font-headline font-bold text-on-surface">Recent Followers</h2>
+            <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
+              <Users size={16} />
             </div>
-          ))}
-          {orders.length === 0 && (
-            <div className="py-12 text-center text-on-surface-variant italic">No recent activity to show.</div>
-          )}
-        </div>
-      </motion.section>
+          </div>
+          <div className="space-y-6">
+            {recentFollowers.length > 0 ? (
+              recentFollowers.map((follower) => (
+                <div key={follower.id} className="flex items-center gap-4 group">
+                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xs">
+                    {follower.id.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-on-surface truncate">New Follower</p>
+                    <p className="text-[10px] text-on-surface-variant/60 font-medium">
+                      {format(new Date(follower.created_at), 'MMM d, h:mm a')}
+                    </p>
+                  </div>
+                  <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                </div>
+              ))
+            ) : (
+              <div className="py-12 text-center space-y-4">
+                <div className="w-16 h-16 bg-surface-container rounded-full flex items-center justify-center mx-auto text-on-surface-variant/20">
+                  <Users size={32} />
+                </div>
+                <p className="text-on-surface-variant text-sm font-medium italic">No followers yet.</p>
+                <p className="text-[10px] text-on-surface-variant/60 leading-tight">Share your shop link to get more followers!</p>
+              </div>
+            )}
+          </div>
+        </motion.section>
+      </div>
     </div>
   );
 };
@@ -2133,6 +2280,9 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
 
     setIsGeneratingImage(true);
     try {
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error('Gemini API Key is missing. Please add GEMINI_API_KEY to your environment variables.');
+      }
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const prompt = `A professional food photography shot of ${formData.name}. ${formData.description ? `Description: ${formData.description}.` : ''} High quality, appetizing, studio lighting, neutral background.`;
       
@@ -2147,6 +2297,10 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
           }
         }
       });
+
+      if (!response.candidates?.[0]?.content?.parts) {
+        throw new Error('The AI model did not return any image parts. Try a different name.');
+      }
 
       let base64Data = '';
       for (const part of response.candidates[0].content.parts) {
@@ -2172,7 +2326,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
       }
     } catch (error) {
       console.error('AI Image Generation Error:', error);
-      toast.error('Failed to generate image with AI. Please try again.');
+      toast.error(`AI Generation failed: ${error instanceof Error ? error.message : 'Please try again.'}`);
     } finally {
       setIsGeneratingImage(false);
     }
@@ -2271,7 +2425,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
             />
           </div>
           <div>
-            <h2 className="text-3xl font-headline font-extrabold text-on-surface">{selectedShop?.name || "Your Shop"}</h2>
+            <h2 className="text-2xl font-headline font-bold text-on-surface">{selectedShop?.name || "Your Shop"}</h2>
             <div className="flex items-center gap-4 mt-1 text-on-surface-variant text-sm font-medium">
               <span className="flex items-center gap-1"><MapPin size={14} /> {selectedShop?.location}</span>
               <span className="flex items-center gap-1"><Store size={14} /> {selectedShop?.category}</span>
@@ -2291,10 +2445,10 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
           className="lg:col-span-5 space-y-8"
         >
           <div className="space-y-2">
-            <h2 className="text-4xl font-extrabold tracking-tight font-headline text-on-surface">
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight font-headline text-on-surface">
               {editingItem ? 'Edit Your' : 'Curate Your'} <span className="text-primary italic">Offerings</span>
             </h2>
-            <p className="text-on-surface-variant body-md max-w-md">
+            <p className="text-sm text-on-surface-variant font-medium max-w-md">
               {editingItem ? 'Update the details of your menu item below.' : 'Transform ingredients into inspiration. Define your signature dishes for the LocalEats community.'}
             </p>
           </div>
@@ -2631,7 +2785,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
                 </div>
                 <div className="p-4 md:p-6 space-y-2 md:space-y-3">
                   <div className="flex justify-between items-start gap-2">
-                    <h4 className="font-headline font-bold text-base md:text-lg leading-tight line-clamp-1">{item.name}</h4>
+                    <h4 className="font-headline font-semibold text-base md:text-lg leading-tight line-clamp-1">{item.name}</h4>
                     <div className="flex gap-1 items-center shrink-0">
                       <button 
                         onClick={() => toggleAvailability(item)}
@@ -2687,7 +2841,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
   );
 };
 
-const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void }) => {
+const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => void, user: User | null }) => {
   const [loading, setLoading] = useState(false);
   const [uploadingType, setUploadingType] = useState<'logo' | 'banner' | null>(null);
   const [formData, setFormData] = useState({
@@ -2731,7 +2885,7 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${shop.id}-${type}-${Math.random()}.${fileExt}`;
-      const filePath = `shop-assets/${fileName}`;
+      const filePath = `${user.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('shop-assets')
@@ -2764,9 +2918,9 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
   return (
     <div className="space-y-6 md:space-y-8 pb-24 md:pb-20">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl md:text-3xl font-headline font-black text-on-surface tracking-tight">Storefront Profile</h2>
-          <p className="text-xs md:text-sm text-on-surface-variant">Customize how your shop appears to customers.</p>
+        <div className="space-y-1">
+          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Storefront Profile</h2>
+          <p className="text-xs md:text-sm text-on-surface-variant font-medium">Customize how your shop appears to customers.</p>
         </div>
         <div className="flex items-center gap-3">
           <div className={cn(
@@ -2782,7 +2936,7 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
       <form onSubmit={handleUpdate} className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
         <div className="lg:col-span-2 space-y-6">
           <section className="bg-surface-container-lowest p-5 md:p-8 rounded-2xl md:rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
-            <h3 className="text-base md:text-lg font-bold flex items-center gap-2">
+            <h3 className="text-base md:text-lg font-semibold flex items-center gap-2">
               <Store size={18} className="text-primary md:w-5 md:h-5" />
               Basic Information
             </h3>
@@ -2829,8 +2983,41 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
                   className="w-full h-10 md:h-12 pl-10 md:pl-12 pr-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
                   value={formData.location}
                   onChange={e => setFormData({ ...formData, location: e.target.value })}
+                  placeholder="Enter your shop address..."
                 />
               </div>
+              {formData.location && (
+                <div className="mt-4 rounded-2xl overflow-hidden border border-outline-variant/10 h-48 md:h-64 bg-surface-container-low relative group">
+                  <iframe
+                    width="100%"
+                    height="100%"
+                    frameBorder="0"
+                    style={{ border: 0 }}
+                    src={`https://www.google.com/maps/embed/v1/place?key=${process.env.GOOGLE_MAPS_API_KEY || ''}&q=${encodeURIComponent(formData.location)}`}
+                    allowFullScreen
+                    className={cn(!process.env.GOOGLE_MAPS_API_KEY && "hidden")}
+                  ></iframe>
+                  {!process.env.GOOGLE_MAPS_API_KEY && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3">
+                      <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                        <MapPin className="text-primary" size={24} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-on-surface">Map Preview</p>
+                        <p className="text-[10px] text-on-surface-variant">Enter a valid address to see it on the map.</p>
+                      </div>
+                      <a 
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formData.location)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 bg-surface-container-high text-primary rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-primary/10 transition-colors"
+                      >
+                        View on Google Maps
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </section>
 
@@ -2909,19 +3096,37 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
                   <img src={formData.logo_url || "https://picsum.photos/seed/logo/200/200"} className="w-full h-full object-cover rounded-lg" alt="Logo" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-white font-bold text-lg leading-tight truncate">{formData.name || "Shop Name"}</h4>
+                  <h4 className="text-white font-semibold text-lg leading-tight truncate">{formData.name || "Shop Name"}</h4>
                   <div className="flex items-center gap-1 text-white/70 text-[10px] truncate">
                     <MapPin size={10} />
                     {formData.location || "Location"}
                   </div>
                 </div>
+                <button 
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const { error } = await supabase
+                        .from('shop_followers')
+                        .insert({ shop_id: shop.id, user_id: user?.id });
+                      if (error) throw error;
+                      toast.success('You are now following this shop! (Test)');
+                      onRefresh();
+                    } catch {
+                      toast.error('Failed to follow shop. (Test)');
+                    }
+                  }}
+                  className="px-3 py-1 bg-primary text-white text-[10px] font-bold rounded-full shadow-lg hover:bg-primary/90 transition-colors"
+                >
+                  Follow
+                </button>
               </div>
             </div>
             <p className="text-[10px] text-on-surface-variant text-center italic leading-tight">This is how your shop card appears to customers in the LocalEats app.</p>
           </div>
 
           <section className="bg-surface-container-lowest p-5 md:p-8 rounded-2xl md:rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
-            <h3 className="text-base md:text-lg font-bold flex items-center gap-2">
+            <h3 className="text-base md:text-lg font-semibold flex items-center gap-2">
               <ImageIcon size={18} className="text-primary md:w-5 md:h-5" />
               Visuals
             </h3>
@@ -2980,6 +3185,212 @@ const ShopProfile = ({ shop, onRefresh }: { shop: Shop, onRefresh: () => void })
   );
 };
 
+const ChatWindow = ({ orderId, shopId, userId, onClose }: { orderId: string, shopId: number, userId: string, onClose: () => void }) => {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fetchMessages = async () => {
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select('*')
+        .eq('order_id', orderId)
+        .order('created_at', { ascending: true });
+      
+      if (!error && data) setMessages(data);
+      setLoading(false);
+    };
+
+    fetchMessages();
+
+    // Real-time subscription
+    const channel = supabase
+      .channel(`chat:${orderId}`)
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'chat_messages',
+        filter: `order_id=eq.${orderId}`
+      }, (payload) => {
+        setMessages(prev => [...prev, payload.new as ChatMessage]);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [orderId]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const sendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
+
+    const message = {
+      order_id: orderId,
+      shop_id: shopId,
+      user_id: userId,
+      sender_id: shopId.toString(), // Shop is sender
+      sender_type: 'shop',
+      content: newMessage.trim()
+    };
+
+    const { error } = await supabase.from('chat_messages').insert(message);
+    if (error) toast.error('Failed to send message');
+    else setNewMessage('');
+  };
+
+  return (
+    <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl overflow-hidden flex flex-col h-[400px] shadow-xl mt-4">
+      <div className="p-4 bg-primary text-on-primary flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <MessageCircle size={18} />
+          <span className="font-bold text-sm">Customer Chat - #LE-{orderId}</span>
+        </div>
+        <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full transition-colors">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-surface-container-lowest">
+        {loading ? (
+          <div className="flex justify-center p-4"><RefreshCw className="animate-spin text-primary/40" size={24} /></div>
+        ) : messages.length === 0 ? (
+          <div className="text-center text-on-surface-variant/40 py-12">
+            <p className="text-xs italic">No messages yet. Start the conversation!</p>
+          </div>
+        ) : (
+          messages.map((msg) => (
+            <div key={msg.id} className={cn(
+              "flex flex-col max-w-[80%]",
+              msg.sender_type === 'shop' ? "ml-auto items-end" : "mr-auto items-start"
+            )}>
+              <div className={cn(
+                "px-4 py-2 rounded-2xl text-sm shadow-sm",
+                msg.sender_type === 'shop' 
+                  ? "bg-primary text-on-primary rounded-tr-none" 
+                  : "bg-surface-container-high text-on-surface rounded-tl-none"
+              )}>
+                {msg.content}
+              </div>
+              <span className="text-[9px] text-on-surface-variant/60 mt-1">
+                {format(new Date(msg.created_at), 'HH:mm')}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+
+      <form onSubmit={sendMessage} className="p-3 bg-surface-container-low border-t border-outline-variant/10 flex gap-2">
+        <input 
+          type="text"
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="Type a message..."
+          className="flex-1 bg-surface-container-lowest border border-outline-variant/20 rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+        />
+        <button type="submit" className="p-2 bg-primary text-on-primary rounded-full hover:scale-105 transition-transform">
+          <Send size={18} />
+        </button>
+      </form>
+    </div>
+  );
+};
+
+const ReviewsList = ({ reviews, onRespond }: { reviews: Review[], onRespond: (id: string, response: string) => void }) => {
+  const [respondingTo, setRespondingTo] = useState<string | null>(null);
+  const [responseText, setResponseText] = useState('');
+
+  return (
+    <div className="space-y-4">
+      {reviews.length === 0 ? (
+        <div className="text-center py-12 bg-surface-container-low rounded-3xl border-2 border-dashed border-outline-variant/20">
+          <Star className="mx-auto text-on-surface-variant/20 mb-4" size={48} />
+          <p className="text-on-surface-variant font-medium">No reviews yet. They will appear here when customers rate your shop.</p>
+        </div>
+      ) : (
+        reviews.map((review) => (
+          <div key={review.id} className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4">
+            <div className="flex justify-between items-start">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-on-surface">{review.customer_name}</span>
+                  <div className="flex gap-0.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star 
+                        key={star} 
+                        size={14} 
+                        className={cn(star <= review.rating ? "text-primary fill-primary" : "text-on-surface-variant/20")} 
+                      />
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[10px] text-on-surface-variant font-medium uppercase tracking-widest">
+                  {format(new Date(review.created_at), 'MMMM d, yyyy')}
+                </p>
+              </div>
+            </div>
+            
+            <p className="text-sm text-on-surface leading-relaxed italic">"{review.comment}"</p>
+            
+            {review.response ? (
+              <div className="bg-primary/5 p-4 rounded-2xl border-l-4 border-primary space-y-1">
+                <span className="text-[10px] font-bold text-primary uppercase tracking-widest">Your Response</span>
+                <p className="text-sm text-on-surface-variant italic">"{review.response}"</p>
+              </div>
+            ) : (
+              respondingTo === review.id ? (
+                <div className="space-y-3">
+                  <textarea 
+                    value={responseText}
+                    onChange={(e) => setResponseText(e.target.value)}
+                    placeholder="Write a professional response..."
+                    className="w-full bg-surface-container-low border border-primary/20 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                    rows={3}
+                  />
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => {
+                        onRespond(review.id, responseText);
+                        setRespondingTo(null);
+                        setResponseText('');
+                      }}
+                      className="px-6 py-2 bg-primary text-on-primary rounded-full text-xs font-bold"
+                    >
+                      Post Response
+                    </button>
+                    <button 
+                      onClick={() => setRespondingTo(null)}
+                      className="px-6 py-2 bg-surface-container-high text-on-surface-variant rounded-full text-xs font-bold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => setRespondingTo(review.id)}
+                  className="flex items-center gap-2 text-primary text-xs font-bold hover:underline"
+                >
+                  <MessageSquare size={14} />
+                  Respond to Review
+                </button>
+              )
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  );
+};
+
 const OrdersManagement = ({ 
   orders, 
   onUpdateStatus, 
@@ -3010,6 +3421,7 @@ const OrdersManagement = ({
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [customMessage, setCustomMessage] = useState('We have received your order and are starting to prepare it!');
   const [readyOrderId, setReadyOrderId] = useState<string | null>(null);
+  const [chatOrderId, setChatOrderId] = useState<string | null>(null);
   const [estimatedTime, setEstimatedTime] = useState('20-30 mins');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
@@ -3169,10 +3581,10 @@ const OrdersManagement = ({
   return (
     <div className="space-y-12">
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="max-w-2xl">
+        <div className="max-w-2xl space-y-1">
           <span className="font-label text-[11px] font-bold uppercase tracking-[0.2em] text-primary mb-2 block">Live Operations</span>
-          <h2 className="font-headline text-4xl md:text-5xl font-extrabold text-on-surface tracking-tight mb-4">Orders Management</h2>
-          <p className="text-on-surface-variant text-lg">Streamline your kitchen workflow and monitor real-time fulfillment across all delivery channels.</p>
+          <h2 className="font-headline text-2xl md:text-3xl font-bold text-on-surface tracking-tight">Orders Management</h2>
+          <p className="text-sm text-on-surface-variant font-medium">Streamline your kitchen workflow and monitor real-time fulfillment across all delivery channels.</p>
         </div>
           <div className="flex flex-col gap-4 items-end">
             <div className="flex gap-3">
@@ -3417,6 +3829,12 @@ const OrdersManagement = ({
               {displayedOrders.map(order => {
                 const orderCount = customerOrderCounts[order.user_id] || 0;
                 const isReturning = orderCount > 1;
+                
+                // Timer Alert Logic: If order is pending/preparing for more than 20 mins
+                const orderTime = new Date(order.created_at).getTime();
+                const now = new Date().getTime();
+                const diffMins = Math.floor((now - orderTime) / (1000 * 60));
+                const isOverdue = diffMins >= 20 && (order.status === 'pending' || order.status === 'preparing');
 
                 return (
                 <motion.div 
@@ -3426,6 +3844,7 @@ const OrdersManagement = ({
                   key={order.id} 
                   className={cn(
                     "group rounded-xl p-6 shadow-sm border transition-all duration-300 cursor-pointer",
+                    isOverdue ? "bg-error/5 border-error/30 ring-1 ring-error/20" :
                     order.status === 'pending' ? "bg-primary-light border-primary/20" : 
                     order.status === 'preparing' ? "bg-primary/10 border-primary/10" :
                     order.status === 'ready' ? "bg-tertiary/10 border-tertiary/20" :
@@ -3437,6 +3856,11 @@ const OrdersManagement = ({
                 >
                   <div className="flex justify-between items-start mb-6">
                     <div className="relative">
+                      {isOverdue && (
+                        <div className="absolute -top-3 -left-3 bg-error text-white text-[9px] font-black px-2 py-0.5 rounded-full animate-bounce shadow-lg z-20">
+                          OVERDUE ({diffMins}m)
+                        </div>
+                      )}
                       {recentlyChangedOrders[order.id] && (
                         <motion.div 
                           initial={{ scale: 0 }}
@@ -3455,7 +3879,7 @@ const OrdersManagement = ({
                           </span>
                         )}
                       </div>
-                      <h4 className={cn("font-headline font-bold text-on-surface", kitchenMode ? "text-2xl" : "text-lg")}>
+                      <h4 className={cn("font-headline font-semibold text-on-surface", kitchenMode ? "text-2xl" : "text-lg")}>
                         {order.customer_name || `Customer #${order.user_id.slice(0, 5)}`}
                       </h4>
                       <div className="flex flex-col gap-1 mt-2">
@@ -3600,140 +4024,215 @@ const OrdersManagement = ({
                   </AnimatePresence>
 
                   {viewMode === 'active' && (
-                    <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                      {order.status === 'pending' && (
-                        <div className="flex-1 flex flex-col gap-2">
-                          {acceptingOrderId === order.id ? (
-                            <motion.div 
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="space-y-2"
-                            >
-                              <input 
-                                type="text"
-                                value={customMessage}
-                                onChange={(e) => setCustomMessage(e.target.value)}
-                                className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none"
-                                placeholder="Enter message..."
-                                autoFocus
-                              />
-                              <div className="flex gap-2">
+                    <div className="flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-3">
+                        {order.status === 'pending' && (
+                          <div className="flex-1 flex flex-col gap-2">
+                            {acceptingOrderId === order.id ? (
+                              <motion.div 
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="space-y-2"
+                              >
+                                <input 
+                                  type="text"
+                                  value={customMessage}
+                                  onChange={(e) => setCustomMessage(e.target.value)}
+                                  className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none"
+                                  placeholder="Enter message..."
+                                  autoFocus
+                                />
+                                <div className="flex gap-2">
+                                  <button 
+                                    onClick={() => {
+                                      onUpdateStatus(order.id, 'preparing', customMessage);
+                                      setAcceptingOrderId(null);
+                                    }}
+                                    className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-full"
+                                  >
+                                    Send & Accept
+                                  </button>
+                                  <button 
+                                    onClick={() => setAcceptingOrderId(null)}
+                                    className="px-4 py-2 bg-surface-container-high text-on-surface-variant text-xs font-bold rounded-full"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </motion.div>
+                            ) : (
+                              <div className="space-y-2">
+                                {isLimitReached && (
+                                  <div className="flex items-center gap-2 p-2 bg-error/10 text-error rounded-lg text-[10px] font-bold">
+                                    <AlertCircle size={12} />
+                                    ORDER LIMIT REACHED ({maxConcurrentOrders})
+                                  </div>
+                                )}
                                 <button 
-                                  onClick={() => {
-                                    onUpdateStatus(order.id, 'preparing', customMessage);
-                                    setAcceptingOrderId(null);
-                                  }}
-                                  className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-full"
+                                  onClick={() => setAcceptingOrderId(order.id)}
+                                  disabled={isLimitReached}
+                                  className={cn(
+                                    "w-full bg-primary text-white font-bold rounded-full shadow-md hover:bg-primary-container transition-colors disabled:opacity-50 disabled:grayscale",
+                                    kitchenMode ? "py-5 text-lg" : "py-3 text-sm"
+                                  )}
                                 >
-                                  Send & Accept
-                                </button>
-                                <button 
-                                  onClick={() => setAcceptingOrderId(null)}
-                                  className="px-4 py-2 bg-surface-container-high text-on-surface-variant text-xs font-bold rounded-full"
-                                >
-                                  Cancel
+                                  Accept Order
                                 </button>
                               </div>
-                            </motion.div>
-                          ) : (
-                            <div className="space-y-2">
-                              {isLimitReached && (
-                                <div className="flex items-center gap-2 p-2 bg-error/10 text-error rounded-lg text-[10px] font-bold">
-                                  <AlertCircle size={12} />
-                                  ORDER LIMIT REACHED ({maxConcurrentOrders})
+                            )}
+                          </div>
+                        )}
+                        {order.status === 'preparing' && (
+                          <div className="flex-1 flex flex-col gap-2">
+                            {readyOrderId === order.id ? (
+                              <motion.div 
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="space-y-2"
+                              >
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[10px] font-bold text-on-surface-variant uppercase ml-1">Est. Delivery Time</label>
+                                  <input 
+                                    type="text"
+                                    value={estimatedTime}
+                                    onChange={(e) => setEstimatedTime(e.target.value)}
+                                    className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none"
+                                    placeholder="e.g. 20-30 mins"
+                                    autoFocus
+                                  />
                                 </div>
-                              )}
+                                <div className="flex gap-2">
+                                  <button 
+                                    onClick={() => {
+                                      onUpdateStatus(order.id, 'ready', undefined, estimatedTime);
+                                      setReadyOrderId(null);
+                                    }}
+                                    className="flex-1 py-2 bg-tertiary text-white text-xs font-bold rounded-full"
+                                  >
+                                    Confirm & Ready
+                                  </button>
+                                  <button 
+                                    onClick={() => setReadyOrderId(null)}
+                                    className="px-4 py-2 bg-surface-container-high text-on-surface-variant text-xs font-bold rounded-full"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </motion.div>
+                            ) : (
                               <button 
-                                onClick={() => setAcceptingOrderId(order.id)}
-                                disabled={isLimitReached}
+                                onClick={() => setReadyOrderId(order.id)}
                                 className={cn(
-                                  "w-full bg-primary text-white font-bold rounded-full shadow-md hover:bg-primary-container transition-colors disabled:opacity-50 disabled:grayscale",
+                                  "w-full bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-full shadow-[0_8px_24px_-4px_rgba(167,52,0,0.2)] hover:scale-[0.98] transition-transform",
                                   kitchenMode ? "py-5 text-lg" : "py-3 text-sm"
                                 )}
                               >
-                                Accept Order
+                                Mark as Ready
                               </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {order.status === 'preparing' && (
-                        <div className="flex-1 flex flex-col gap-2">
-                          {readyOrderId === order.id ? (
-                            <motion.div 
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="space-y-2"
-                            >
-                              <div className="flex flex-col gap-1">
-                                <label className="text-[10px] font-bold text-on-surface-variant uppercase ml-1">Est. Delivery Time</label>
-                                <input 
-                                  type="text"
-                                  value={estimatedTime}
-                                  onChange={(e) => setEstimatedTime(e.target.value)}
-                                  className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none"
-                                  placeholder="e.g. 20-30 mins"
-                                  autoFocus
-                                />
-                              </div>
-                              <div className="flex gap-2">
-                                <button 
-                                  onClick={() => {
-                                    onUpdateStatus(order.id, 'ready', undefined, estimatedTime);
-                                    setReadyOrderId(null);
-                                  }}
-                                  className="flex-1 py-2 bg-tertiary text-white text-xs font-bold rounded-full"
-                                >
-                                  Confirm & Ready
-                                </button>
-                                <button 
-                                  onClick={() => setReadyOrderId(null)}
-                                  className="px-4 py-2 bg-surface-container-high text-on-surface-variant text-xs font-bold rounded-full"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </motion.div>
-                          ) : (
-                            <button 
-                              onClick={() => setReadyOrderId(order.id)}
-                              className={cn(
-                                "w-full bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-full shadow-[0_8px_24px_-4px_rgba(167,52,0,0.2)] hover:scale-[0.98] transition-transform",
-                                kitchenMode ? "py-5 text-lg" : "py-3 text-sm"
-                              )}
-                            >
-                              Mark as Ready
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      {order.status === 'ready' && (
-                        <button 
-                          onClick={() => onUpdateStatus(order.id, 'completed')}
-                          className={cn(
-                            "flex-1 bg-tertiary text-white font-bold rounded-full hover:bg-tertiary-container transition-colors shadow-md",
-                            kitchenMode ? "py-5 text-lg" : "py-3 text-sm"
-                          )}
-                        >
-                          Mark as Completed
-                        </button>
-                      )}
-                      <button 
-                        onClick={() => {
-                          toast.promise(new Promise(r => setTimeout(r, 1000)), {
-                            loading: 'Connecting to kitchen printer...',
-                            success: 'Kitchen ticket printed successfully!',
-                            error: 'Printer not found. Check settings.'
-                          });
-                        }}
-                        className={cn(
-                          "bg-surface-container-high rounded-full text-on-surface-variant hover:bg-surface-container-highest transition-all",
-                          kitchenMode ? "p-5" : "p-3"
+                            )}
+                          </div>
                         )}
-                        title="Print Kitchen Ticket"
-                      >
-                        <Printer size={kitchenMode ? 24 : 18} />
-                      </button>
+                        {order.status === 'ready' && (
+                          <button 
+                            onClick={() => onUpdateStatus(order.id, 'completed')}
+                            className={cn(
+                              "flex-1 bg-tertiary text-white font-bold rounded-full hover:bg-tertiary-container transition-colors shadow-md",
+                              kitchenMode ? "py-5 text-lg" : "py-3 text-sm"
+                            )}
+                          >
+                            Mark as Completed
+                          </button>
+                        )}
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => setChatOrderId(chatOrderId === order.id ? null : order.id)}
+                            className={cn(
+                              "bg-surface-container-high rounded-full text-on-surface-variant hover:bg-surface-container-highest transition-all",
+                              kitchenMode ? "p-5" : "p-3",
+                              chatOrderId === order.id && "bg-primary text-on-primary"
+                            )}
+                            title="Chat with Customer"
+                          >
+                            <MessageCircle size={kitchenMode ? 24 : 18} />
+                          </button>
+                          <button 
+                            onClick={() => {
+                              const printWindow = window.open('', '_blank');
+                              if (printWindow) {
+                                printWindow.document.write(`
+                                  <html>
+                                    <head>
+                                      <title>Receipt #LE-${order.id}</title>
+                                      <style>
+                                        body { font-family: 'Courier New', Courier, monospace; width: 300px; padding: 20px; }
+                                        .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+                                        .item { display: flex; justify-content: space-between; margin-bottom: 5px; }
+                                        .total { border-top: 1px dashed #000; padding-top: 10px; margin-top: 10px; font-weight: bold; }
+                                        .footer { text-align: center; margin-top: 20px; font-size: 12px; }
+                                      </style>
+                                    </head>
+                                    <body>
+                                      <div class="header">
+                                        <h2>LocalEats</h2>
+                                        <p>Order #LE-${order.id}</p>
+                                        <p>${format(new Date(order.created_at), 'yyyy-MM-dd HH:mm')}</p>
+                                      </div>
+                                      <div class="items">
+                                        ${order.items?.map(i => `
+                                          <div class="item">
+                                            <span>${i.quantity}x ${i.name}</span>
+                                            <span>R${(i.price * i.quantity).toFixed(2)}</span>
+                                          </div>
+                                        `).join('') || `<div class="item"><span>1x ${order.product_name}</span><span>R${order.total_price.toFixed(2)}</span></div>`}
+                                      </div>
+                                      <div class="total">
+                                        <div class="item">
+                                          <span>TOTAL</span>
+                                          <span>R${order.total_price.toFixed(2)}</span>
+                                        </div>
+                                      </div>
+                                      <div class="footer">
+                                        <p>Customer: ${order.customer_name}</p>
+                                        <p>Address: ${order.address}</p>
+                                        <p>Thank you for your order!</p>
+                                      </div>
+                                      <script>window.print(); window.close();</script>
+                                    </body>
+                                  </html>
+                                `);
+                                printWindow.document.close();
+                              } else {
+                                toast.error('Pop-up blocked. Please allow pop-ups to print receipts.');
+                              }
+                            }}
+                            className={cn(
+                              "bg-surface-container-high rounded-full text-on-surface-variant hover:bg-surface-container-highest transition-all",
+                              kitchenMode ? "p-5" : "p-3"
+                            )}
+                            title="Print Kitchen Ticket"
+                          >
+                            <Printer size={kitchenMode ? 24 : 18} />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <AnimatePresence>
+                        {chatOrderId === order.id && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <ChatWindow 
+                              orderId={order.id} 
+                              shopId={order.shop_id} 
+                              userId={order.user_id} 
+                              onClose={() => setChatOrderId(null)} 
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   )}
                 </motion.div>
@@ -3870,13 +4369,84 @@ const OrdersManagement = ({
   );
 };
 
-const Insights = ({ orders, menuItems, loading }: { orders: Order[], menuItems: MenuItem[], loading: boolean }) => {
-  const [reviews, setReviews] = useState([
-    { id: 1, user: 'Sarah J.', rating: 5, comment: 'The Kota was absolutely amazing! Best in town.', date: '2023-10-24', response: '' },
-    { id: 2, user: 'Mike T.', rating: 4, comment: 'Great food, but delivery took a bit long.', date: '2023-10-23', response: 'Thank you for the feedback, Mike! We are working on our delivery times.' },
-    { id: 3, user: 'Lerato K.', rating: 5, comment: 'Always fresh and hot. Highly recommend.', date: '2023-10-22', response: '' }
-  ]);
-  const [responseTexts, setResponseTexts] = useState<Record<number, string>>({});
+const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[], menuItems: MenuItem[], loading: boolean, currentShop: Shop | undefined }) => {
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [followerCount, setFollowerCount] = useState<number | string>('--');
+  const [followerTrendData, setFollowerTrendData] = useState<{ name: string; value: number }[]>([]);
+
+  useEffect(() => {
+    const fetchReviews = async () => {
+      if (!currentShop?.id) return;
+      const { data, error } = await supabase
+        .from('reviews')
+        .select('*')
+        .eq('shop_id', currentShop.id)
+        .order('created_at', { ascending: false });
+      
+      if (!error && data) setReviews(data);
+    };
+    fetchReviews();
+  }, [currentShop?.id]);
+
+  const handleResponse = async (reviewId: string, response: string) => {
+    const { error } = await supabase
+      .from('reviews')
+      .update({ response })
+      .eq('id', reviewId);
+
+    if (error) {
+      toast.error('Failed to save response');
+    } else {
+      toast.success('Response saved!');
+      setReviews(prev => prev.map(r => r.id === reviewId ? { ...r, response } : r));
+    }
+  };
+
+  useEffect(() => {
+    const fetchFollowerInsights = async () => {
+      if (!currentShop?.id) return;
+      
+      try {
+        const { count, error } = await supabase
+          .from('shop_followers')
+          .select('*', { count: 'exact', head: true })
+          .eq('shop_id', currentShop.id);
+        
+        if (error) throw error;
+        setFollowerCount(count || 0);
+
+        // Fetch follower trend for last 7 days
+        const last7Days = Array.from({ length: 7 }, (_, index) => {
+          const d = new Date();
+          d.setDate(d.getDate() - index);
+          return {
+            date: d.toISOString().split('T')[0],
+            dayName: format(d, 'EEE'),
+            count: 0
+          };
+        }).reverse();
+
+        const { data: trendData, error: trendError } = await supabase
+          .from('shop_followers')
+          .select('created_at')
+          .eq('shop_id', currentShop.id)
+          .gt('created_at', last7Days[0].date);
+
+        if (!trendError && trendData) {
+          trendData.forEach(f => {
+            const date = new Date(f.created_at).toISOString().split('T')[0];
+            const day = last7Days.find(d => d.date === date);
+            if (day) day.count++;
+          });
+          setFollowerTrendData(last7Days.map(d => ({ name: d.dayName, value: d.count })));
+        }
+      } catch (err) {
+        console.error('Error fetching follower insights:', err);
+      }
+    };
+
+    fetchFollowerInsights();
+  }, [currentShop?.id]);
 
   const [selectedItemForTrend, setSelectedItemForTrend] = useState<string | null>(null);
 
@@ -3901,14 +4471,6 @@ const Insights = ({ orders, menuItems, loading }: { orders: Order[], menuItems: 
 
     return last7Days.map(d => ({ name: d.dayName, value: d.revenue }));
   }, [orders, selectedItemForTrend]);
-
-  const handleResponse = (id: number) => {
-    const text = responseTexts[id];
-    if (!text) return;
-    setReviews(prev => prev.map(r => r.id === id ? { ...r, response: text } : r));
-    setResponseTexts(prev => ({ ...prev, [id]: '' }));
-    toast.success('Response sent!');
-  };
 
   // Calculate top sellers from orders
   const productCounts = orders.reduce((acc: Record<string, number>, order) => {
@@ -4072,7 +4634,7 @@ const Insights = ({ orders, menuItems, loading }: { orders: Order[], menuItems: 
           transition={{ delay: 0.15 }}
           className="md:col-span-4 bg-surface-container-lowest rounded-xl p-8 shadow-[0_8px_24px_-4px_rgba(167,52,0,0.05)] border border-outline-variant/10"
         >
-          <h2 className="text-sm font-bold uppercase tracking-widest text-on-surface-variant/60 mb-6">Revenue by Category</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-on-surface-variant/60 mb-6">Revenue by Category</h2>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -4109,7 +4671,7 @@ const Insights = ({ orders, menuItems, loading }: { orders: Order[], menuItems: 
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-4">
               <TrendingUp size={24} />
-              <h3 className="font-bold text-lg">AI Smart Tips</h3>
+              <h3 className="font-semibold text-lg">AI Smart Tips</h3>
             </div>
             <p className="text-on-primary-container/90 leading-relaxed font-medium italic">
               "Try a 'Kota' special on Tuesdays to boost mid-week sales. Data shows a 22% interest spike in savory snacks during rainy afternoons."
@@ -4129,7 +4691,7 @@ const Insights = ({ orders, menuItems, loading }: { orders: Order[], menuItems: 
           transition={{ delay: 0.35 }}
           className="md:col-span-8 bg-surface-container-low rounded-xl p-8"
         >
-          <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+          <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
             <Clock size={20} className="text-primary" />
             Peak Order Hours
           </h2>
@@ -4170,7 +4732,7 @@ const Insights = ({ orders, menuItems, loading }: { orders: Order[], menuItems: 
           className="md:col-span-7 bg-surface-container-lowest rounded-xl p-8 border border-outline-variant/10 shadow-sm"
         >
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold">Top Sellers</h2>
+            <h2 className="text-xl font-semibold">Top Sellers</h2>
             <button 
               onClick={() => toast.info('Detailed sales report coming soon')}
               className="text-primary text-xs font-bold underline cursor-pointer bg-transparent border-none"
@@ -4192,12 +4754,12 @@ const Insights = ({ orders, menuItems, loading }: { orders: Order[], menuItems: 
                     <img className="w-full h-full object-cover group-hover:scale-110 transition-transform" src={`https://picsum.photos/seed/${item.id}/400/300`} alt={item.name} referrerPolicy="no-referrer" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-on-surface">{item.name}</h4>
+                    <h4 className="font-semibold text-on-surface">{item.name}</h4>
                     <p className="text-xs text-on-surface-variant">Popular Choice</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-black text-on-surface">{item.count}</div>
+                  <div className="text-lg font-bold text-on-surface">{item.count}</div>
                   <div className="text-[10px] font-bold uppercase text-on-surface-variant/60">Orders Total</div>
                 </div>
               </motion.div>
@@ -4214,7 +4776,7 @@ const Insights = ({ orders, menuItems, loading }: { orders: Order[], menuItems: 
           className="md:col-span-5 bg-surface-container-lowest rounded-xl p-8 border border-outline-variant/10 shadow-sm"
         >
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold">Item Popularity</h2>
+            <h2 className="text-xl font-semibold">Item Popularity</h2>
             <select 
               className="text-xs font-bold bg-surface-container-low border-none rounded-lg px-2 py-1 outline-none"
               value={selectedItemForTrend || ''}
@@ -4254,6 +4816,79 @@ const Insights = ({ orders, menuItems, loading }: { orders: Order[], menuItems: 
               <p className="text-xs text-on-surface-variant font-medium">Select a menu item to view its<br/>popularity trend over time.</p>
             </div>
           )}
+        </motion.section>
+
+        <motion.section 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="md:col-span-12 bg-surface-container-lowest rounded-xl p-8 border border-outline-variant/10 shadow-sm"
+        >
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <Users size={20} className="text-blue-600" />
+                Follower Growth
+              </h2>
+              <p className="text-xs text-on-surface-variant font-medium mt-1">Total Followers: <span className="text-blue-600 font-semibold">{followerCount}</span></p>
+            </div>
+            <div className="flex gap-2">
+              <div className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-bold rounded-full uppercase tracking-widest">
+                Last 7 Days
+              </div>
+            </div>
+          </div>
+          
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={followerTrendData}>
+                <defs>
+                  <linearGradient id="colorFollowers" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <XAxis 
+                  dataKey="name" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fontWeight: 700, fill: 'var(--on-surface-variant)' }} 
+                />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fontWeight: 700, fill: 'var(--on-surface-variant)' }} 
+                />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: 'var(--surface-container-lowest)', borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  itemStyle={{ color: '#2563eb', fontSize: '12px', fontWeight: 'bold' }}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="value" 
+                  stroke="#2563eb" 
+                  strokeWidth={3} 
+                  fillOpacity={1} 
+                  fill="url(#colorFollowers)" 
+                  animationDuration={1500}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
+              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">Total Followers</p>
+              <p className="text-2xl font-black text-blue-900">{followerCount}</p>
+            </div>
+            <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100">
+              <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">New this Week</p>
+              <p className="text-2xl font-black text-emerald-900">+{followerTrendData.reduce((acc, d) => acc + d.value, 0)}</p>
+            </div>
+            <div className="p-4 bg-orange-50/50 rounded-2xl border border-orange-100">
+              <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest mb-1">Engagement Rate</p>
+              <p className="text-2xl font-black text-orange-900">High</p>
+            </div>
+          </div>
         </motion.section>
 
         <motion.section 
@@ -4354,56 +4989,16 @@ const Insights = ({ orders, menuItems, loading }: { orders: Order[], menuItems: 
             </h2>
             <div className="flex items-center gap-1 text-tertiary">
               <Star size={18} className="fill-current" />
-              <span className="font-bold">4.8</span>
-              <span className="text-xs text-on-surface-variant font-medium">(24 total)</span>
+              <span className="font-bold">
+                {reviews.length > 0 
+                  ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1) 
+                  : '0.0'}
+              </span>
+              <span className="text-xs text-on-surface-variant font-medium">({reviews.length} total)</span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {reviews.map((review) => (
-              <div key={review.id} className="bg-surface-container-low rounded-2xl p-6 flex flex-col h-full">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <p className="font-bold text-on-surface">{review.user}</p>
-                    <p className="text-[10px] text-on-surface-variant font-medium">{format(new Date(review.date), 'MMM dd, yyyy')}</p>
-                  </div>
-                  <div className="flex gap-0.5">
-                    {[...Array(5)].map((_, i) => (
-                      <Star 
-                        key={i} 
-                        size={12} 
-                        className={cn(i < review.rating ? "text-tertiary fill-current" : "text-on-surface-variant/20")} 
-                      />
-                    ))}
-                  </div>
-                </div>
-                <p className="text-sm text-on-surface-variant mb-6 flex-1 italic">"{review.comment}"</p>
-                
-                {review.response ? (
-                  <div className="bg-surface-container-lowest rounded-xl p-4 border border-primary/10">
-                    <p className="text-[10px] font-bold text-primary uppercase tracking-widest mb-1">Your Response</p>
-                    <p className="text-xs text-on-surface-variant">{review.response}</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <textarea
-                      placeholder="Write a response..."
-                      value={responseTexts[review.id] || ''}
-                      onChange={(e) => setResponseTexts(prev => ({ ...prev, [review.id]: e.target.value }))}
-                      className="w-full bg-surface-container-lowest border border-outline-variant/20 rounded-xl p-3 text-xs focus:ring-2 focus:ring-primary/40 outline-none resize-none h-20"
-                    />
-                    <button 
-                      onClick={() => handleResponse(review.id)}
-                      disabled={!responseTexts[review.id]}
-                      className="w-full py-2 bg-primary text-on-primary text-xs font-bold rounded-full disabled:opacity-50 transition-all hover:scale-[0.98]"
-                    >
-                      Send Response
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <ReviewsList reviews={reviews} onRespond={handleResponse} />
         </motion.section>
       </div>
     </div>
@@ -4577,7 +5172,9 @@ export default function App() {
   const prevPendingCount = useRef(0);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [kitchenMode, setKitchenMode] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem('darkMode') === 'true';
+  });
   const [isSubscribing, setIsSubscribing] = useState(false);
   const shopsRef = useRef<Shop[]>([]);
 
@@ -4698,10 +5295,16 @@ export default function App() {
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
+      localStorage.setItem('darkMode', 'true');
     } else {
       document.documentElement.classList.remove('dark');
+      localStorage.setItem('darkMode', 'false');
     }
   }, [darkMode]);
+
+  useEffect(() => {
+    localStorage.setItem('soundAlerts', soundAlerts ? 'true' : 'false');
+  }, [soundAlerts]);
 
   useEffect(() => {
     // Check current session with a timeout
@@ -4798,9 +5401,17 @@ export default function App() {
   }, [soundAlerts]);
 
   const playNotificationSound = () => {
+    // Vibrate if supported
+    if ('vibrate' in navigator) {
+      navigator.vibrate([200, 100, 200, 100, 200]);
+    }
+
     const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
-    audio.volume = 0.8;
-    audio.play().catch(e => console.log('Audio play blocked:', e));
+    audio.volume = 1.0;
+    audio.play().catch(e => {
+      console.log('Audio play blocked or failed:', e);
+      // Fallback to a simpler beep if possible, but modern browsers block all sounds without user interaction
+    });
   };
 
   // Sound alert logic for new orders
@@ -5155,8 +5766,11 @@ export default function App() {
     { id: 'storefront', label: 'Storefront', icon: Store },
     { id: 'menu', label: 'Menu', icon: UtensilsCrossed },
     { id: 'orders', label: 'Orders', icon: ReceiptText, badge: pendingOrdersCount > 0 ? pendingOrdersCount : null },
+    { id: 'marketing', label: 'Marketing', icon: Zap },
+    { id: 'coupons', label: 'Coupons', icon: Ticket },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'insights', label: 'Insights', icon: TrendingUp },
+    { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
   return (
@@ -5164,7 +5778,7 @@ export default function App() {
       "min-h-screen bg-surface selection:bg-primary-fixed selection:text-on-primary-fixed transition-colors duration-300",
       darkMode && "dark"
     )}>
-      <Toaster position="top-center" richColors />
+      <Toaster position="top-center" richColors theme={darkMode ? 'dark' : 'light'} />
       
       {isOffline && (
         <div className="fixed top-0 left-0 right-0 z-[100] bg-error text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2">
@@ -5310,6 +5924,7 @@ export default function App() {
               <ShopProfile 
                 shop={currentShop} 
                 onRefresh={fetchShops} 
+                user={user}
               />
             )}
             {activeTab === 'orders' && (
@@ -5325,8 +5940,98 @@ export default function App() {
                 setSoundAlerts={setSoundAlerts}
               />
             )}
-            {activeTab === 'insights' && <Insights orders={orders} menuItems={menuItems} loading={loading} />}
+            {activeTab === 'insights' && <Insights orders={orders} menuItems={menuItems} loading={loading} currentShop={currentShop} />}
             {activeTab === 'payments' && currentShop && <PaymentHistory shopId={currentShop.id} />}
+            {activeTab === 'settings' && (
+              <div className="max-w-2xl mx-auto space-y-8">
+                <header className="space-y-1">
+                  <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Settings</h2>
+                  <p className="text-sm text-on-surface-variant font-medium">Manage your account and app preferences.</p>
+                </header>
+                
+                <div className="space-y-4">
+                  <button 
+                    onClick={() => setIsEditingProfile(true)}
+                    className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                        <UserIcon size={20} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface">Edit Profile</p>
+                        <p className="text-xs text-on-surface-variant">Change your name, email, and photo.</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-on-surface-variant/40" />
+                  </button>
+
+                  <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-primary/10 flex items-center justify-center text-primary">
+                        <Bell size={20} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface">Sound Alerts</p>
+                        <p className="text-xs text-on-surface-variant">Play a sound when new orders arrive.</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setSoundAlerts(!soundAlerts)}
+                      className={cn(
+                        "w-12 h-6 rounded-full transition-all relative",
+                        soundAlerts ? "bg-primary" : "bg-outline-variant"
+                      )}
+                    >
+                      <div className={cn(
+                        "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
+                        soundAlerts ? "left-7" : "left-1"
+                      )} />
+                    </button>
+                  </div>
+
+                  <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-surface-container-highest flex items-center justify-center text-on-surface-variant">
+                        {darkMode ? <Moon size={20} /> : <Sun size={20} />}
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface">Dark Mode</p>
+                        <p className="text-xs text-on-surface-variant">Toggle between light and dark themes.</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setDarkMode(!darkMode)}
+                      className={cn(
+                        "w-12 h-6 rounded-full transition-all relative",
+                        darkMode ? "bg-primary" : "bg-outline-variant"
+                      )}
+                    >
+                      <div className={cn(
+                        "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
+                        darkMode ? "left-7" : "left-1"
+                      )} />
+                    </button>
+                  </div>
+
+                  <button 
+                    onClick={handleSignOut}
+                    className="w-full flex items-center justify-between p-5 bg-error/5 hover:bg-error/10 rounded-2xl transition-all border border-error/10 group"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-error/10 flex items-center justify-center text-error group-hover:scale-110 transition-transform">
+                        <LogOut size={20} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-error">Sign Out</p>
+                        <p className="text-xs text-error/60">Logout from your account.</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-error/40" />
+                  </button>
+                </div>
+              </div>
+            )}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -5334,27 +6039,27 @@ export default function App() {
       {/* BottomNavBar */}
       {!kitchenMode && (
         <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 bg-white/70 dark:bg-surface-container-lowest/70 backdrop-blur-xl rounded-t-2xl md:rounded-t-3xl border-t border-outline-variant/10 shadow-[0_-8px_24px_-4px_rgba(167,52,0,0.12)]">
-        <div className="flex justify-around items-center px-2 pb-6 pt-3">
-          {navItems.map(item => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={cn(
-                "flex flex-col items-center justify-center px-3 py-1.5 rounded-xl transition-all active:scale-90 duration-200 relative",
-                activeTab === item.id ? "bg-orange-50 dark:bg-primary/10 text-primary" : "text-secondary hover:text-primary"
-              )}
-            >
-              <item.icon size={20} className={cn("mb-1", activeTab === item.id && "fill-current")} />
-              <span className="font-inter text-[9px] uppercase tracking-wider font-bold">{item.label}</span>
-              {item.badge && (
-                <span className="absolute top-1 right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[8px] text-white font-black">
-                  {item.badge}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </nav>
+          <div className="flex items-center gap-1 px-4 pb-6 pt-3 overflow-x-auto scrollbar-hide">
+            {navItems.map(item => (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={cn(
+                  "flex flex-col items-center justify-center min-w-[72px] py-1.5 rounded-xl transition-all active:scale-90 duration-200 relative",
+                  activeTab === item.id ? "bg-orange-50 dark:bg-primary/10 text-primary" : "text-secondary hover:text-primary"
+                )}
+              >
+                <item.icon size={20} className={cn("mb-1", activeTab === item.id && "fill-current")} />
+                <span className="font-inter text-[9px] uppercase tracking-wider font-bold whitespace-nowrap">{item.label}</span>
+                {item.badge && (
+                  <span className="absolute top-1 right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[8px] text-white font-black">
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </nav>
       )}
     </div>
   );

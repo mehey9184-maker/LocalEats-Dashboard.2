@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 @theme {
-  --font-headline: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-headline: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   
-  --color-primary: #a73400;
-  --color-primary-container: #ffdbcf;
-  --color-primary-light: #fff5f2;
+  --color-primary: #0866ff; /* Facebook Blue */
+  --color-primary-container: #e7f3ff;
+  --color-primary-light: #f0f2f5;
   --color-on-primary: #ffffff;
-  --color-on-primary-container: #370b00;
+  --color-on-primary-container: #050505;
   
   --color-tertiary: #006a6a;
   --color-on-tertiary: #ffffff;
@@ -23,6 +23,7 @@
   --color-surface-container-high: #e8e7e6;
   --color-surface-container-highest: #e2e1e0;
   
+  --color-on-surface-variant: #53433f;
   --color-outline: #85736e;
   --color-outline-variant: #d8c2bb;
   
@@ -31,6 +32,26 @@
   --color-on-error: #ffffff;
   
   --animate-skeleton: skeleton 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@layer base {
+  .dark {
+    --color-surface: #121314;
+    --color-on-surface: #e6e1df;
+    --color-surface-container-lowest: #0c0e0f;
+    --color-surface-container-low: #1a1c1e;
+    --color-surface-container: #1e2022;
+    --color-surface-container-high: #282a2c;
+    --color-surface-container-highest: #333537;
+    
+    --color-on-surface-variant: #d8c2bb;
+    --color-outline: #a08d89;
+    --color-outline-variant: #53433f;
+    
+    --color-primary-container: #852a00;
+    --color-on-primary-container: #ffdbcf;
+    --color-primary-light: #2a0e00;
+  }
 }
 
 @keyframes skeleton {
