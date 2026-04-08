@@ -49,7 +49,6 @@ import {
   CreditCard,
   Ticket,
   Users,
-  ShieldCheck,
   Zap,
   ToggleLeft,
   ToggleRight,
@@ -5025,151 +5024,6 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
 
 // --- Subscription Components ---
 
-const SubscriptionWall: React.FC<{ 
-  shop: Shop; 
-  onUnlock: (code: string, method: string) => void;
-  loading?: boolean;
-}> = ({ shop, onUnlock, loading }) => {
-  const [code, setCode] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'ott' | '1voucher' | 'admin' | null>(null);
-
-  const handleUnlock = () => {
-    if (!code) {
-      toast.error('Please enter a code');
-      return;
-    }
-    if (!paymentMethod) {
-      toast.error('Please select a payment method');
-      return;
-    }
-    onUnlock(code, paymentMethod);
-  };
-
-  return (
-    <div className="fixed inset-0 z-[200] bg-surface flex items-center justify-center p-6 overflow-y-auto">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="max-w-2xl w-full bg-surface-container-lowest rounded-[2.5rem] shadow-2xl border border-outline-variant/10 overflow-hidden"
-      >
-        <div className="bg-primary p-12 text-on-primary text-center relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <Rocket size={120} />
-          </div>
-          <motion.div
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2 }}
-          >
-            <h1 className="text-4xl font-headline font-black mb-4">Trial Expired</h1>
-            <p className="text-on-primary/80 text-lg font-medium max-w-md mx-auto">
-              Your 30-day free trial for <span className="text-white font-bold">{shop.name}</span> has ended. 
-              Subscribe now to keep growing your business.
-            </p>
-          </motion.div>
-        </div>
-
-        <div className="p-12">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-            <div className="space-y-6">
-              <h3 className="text-xl font-bold flex items-center gap-2">
-                <Zap className="text-primary" size={20} />
-                What's included:
-              </h3>
-              <ul className="space-y-4">
-                {[
-                  'Unlimited Orders',
-                  'AI Menu Image Generation',
-                  'Advanced Sales Insights',
-                  'Real-time Stock Alerts',
-                  'Priority Support'
-                ].map((feature, i) => (
-                  <li key={i} className="flex items-center gap-3 text-on-surface-variant font-medium">
-                    <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Check size={12} className="text-primary" />
-                    </div>
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="bg-surface-container-low rounded-3xl p-8 border border-primary/10 flex flex-col justify-center items-center text-center relative">
-              <div className="absolute -top-4 bg-primary text-on-primary px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
-                Special Offer
-              </div>
-              <div className="text-on-surface-variant/60 text-xs font-bold uppercase line-through mb-1">R430 / Month</div>
-              <div className="text-5xl font-black text-primary mb-2">R300</div>
-              <div className="text-on-surface-variant font-bold text-sm">per month</div>
-              <div className="mt-4 text-[10px] font-black text-primary uppercase tracking-widest bg-primary/10 px-3 py-1 rounded-full">
-                30% OFF FOREVER
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <h3 className="text-lg font-bold text-center mb-4">Choose Payment Method</h3>
-            <div className="grid grid-cols-3 gap-4">
-              {[
-                { id: 'ott', label: 'OTT Voucher', icon: Ticket },
-                { id: '1voucher', label: '1Voucher', icon: CreditCard },
-                { id: 'admin', label: 'Admin Code', icon: ShieldCheck }
-              ].map((method) => (
-                <button
-                  key={method.id}
-                  onClick={() => setPaymentMethod(method.id as 'ott' | '1voucher' | 'admin')}
-                  className={cn(
-                    "flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all gap-2",
-                    paymentMethod === method.id 
-                      ? "border-primary bg-primary/5 text-primary" 
-                      : "border-outline-variant/10 hover:border-primary/30 text-on-surface-variant"
-                  )}
-                >
-                  <method.icon size={24} />
-                  <span className="text-[10px] font-black uppercase tracking-wider">{method.label}</span>
-                </button>
-              ))}
-            </div>
-
-            <AnimatePresence mode="wait">
-              {paymentMethod && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="space-y-4 pt-4"
-                >
-                  <div className="relative">
-                    <input 
-                      type="text"
-                      placeholder={paymentMethod === 'admin' ? "Enter Admin Unlock Code" : "Enter 16-digit Voucher PIN"}
-                      value={code}
-                      onChange={(e) => setCode(e.target.value)}
-                      className="w-full h-14 bg-surface-container-low border-2 border-outline-variant/10 rounded-2xl px-6 font-bold focus:border-primary outline-none transition-all"
-                    />
-                    <button 
-                      onClick={handleUnlock}
-                      disabled={loading}
-                      className="absolute right-2 top-2 bottom-2 px-6 bg-primary text-on-primary rounded-xl font-bold text-sm hover:bg-primary/90 transition-all disabled:opacity-50"
-                    >
-                      {loading ? 'Verifying...' : 'Unlock Now'}
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-center text-on-surface-variant/60 font-medium">
-                    {paymentMethod === 'admin' 
-                      ? "Use the code provided by your account manager." 
-                      : `Purchase an ${paymentMethod.toUpperCase()} voucher at any retail store.`}
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
-};
-
 // --- Main App ---
 
 export default function App() {
@@ -5193,7 +5047,6 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(() => {
     return localStorage.getItem('darkMode') === 'true';
   });
-  const [isSubscribing, setIsSubscribing] = useState(false);
   const shopsRef = useRef<Shop[]>([]);
 
   const currentShop = useMemo(() => 
@@ -5202,76 +5055,9 @@ export default function App() {
   );
 
   const trialInfo = useMemo(() => {
-    if (!currentShop) return null;
-    
-    const trialStart = new Date(currentShop.trial_start_date || currentShop.created_at);
-    const now = new Date();
-    const diffTime = now.getTime() - trialStart.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    const daysRemaining = Math.max(0, 30 - diffDays);
-    const isExpired = diffDays >= 30 && currentShop.subscription_status !== 'active';
-    
-    return { daysRemaining, isExpired };
-  }, [currentShop]);
-
-  const handleUnlockShop = async (code: string, method: string) => {
-    if (!currentShop) return;
-    
-    setIsSubscribing(true);
-    try {
-      // For now, we only accept the admin code 200201
-      if (code === '200201') {
-        const nextBilling = new Date();
-        nextBilling.setMonth(nextBilling.getMonth() + 1);
-        
-        // 1. Update Shop Status
-        const { error: shopError } = await supabase
-          .from('shops')
-          .update({ 
-            subscription_status: 'active',
-            last_payment_date: new Date().toISOString(),
-            next_payment_date: nextBilling.toISOString()
-          })
-          .eq('id', currentShop.id);
-          
-        if (shopError) throw shopError;
-
-        // 2. Record Payment in the new payments table
-        const { error: paymentError } = await supabase
-          .from('payments')
-          .insert({
-            shop_id: currentShop.id,
-            amount: 300,
-            payment_method: method.toUpperCase(),
-            transaction_id: code,
-            status: 'success'
-          });
-
-        if (paymentError) {
-          console.error('Error recording payment:', paymentError);
-          // We don't throw here because the shop is already unlocked, 
-          // but we should log it.
-        }
-        
-        toast.success('Shop Unlocked!', {
-          description: 'Your subscription is now active. Thank you for your support!',
-          icon: <ShieldCheck className="text-emerald-500" />
-        });
-        
-        void fetchShops();
-      } else {
-        // Simulate voucher verification
-        toast.error('Invalid Code', {
-          description: 'The voucher PIN or admin code you entered is incorrect.'
-        });
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'An unknown error occurred';
-      toast.error(`Verification failed: ${message}`);
-    } finally {
-      setIsSubscribing(false);
-    }
-  };
+    // Trial mode is disabled for now - everything is free.
+    return null;
+  }, []);
 
   // Offline detection
   useEffect(() => {
@@ -5803,21 +5589,6 @@ export default function App() {
           <PauseCircle size={14} />
           YOU ARE OFFLINE. Changes will be saved locally and synced when you reconnect.
         </div>
-      )}
-
-      {trialInfo && trialInfo.daysRemaining <= 7 && !trialInfo.isExpired && (
-        <div className="fixed top-0 left-0 right-0 z-[100] bg-primary text-on-primary px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2">
-          <Clock size={14} />
-          TRIAL ENDING SOON: You have {trialInfo.daysRemaining} days left of your free trial. Subscribe now to avoid interruption.
-        </div>
-      )}
-
-      {trialInfo?.isExpired && currentShop && (
-        <SubscriptionWall 
-          shop={currentShop} 
-          onUnlock={handleUnlockShop} 
-          loading={isSubscribing} 
-        />
       )}
 
       {/* TopAppBar */}
