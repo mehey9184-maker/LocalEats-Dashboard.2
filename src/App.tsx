@@ -459,7 +459,7 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
     setError(null);
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -472,6 +472,9 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
 
       if (error) {
         setError(error.message);
+      } else if (data.user && data.session) {
+        // If auto-confirm is on or user is already verified
+        onSuccess(email);
       } else {
         onSuccess(email);
       }
@@ -571,13 +574,21 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <button className="flex items-center justify-center h-14 rounded-xl bg-surface-container-low hover:bg-surface-container-high transition-colors">
-                  <span className="material-symbols-outlined text-2xl">brand_family</span>
+                  <Facebook className="text-blue-600" size={24} />
+                </button>
+                <button 
+                  onClick={handleGoogleSignIn}
+                  className="flex items-center justify-center h-14 rounded-xl bg-surface-container-low hover:bg-surface-container-high transition-colors"
+                >
+                  <svg className="w-6 h-6" viewBox="0 0 24 24">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
                 </button>
                 <button className="flex items-center justify-center h-14 rounded-xl bg-surface-container-low hover:bg-surface-container-high transition-colors">
-                  <span className="material-symbols-outlined text-2xl">google</span>
-                </button>
-                <button className="flex items-center justify-center h-14 rounded-xl bg-surface-container-low hover:bg-surface-container-high transition-colors">
-                  <span className="material-symbols-outlined text-2xl">social_leaderboard</span>
+                  <Instagram className="text-pink-600" size={24} />
                 </button>
               </div>
             </div>
@@ -632,6 +643,25 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
       const nextInput = document.getElementById(`otp-${index + 1}`);
       nextInput?.focus();
     }
+  };
+
+  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      const prevInput = document.getElementById(`otp-${index - 1}`);
+      prevInput?.focus();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData('text').slice(0, 6).split('');
+    const newOtp = [...otp];
+    pastedData.forEach((char, i) => {
+      if (i < 6) newOtp[i] = char;
+    });
+    setOtp(newOtp);
+    const lastIndex = Math.min(pastedData.length, 5);
+    document.getElementById(`otp-${lastIndex}`)?.focus();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -757,6 +787,8 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
                       type="text"
                       value={digit}
                       onChange={(e) => handleOtpChange(i, e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(i, e)}
+                      onPaste={i === 0 ? handlePaste : undefined}
                       disabled={loading}
                     />
                   ))}
@@ -2187,6 +2219,12 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
+    if (!user) {
+      toast.error('Not authenticated');
+      setUploading(false);
+      return;
+    }
+
     e.preventDefault();
     if (!selectedShopId) return;
 
@@ -2297,10 +2335,10 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
 
     setIsGeneratingImage(true);
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error('Gemini API Key is missing. Please add GEMINI_API_KEY to your environment variables.');
+      if (!import.meta.env.VITE_GEMINI_API_KEY) {
+        throw new Error('Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your environment variables.');
       }
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const prompt = `A professional food photography shot of ${formData.name}. ${formData.description ? `Description: ${formData.description}.` : ''} High quality, appetizing, studio lighting, neutral background.`;
       
       const response = await ai.models.generateContent({
@@ -2895,6 +2933,11 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'banner') => {
+    if (!user) {
+      toast.error('Not authenticated');
+      return;
+    }
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -2995,7 +3038,10 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
             <div className="space-y-2">
               <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Location Address</label>
               <div className="relative">
-                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={16} className="md:w-[18px] md:h-[18px]" />
+                <MapPin 
+                  size={16} 
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40 md:w-[18px] md:h-[18px]" 
+                />
                 <input 
                   className="w-full h-10 md:h-12 pl-10 md:pl-12 pr-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
                   value={formData.location}
@@ -3010,11 +3056,11 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
                     height="100%"
                     frameBorder="0"
                     style={{ border: 0 }}
-                    src={`https://www.google.com/maps/embed/v1/place?key=${process.env.GOOGLE_MAPS_API_KEY || ''}&q=${encodeURIComponent(formData.location)}`}
+                    src={`https://www.google.com/maps/embed/v1/place?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}&q=${encodeURIComponent(formData.location)}`}
                     allowFullScreen
-                    className={cn(!process.env.GOOGLE_MAPS_API_KEY && "hidden")}
+                    className={cn(!import.meta.env.VITE_GOOGLE_MAPS_API_KEY && "hidden")}
                   ></iframe>
-                  {!process.env.GOOGLE_MAPS_API_KEY && (
+                  {!import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3">
                       <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
                         <MapPin className="text-primary" size={24} />
@@ -3203,7 +3249,7 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
 };
 
 const ChatWindow = ({ orderId, shopId, userId, onClose }: { orderId: string, shopId: number, userId: string, onClose: () => void }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -3231,12 +3277,12 @@ const ChatWindow = ({ orderId, shopId, userId, onClose }: { orderId: string, sho
         table: 'chat_messages',
         filter: `order_id=eq.${orderId}`
       }, (payload) => {
-        setMessages(prev => [...prev, payload.new as ChatMessage]);
+        setMessages(prev => [...prev, payload.new as Message]);
       })
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(channel).catch(console.error);
     };
   }, [orderId]);
 
@@ -3747,7 +3793,7 @@ const OrdersManagement = ({
                   ].map((field) => (
                     <button
                       key={field.id}
-                      onClick={() => handleSort(field.id as keyof Order)}
+                      onClick={() => handleSort(field.id as 'id' | 'total_price' | 'created_at')}
                       className={cn(
                         "flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all shrink-0 border-2",
                         sortField === field.id 
@@ -4467,6 +4513,50 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
 
   const [selectedItemForTrend, setSelectedItemForTrend] = useState<string | null>(null);
 
+  const monthlyRevenueData = useMemo(() => {
+    const months = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      return {
+        month: format(d, 'MMM'),
+        monthNum: d.getMonth(),
+        year: d.getFullYear(),
+        revenue: 0
+      };
+    }).reverse();
+
+    orders.forEach(order => {
+      const orderDate = new Date(order.created_at);
+      const month = months.find(m => m.monthNum === orderDate.getMonth() && m.year === orderDate.getFullYear());
+      if (month) month.revenue += Number(order.total_price);
+    });
+
+    return months;
+  }, [orders]);
+
+  const peakHoursData = useMemo(() => {
+    const hours = Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0 }));
+    orders.forEach(order => {
+      const hour = new Date(order.created_at).getHours();
+      hours[hour].count++;
+    });
+
+    const peaks = [
+      { time: '12:00 PM', hour: 12, label: 'Lunch Rush' },
+      { time: '03:00 PM', hour: 15, label: 'Afternoon Slump' },
+      { time: '07:00 PM', hour: 19, label: 'Dinner Peak' },
+      { time: '09:00 PM', hour: 21, label: 'Late Night' }
+    ];
+
+    const maxCount = Math.max(...hours.map(h => h.count), 1);
+
+    return peaks.map(p => ({
+      ...p,
+      val: (hours[p.hour].count / maxCount) * 100,
+      color: hours[p.hour].count > (maxCount * 0.7) ? 'bg-primary' : 'bg-on-surface-variant/20'
+    }));
+  }, [orders]);
+
   const itemTrendData = useMemo(() => {
     if (!selectedItemForTrend) return [];
     
@@ -4628,20 +4718,24 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
             </div>
           </div>
           <div className="h-64 flex items-end justify-between gap-2 px-2">
-            {[40, 65, 55, 80, 95, 100].map((h, i) => (
-              <motion.div 
-                initial={{ height: 0 }}
-                animate={{ height: `${h}%` }}
-                transition={{ duration: 1, ease: "easeOut", delay: i * 0.1 }}
-                key={i} 
-                className="w-full bg-surface-container-low rounded-t-lg transition-all hover:bg-primary/20 relative group"
-              >
-                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-on-surface text-surface text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100">R{(h * 200).toLocaleString()}</div>
-              </motion.div>
-            ))}
+            {monthlyRevenueData.map((d, i) => {
+              const maxRevenue = Math.max(...monthlyRevenueData.map(m => m.revenue), 1);
+              const h = (d.revenue / maxRevenue) * 100;
+              return (
+                <motion.div 
+                  initial={{ height: 0 }}
+                  animate={{ height: `${Math.max(h, 5)}%` }}
+                  transition={{ duration: 1, ease: "easeOut", delay: i * 0.1 }}
+                  key={i} 
+                  className="w-full bg-surface-container-low rounded-t-lg transition-all hover:bg-primary/20 relative group"
+                >
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-on-surface text-surface text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20">R{d.revenue.toLocaleString()}</div>
+                </motion.div>
+              );
+            })}
           </div>
           <div className="flex justify-between mt-4 px-2 text-[10px] font-bold text-on-surface-variant/40 uppercase tracking-tighter">
-            <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span>
+            {monthlyRevenueData.map(d => <span key={d.month}>{d.month}</span>)}
           </div>
         </motion.section>
 
@@ -4688,7 +4782,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-4">
               <TrendingUp size={24} />
-              <h3 className="font-semibold text-lg">AI Smart Tips</h3>
+              <h3 className="font-semibold text-lg">AI Smart Tips <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full ml-2">Sample</span></h3>
             </div>
             <p className="text-on-primary-container/90 leading-relaxed font-medium italic">
               "Try a 'Kota' special on Tuesdays to boost mid-week sales. Data shows a 22% interest spike in savory snacks during rainy afternoons."
@@ -4713,12 +4807,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
             Peak Order Hours
           </h2>
           <div className="space-y-6">
-            {orders.length > 0 ? [
-              { time: '12:00 PM', val: 85, label: 'Lunch Rush', color: 'bg-primary' },
-              { time: '03:00 PM', val: 20, label: 'Afternoon Slump', color: 'bg-on-surface-variant/20' },
-              { time: '07:00 PM', val: 95, label: 'Dinner Peak', color: 'bg-primary' },
-              { time: '09:00 PM', val: 55, label: 'Late Night', color: 'bg-primary/60' }
-            ].map((p, i) => (
+            {orders.length > 0 ? peakHoursData.map((p, i) => (
               <div key={i} className="space-y-2">
                 <div className="flex justify-between items-center text-xs font-bold">
                   <span className="text-on-surface">{p.time}</span>
@@ -4903,7 +4992,9 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
             </div>
             <div className="p-4 bg-orange-50/50 rounded-2xl border border-orange-100">
               <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest mb-1">Engagement Rate</p>
-              <p className="text-2xl font-black text-orange-900">High</p>
+              <p className="text-2xl font-black text-orange-900">
+                {orders.length > 0 ? `${((reviews.length / orders.length) * 100).toFixed(1)}%` : '0%'}
+              </p>
             </div>
           </div>
         </motion.section>
@@ -5107,7 +5198,7 @@ export default function App() {
   }, [darkMode]);
 
   useEffect(() => {
-    localStorage.setItem('soundAlerts', soundAlerts ? 'true' : 'false');
+    localStorage.setItem('soundAlerts', soundAlerts.toString());
   }, [soundAlerts]);
 
   useEffect(() => {
@@ -5355,6 +5446,7 @@ export default function App() {
 
   const deleteAllOrders = async () => {
     if (!user) return;
+    if (!window.confirm('Are you sure you want to delete ALL orders? This action cannot be undone.')) return;
     console.log('Delete all orders triggered');
     
     // First, get the shops owned by this user
@@ -5709,12 +5801,30 @@ export default function App() {
                 }} 
               />
             )}
-            {activeTab === 'storefront' && currentShop && (
-              <ShopProfile 
-                shop={currentShop} 
-                onRefresh={fetchShops} 
-                user={user}
-              />
+            {activeTab === 'storefront' && (
+              currentShop ? (
+                <ShopProfile 
+                  shop={currentShop} 
+                  onRefresh={fetchShops} 
+                  user={user}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6">
+                  <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center text-primary">
+                    <Store size={48} />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-headline font-bold text-on-surface">No Shop Found</h3>
+                    <p className="text-on-surface-variant max-w-xs mx-auto">You haven't created a shop yet. Create your first shop to start managing your storefront.</p>
+                  </div>
+                  <button 
+                    onClick={() => setActiveTab('dashboard')}
+                    className="px-8 py-3 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] active:scale-95 transition-all"
+                  >
+                    Go to Dashboard
+                  </button>
+                </div>
+              )
             )}
             {activeTab === 'orders' && (
               <OrdersManagement 
