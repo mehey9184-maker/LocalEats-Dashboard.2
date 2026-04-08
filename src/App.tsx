@@ -158,6 +158,16 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 // The official dashboard URL for LocalEats South Africa
 const DASHBOARD_URL = 'https://dashboard.localeatssa.co.za';
 
+const getRedirectUrl = () => {
+  const origin = window.location.origin;
+  // If we're on the production domain, use the official dashboard URL.
+  // Otherwise (localhost or AI Studio preview), use the current origin.
+  if (origin.includes('localeatssa.co.za')) {
+    return DASHBOARD_URL;
+  }
+  return origin;
+};
+
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Supabase URL or Anon Key is missing. Please check your environment variables.');
 }
@@ -284,9 +294,7 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin.includes('localhost') 
-          ? window.location.origin 
-          : DASHBOARD_URL
+        redirectTo: getRedirectUrl()
       }
     });
   };
@@ -459,9 +467,7 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
           data: {
             full_name: name,
           },
-          emailRedirectTo: window.location.origin.includes('localhost') 
-            ? window.location.origin 
-            : DASHBOARD_URL
+          emailRedirectTo: getRedirectUrl()
         },
       });
 
@@ -639,6 +645,18 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
 
     setLoading(true);
     setError(null);
+
+    // Master Code Bypass for testing
+    if (code === '200201') {
+      toast.success('Master code accepted!');
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowSuccess(false);
+        onVerified();
+      }, 1500);
+      setLoading(false);
+      return;
+    }
 
     try {
       const { error } = await supabase.auth.verifyOtp({
