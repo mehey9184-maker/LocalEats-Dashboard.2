@@ -173,6 +173,15 @@ const getRedirectUrl = () => {
   return origin;
 };
 
+const handleGoogleSignIn = async () => {
+  await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: getRedirectUrl()
+    }
+  });
+};
+
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Supabase URL or Anon Key is missing. Please check your environment variables.');
 }
@@ -294,15 +303,6 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
       }
     }
     setLoading(false);
-  };
-
-  const handleGoogleSignIn = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: getRedirectUrl()
-      }
-    });
   };
 
   return (
@@ -4454,6 +4454,18 @@ const OrdersManagement = ({
 };
 
 const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [showCampaignModal, setShowCampaignModal] = useState(false);
+  const [campaignType, setCampaignType] = useState<'email' | 'sms' | 'social'>('email');
+
+  const handleGenerateCampaign = () => {
+    setIsGenerating(true);
+    setTimeout(() => {
+      setIsGenerating(false);
+      setShowCampaignModal(true);
+    }, 2000);
+  };
+
   return (
     <div className="space-y-8">
       <header className="space-y-1">
@@ -4463,9 +4475,9 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
-          { title: 'Email Campaigns', desc: 'Send newsletters and promotions to your customers.', icon: Mail, color: 'bg-blue-500' },
-          { title: 'SMS Marketing', desc: 'Reach customers directly on their phones.', icon: MessageSquare, color: 'bg-green-500' },
-          { title: 'Social Media', desc: 'Connect your social accounts to post updates.', icon: Share2, color: 'bg-purple-500' },
+          { title: 'Email Campaigns', desc: 'Send newsletters and promotions to your customers.', icon: Mail, color: 'bg-blue-500', type: 'email' },
+          { title: 'SMS Marketing', desc: 'Reach customers directly on their phones.', icon: MessageSquare, color: 'bg-green-500', type: 'sms' },
+          { title: 'Social Media', desc: 'Connect your social accounts to post updates.', icon: Share2, color: 'bg-purple-500', type: 'social' },
         ].map((tool, i) => (
           <motion.div
             key={i}
@@ -4477,7 +4489,13 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
             </div>
             <h3 className="text-lg font-bold text-on-surface">{tool.title}</h3>
             <p className="text-sm text-on-surface-variant leading-relaxed">{tool.desc}</p>
-            <button className="w-full py-2 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors">
+            <button 
+              onClick={() => {
+                setCampaignType(tool.type as 'email' | 'sms' | 'social');
+                setShowCampaignModal(true);
+              }}
+              className="w-full py-2 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors"
+            >
               Configure
             </button>
           </motion.div>
@@ -4486,18 +4504,102 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
 
       <div className="bg-primary/5 rounded-3xl p-8 border border-primary/10">
         <div className="flex flex-col md:flex-row items-center gap-8">
-          <div className="flex-1 space-y-4">
-            <h3 className="text-xl font-bold text-primary">AI Marketing Assistant</h3>
-            <p className="text-on-surface-variant">Let our AI help you create the perfect marketing campaign based on your shop's performance data.</p>
-            <button className="px-6 py-3 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] transition-all">
-              Generate Campaign
+          <div className="flex-1 space-y-4 text-center md:text-left">
+            <h3 className="text-xl font-bold text-primary flex items-center justify-center md:justify-start gap-2">
+              <Sparkles size={24} />
+              AI Marketing Assistant
+            </h3>
+            <p className="text-on-surface-variant">Let our AI help you create the perfect marketing campaign based on your shop's performance data and customer trends.</p>
+            <button 
+              onClick={handleGenerateCampaign}
+              disabled={isGenerating}
+              className="px-6 py-3 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2 mx-auto md:mx-0"
+            >
+              {isGenerating ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-on-primary/30 border-t-on-primary rounded-full animate-spin" />
+                  Analyzing Data...
+                </>
+              ) : (
+                <>
+                  <Zap size={20} />
+                  Generate Campaign
+                </>
+              )}
             </button>
           </div>
-          <div className="w-full md:w-64 h-48 bg-surface-container-lowest rounded-2xl border border-outline-variant/10 flex items-center justify-center">
-            <Zap size={64} className="text-primary/20" />
+          <div className="w-full md:w-64 h-48 bg-surface-container-lowest rounded-2xl border border-outline-variant/10 flex items-center justify-center relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            <Zap size={64} className="text-primary/20 group-hover:scale-110 transition-transform duration-500" />
           </div>
         </div>
       </div>
+
+      {/* Campaign Builder Modal (Simplified) */}
+      {showCampaignModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-on-surface/20 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="bg-surface-container-lowest w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden"
+          >
+            <div className="p-8 space-y-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-2xl font-headline font-bold text-on-surface">Create {campaignType.toUpperCase()} Campaign</h3>
+                <button onClick={() => setShowCampaignModal(false)} className="p-2 hover:bg-surface-container rounded-full transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-on-surface ml-1">Campaign Name</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g., Weekend Flash Sale"
+                    className="w-full px-4 py-3 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-on-surface ml-1">Target Audience</label>
+                  <select className="w-full px-4 py-3 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/20">
+                    <option>All Customers</option>
+                    <option>New Customers (Last 30 days)</option>
+                    <option>Inactive Customers (&gt; 60 days)</option>
+                    <option>High Spenders</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-on-surface ml-1">Campaign Message</label>
+                  <textarea 
+                    rows={4}
+                    placeholder="Write your message here..."
+                    className="w-full px-4 py-3 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/20 resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button 
+                  onClick={() => setShowCampaignModal(false)}
+                  className="flex-1 py-4 bg-surface-container text-on-surface font-bold rounded-2xl hover:bg-surface-container-high transition-all"
+                >
+                  Save Draft
+                </button>
+                <button 
+                  onClick={() => {
+                    toast.success('Campaign scheduled successfully!');
+                    setShowCampaignModal(false);
+                  }}
+                  className="flex-1 py-4 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] transition-all"
+                >
+                  Launch Campaign
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       <div className="space-y-6">
         <h3 className="text-xl font-bold text-on-surface flex items-center gap-2">
@@ -5054,6 +5156,28 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
     return acc;
   }, {});
 
+  const couponPerformance = useMemo(() => {
+    const couponOrders = orders.filter(o => o.coupon_code);
+    const totalDiscount = couponOrders.reduce((acc, curr) => acc + (curr.discount_amount || 0), 0);
+    const totalSales = couponOrders.reduce((acc, curr) => acc + Number(curr.total_price), 0);
+    
+    const byCode = couponOrders.reduce((acc: Record<string, { count: number, discount: number, sales: number }>, order) => {
+      const code = order.coupon_code!;
+      if (!acc[code]) acc[code] = { count: 0, discount: 0, sales: 0 };
+      acc[code].count++;
+      acc[code].discount += (order.discount_amount || 0);
+      acc[code].sales += Number(order.total_price);
+      return acc;
+    }, {});
+
+    return {
+      totalRedemptions: couponOrders.length,
+      totalDiscount,
+      totalSales,
+      byCode: Object.entries(byCode).map(([code, stats]) => ({ code, ...stats })).sort((a, b) => b.sales - a.sales)
+    };
+  }, [orders]);
+
   const pieData = Object.entries(categoryRevenue).map(([name, value]) => ({ name, value }));
   const COLORS = ['#FF6321', '#FF9F43', '#FFC107', '#4CAF50', '#2196F3', '#9C27B0'];
 
@@ -5174,24 +5298,52 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
-          className="md:col-span-4 bg-primary-container rounded-xl p-6 text-on-primary-container flex flex-col justify-between relative overflow-hidden group"
+          className="md:col-span-4 bg-surface-container-lowest rounded-xl p-8 shadow-[0_8px_24px_-4px_rgba(167,52,0,0.05)] border border-outline-variant/10"
         >
-          <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-          <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-4">
-              <TrendingUp size={24} />
-              <h3 className="font-semibold text-lg">AI Smart Tips <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full ml-2">Sample</span></h3>
-            </div>
-            <p className="text-on-primary-container/90 leading-relaxed font-medium italic">
-              "Try a 'Kota' special on Tuesdays to boost mid-week sales. Data shows a 22% interest spike in savory snacks during rainy afternoons."
-            </p>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-sm font-semibold uppercase tracking-widest text-on-surface-variant/60">Coupon Impact</h2>
+            <Ticket size={20} className="text-primary" />
           </div>
-          <button 
-            onClick={() => toast.success('Promotion applied to your shop!')}
-            className="mt-6 w-full py-3 bg-surface-container-lowest text-primary font-bold rounded-full text-sm hover:bg-surface-bright transition-colors"
-          >
-            Apply Promotion
-          </button>
+          
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-surface-container-low rounded-2xl">
+                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Total Discount</p>
+                <p className="text-lg font-black text-on-surface">R{couponPerformance.totalDiscount.toFixed(2)}</p>
+              </div>
+              <div className="p-4 bg-surface-container-low rounded-2xl">
+                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Coupon Sales</p>
+                <p className="text-lg font-black text-on-surface">R{couponPerformance.totalSales.toFixed(2)}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold text-on-surface uppercase tracking-widest">Top Codes</h3>
+              {couponPerformance.byCode.length > 0 ? (
+                <div className="space-y-3">
+                  {couponPerformance.byCode.slice(0, 3).map((coupon, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                          {i + 1}
+                        </div>
+                        <span className="font-mono font-bold text-on-surface text-sm">{coupon.code}</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-on-surface">R{coupon.sales.toFixed(0)}</p>
+                        <p className="text-[10px] font-bold text-on-surface-variant uppercase">{coupon.count} uses</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-10 text-center bg-surface-container-low rounded-2xl border border-dashed border-outline-variant/30">
+                  <Ticket className="mx-auto text-on-surface-variant/20 mb-2" size={24} />
+                  <p className="text-xs text-on-surface-variant">No coupon data</p>
+                </div>
+              )}
+            </div>
+          </div>
         </motion.section>
 
         <motion.section 
