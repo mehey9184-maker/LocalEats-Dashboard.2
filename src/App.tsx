@@ -27,6 +27,7 @@ import {
   RefreshCw,
   Sun,
   Moon,
+  Calendar,
   Download,
   FileDown,
   Eye,
@@ -42,6 +43,8 @@ import {
   Sparkles,
   Check,
   X,
+  Mail,
+  Share2,
   CheckSquare,
   Square,
   BarChart3,
@@ -58,7 +61,8 @@ import {
   Facebook,
   MessageCircle,
   Image as ImageIcon,
-  Settings
+  Settings,
+  HelpCircle
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -139,6 +143,8 @@ export interface Order {
   accepted_at?: string;
   estimated_delivery_time?: string;
   items?: { name: string; price: number; quantity: number }[];
+  coupon_code?: string;
+  discount_amount?: number;
 }
 
 export interface Payment {
@@ -217,6 +223,7 @@ export interface Coupon {
   discount_value: number;
   min_order_value: number;
   is_active: boolean;
+  expiry_date: string | null;
   created_at: string;
 }
 
@@ -1537,6 +1544,12 @@ const DashboardOverview = ({
   const [followerTrend, setFollowerTrend] = useState<string>('0');
   const [recentFollowers, setRecentFollowers] = useState<{ id: string; created_at: string }[]>([]);
 
+  const avgPrepTime = useMemo(() => {
+    const pendingCount = orders.filter(o => o.status === 'pending' || o.status === 'preparing').length;
+    // Base 12 mins + 1.5 mins per pending order, capped at 45
+    return Math.min(12 + (pendingCount * 1.5), 45).toFixed(1);
+  }, [orders]);
+
   useEffect(() => {
     const fetchFollowers = async () => {
       if (!currentShop?.id) return;
@@ -1584,16 +1597,17 @@ const DashboardOverview = ({
     fetchFollowers();
   }, [currentShop?.id]);
   
-  // Use real trend data from the last 7 days
+  // Use real trend data from the last 7 or 30 days
   const trendData = useMemo(() => {
     if (orders.length === 0) return [];
     
-    const last7Days = Array.from({ length: 7 }, (_, index) => {
+    const daysCount = timeframe === 'weekly' ? 7 : 30;
+    const lastDays = Array.from({ length: daysCount }, (_, index) => {
       const d = new Date();
       d.setDate(d.getDate() - index);
       return {
         date: d.toISOString().split('T')[0],
-        dayName: format(d, 'EEE'),
+        dayName: daysCount === 7 ? format(d, 'EEE') : format(d, 'MMM d'),
         count: 0
       };
     }).reverse();
@@ -1604,15 +1618,15 @@ const DashboardOverview = ({
         const dateObj = new Date(order.created_at);
         if (isNaN(dateObj.getTime())) return;
         const orderDate = dateObj.toISOString().split('T')[0];
-        const day = last7Days.find(d => d.date === orderDate);
+        const day = lastDays.find(d => d.date === orderDate);
         if (day) day.count++;
       } catch (e) {
         console.error('Error parsing order date:', e);
       }
     });
 
-    return last7Days.map(d => ({ name: d.dayName, value: d.count }));
-  }, [orders]);
+    return lastDays.map(d => ({ name: d.dayName, value: d.count }));
+  }, [orders, timeframe]);
 
   if (loading) {
     return (
@@ -1697,7 +1711,7 @@ const DashboardOverview = ({
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
           <StatCard 
             title="Avg. Prep" 
-            value="--" 
+            value={`${avgPrepTime}m`} 
             change="0" 
             icon={Clock} 
             colorClass="bg-zinc-100 text-zinc-700"
@@ -2100,16 +2114,11 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
   // Update selectedShopId if userOwnedShops changes and current selectedShopId is not in the list
   useEffect(() => {
     if (userOwnedShops.length > 0 && (!selectedShopId || !userOwnedShops.find(s => s.id === selectedShopId))) {
-      // Use a microtask to avoid synchronous setState in effect warning
-      queueMicrotask(() => {
-        setSelectedShopId(userOwnedShops[0].id);
-      });
+      setSelectedShopId(userOwnedShops[0].id);
     }
   }, [userOwnedShops, selectedShopId]);
 
   const [items, setItems] = useState<MenuItem[]>([]);
-  const [menuLoading, setMenuLoading] = useState(true);
-  console.log('Menu Loading:', menuLoading); // Use the variable to satisfy linter
   
   const [formData, setFormData] = useState({ name: '', price: '', category: 'Main Course', description: '', stock_quantity: '10' });
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -2146,8 +2155,6 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
 
   const fetchMenu = useCallback(async () => {
     if (!selectedShopId) return;
-    // Use a microtask or just set it inside the async flow to avoid sync setState in effect
-    setMenuLoading(true);
     try {
       const { data, error } = await supabase
         .from('menu_items')
@@ -2159,7 +2166,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
         console.error('Fetch Menu Error:', error);
       }
     } finally {
-      setMenuLoading(false);
+      // Done
     }
   }, [selectedShopId]);
 
@@ -2913,6 +2920,15 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
     banner_url: shop.banner_url || '',
   });
 
+  const [debouncedLocation, setDebouncedLocation] = useState(formData.location);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedLocation(formData.location);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [formData.location]);
+
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -3056,7 +3072,7 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
                     height="100%"
                     frameBorder="0"
                     style={{ border: 0 }}
-                    src={`https://www.google.com/maps/embed/v1/place?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}&q=${encodeURIComponent(formData.location)}`}
+                    src={`https://www.google.com/maps/embed/v1/place?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}&q=${encodeURIComponent(debouncedLocation)}`}
                     allowFullScreen
                     className={cn(!import.meta.env.VITE_GOOGLE_MAPS_API_KEY && "hidden")}
                   ></iframe>
@@ -3486,6 +3502,13 @@ const OrdersManagement = ({
   const [readyOrderId, setReadyOrderId] = useState<string | null>(null);
   const [chatOrderId, setChatOrderId] = useState<string | null>(null);
   const [estimatedTime, setEstimatedTime] = useState('20-30 mins');
+
+  const avgPrepTime = useMemo(() => {
+    const pendingCount = orders.filter(o => o.status === 'pending' || o.status === 'preparing').length;
+    // Base 12 mins + 1.5 mins per pending order, capped at 45
+    return Math.min(12 + (pendingCount * 1.5), 45).toFixed(1);
+  }, [orders]);
+
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [recentlyChangedOrders, setRecentlyChangedOrders] = useState<Record<string, boolean>>({});
@@ -3653,7 +3676,6 @@ const OrdersManagement = ({
             <div className="flex gap-3">
               <button 
                 onClick={() => {
-                  console.log('Clear All Orders clicked');
                   toast.info('Clearing all orders...');
                   onDeleteAllOrders();
                 }}
@@ -3664,7 +3686,6 @@ const OrdersManagement = ({
               </button>
               <button 
                 onClick={() => {
-                  console.log('Refresh Orders clicked');
                   toast.info('Refreshing orders...');
                   onRefresh();
                 }}
@@ -4375,8 +4396,8 @@ const OrdersManagement = ({
               </div>
               <div className="mt-8 pt-8 border-t border-on-surface/5">
                 <div className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Avg. Prep Time</div>
-                <div className="text-3xl font-headline font-extrabold text-primary">14.2 min</div>
-                <div className="text-xs text-on-surface-variant mt-1">↓ 2.1 min from yesterday</div>
+                <div className="text-3xl font-headline font-extrabold text-primary">{avgPrepTime} min</div>
+                <div className="text-xs text-on-surface-variant mt-1">Based on current load</div>
               </div>
             </div>
             <div className="absolute -right-12 -bottom-12 w-48 h-48 bg-primary/5 rounded-full blur-3xl"></div>
@@ -4428,6 +4449,383 @@ const OrdersManagement = ({
         </div>
       )}
       </div>
+    </div>
+  );
+};
+
+const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
+  return (
+    <div className="space-y-8">
+      <header className="space-y-1">
+        <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Marketing</h2>
+        <p className="text-sm text-on-surface-variant font-medium">Grow {currentShop?.name || 'your business'} with powerful marketing tools.</p>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {[
+          { title: 'Email Campaigns', desc: 'Send newsletters and promotions to your customers.', icon: Mail, color: 'bg-blue-500' },
+          { title: 'SMS Marketing', desc: 'Reach customers directly on their phones.', icon: MessageSquare, color: 'bg-green-500' },
+          { title: 'Social Media', desc: 'Connect your social accounts to post updates.', icon: Share2, color: 'bg-purple-500' },
+        ].map((tool, i) => (
+          <motion.div
+            key={i}
+            whileHover={{ y: -5 }}
+            className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4"
+          >
+            <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-white", tool.color)}>
+              <tool.icon size={24} />
+            </div>
+            <h3 className="text-lg font-bold text-on-surface">{tool.title}</h3>
+            <p className="text-sm text-on-surface-variant leading-relaxed">{tool.desc}</p>
+            <button className="w-full py-2 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors">
+              Configure
+            </button>
+          </motion.div>
+        ))}
+      </div>
+
+      <div className="bg-primary/5 rounded-3xl p-8 border border-primary/10">
+        <div className="flex flex-col md:flex-row items-center gap-8">
+          <div className="flex-1 space-y-4">
+            <h3 className="text-xl font-bold text-primary">AI Marketing Assistant</h3>
+            <p className="text-on-surface-variant">Let our AI help you create the perfect marketing campaign based on your shop's performance data.</p>
+            <button className="px-6 py-3 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] transition-all">
+              Generate Campaign
+            </button>
+          </div>
+          <div className="w-full md:w-64 h-48 bg-surface-container-lowest rounded-2xl border border-outline-variant/10 flex items-center justify-center">
+            <Zap size={64} className="text-primary/20" />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <h3 className="text-xl font-bold text-on-surface flex items-center gap-2">
+          <Sparkles size={24} className="text-primary" />
+          Expert Marketing Strategies
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[
+            { 
+              title: 'Create Urgency with Expiry Dates', 
+              strategy: 'Set short-term expiry dates (24-48 hours) for flash sales. This triggers FOMO (Fear Of Missing Out) and drives immediate action.' 
+            },
+            { 
+              title: 'Target First-Time Customers', 
+              strategy: 'Offer a "WELCOME10" code for 10% off their first order. This lowers the barrier to entry and builds initial trust.' 
+            },
+            { 
+              title: 'Reward Loyalty', 
+              strategy: 'Send exclusive codes to customers who haven\'t ordered in 30 days. Personalization increases redemption rates by up to 40%.' 
+            },
+            { 
+              title: 'Social Media Exclusives', 
+              strategy: 'Create unique codes for Instagram vs Facebook (e.g., INSTA5, FB5) to track which platform brings in more high-value customers.' 
+            }
+          ].map((item, i) => (
+            <div key={i} className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/5">
+              <h4 className="font-bold text-on-surface mb-2">{item.title}</h4>
+              <p className="text-sm text-on-surface-variant leading-relaxed">{item.strategy}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Coupons = ({ currentShop, orders }: { currentShop: Shop | undefined, orders: Order[] }) => {
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newCoupon, setNewCoupon] = useState({
+    code: '',
+    discount_type: 'percentage' as 'percentage' | 'fixed',
+    discount_value: '',
+    min_order_value: '',
+    expiry_date: ''
+  });
+
+  useEffect(() => {
+    const fetchCoupons = async () => {
+      if (!currentShop?.id) return;
+      try {
+        const { data, error } = await supabase
+          .from('coupons')
+          .select('*')
+          .eq('shop_id', currentShop.id)
+          .order('created_at', { ascending: false });
+        
+        if (!error && data) setCoupons(data);
+      } catch (err) {
+        console.error('Error fetching coupons:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCoupons();
+  }, [currentShop?.id]);
+
+  const handleCreateCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentShop?.id) return;
+
+    const { error } = await supabase
+      .from('coupons')
+      .insert([{
+        shop_id: currentShop.id,
+        code: newCoupon.code.toUpperCase(),
+        discount_type: newCoupon.discount_type,
+        discount_value: parseFloat(newCoupon.discount_value),
+        min_order_value: parseFloat(newCoupon.min_order_value) || 0,
+        expiry_date: newCoupon.expiry_date || null,
+        is_active: true
+      }]);
+
+    if (error) {
+      toast.error('Failed to create coupon');
+    } else {
+      toast.success('Coupon created successfully!');
+      setShowCreateModal(false);
+      setNewCoupon({ code: '', discount_type: 'percentage', discount_value: '', min_order_value: '', expiry_date: '' });
+      // Refresh
+      const { data } = await supabase.from('coupons').select('*').eq('shop_id', currentShop.id).order('created_at', { ascending: false });
+      if (data) setCoupons(data);
+    }
+  };
+
+  const toggleCoupon = async (id: string, isActive: boolean) => {
+    const { error } = await supabase
+      .from('coupons')
+      .update({ is_active: !isActive })
+      .eq('id', id);
+    
+    if (!error) {
+      setCoupons(prev => prev.map(c => c.id === id ? { ...c, is_active: !isActive } : c));
+      toast.success(`Coupon ${!isActive ? 'activated' : 'deactivated'}`);
+    }
+  };
+
+  const getPerformance = (code: string) => {
+    const redemptions = orders.filter(o => o.coupon_code === code);
+    const totalDiscount = redemptions.reduce((acc, curr) => acc + (curr.discount_amount || 0), 0);
+    const totalSales = redemptions.reduce((acc, curr) => acc + Number(curr.total_price), 0);
+    return {
+      count: redemptions.length,
+      discount: totalDiscount,
+      sales: totalSales
+    };
+  };
+
+  return (
+    <div className="space-y-8">
+      <header className="flex justify-between items-end">
+        <div className="space-y-1">
+          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Coupons</h2>
+          <p className="text-sm text-on-surface-variant font-medium">Manage discount codes and track performance.</p>
+        </div>
+        <button 
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center gap-2 px-6 py-3 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] transition-all"
+        >
+          <Plus size={20} />
+          Create Coupon
+        </button>
+      </header>
+
+      {/* Performance Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          { label: 'Total Redemptions', value: orders.filter(o => o.coupon_code).length, icon: Ticket, color: 'text-blue-500' },
+          { label: 'Total Discounts Given', value: `R${orders.reduce((acc, curr) => acc + (curr.discount_amount || 0), 0).toFixed(2)}`, icon: Zap, color: 'text-orange-500' },
+          { label: 'Coupon-Driven Sales', value: `R${orders.filter(o => o.coupon_code).reduce((acc, curr) => acc + Number(curr.total_price), 0).toFixed(2)}`, icon: TrendingUp, color: 'text-green-500' },
+        ].map((stat, i) => (
+          <div key={i} className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/10 shadow-sm flex items-center gap-4">
+            <div className={cn("w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center", stat.color)}>
+              <stat.icon size={24} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">{stat.label}</p>
+              <p className="text-xl font-black text-on-surface">{stat.value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1, 2].map(i => <div key={i} className="h-32 bg-surface-container animate-pulse rounded-3xl" />)}
+        </div>
+      ) : coupons.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {coupons.map(coupon => {
+            const perf = getPerformance(coupon.code);
+            const isExpired = coupon.expiry_date && new Date(coupon.expiry_date) < new Date();
+            
+            return (
+              <div key={coupon.id} className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4">
+                <div className="flex justify-between items-start">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-black font-mono text-primary tracking-wider">{coupon.code}</span>
+                      <span className={cn(
+                        "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest",
+                        coupon.is_active && !isExpired ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                      )}>
+                        {isExpired ? 'Expired' : coupon.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-on-surface-variant font-medium">
+                      {coupon.discount_type === 'percentage' ? `${coupon.discount_value}% OFF` : `R${coupon.discount_value} OFF`}
+                    </p>
+                    {coupon.expiry_date && (
+                      <p className={cn("text-[10px] font-bold flex items-center gap-1", isExpired ? "text-red-500" : "text-on-surface-variant/60")}>
+                        <Calendar size={12} />
+                        Expires: {format(new Date(coupon.expiry_date), 'MMM dd, yyyy')}
+                      </p>
+                    )}
+                  </div>
+                  <button 
+                    onClick={() => toggleCoupon(coupon.id, coupon.is_active)}
+                    disabled={isExpired}
+                    className={cn(
+                      "p-3 rounded-2xl transition-colors",
+                      isExpired ? "bg-surface-container text-on-surface-variant/20 cursor-not-allowed" :
+                      coupon.is_active ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-green-50 text-green-600 hover:bg-green-100"
+                    )}
+                  >
+                    {coupon.is_active ? <X size={20} /> : <Check size={20} />}
+                  </button>
+                </div>
+
+                <div className="pt-4 border-t border-outline-variant/5 grid grid-cols-3 gap-2">
+                  <div className="text-center">
+                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase">Used</p>
+                    <p className="text-sm font-black text-on-surface">{perf.count}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase">Saved</p>
+                    <p className="text-sm font-black text-on-surface">R{perf.discount.toFixed(0)}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase">Sales</p>
+                    <p className="text-sm font-black text-on-surface">R{perf.sales.toFixed(0)}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="bg-surface-container-low/30 rounded-3xl p-12 text-center border-2 border-dashed border-outline-variant/10">
+          <Ticket size={48} className="mx-auto text-on-surface-variant/20 mb-4" />
+          <h3 className="text-lg font-bold text-on-surface">No Coupons Yet</h3>
+          <p className="text-sm text-on-surface-variant max-w-xs mx-auto mt-2">Create your first discount code to attract more customers to your shop.</p>
+          <button 
+            onClick={() => setShowCreateModal(true)}
+            className="mt-6 px-6 py-2 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors"
+          >
+            Create First Coupon
+          </button>
+        </div>
+      )}
+
+      {/* Create Coupon Modal */}
+      <AnimatePresence>
+        {showCreateModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowCreateModal(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md bg-surface-container-lowest rounded-[32px] shadow-2xl overflow-hidden border border-outline-variant/10"
+            >
+              <form onSubmit={handleCreateCoupon} className="p-8 space-y-6">
+                <header className="flex justify-between items-center">
+                  <h3 className="text-2xl font-headline font-black text-on-surface tracking-tight">New Coupon</h3>
+                  <button type="button" onClick={() => setShowCreateModal(false)} className="p-2 hover:bg-surface-container rounded-full transition-colors">
+                    <X size={20} />
+                  </button>
+                </header>
+
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">Coupon Code</label>
+                    <input
+                      required
+                      type="text"
+                      placeholder="e.g. WELCOME10"
+                      value={newCoupon.code}
+                      onChange={e => setNewCoupon({ ...newCoupon, code: e.target.value.toUpperCase() })}
+                      className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 focus:ring-4 focus:ring-primary/5 outline-none transition-all font-mono font-bold uppercase"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">Type</label>
+                      <select
+                        value={newCoupon.discount_type}
+                        onChange={e => setNewCoupon({ ...newCoupon, discount_type: e.target.value as 'percentage' | 'fixed' })}
+                        className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 outline-none transition-all font-bold appearance-none"
+                      >
+                        <option value="percentage">Percentage (%)</option>
+                        <option value="fixed">Fixed (R)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">Value</label>
+                      <input
+                        required
+                        type="number"
+                        placeholder={newCoupon.discount_type === 'percentage' ? "10" : "50"}
+                        value={newCoupon.discount_value}
+                        onChange={e => setNewCoupon({ ...newCoupon, discount_value: e.target.value })}
+                        className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 outline-none transition-all font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">Min Order Value (R)</label>
+                    <input
+                      type="number"
+                      placeholder="0.00"
+                      value={newCoupon.min_order_value}
+                      onChange={e => setNewCoupon({ ...newCoupon, min_order_value: e.target.value })}
+                      className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 outline-none transition-all font-bold"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">Expiry Date (Optional)</label>
+                    <input
+                      type="date"
+                      value={newCoupon.expiry_date}
+                      onChange={e => setNewCoupon({ ...newCoupon, expiry_date: e.target.value })}
+                      className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 outline-none transition-all font-bold"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-4 bg-primary text-on-primary font-black rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.99] active:scale-95 transition-all"
+                >
+                  Create Coupon
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -4747,7 +5145,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
         >
           <h2 className="text-sm font-semibold uppercase tracking-widest text-on-surface-variant/60 mb-6">Revenue by Category</h2>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minHeight={256}>
               <PieChart>
                 <Pie
                   data={pieData}
@@ -4897,7 +5295,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
           
           {selectedItemForTrend ? (
             <div className="h-48 w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minHeight={192}>
                 <AreaChart data={itemTrendData}>
                   <defs>
                     <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
@@ -4946,7 +5344,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
           </div>
           
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minHeight={256}>
               <AreaChart data={followerTrendData}>
                 <defs>
                   <linearGradient id="colorFollowers" x1="0" y1="0" x2="0" y2="1">
@@ -5119,6 +5517,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [showHelp, setShowHelp] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -5410,7 +5809,6 @@ export default function App() {
         toast.error('Network error: Could not connect to Supabase. Check your internet or ad-blocker.');
       }
     } else if (data) {
-      console.log('Fetched shops:', data);
       setShops(data);
     }
   }, []);
@@ -5421,14 +5819,6 @@ export default function App() {
       void fetchShops();
       void fetchAllMenuItems();
 
-      // Real-time subscription for orders
-      const ordersChannel = supabase
-        .channel('orders_changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-          void fetchOrders();
-        })
-        .subscribe();
-
       // Real-time subscription for shops
       const shopsChannel = supabase
         .channel('shops_changes')
@@ -5438,16 +5828,41 @@ export default function App() {
         .subscribe();
 
       return () => {
-        void supabase.removeChannel(ordersChannel);
         void supabase.removeChannel(shopsChannel);
       };
     }
   }, [user, fetchOrders, fetchShops, fetchAllMenuItems]);
 
+  // Separate effect for order subscriptions to filter by shop_id
+  useEffect(() => {
+    if (user && shops.length > 0) {
+      const ownedShopIds = shops.filter(s => s.owner_id === user.id).map(s => s.id);
+      
+      if (ownedShopIds.length === 0) return;
+
+      const channels = ownedShopIds.map(shopId => {
+        return supabase
+          .channel(`orders_changes_${shopId}`)
+          .on('postgres_changes', { 
+            event: '*', 
+            schema: 'public', 
+            table: 'orders',
+            filter: `shop_id=eq.${shopId}`
+          }, () => {
+            void fetchOrders();
+          })
+          .subscribe();
+      });
+
+      return () => {
+        channels.forEach(channel => void supabase.removeChannel(channel));
+      };
+    }
+  }, [user, shops, fetchOrders]);
+
   const deleteAllOrders = async () => {
     if (!user) return;
     if (!window.confirm('Are you sure you want to delete ALL orders? This action cannot be undone.')) return;
-    console.log('Delete all orders triggered');
     
     // First, get the shops owned by this user
     const { data: ownedShops, error: shopsError } = await supabase
@@ -5839,6 +6254,8 @@ export default function App() {
                 setSoundAlerts={setSoundAlerts}
               />
             )}
+            {activeTab === 'marketing' && <Marketing currentShop={currentShop} />}
+            {activeTab === 'coupons' && <Coupons currentShop={currentShop} orders={orders} />}
             {activeTab === 'insights' && <Insights orders={orders} menuItems={menuItems} loading={loading} currentShop={currentShop} />}
             {activeTab === 'payments' && currentShop && <PaymentHistory shopId={currentShop.id} />}
             {activeTab === 'settings' && (
@@ -5934,6 +6351,125 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      {/* Floating Help Button */}
+      <button
+        onClick={() => setShowHelp(true)}
+        className="fixed bottom-24 md:bottom-8 right-6 z-[60] w-14 h-14 bg-primary text-on-primary rounded-full shadow-2xl shadow-primary/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all group"
+        title="Help & Tips"
+      >
+        <HelpCircle size={28} className="group-hover:rotate-12 transition-transform" />
+        <span className="absolute right-full mr-4 px-3 py-1.5 bg-surface-container-highest text-on-surface text-xs font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-xl border border-outline-variant/10">
+          Need help?
+        </span>
+      </button>
+
+      {/* Help Modal */}
+      <AnimatePresence>
+        {showHelp && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowHelp(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-2xl bg-surface-container-lowest rounded-[32px] shadow-2xl overflow-hidden border border-outline-variant/10"
+            >
+              <div className="p-6 md:p-8 space-y-8 max-h-[80vh] overflow-y-auto scrollbar-hide">
+                <header className="flex justify-between items-start">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-primary">
+                      <Sparkles size={20} />
+                      <span className="text-xs font-black uppercase tracking-widest">Guide</span>
+                    </div>
+                    <h2 className="text-3xl font-headline font-black text-on-surface tracking-tight">How LocalEats Works</h2>
+                  </div>
+                  <button 
+                    onClick={() => setShowHelp(false)}
+                    className="p-2 hover:bg-surface-container rounded-full transition-colors"
+                  >
+                    <X size={24} />
+                  </button>
+                </header>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {[
+                    { 
+                      title: 'Dashboard', 
+                      desc: 'Your command center. Track total sales, order volume, and follower growth at a glance.',
+                      icon: LayoutDashboard,
+                      color: 'text-blue-500 bg-blue-50'
+                    },
+                    { 
+                      title: 'Menu Management', 
+                      desc: 'Add items, set prices, and upload mouth-watering photos. Toggle availability instantly.',
+                      icon: UtensilsCrossed,
+                      color: 'text-orange-500 bg-orange-50'
+                    },
+                    { 
+                      title: 'Real-time Orders', 
+                      desc: 'Never miss a beat. Orders pop up instantly with sound alerts. Use Kitchen Mode for focus.',
+                      icon: ReceiptText,
+                      color: 'text-green-500 bg-green-50'
+                    },
+                    { 
+                      title: 'Marketing & Coupons', 
+                      desc: 'Grow your reach. Create discount codes and use AI to craft perfect campaigns.',
+                      icon: Zap,
+                      color: 'text-purple-500 bg-purple-50'
+                    },
+                    { 
+                      title: 'Insights', 
+                      desc: 'Understand your customers. View reviews and analyze performance trends.',
+                      icon: TrendingUp,
+                      color: 'text-indigo-500 bg-indigo-50'
+                    },
+                    { 
+                      title: 'Storefront', 
+                      desc: 'Customize how customers see your shop. Update your bio, location, and social links.',
+                      icon: Store,
+                      color: 'text-pink-500 bg-pink-50'
+                    }
+                  ].map((tip, i) => (
+                    <div key={i} className="flex gap-4 p-4 rounded-2xl border border-outline-variant/5 hover:border-primary/20 transition-colors group">
+                      <div className={cn("w-12 h-12 shrink-0 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110", tip.color)}>
+                        <tip.icon size={24} />
+                      </div>
+                      <div className="space-y-1">
+                        <h3 className="font-bold text-on-surface">{tip.title}</h3>
+                        <p className="text-sm text-on-surface-variant leading-relaxed">{tip.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="bg-primary/5 rounded-2xl p-6 border border-primary/10 space-y-3">
+                  <h4 className="font-bold text-primary flex items-center gap-2">
+                    <Rocket size={18} />
+                    Pro Tip
+                  </h4>
+                  <p className="text-sm text-on-surface-variant">
+                    Enable <b>Sound Alerts</b> in Settings to ensure you hear every new order even when the tab is in the background.
+                  </p>
+                </div>
+
+                <button 
+                  onClick={() => setShowHelp(false)}
+                  className="w-full py-4 bg-primary text-on-primary font-black rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.99] active:scale-95 transition-all"
+                >
+                  Got it, let's go!
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* BottomNavBar */}
       {!kitchenMode && (
