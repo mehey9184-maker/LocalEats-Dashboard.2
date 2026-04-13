@@ -1529,7 +1529,31 @@ const DashboardOverview = ({
   trialInfo: { daysRemaining: number; isExpired: boolean } | null,
   currentShop: Shop | undefined
 }) => {
-  // Robust total sales calculation
+  const [followerCount, setFollowerCount] = useState<number | string>('--');
+  const [followerTrend, setFollowerTrend] = useState<string>('0');
+  const [recentFollowers, setRecentFollowers] = useState<{ id: string; created_at: string }[]>([]);
+
+  // Helper for weekly reset
+  const getStartOfWeek = () => {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    const start = new Date(now.setDate(diff));
+    start.setHours(0, 0, 0, 0);
+    return start;
+  };
+
+  const startOfWeek = getStartOfWeek();
+  const weeklyOrders = orders.filter(o => new Date(o.created_at) >= startOfWeek);
+
+  // Robust total sales calculation (Weekly)
+  const weeklySales = weeklyOrders.reduce((acc, curr) => {
+    const price = typeof curr.total_price === 'string' 
+      ? parseFloat(curr.total_price.replace(/[^0-9.]/g, '')) 
+      : Number(curr.total_price);
+    return acc + (isNaN(price) ? 0 : price);
+  }, 0);
+
   const totalSales = orders.reduce((acc, curr) => {
     const price = typeof curr.total_price === 'string' 
       ? parseFloat(curr.total_price.replace(/[^0-9.]/g, '')) 
@@ -1537,65 +1561,82 @@ const DashboardOverview = ({
     return acc + (isNaN(price) ? 0 : price);
   }, 0);
 
-  const orderCount = orders.length;
+  const orderCount = weeklyOrders.length;
   const hasMenu = menuItems.length > 0;
   const [timeframe, setTimeframe] = useState<'weekly' | 'monthly'>('monthly');
-  const [followerCount, setFollowerCount] = useState<number | string>('--');
-  const [followerTrend, setFollowerTrend] = useState<string>('0');
-  const [recentFollowers, setRecentFollowers] = useState<{ id: string; created_at: string }[]>([]);
 
   const avgPrepTime = useMemo(() => {
     const pendingCount = orders.filter(o => o.status === 'pending' || o.status === 'preparing').length;
-    // Base 12 mins + 1.5 mins per pending order, capped at 45
     return Math.min(12 + (pendingCount * 1.5), 45).toFixed(1);
   }, [orders]);
 
-  useEffect(() => {
-    const fetchFollowers = async () => {
-      if (!currentShop?.id) return;
+  const fetchFollowers = useCallback(async () => {
+    if (!currentShop?.id) return;
+    
+    try {
+      const { count, error } = await supabase
+        .from('shop_followers')
+        .select('*', { count: 'exact', head: true })
+        .eq('shop_id', currentShop.id);
       
-      try {
-        const { count, error } = await supabase
-          .from('shop_followers')
-          .select('*', { count: 'exact', head: true })
-          .eq('shop_id', currentShop.id);
-        
-        if (error) throw error;
-        setFollowerCount(count || 0);
+      if (error) throw error;
+      setFollowerCount(count || 0);
 
-        // Fetch followers from last 24h for trend
-        const yesterday = new Date();
-        yesterday.setHours(yesterday.getHours() - 24);
-        
-        const { count: recentCount, error: trendError } = await supabase
-          .from('shop_followers')
-          .select('*', { count: 'exact', head: true })
-          .eq('shop_id', currentShop.id)
-          .gt('created_at', yesterday.toISOString());
+      const yesterday = new Date();
+      yesterday.setHours(yesterday.getHours() - 24);
+      
+      const { count: recentCount, error: trendError } = await supabase
+        .from('shop_followers')
+        .select('*', { count: 'exact', head: true })
+        .eq('shop_id', currentShop.id)
+        .gt('created_at', yesterday.toISOString());
 
-        if (!trendError) {
-          setFollowerTrend(`+${recentCount || 0}`);
-        }
-
-        // Fetch last 5 followers
-        const { data: recentData, error: recentError } = await supabase
-          .from('shop_followers')
-          .select('id, created_at')
-          .eq('shop_id', currentShop.id)
-          .order('created_at', { ascending: false })
-          .limit(5);
-
-        if (!recentError && recentData) {
-          setRecentFollowers(recentData);
-        }
-      } catch (err) {
-        console.error('Error fetching followers:', err);
-        setFollowerCount(0);
+      if (!trendError) {
+        setFollowerTrend(`+${recentCount || 0}`);
       }
-    };
 
-    fetchFollowers();
+      const { data: recentData, error: recentError } = await supabase
+        .from('shop_followers')
+        .select('id, created_at')
+        .eq('shop_id', currentShop.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (!recentError && recentData) {
+        setRecentFollowers(recentData);
+      }
+    } catch (err) {
+      console.error('Error fetching followers:', err);
+      setFollowerCount(0);
+    }
   }, [currentShop?.id]);
+
+  useEffect(() => {
+    fetchFollowers();
+
+    // Real-time subscription for followers
+    if (!currentShop?.id) return;
+
+    const channel = supabase
+      .channel(`shop_followers_${currentShop.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'shop_followers',
+          filter: `shop_id=eq.${currentShop.id}`
+        },
+        () => {
+          fetchFollowers();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentShop?.id, fetchFollowers]);
   
   // Use real trend data from the last 7 or 30 days
   const trendData = useMemo(() => {
@@ -1628,6 +1669,36 @@ const DashboardOverview = ({
     return lastDays.map(d => ({ name: d.dayName, value: d.count }));
   }, [orders, timeframe]);
 
+  const exportWeeklyCSV = () => {
+    if (weeklyOrders.length === 0) {
+      toast.error('No orders this week to export');
+      return;
+    }
+
+    const headers = ['Order ID', 'Product', 'Price', 'Status', 'Date'];
+    const csvContent = [
+      headers.join(','),
+      ...weeklyOrders.map(o => [
+        o.id,
+        `"${o.product_name}"`,
+        o.total_price,
+        o.status,
+        new Date(o.created_at).toLocaleDateString()
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `localeats_weekly_report_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Weekly report exported successfully!');
+  };
+
   if (loading) {
     return (
       <div className="space-y-12">
@@ -1656,16 +1727,26 @@ const DashboardOverview = ({
             <h1 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Good morning, Chef!</h1>
             <p className="text-sm text-on-surface-variant font-medium">Here is what's happening in your kitchen today.</p>
           </div>
-          <button 
-            onClick={() => {
-              onRefresh();
-              toast.success('Dashboard refreshed');
-            }}
-            className="p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm self-end sm:self-auto"
-            title="Refresh Dashboard"
-          >
-            <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={exportWeeklyCSV}
+              className="p-3 bg-surface-container-low text-primary rounded-xl hover:bg-surface-container-high transition-colors shadow-sm self-end sm:self-auto flex items-center gap-2 text-xs font-bold"
+              title="Download Weekly Report"
+            >
+              <Download size={18} />
+              <span className="hidden sm:inline">Weekly Report</span>
+            </button>
+            <button 
+              onClick={() => {
+                onRefresh();
+                toast.success('Dashboard refreshed');
+              }}
+              className="p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm self-end sm:self-auto"
+              title="Refresh Dashboard"
+            >
+              <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
+            </button>
+          </div>
         </div>
       </motion.section>
 
@@ -1674,18 +1755,18 @@ const DashboardOverview = ({
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <StatCard 
-            title="Total Sales" 
-            value={`R ${totalSales.toLocaleString()}`} 
-            change="0%" 
+            title="Weekly Sales" 
+            value={`R ${weeklySales.toLocaleString()}`} 
+            change={`${((weeklySales / (totalSales || 1)) * 100).toFixed(1)}% of total`} 
             icon={TrendingUp} 
             colorClass="bg-primary-fixed text-primary"
           />
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
           <StatCard 
-            title="Orders" 
+            title="Weekly Orders" 
             value={orderCount} 
-            change="0%" 
+            change="This Week" 
             icon={ReceiptText} 
             colorClass="bg-orange-50 text-orange-700"
           />
@@ -2903,9 +2984,9 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
   );
 };
 
-const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => void, user: User | null }) => {
+const ShopProfile = ({ shop, onRefresh, user, onBack }: { shop: Shop, onRefresh: () => void, user: User | null, onBack: () => void }) => {
   const [loading, setLoading] = useState(false);
-  const [uploadingType, setUploadingType] = useState<'logo' | 'banner' | null>(null);
+  const [uploadingType, setUploadingType] = useState<'logo' | null>(null);
   const [formData, setFormData] = useState({
     name: shop.name || '',
     description: shop.description || '',
@@ -2917,7 +2998,6 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
     facebook: shop.facebook || '',
     whatsapp: shop.whatsapp || '',
     logo_url: shop.logo_url || '',
-    banner_url: shop.banner_url || '',
   });
 
   const [debouncedLocation, setDebouncedLocation] = useState(formData.location);
@@ -2948,7 +3028,7 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'banner') => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo') => {
     if (!user) {
       toast.error('Not authenticated');
       return;
@@ -2980,10 +3060,10 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
 
       setFormData(prev => ({
         ...prev,
-        [type === 'logo' ? 'logo_url' : 'banner_url']: publicUrl
+        logo_url: publicUrl
       }));
       
-      toast.success(`${type === 'logo' ? 'Logo' : 'Banner'} uploaded! Save to apply changes.`);
+      toast.success('Logo uploaded! Save to apply changes.');
     } catch (err: unknown) {
       toast.error(`Upload failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
@@ -2994,9 +3074,18 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
   return (
     <div className="space-y-6 md:space-y-8 pb-24 md:pb-20">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Storefront Profile</h2>
-          <p className="text-xs md:text-sm text-on-surface-variant font-medium">Customize how your shop appears to customers.</p>
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={onBack}
+            className="p-2 hover:bg-surface-container rounded-full transition-colors"
+            title="Back to Settings"
+          >
+            <ArrowLeft size={24} />
+          </button>
+          <div className="space-y-1">
+            <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Storefront Profile</h2>
+            <p className="text-xs md:text-sm text-on-surface-variant font-medium">Customize how your shop appears to customers.</p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <div className={cn(
@@ -3168,11 +3257,10 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
           <div className="bg-surface-container-lowest p-6 rounded-[2rem] border border-outline-variant/10 shadow-sm overflow-hidden hidden lg:block">
             <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 mb-4 ml-1">Live App Preview</h3>
             <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-surface-container-low mb-4 shadow-inner">
-              <img src={formData.banner_url || "https://picsum.photos/seed/banner/800/400"} className="w-full h-full object-cover" alt="Banner" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-primary/10" />
               <div className="absolute bottom-4 left-4 right-4 flex items-end gap-3">
                 <div className="w-12 h-12 rounded-xl bg-white p-1 shadow-lg shrink-0">
-                  <img src={formData.logo_url || "https://picsum.photos/seed/logo/200/200"} className="w-full h-full object-cover rounded-lg" alt="Logo" />
+                  <img src={formData.logo_url || "https://api.dicebear.com/7.x/initials/svg?seed=" + (formData.name || 'Shop')} className="w-full h-full object-cover rounded-lg" alt="Logo" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="text-white font-semibold text-lg leading-tight truncate">{formData.name || "Shop Name"}</h4>
@@ -3181,24 +3269,6 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
                     {formData.location || "Location"}
                   </div>
                 </div>
-                <button 
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const { error } = await supabase
-                        .from('shop_followers')
-                        .insert({ shop_id: shop.id, user_id: user?.id });
-                      if (error) throw error;
-                      toast.success('You are now following this shop! (Test)');
-                      onRefresh();
-                    } catch {
-                      toast.error('Failed to follow shop. (Test)');
-                    }
-                  }}
-                  className="px-3 py-1 bg-primary text-white text-[10px] font-bold rounded-full shadow-lg hover:bg-primary/90 transition-colors"
-                >
-                  Follow
-                </button>
               </div>
             </div>
             <p className="text-[10px] text-on-surface-variant text-center italic leading-tight">This is how your shop card appears to customers in the LocalEats app.</p>
@@ -3228,24 +3298,6 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
                     <input type="file" className="hidden" accept="image/*" onChange={e => handleImageUpload(e, 'logo')} disabled={!!uploadingType} />
                   </label>
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Banner Image</label>
-                <div className="relative group aspect-video rounded-2xl bg-surface-container-low overflow-hidden border-2 border-dashed border-outline-variant/20 flex items-center justify-center">
-                  {uploadingType === 'banner' ? (
-                    <RefreshCw className="animate-spin text-primary" size={32} />
-                  ) : formData.banner_url ? (
-                    <img src={formData.banner_url} className="w-full h-full object-cover" alt="Banner" />
-                  ) : (
-                    <ImageIcon size={24} className="text-on-surface-variant/20 md:w-8 md:h-8" />
-                  )}
-                  <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                    <Upload size={20} className="md:w-6 md:h-6" />
-                    <input type="file" className="hidden" accept="image/*" onChange={e => handleImageUpload(e, 'banner')} disabled={!!uploadingType} />
-                  </label>
-                </div>
-                <p className="text-[10px] text-on-surface-variant italic">Recommended: 1200x400px</p>
               </div>
             </div>
           </section>
@@ -4965,51 +5017,74 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
     }
   };
 
-  useEffect(() => {
-    const fetchFollowerInsights = async () => {
-      if (!currentShop?.id) return;
+  const fetchFollowerInsights = useCallback(async () => {
+    if (!currentShop?.id) return;
+    
+    try {
+      const { count, error } = await supabase
+        .from('shop_followers')
+        .select('*', { count: 'exact', head: true })
+        .eq('shop_id', currentShop.id);
       
-      try {
-        const { count, error } = await supabase
-          .from('shop_followers')
-          .select('*', { count: 'exact', head: true })
-          .eq('shop_id', currentShop.id);
-        
-        if (error) throw error;
-        setFollowerCount(count || 0);
+      if (error) throw error;
+      setFollowerCount(count || 0);
 
-        // Fetch follower trend for last 7 days
-        const last7Days = Array.from({ length: 7 }, (_, index) => {
-          const d = new Date();
-          d.setDate(d.getDate() - index);
-          return {
-            date: d.toISOString().split('T')[0],
-            dayName: format(d, 'EEE'),
-            count: 0
-          };
-        }).reverse();
+      // Fetch follower trend for last 7 days
+      const last7Days = Array.from({ length: 7 }, (_, index) => {
+        const d = new Date();
+        d.setDate(d.getDate() - index);
+        return {
+          date: d.toISOString().split('T')[0],
+          dayName: format(d, 'EEE'),
+          count: 0
+        };
+      }).reverse();
 
-        const { data: trendData, error: trendError } = await supabase
-          .from('shop_followers')
-          .select('created_at')
-          .eq('shop_id', currentShop.id)
-          .gt('created_at', last7Days[0].date);
+      const { data: trendData, error: trendError } = await supabase
+        .from('shop_followers')
+        .select('created_at')
+        .eq('shop_id', currentShop.id)
+        .gt('created_at', last7Days[0].date);
 
-        if (!trendError && trendData) {
-          trendData.forEach(f => {
-            const date = new Date(f.created_at).toISOString().split('T')[0];
-            const day = last7Days.find(d => d.date === date);
-            if (day) day.count++;
-          });
-          setFollowerTrendData(last7Days.map(d => ({ name: d.dayName, value: d.count })));
-        }
-      } catch (err) {
-        console.error('Error fetching follower insights:', err);
+      if (!trendError && trendData) {
+        trendData.forEach(f => {
+          const date = new Date(f.created_at).toISOString().split('T')[0];
+          const day = last7Days.find(d => d.date === date);
+          if (day) day.count++;
+        });
+        setFollowerTrendData(last7Days.map(d => ({ name: d.dayName, value: d.count })));
       }
-    };
-
-    fetchFollowerInsights();
+    } catch (err) {
+      console.error('Error fetching follower insights:', err);
+    }
   }, [currentShop?.id]);
+
+  useEffect(() => {
+    fetchFollowerInsights();
+
+    // Real-time subscription for followers in Insights
+    if (!currentShop?.id) return;
+
+    const channel = supabase
+      .channel(`insights_followers_${currentShop.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'shop_followers',
+          filter: `shop_id=eq.${currentShop.id}`
+        },
+        () => {
+          fetchFollowerInsights();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentShop?.id, fetchFollowerInsights]);
 
   const [selectedItemForTrend, setSelectedItemForTrend] = useState<string | null>(null);
 
@@ -6226,7 +6301,6 @@ export default function App() {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'storefront', label: 'Storefront', icon: Store },
     { id: 'menu', label: 'Menu', icon: UtensilsCrossed },
     { id: 'orders', label: 'Orders', icon: ReceiptText, badge: pendingOrdersCount > 0 ? pendingOrdersCount : null },
     { id: 'marketing', label: 'Marketing', icon: Zap },
@@ -6374,6 +6448,7 @@ export default function App() {
                   shop={currentShop} 
                   onRefresh={fetchShops} 
                   user={user}
+                  onBack={() => setActiveTab('settings')}
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6">
@@ -6418,6 +6493,22 @@ export default function App() {
                 </header>
                 
                 <div className="space-y-4">
+                  <button 
+                    onClick={() => setActiveTab('storefront')}
+                    className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                        <Store size={20} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface">Shop Profile</p>
+                        <p className="text-xs text-on-surface-variant">Update your shop details, location, and socials.</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-on-surface-variant/40" />
+                  </button>
+
                   <button 
                     onClick={() => setIsEditingProfile(true)}
                     className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
