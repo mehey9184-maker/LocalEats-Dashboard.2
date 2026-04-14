@@ -4535,7 +4535,7 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
         <p className="text-sm text-on-surface-variant font-medium">Grow {currentShop?.name || 'your business'} with powerful marketing tools.</p>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { title: 'Email Campaigns', desc: 'Send newsletters and promotions to your customers.', icon: Mail, color: 'bg-blue-500', type: 'email' },
           { title: 'SMS Marketing', desc: 'Reach customers directly on their phones.', icon: MessageSquare, color: 'bg-green-500', type: 'sms' },
@@ -4562,6 +4562,95 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
             </button>
           </motion.div>
         ))}
+
+        {/* Printable Flyer Card */}
+        <motion.div
+          whileHover={{ y: -5 }}
+          className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4 flex flex-col"
+        >
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white bg-primary">
+            <Printer size={24} />
+          </div>
+          <h3 className="text-lg font-bold text-on-surface">Printable Flyer</h3>
+          <p className="text-sm text-on-surface-variant leading-relaxed">Generate a branded PDF with a QR code linking to your shop.</p>
+          <button 
+            onClick={async () => {
+              if (!currentShop) return;
+              try {
+                const { jsPDF } = await import('jspdf');
+                const QRCode = (await import('qrcode')).default;
+                
+                const doc = new jsPDF({
+                  orientation: 'portrait',
+                  unit: 'mm',
+                  format: 'a4'
+                });
+
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const pageHeight = doc.internal.pageSize.getHeight();
+
+                // Background
+                doc.setFillColor(250, 249, 248);
+                doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
+                // Header / Brand
+                doc.setTextColor(255, 84, 0);
+                doc.setFontSize(40);
+                doc.setFont('helvetica', 'bold');
+                doc.text('LocalEats', pageWidth / 2, 40, { align: 'center' });
+
+                // Shop Name
+                doc.setTextColor(26, 28, 30);
+                doc.setFontSize(28);
+                doc.text(`Order from ${currentShop.name}`, pageWidth / 2, 65, { align: 'center' });
+
+                // Subtitle
+                doc.setFontSize(16);
+                doc.setTextColor(83, 67, 63);
+                doc.text('Scan the code below to view our menu', pageWidth / 2, 80, { align: 'center' });
+                doc.text('and follow us on the LocalEats app!', pageWidth / 2, 88, { align: 'center' });
+
+                // Generate QR Code
+                const shopUrl = `https://www.localeatssa.co.za/?shopId=${currentShop.id}`;
+                const qrDataUrl = await QRCode.toDataURL(shopUrl, {
+                  width: 400,
+                  margin: 2,
+                  color: {
+                    dark: '#1A1C1E',
+                    light: '#FFFFFF'
+                  }
+                });
+
+                // Add QR Code to PDF
+                const qrSize = 80;
+                const qrX = (pageWidth - qrSize) / 2;
+                const qrY = 110;
+                doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+
+                // Call to action below QR
+                doc.setFontSize(20);
+                doc.setTextColor(255, 84, 0);
+                doc.setFont('helvetica', 'bold');
+                doc.text('Skip the queue. Order ahead.', pageWidth / 2, 210, { align: 'center' });
+
+                // Footer
+                doc.setFontSize(12);
+                doc.setTextColor(133, 115, 110);
+                doc.setFont('helvetica', 'normal');
+                doc.text('Powered by LocalEats South Africa', pageWidth / 2, 280, { align: 'center' });
+
+                doc.save(`LocalEats_Promo_${currentShop.name.replace(/\s+/g, '_')}.pdf`);
+                toast.success('Flyer generated successfully!');
+              } catch (err) {
+                console.error(err);
+                toast.error('Failed to generate flyer.');
+              }
+            }}
+            className="w-full py-2 mt-auto bg-primary text-on-primary font-bold rounded-xl text-xs hover:bg-primary/90 transition-colors"
+          >
+            Generate PDF
+          </button>
+        </motion.div>
       </div>
 
       <div className="bg-primary/5 rounded-3xl p-8 border border-primary/10">
