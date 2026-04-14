@@ -82,6 +82,7 @@ import { format } from 'date-fns';
 import { createClient, User } from '@supabase/supabase-js';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { LocalEatsLogo } from './components/LocalEatsLogo';
 
 export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'completed';
 
@@ -1570,7 +1571,7 @@ const DashboardOverview = ({
     return Math.min(12 + (pendingCount * 1.5), 45).toFixed(1);
   }, [orders]);
 
-  const fetchFollowers = useCallback(async () => {
+  const fetchFollowers = async () => {
     if (!currentShop?.id) return;
     
     try {
@@ -1609,7 +1610,7 @@ const DashboardOverview = ({
       console.error('Error fetching followers:', err);
       setFollowerCount(0);
     }
-  }, [currentShop?.id]);
+  };
 
   useEffect(() => {
     fetchFollowers();
@@ -1636,7 +1637,7 @@ const DashboardOverview = ({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentShop?.id, fetchFollowers]);
+  }, [currentShop?.id]);
   
   // Use real trend data from the last 7 or 30 days
   const trendData = useMemo(() => {
@@ -2984,7 +2985,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
   );
 };
 
-const ShopProfile = ({ shop, onRefresh, user, onBack }: { shop: Shop, onRefresh: () => void, user: User | null, onBack: () => void }) => {
+const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => void, user: User | null }) => {
   const [loading, setLoading] = useState(false);
   const [uploadingType, setUploadingType] = useState<'logo' | null>(null);
   const [formData, setFormData] = useState({
@@ -3074,18 +3075,9 @@ const ShopProfile = ({ shop, onRefresh, user, onBack }: { shop: Shop, onRefresh:
   return (
     <div className="space-y-6 md:space-y-8 pb-24 md:pb-20">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={onBack}
-            className="p-2 hover:bg-surface-container rounded-full transition-colors"
-            title="Back to Settings"
-          >
-            <ArrowLeft size={24} />
-          </button>
-          <div className="space-y-1">
-            <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Storefront Profile</h2>
-            <p className="text-xs md:text-sm text-on-surface-variant font-medium">Customize how your shop appears to customers.</p>
-          </div>
+        <div className="space-y-1">
+          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Storefront Profile</h2>
+          <p className="text-xs md:text-sm text-on-surface-variant font-medium">Customize how your shop appears to customers.</p>
         </div>
         <div className="flex items-center gap-3">
           <div className={cn(
@@ -3269,6 +3261,24 @@ const ShopProfile = ({ shop, onRefresh, user, onBack }: { shop: Shop, onRefresh:
                     {formData.location || "Location"}
                   </div>
                 </div>
+                <button 
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const { error } = await supabase
+                        .from('shop_followers')
+                        .insert({ shop_id: shop.id, user_id: user?.id });
+                      if (error) throw error;
+                      toast.success('You are now following this shop! (Test)');
+                      onRefresh();
+                    } catch {
+                      toast.error('Failed to follow shop. (Test)');
+                    }
+                  }}
+                  className="px-3 py-1 bg-primary text-white text-[10px] font-bold rounded-full shadow-lg hover:bg-primary/90 transition-colors"
+                >
+                  Follow
+                </button>
               </div>
             </div>
             <p className="text-[10px] text-on-surface-variant text-center italic leading-tight">This is how your shop card appears to customers in the LocalEats app.</p>
@@ -5017,7 +5027,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
     }
   };
 
-  const fetchFollowerInsights = useCallback(async () => {
+  const fetchFollowerInsights = async () => {
     if (!currentShop?.id) return;
     
     try {
@@ -5057,7 +5067,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
     } catch (err) {
       console.error('Error fetching follower insights:', err);
     }
-  }, [currentShop?.id]);
+  };
 
   useEffect(() => {
     fetchFollowerInsights();
@@ -5084,7 +5094,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentShop?.id, fetchFollowerInsights]);
+  }, [currentShop?.id]);
 
   const [selectedItemForTrend, setSelectedItemForTrend] = useState<string | null>(null);
 
@@ -6329,8 +6339,7 @@ export default function App() {
         <header className="fixed top-0 w-full z-50 bg-white/70 dark:bg-surface-container-lowest/70 backdrop-blur-xl shadow-sm shadow-orange-900/5">
         <div className="flex justify-between items-center px-4 md:px-6 h-16 max-w-7xl mx-auto">
           <div className="flex items-center gap-2 md:gap-3">
-            <UtensilsCrossed className="text-primary w-5 h-5 md:w-6 md:h-6" />
-            <span className="font-headline tracking-tight font-bold text-xl md:text-2xl font-black text-on-surface">LocalEats</span>
+            <LocalEatsLogo width={160} height={42} />
           </div>
           
           <nav className="hidden md:flex items-center gap-8">
@@ -6448,7 +6457,6 @@ export default function App() {
                   shop={currentShop} 
                   onRefresh={fetchShops} 
                   user={user}
-                  onBack={() => setActiveTab('settings')}
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6">
@@ -6493,22 +6501,6 @@ export default function App() {
                 </header>
                 
                 <div className="space-y-4">
-                  <button 
-                    onClick={() => setActiveTab('storefront')}
-                    className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                        <Store size={20} />
-                      </div>
-                      <div className="text-left">
-                        <p className="font-bold text-on-surface">Shop Profile</p>
-                        <p className="text-xs text-on-surface-variant">Update your shop details, location, and socials.</p>
-                      </div>
-                    </div>
-                    <ChevronRight size={18} className="text-on-surface-variant/40" />
-                  </button>
-
                   <button 
                     onClick={() => setIsEditingProfile(true)}
                     className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"

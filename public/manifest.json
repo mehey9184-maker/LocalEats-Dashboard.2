@@ -1,0 +1,21 @@
+{
+  "short_name": "LocalEats",
+  "name": "LocalEats Merchant Dashboard",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#faf9f8",
+  "display": "standalone",
+  "theme_color": "#a73400",
+  "description": "Manage your LocalEats shop, orders, and marketing."
+}
