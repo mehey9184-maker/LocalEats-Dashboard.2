@@ -62,7 +62,8 @@ import {
   MessageCircle,
   Image as ImageIcon,
   Settings,
-  HelpCircle
+  HelpCircle,
+  QrCode
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -4596,6 +4597,26 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
           </motion.div>
         ))}
 
+        {/* QR Table Ordering Card */}
+        <motion.div
+          whileHover={{ y: -5 }}
+          className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4 flex flex-col"
+        >
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white bg-teal-500">
+            <QrCode size={24} />
+          </div>
+          <h3 className="text-lg font-bold text-on-surface">Table Ordering</h3>
+          <p className="text-sm text-on-surface-variant leading-relaxed">Generate QR codes for specific tables so dine-in customers can order.</p>
+          <button 
+            onClick={() => {
+              toast.info('Table Ordering coming soon!', { description: 'You will be able to generate unique QR codes for each table.' });
+            }}
+            className="w-full py-2 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors mt-auto"
+          >
+            Generate Codes
+          </button>
+        </motion.div>
+
         {/* Printable Flyer Card */}
         <motion.div
           whileHover={{ y: -5 }}
@@ -6678,6 +6699,22 @@ export default function App() {
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Edit Profile</p>
                         <p className="text-xs text-on-surface-variant">Change your name, email, and photo.</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-on-surface-variant/40" />
+                  </button>
+
+                  <button 
+                    onClick={() => toast.info('Staff Accounts coming soon!', { description: 'You will be able to add staff members with limited access (e.g., cannot view revenue or delete menu items).' })}
+                    className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
+                        <Users size={20} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface">Staff Accounts</p>
+                        <p className="text-xs text-on-surface-variant">Manage roles and permissions for your team.</p>
                       </div>
                     </div>
                     <ChevronRight size={18} className="text-on-surface-variant/40" />
