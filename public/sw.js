@@ -1,19 +1,22 @@
-const CACHE_NAME = 'localeats-v1';
-
-// We tell the browser which files to "save" for offline use
+// Force immediate activation
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+// Delete ALL caches when activated
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(['/', '/index.html']);
-    })
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          return caches.delete(cacheName);
+        })
+      );
+    }).then(() => self.clients.claim())
   );
 });
 
-// This helps the app load from the cache instead of the network
+// Pass-through fetch (NO CACHING) to ensure the app always loads the latest code
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
-  );
+  event.respondWith(fetch(event.request));
 });
