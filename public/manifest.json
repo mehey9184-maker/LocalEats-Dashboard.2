@@ -3,12 +3,6 @@
   "name": "LocalEats Merchant Dashboard",
   "icons": [
     {
-      "src": "logo.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "any maskable"
-    },
-    {
       "src": "icon.svg",
       "type": "image/svg+xml",
       "sizes": "any",
