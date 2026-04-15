@@ -1394,6 +1394,27 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
         <p className="text-sm text-on-surface-variant font-medium">View and manage your subscription payments and transactions.</p>
       </section>
 
+      <motion.div 
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-gradient-to-r from-emerald-500 to-teal-600 p-6 rounded-3xl text-white shadow-lg flex flex-col md:flex-row items-center justify-between gap-6"
+      >
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+            <Sparkles size={28} className="text-white" />
+          </div>
+          <div>
+            <h3 className="text-xl font-headline font-black tracking-tight">0% Commission - You Keep 100%</h3>
+            <p className="text-emerald-50 font-medium text-sm mt-1">
+              LocalEats is currently 100% free for all vendors. Grow your business without worrying about fees!
+            </p>
+          </div>
+        </div>
+        <div className="bg-white text-emerald-700 px-6 py-3 rounded-xl font-bold whitespace-nowrap shadow-sm">
+          Active Plan: Free Tier
+        </div>
+      </motion.div>
+
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="relative w-full md:w-96">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={18} />
@@ -2588,13 +2609,25 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
           transition={{ delay: 0.1 }}
           className="lg:col-span-5 space-y-8"
         >
-          <div className="space-y-2">
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight font-headline text-on-surface">
-              {editingItem ? 'Edit Your' : 'Curate Your'} <span className="text-primary italic">Offerings</span>
-            </h2>
-            <p className="text-sm text-on-surface-variant font-medium max-w-md">
-              {editingItem ? 'Update the details of your menu item below.' : 'Transform ingredients into inspiration. Define your signature dishes for the LocalEats community.'}
-            </p>
+          <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+            <div className="space-y-2">
+              <h2 className="text-2xl md:text-3xl font-bold tracking-tight font-headline text-on-surface">
+                {editingItem ? 'Edit Your' : 'Curate Your'} <span className="text-primary italic">Offerings</span>
+              </h2>
+              <p className="text-sm text-on-surface-variant font-medium max-w-md">
+                {editingItem ? 'Update the details of your menu item below.' : 'Transform ingredients into inspiration. Define your signature dishes for the LocalEats community.'}
+              </p>
+            </div>
+            {!editingItem && (
+              <button 
+                type="button"
+                onClick={() => toast.info('Bulk Import feature coming soon!', { description: 'You will be able to upload a CSV or use AI to scan your physical menu.' })}
+                className="px-4 py-2 bg-surface-container-high text-primary font-bold text-xs rounded-xl hover:bg-primary/10 transition-colors flex items-center gap-2 shadow-sm"
+              >
+                <Upload size={16} />
+                Bulk Import
+              </button>
+            )}
           </div>
           <div className="bg-surface-container-lowest p-8 rounded-[2rem] shadow-[0_8px_24px_-4px_rgba(167,52,0,0.06)] border border-outline-variant/10">
             <form className="space-y-6" onSubmit={handleSubmit}>
@@ -5857,6 +5890,9 @@ export default function App() {
   const [soundAlerts, setSoundAlerts] = useState(() => {
     return localStorage.getItem('soundAlerts') !== 'false';
   });
+  const [pushEnabled, setPushEnabled] = useState(() => {
+    return typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted';
+  });
   const prevPendingCount = useRef(0);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [kitchenMode, setKitchenMode] = useState(false);
@@ -6019,6 +6055,25 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('soundAlerts', soundAlerts.toString());
   }, [soundAlerts]);
+
+  const requestPushPermissions = async () => {
+    if (!('Notification' in window)) {
+      toast.error('This browser does not support push notifications.');
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        setPushEnabled(true);
+        toast.success('Push notifications enabled!');
+      } else {
+        setPushEnabled(false);
+        toast.error('Notification permission denied.');
+      }
+    } catch (error) {
+      console.error('Error requesting notification permission:', error);
+    }
+  };
 
   const playNotificationSound = () => {
     // Vibrate if supported
@@ -6452,6 +6507,28 @@ export default function App() {
           </nav>
 
           <div className="flex items-center gap-1 md:gap-4">
+            {currentShop && (
+              <button
+                onClick={async () => {
+                  const newStatus = !currentShop.is_active;
+                  const { error } = await supabase.from('shops').update({ is_active: newStatus }).eq('id', currentShop.id);
+                  if (!error) {
+                    toast.success(`Shop is now ${newStatus ? 'Open' : 'Closed'}`);
+                  } else {
+                    toast.error(`Failed to update status: ${error.message}`);
+                  }
+                }}
+                className={cn(
+                  "hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all border",
+                  currentShop.is_active 
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800" 
+                    : "bg-error/10 text-error border-error/20 hover:bg-error/20"
+                )}
+              >
+                <div className={cn("w-2 h-2 rounded-full", currentShop.is_active ? "bg-emerald-500 animate-pulse" : "bg-error")} />
+                {currentShop.is_active ? 'Accepting Orders' : 'Paused'}
+              </button>
+            )}
             <button 
               onClick={() => {
                 setSoundAlerts(!soundAlerts);
@@ -6609,7 +6686,7 @@ export default function App() {
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-primary/10 flex items-center justify-center text-primary">
-                        <Bell size={20} />
+                        <Volume2 size={20} />
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Sound Alerts</p>
@@ -6626,6 +6703,36 @@ export default function App() {
                       <div className={cn(
                         "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
                         soundAlerts ? "left-7" : "left-1"
+                      )} />
+                    </button>
+                  </div>
+
+                  <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-600">
+                        <Bell size={20} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface">Push Notifications</p>
+                        <p className="text-xs text-on-surface-variant">Get browser alerts even when the app is closed.</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        if (!pushEnabled) {
+                          requestPushPermissions();
+                        } else {
+                          toast.info("To disable push notifications, please change your browser settings.");
+                        }
+                      }}
+                      className={cn(
+                        "w-12 h-6 rounded-full transition-all relative",
+                        pushEnabled ? "bg-primary" : "bg-outline-variant"
+                      )}
+                    >
+                      <div className={cn(
+                        "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
+                        pushEnabled ? "left-7" : "left-1"
                       )} />
                     </button>
                   </div>
