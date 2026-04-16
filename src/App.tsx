@@ -15,6 +15,7 @@ import {
   Search,
   Printer,
   Bell,
+  BellOff,
   Phone,
   PauseCircle,
   ChevronRight,
@@ -55,8 +56,6 @@ import {
   Zap,
   ToggleLeft,
   ToggleRight,
-  Volume2,
-  VolumeX,
   Instagram,
   Facebook,
   MessageCircle,
@@ -83,6 +82,7 @@ import { format } from 'date-fns';
 import { createClient, User } from '@supabase/supabase-js';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import imageCompression from 'browser-image-compression';
 import { LocalEatsLogo } from './components/LocalEatsLogo';
 
 export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'completed';
@@ -468,7 +468,7 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
     setError(null);
 
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error: _error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -479,10 +479,9 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
         },
       });
 
-      if (error) {
-        setError(error.message);
-      } else if (data.user && data.session) {
-        // If auto-confirm is on or user is already verified
+      if (_error) {
+        setError(_error.message);
+      } else if (data && data.user && data.session) {
         onSuccess(email);
       } else {
         onSuccess(email);
@@ -934,7 +933,59 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
   });
 
   const [uploading, setUploading] = useState(false);
+  const [showMapPinConfirm, setShowMapPinConfirm] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpdateLocation = () => {
+    setIsLocating(true);
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by your browser');
+      setIsLocating(false);
+      setShowMapPinConfirm(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const data = await response.json();
+          
+          if (data && data.address) {
+            const city = data.address.city || data.address.town || data.address.village || data.address.suburb || '';
+            const state = data.address.state || '';
+            const road = data.address.road || '';
+            const houseNumber = data.address.house_number || '';
+            
+            const newLocation = [city, state].filter(Boolean).join(', ');
+            const newAddress = [houseNumber, road].filter(Boolean).join(' ');
+            
+            setFormData(prev => ({
+              ...prev,
+              location: newLocation || prev.location,
+              address: newAddress || prev.address
+            }));
+            toast.success('Location updated successfully!');
+          } else {
+            toast.error('Could not determine address from coordinates.');
+          }
+        } catch {
+          toast.error('Failed to get address details.');
+        } finally {
+          setIsLocating(false);
+          setShowMapPinConfirm(false);
+        }
+      },
+      () => {
+        toast.error('Failed to get your location. Please ensure location permissions are granted.');
+        setIsLocating(false);
+        setShowMapPinConfirm(false);
+      },
+      { enableHighAccuracy: true }
+    );
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -942,19 +993,23 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
 
     try {
       setUploading(true);
-      const fileExt = file.name.split('.').pop();
+      
+      const options = { maxSizeMB: 0.2, maxWidthOrHeight: 1024, useWebWorker: true };
+      const compressedFile = await imageCompression(file, options);
+      
+      const fileExt = compressedFile.name.split('.').pop() || 'jpg';
       const fileName = `${userId}-${Math.random()}.${fileExt}`;
       const filePath = `avatars/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, file);
+        .upload(filePath, compressedFile);
 
       if (uploadError) {
         // If 'avatars' bucket doesn't exist, try 'menu-images' as fallback
         const { error: fallbackError } = await supabase.storage
           .from('menu-images')
-          .upload(filePath, file);
+          .upload(filePath, compressedFile);
         
         if (fallbackError) throw uploadError;
         
@@ -1116,18 +1171,25 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
             </div>
           </div>
           
-          <div className="w-full h-32 rounded-xl overflow-hidden relative">
+          <div className="w-full h-32 rounded-xl overflow-hidden relative flex items-center justify-center">
             <img 
               alt="Map" 
-              className="w-full h-full object-cover grayscale opacity-60" 
+              className="absolute inset-0 w-full h-full object-cover grayscale opacity-60 pointer-events-none" 
               src="https://picsum.photos/seed/map/1200/800" 
             />
-            <div className="absolute inset-0 bg-primary/5"></div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="bg-surface-container-lowest/90 backdrop-blur-md px-4 py-2 rounded-full shadow-sm">
-                <span className="text-xs font-bold text-primary">UPDATE MAP PIN</span>
-              </div>
-            </div>
+            <div className="absolute inset-0 bg-primary/5 pointer-events-none"></div>
+            <button 
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowMapPinConfirm(true);
+              }}
+              className="relative z-30 bg-surface-container-lowest/90 backdrop-blur-md px-6 py-3 rounded-full shadow-md hover:scale-105 hover:bg-surface-container-lowest transition-all cursor-pointer flex items-center gap-2"
+            >
+              <MapPin size={16} className="text-primary" />
+              <span className="text-sm font-bold text-primary">UPDATE MAP PIN</span>
+            </button>
           </div>
         </section>
 
@@ -1215,6 +1277,56 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
           <p className="text-center mt-6 text-on-surface-variant text-sm font-medium">Last updated: Oct 24, 2023</p>
         </div>
       </main>
+
+      <AnimatePresence>
+        {showMapPinConfirm && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-surface-container-lowest rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl border border-outline-variant/20"
+            >
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-6 mx-auto">
+                <MapPin size={32} />
+              </div>
+              <h3 className="text-2xl font-headline font-bold text-on-surface text-center mb-3">Update Location?</h3>
+              <p className="text-on-surface-variant text-center mb-8 leading-relaxed">
+                This will request your device's current location and automatically update your shop's City/Region and Street Address. Are you sure you want to proceed?
+              </p>
+              
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setShowMapPinConfirm(false)}
+                  disabled={isLocating}
+                  className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-on-surface-variant bg-surface-container-high hover:bg-surface-container-highest transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleUpdateLocation}
+                  disabled={isLocating}
+                  className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-on-primary bg-primary hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isLocating ? (
+                    <>
+                      <RefreshCw className="animate-spin" size={18} />
+                      <span>Locating...</span>
+                    </>
+                  ) : (
+                    <span>Yes, Update</span>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -1887,7 +1999,7 @@ const DashboardOverview = ({
           
           <div className="h-64 w-full flex items-center justify-center" style={{ minHeight: '256px' }}>
             {orders.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%" aspect={2.5} minHeight={256}>
+              <ResponsiveContainer width="99%" height="100%" minHeight={256} minWidth={1}>
                 <BarChart data={trendData}>
                   <Bar dataKey="value" radius={[8, 8, 0, 0]}>
                     {trendData.map((entry, index) => (
@@ -2343,13 +2455,16 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
     let imageUrl = editingItem ? editingItem.image_url : 'https://picsum.photos/seed/food/400/300';
 
     if (imageFile) {
-      const fileExt = imageFile.name.split('.').pop();
+      const options = { maxSizeMB: 0.2, maxWidthOrHeight: 1024, useWebWorker: true };
+      const compressedFile = await imageCompression(imageFile, options);
+      
+      const fileExt = compressedFile.name.split('.').pop() || 'jpg';
       const fileName = `${Math.random()}.${fileExt}`;
       const filePath = `${user.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('menu-images')
-        .upload(filePath, imageFile);
+        .upload(filePath, compressedFile);
 
       if (uploadError) {
         console.error('Upload Error:', uploadError);
@@ -3022,6 +3137,8 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
 const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => void, user: User | null }) => {
   const [loading, setLoading] = useState(false);
   const [uploadingType, setUploadingType] = useState<'logo' | null>(null);
+  const [showMapPinConfirm, setShowMapPinConfirm] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const [formData, setFormData] = useState({
     name: shop.name || '',
     description: shop.description || '',
@@ -3043,6 +3160,54 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
     }, 1000);
     return () => clearTimeout(timer);
   }, [formData.location]);
+
+  const handleUpdateLocation = () => {
+    setIsLocating(true);
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by your browser');
+      setIsLocating(false);
+      setShowMapPinConfirm(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const data = await response.json();
+          
+          if (data && data.address) {
+            const city = data.address.city || data.address.town || data.address.village || data.address.suburb || '';
+            const state = data.address.state || '';
+            const road = data.address.road || '';
+            const houseNumber = data.address.house_number || '';
+            
+            const newLocation = [houseNumber, road, city, state].filter(Boolean).join(', ');
+            
+            setFormData(prev => ({
+              ...prev,
+              location: newLocation || prev.location
+            }));
+            toast.success('Location updated successfully!');
+          } else {
+            toast.error('Could not determine address from coordinates.');
+          }
+        } catch {
+          toast.error('Failed to get address details.');
+        } finally {
+          setIsLocating(false);
+          setShowMapPinConfirm(false);
+        }
+      },
+      () => {
+        toast.error('Failed to get your location. Please ensure location permissions are granted.');
+        setIsLocating(false);
+        setShowMapPinConfirm(false);
+      },
+      { enableHighAccuracy: true }
+    );
+  };
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3074,13 +3239,16 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
 
     setUploadingType(type);
     try {
-      const fileExt = file.name.split('.').pop();
+      const options = { maxSizeMB: 0.2, maxWidthOrHeight: 1024, useWebWorker: true };
+      const compressedFile = await imageCompression(file, options);
+      
+      const fileExt = compressedFile.name.split('.').pop() || 'jpg';
       const fileName = `${shop.id}-${type}-${Math.random()}.${fileExt}`;
       const filePath = `${user.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('shop-assets')
-        .upload(filePath, file);
+        .upload(filePath, compressedFile);
 
       if (uploadError) {
         if (uploadError.message.includes('bucket not found')) {
@@ -3167,7 +3335,17 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Location Address</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Location Address</label>
+                <button 
+                  type="button"
+                  onClick={() => setShowMapPinConfirm(true)}
+                  className="text-[10px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 px-2 py-1 rounded-full transition-colors flex items-center gap-1"
+                >
+                  <MapPin size={12} />
+                  Update Map Pin
+                </button>
+              </div>
               <div className="relative">
                 <MapPin 
                   size={16} 
@@ -3356,6 +3534,56 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
           </button>
         </div>
       </form>
+
+      <AnimatePresence>
+        {showMapPinConfirm && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-surface-container-lowest rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl border border-outline-variant/20"
+            >
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-6 mx-auto">
+                <MapPin size={32} />
+              </div>
+              <h3 className="text-2xl font-headline font-bold text-on-surface text-center mb-3">Update Location?</h3>
+              <p className="text-on-surface-variant text-center mb-8 leading-relaxed">
+                This will request your device's current location and automatically update your shop's address. Are you sure you want to proceed?
+              </p>
+              
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setShowMapPinConfirm(false)}
+                  disabled={isLocating}
+                  className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-on-surface-variant bg-surface-container-high hover:bg-surface-container-highest transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleUpdateLocation}
+                  disabled={isLocating}
+                  className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-on-primary bg-primary hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isLocating ? (
+                    <>
+                      <RefreshCw className="animate-spin" size={18} />
+                      <span>Locating...</span>
+                    </>
+                  ) : (
+                    <span>Yes, Update</span>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -5497,7 +5725,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
         >
           <h2 className="text-sm font-semibold uppercase tracking-widest text-on-surface-variant/60 mb-6">Revenue by Category</h2>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%" minHeight={256}>
+            <ResponsiveContainer width="99%" height="100%" minHeight={256} minWidth={1}>
               <PieChart>
                 <Pie
                   data={pieData}
@@ -5675,7 +5903,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
           
           {selectedItemForTrend ? (
             <div className="h-48 w-full">
-              <ResponsiveContainer width="100%" height="100%" minHeight={192}>
+              <ResponsiveContainer width="99%" height="100%" minHeight={192} minWidth={1}>
                 <AreaChart data={itemTrendData}>
                   <defs>
                     <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
@@ -5724,7 +5952,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
           </div>
           
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%" minHeight={256}>
+            <ResponsiveContainer width="99%" height="100%" minHeight={256} minWidth={1}>
               <AreaChart data={followerTrendData}>
                 <defs>
                   <linearGradient id="colorFollowers" x1="0" y1="0" x2="0" y2="1">
@@ -5898,6 +6126,34 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showHelp, setShowHelp] = useState(false);
+  
+  // Version Polling for Updates
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [lastCheckTime, setLastCheckTime] = useState<string>('');
+  const currentBuildVersion = useRef(8); // Moving to v4.3 tracker
+
+  useEffect(() => {
+    const checkVersion = async () => {
+      setLastCheckTime(new Date().toLocaleTimeString());
+      try {
+        const response = await fetch('/version.json?t=' + Date.now());
+        if (response.ok) {
+          const data = await response.json();
+          if (data.version > currentBuildVersion.current) {
+            setUpdateAvailable(true);
+          }
+        }
+      } catch {
+        // Quiet fail
+      }
+    };
+
+    // Check once on mount and then every 30s
+    checkVersion();
+    const interval = setInterval(checkVersion, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -6505,6 +6761,7 @@ export default function App() {
         <div className="flex justify-between items-center px-4 md:px-6 h-16 max-w-7xl mx-auto">
           <div className="flex items-center gap-2 md:gap-3">
             <LocalEatsLogo width={160} height={42} />
+            <span className="text-[8px] font-bold text-primary/20 mt-4">v4.3</span>
           </div>
           
           <nav className="hidden md:flex items-center gap-8">
@@ -6561,7 +6818,7 @@ export default function App() {
               )}
               title={soundAlerts ? "Mute Order Alerts" : "Unmute Order Alerts"}
             >
-              {soundAlerts ? <Volume2 size={18} className="md:w-5 md:h-5" /> : <VolumeX size={18} className="md:w-5 md:h-5" />}
+              {soundAlerts ? <Bell size={18} className="md:w-5 md:h-5" /> : <BellOff size={18} className="md:w-5 md:h-5" />}
             </button>
             <button 
               onClick={() => setDarkMode(!darkMode)}
@@ -6638,31 +6895,6 @@ export default function App() {
                 }} 
               />
             )}
-            {activeTab === 'storefront' && (
-              currentShop ? (
-                <ShopProfile 
-                  shop={currentShop} 
-                  onRefresh={fetchShops} 
-                  user={user}
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center py-20 px-6 text-center space-y-6">
-                  <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center text-primary">
-                    <Store size={48} />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-2xl font-headline font-bold text-on-surface">No Shop Found</h3>
-                    <p className="text-on-surface-variant max-w-xs mx-auto">You haven't created a shop yet. Create your first shop to start managing your storefront.</p>
-                  </div>
-                  <button 
-                    onClick={() => setActiveTab('dashboard')}
-                    className="px-8 py-3 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] active:scale-95 transition-all"
-                  >
-                    Go to Dashboard
-                  </button>
-                </div>
-              )
-            )}
             {activeTab === 'orders' && (
               <OrdersManagement 
                 orders={orders} 
@@ -6683,11 +6915,33 @@ export default function App() {
             {activeTab === 'settings' && (
               <div className="max-w-2xl mx-auto space-y-8">
                 <header className="space-y-1">
-                  <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Settings</h2>
-                  <p className="text-sm text-on-surface-variant font-medium">Manage your account and app preferences.</p>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Settings</h2>
+                    <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">v2.1</span>
+                  </div>
+                  <p className="text-sm text-on-surface-variant font-medium">Manage your account and storefront preferences.</p>
                 </header>
                 
                 <div className="space-y-4">
+                  <button 
+                    onClick={() => setActiveTab('storefront')}
+                    className="w-full flex items-center justify-between p-5 bg-primary/5 hover:bg-primary/10 rounded-2xl transition-all border border-primary/20 group shadow-sm shadow-primary/5"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                        <Store size={20} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface">Storefront Profile</p>
+                        <p className="text-xs text-on-surface-variant">Update your shop name, logo, and cover photo.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full">New Location</span>
+                      <ChevronRight size={18} className="text-on-surface-variant/40" />
+                    </div>
+                  </button>
+
                   <button 
                     onClick={() => setIsEditingProfile(true)}
                     className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
@@ -6723,7 +6977,7 @@ export default function App() {
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-primary/10 flex items-center justify-center text-primary">
-                        <Volume2 size={20} />
+                        <Bell size={20} />
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Sound Alerts</p>
@@ -6814,6 +7068,31 @@ export default function App() {
                     <ChevronRight size={18} className="text-error/40" />
                   </button>
                 </div>
+              </div>
+            )}
+            {activeTab === 'storefront' && (
+              <div className="max-w-3xl mx-auto">
+                <button 
+                  onClick={() => setActiveTab('settings')}
+                  className="mb-6 flex items-center gap-2 text-sm font-bold text-on-surface-variant hover:text-primary transition-colors"
+                >
+                  <ChevronRight className="rotate-180" size={16} />
+                  Back to Settings
+                </button>
+                {currentShop ? (
+                  <ShopProfile 
+                    shop={currentShop} 
+                    onRefresh={fetchShops} 
+                    user={user}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+                    <div className="w-16 h-16 bg-surface-container-high rounded-full flex items-center justify-center">
+                      <Store className="text-on-surface-variant" size={32} />
+                    </div>
+                    <p className="text-on-surface-variant font-medium">Please create a shop first to edit your storefront.</p>
+                  </div>
+                )}
               </div>
             )}
           </motion.div>
@@ -6964,6 +7243,34 @@ export default function App() {
           </div>
         </nav>
       )}
+
+      {/* Update Notifier Floating Button */}
+      <AnimatePresence>
+        {updateAvailable && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.8 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="fixed bottom-24 md:bottom-8 left-6 z-[60]"
+          >
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-[#FF5400] text-white px-5 py-3 rounded-full shadow-2xl shadow-orange-500/60 flex items-center gap-3 hover:scale-105 active:scale-95 border-2 border-white/20 transition-all font-body animate-pulse ring-4 ring-orange-500/20"
+            >
+              <div className="relative">
+                <RefreshCw size={18} className="animate-spin" />
+                <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                </span>
+              </div>
+              <div className="text-left">
+                <p className="text-[10px] font-black uppercase tracking-widest opacity-80 leading-none mb-0.5">New update (Checked {lastCheckTime})</p>
+                <p className="text-sm font-bold leading-none">Refresh to See Changes</p>
+              </div>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

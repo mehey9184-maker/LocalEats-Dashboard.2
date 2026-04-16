@@ -4,11 +4,11 @@
   --font-headline: "Quicksand", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-body: "Nunito", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   
-  --color-primary: #0866ff; /* Facebook Blue */
-  --color-primary-container: #e7f3ff;
-  --color-primary-light: #f0f2f5;
+  --color-primary: #FF5400; /* LocalEats Orange */
+  --color-primary-container: #fff4f0;
+  --color-primary-light: #fff8f5;
   --color-on-primary: #ffffff;
-  --color-on-primary-container: #050505;
+  --color-on-primary-container: #411100;
   
   --color-tertiary: #006a6a;
   --color-on-tertiary: #ffffff;
