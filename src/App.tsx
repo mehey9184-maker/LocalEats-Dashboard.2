@@ -130,9 +130,12 @@ export interface Order {
   shop_id: number;
   user_id: string;
   product_name: string;
+  product_variant?: string;
   total_price: number;
   price?: number; // Database field
   status: OrderStatus;
+  payment_method?: string;
+  country?: string;
   created_at: string;
   customer_name: string;
   phone: string;
@@ -1075,15 +1078,21 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
             <div className="w-32 h-32 rounded-full overflow-hidden ring-4 ring-surface-container-lowest shadow-lg bg-surface-container-low flex items-center justify-center">
               {uploading ? (
                 <RefreshCw className="animate-spin text-primary" size={32} />
-              ) : (
+              ) : formData.avatarUrl ? (
                 <img 
                   alt="User Profile" 
                   className="w-full h-full object-cover" 
-                  src={formData.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.email || 'default'}`} 
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.email || 'default'}`;
-                  }}
+                  src={formData.avatarUrl} 
                 />
+              ) : (
+                <div 
+                  className="w-full h-full flex items-center justify-center bg-primary"
+                  style={{
+                    background: 'radial-gradient(circle at 30% 30%, #ff9d4d 0%, #f58220 100%)'
+                  }}
+                >
+                  <UserIcon size={64} className="text-white drop-shadow-md" strokeWidth={1.5} />
+                </div>
               )}
             </div>
             <input 
@@ -2078,8 +2087,12 @@ const DashboardOverview = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {menuItems.filter(i => (i.stock_quantity || 0) < 5).map(item => (
               <div key={item.id} className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-4 group hover:border-error/30 transition-colors">
-                <div className="w-12 h-12 rounded-xl overflow-hidden bg-surface-container">
-                  <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                <div className="w-12 h-12 rounded-xl overflow-hidden bg-surface-container flex items-center justify-center">
+                  {!isPlaceholderImage(item.image_url) ? (
+                    <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <FoodPlaceholder size={20} />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="font-bold text-sm text-on-surface truncate">{item.name}</h4>
@@ -2452,7 +2465,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
     if (!selectedShopId) return;
 
     setUploading(true);
-    let imageUrl = editingItem ? editingItem.image_url : 'https://picsum.photos/seed/food/400/300';
+    let imageUrl = imagePreview; // Use the current preview state as the base
 
     if (imageFile) {
       const options = { maxSizeMB: 0.2, maxWidthOrHeight: 1024, useWebWorker: true };
@@ -2698,12 +2711,21 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
         className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-surface-container-low p-8 rounded-3xl border border-outline-variant/5"
       >
         <div className="flex items-center gap-6">
-          <div className="w-20 h-20 rounded-2xl overflow-hidden bg-white shadow-sm border border-outline-variant/10">
-            <img 
-              src={selectedShop?.logo_url || "https://picsum.photos/seed/shop/400/400"} 
-              alt={selectedShop?.name} 
-              className="w-full h-full object-cover"
-            />
+          <div className="w-20 h-20 rounded-2xl overflow-hidden bg-white shadow-sm border border-outline-variant/10 flex items-center justify-center">
+            {!isPlaceholderImage(selectedShop?.logo_url) ? (
+              <img 
+                src={selectedShop!.logo_url!} 
+                alt={selectedShop?.name} 
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div 
+                className="w-full h-full flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #ff9d42 0%, #f58220 100%)' }}
+              >
+                <Store size={32} className="text-white drop-shadow-sm" strokeWidth={1.5} />
+              </div>
+            )}
           </div>
           <div>
             <h2 className="text-2xl font-headline font-bold text-on-surface">{selectedShop?.name || "Your Shop"}</h2>
@@ -2808,18 +2830,22 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
               <div className="space-y-1.5">
                 <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">Item Image</label>
                 <div className="flex flex-col gap-4">
-                  {imagePreview && (
-                    <div className="relative w-full h-40 rounded-xl overflow-hidden border border-outline-variant/10">
-                      <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                  <div className="relative w-full h-40 rounded-2xl overflow-hidden border border-outline-variant/10 shadow-inner">
+                    {!isPlaceholderImage(imagePreview) ? (
+                      <img src={imagePreview!} alt="Preview" className="w-full h-full object-cover animate-in fade-in duration-500" />
+                    ) : (
+                      <FoodPlaceholder size={48} />
+                    )}
+                    {imagePreview && (
                       <button 
                         type="button"
                         onClick={() => { setImageFile(null); setImagePreview(null); }}
-                        className="absolute top-2 right-2 p-1.5 bg-error/90 text-on-error rounded-full shadow-sm hover:bg-error transition-colors"
+                        className="absolute top-3 right-3 p-2 bg-error/90 text-on-error rounded-full shadow-lg hover:bg-error transition-all hover:scale-110 active:scale-95"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={16} />
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                   <div className="flex gap-2">
                     <label className={cn(
                       "flex-1 flex flex-col items-center justify-center h-32 border-2 border-dashed rounded-xl cursor-pointer transition-all",
@@ -3065,8 +3091,12 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
                 >
                   {selectedItems.includes(item.id) ? <CheckSquare size={16} /> : <Square size={16} />}
                 </button>
-                <div className="relative h-40 md:h-48">
-                  <img className={cn("w-full h-full object-cover", !item.is_available && "grayscale opacity-50")} src={item.image_url} alt={item.name} />
+                <div className="relative h-40 md:h-48 bg-surface-container flex items-center justify-center overflow-hidden">
+                  {!isPlaceholderImage(item.image_url) ? (
+                    <img className={cn("w-full h-full object-cover", !item.is_available && "grayscale opacity-50")} src={item.image_url} alt={item.name} />
+                  ) : (
+                    <FoodPlaceholder size={48} />
+                  )}
                   {!item.is_available && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                       <span className="bg-error text-white px-3 md:px-4 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-widest shadow-lg">Out of Stock</span>
@@ -3463,8 +3493,17 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
             <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-surface-container-low mb-4 shadow-inner">
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-primary/10" />
               <div className="absolute bottom-4 left-4 right-4 flex items-end gap-3">
-                <div className="w-12 h-12 rounded-xl bg-white p-1 shadow-lg shrink-0">
-                  <img src={formData.logo_url || "https://api.dicebear.com/7.x/initials/svg?seed=" + (formData.name || 'Shop')} className="w-full h-full object-cover rounded-lg" alt="Logo" />
+                <div className="w-12 h-12 rounded-xl bg-white shadow-lg shrink-0 overflow-hidden flex items-center justify-center">
+                  {!isPlaceholderImage(formData.logo_url) ? (
+                    <img src={formData.logo_url!} className="w-full h-full object-cover" alt="Logo" />
+                  ) : (
+                    <div 
+                      className="w-full h-full flex items-center justify-center"
+                      style={{ background: 'linear-gradient(135deg, #ff9d42 0%, #f58220 100%)' }}
+                    >
+                      <Store size={20} className="text-white" strokeWidth={2} />
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="text-white font-semibold text-lg leading-tight truncate">{formData.name || "Shop Name"}</h4>
@@ -3509,10 +3548,15 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
                   <div className="w-16 md:w-24 h-16 md:h-24 rounded-2xl bg-surface-container-low overflow-hidden border-2 border-dashed border-outline-variant/20 flex items-center justify-center">
                     {uploadingType === 'logo' ? (
                       <RefreshCw className="animate-spin text-primary" size={24} />
-                    ) : formData.logo_url ? (
-                      <img src={formData.logo_url} className="w-full h-full object-cover" alt="Logo" />
+                    ) : !isPlaceholderImage(formData.logo_url) ? (
+                      <img src={formData.logo_url!} className="w-full h-full object-cover" alt="Logo" />
                     ) : (
-                      <Store size={24} className="text-on-surface-variant/20 md:w-8 md:h-8" />
+                      <div 
+                        className="w-full h-full flex items-center justify-center"
+                        style={{ background: 'linear-gradient(135deg, #ff9d42 0%, #f58220 100%)' }}
+                      >
+                        <Store size={32} className="text-white drop-shadow-md" strokeWidth={1.5} />
+                      </div>
                     )}
                   </div>
                   <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
@@ -4399,12 +4443,16 @@ const OrdersManagement = ({
                             <p className="text-sm font-semibold text-on-surface">{order.phone || 'Not provided'}</p>
                           </div>
                           <div className="space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Payment Method</span>
+                            <p className="text-sm font-semibold text-primary">{order.payment_method || 'Cash on Delivery'}</p>
+                          </div>
+                          <div className="space-y-1">
                             <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Email Address</span>
                             <p className="text-sm font-semibold text-on-surface">{order.email || 'Not provided'}</p>
                           </div>
                           <div className="space-y-1 sm:col-span-2">
                             <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Delivery Address</span>
-                            <p className="text-sm font-semibold text-on-surface">{order.address}, {order.city}</p>
+                            <p className="text-sm font-semibold text-on-surface">{order.address}, {order.city}{order.country ? `, ${order.country}` : ''}</p>
                           </div>
                           {order.accepted_at && (
                             <div className="space-y-1">
@@ -5571,10 +5619,20 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
     toast.success('Report exported successfully!');
   };
 
-  const topSellers = Object.entries(productCounts)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 4);
+  const topSellers = useMemo(() => {
+    return Object.entries(productCounts)
+      .map(([name, count]) => {
+        const menuItem = menuItems.find(mi => mi.name === name);
+        return { 
+          name, 
+          count, 
+          image_url: menuItem?.image_url,
+          id: menuItem?.id
+        };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4);
+  }, [productCounts, menuItems]);
 
   // Detailed Menu Analytics
   const menuAnalytics = useMemo(() => {
@@ -5862,8 +5920,12 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
                 className="flex items-center justify-between group cursor-pointer p-2 -m-2 rounded-xl hover:bg-surface-container-low transition-colors"
               >
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-xl overflow-hidden bg-surface-container">
-                    <img className="w-full h-full object-cover group-hover:scale-110 transition-transform" src={`https://picsum.photos/seed/${item.id}/400/300`} alt={item.name} referrerPolicy="no-referrer" />
+                  <div className="w-14 h-14 rounded-xl overflow-hidden bg-surface-container flex items-center justify-center">
+                    {!isPlaceholderImage(item.image_url) ? (
+                      <img className="w-full h-full object-cover group-hover:scale-110 transition-transform" src={item.image_url} alt={item.name} />
+                    ) : (
+                      <FoodPlaceholder size={24} />
+                    )}
                   </div>
                   <div>
                     <h4 className="font-semibold text-on-surface">{item.name}</h4>
@@ -6041,8 +6103,12 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
                   <tr key={item.id} className="border-b border-outline-variant/5 hover:bg-surface-container-low/50 transition-colors group">
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-surface-container">
-                          <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-surface-container flex items-center justify-center">
+                          {!isPlaceholderImage(item.image_url) ? (
+                            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <FoodPlaceholder size={16} />
+                          )}
                         </div>
                         <span className="font-bold text-sm text-on-surface">{item.name}</span>
                       </div>
@@ -6123,6 +6189,39 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
 
 // --- Main App ---
 
+const isPlaceholderImage = (url: string | null | undefined) => {
+  if (!url) return true;
+  return url.includes('picsum.photos') || url.includes('dicebear.com');
+};
+
+const FoodPlaceholder = ({ size = 20, className = "" }: { size?: number, className?: string }) => (
+  <div 
+    className={cn("w-full h-full flex flex-col items-center justify-center relative overflow-hidden", className)}
+    style={{ background: 'linear-gradient(135deg, #ff9d42 0%, #f58220 100%)' }}
+  >
+    {/* Glassmorphism accents */}
+    <div className="absolute top-0 right-0 w-full h-full bg-white/10" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 30%, 0 80%)' }} />
+    <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-black/5 rounded-full blur-xl" />
+    
+    <div className="relative flex flex-col items-center justify-center gap-1">
+      <div className="relative">
+        <UtensilsCrossed 
+          size={size} 
+          className="text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.2)]" 
+          strokeWidth={2} 
+        />
+        {/* Subtle sparkle for 3D effect */}
+        <div className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-white rounded-full animate-pulse blur-[1px]" />
+      </div>
+      {size > 30 && (
+        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50 drop-shadow-sm mt-1">
+          LocalEats
+        </span>
+      )}
+    </div>
+  </div>
+);
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showHelp, setShowHelp] = useState(false);
@@ -6130,7 +6229,7 @@ export default function App() {
   // Version Polling for Updates
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [lastCheckTime, setLastCheckTime] = useState<string>('');
-  const currentBuildVersion = useRef(8); // Moving to v4.3 tracker
+  const currentBuildVersion = useRef(12); // Moving to v4.7 tracker
 
   useEffect(() => {
     const checkVersion = async () => {
@@ -6761,7 +6860,7 @@ export default function App() {
         <div className="flex justify-between items-center px-4 md:px-6 h-16 max-w-7xl mx-auto">
           <div className="flex items-center gap-2 md:gap-3">
             <LocalEatsLogo width={160} height={42} />
-            <span className="text-[8px] font-bold text-primary/20 mt-4">v4.3</span>
+            <span className="text-[8px] font-bold text-primary/20 mt-4">v4.7</span>
           </div>
           
           <nav className="hidden md:flex items-center gap-8">
@@ -6841,16 +6940,24 @@ export default function App() {
             >
               <LogOut size={18} className="md:w-5 md:h-5" />
             </button>
-            <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary-fixed flex items-center justify-center overflow-hidden border-2 border-primary/10">
-              <img 
-                alt="Profile" 
-                className="w-full h-full object-cover" 
-                src={user?.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email || 'default'}`} 
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email || 'default'}`;
-                }}
-                referrerPolicy="no-referrer"
-              />
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center overflow-hidden border-2 border-primary/10 shadow-sm">
+              {user?.user_metadata?.avatar_url ? (
+                <img 
+                  alt="Profile" 
+                  className="w-full h-full object-cover" 
+                  src={user.user_metadata.avatar_url} 
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div 
+                  className="w-full h-full flex items-center justify-center bg-primary"
+                  style={{
+                    background: 'radial-gradient(circle at 30% 30%, #ff9d4d 0%, #f58220 100%)'
+                  }}
+                >
+                  <UserIcon size={20} className="text-white drop-shadow-sm" strokeWidth={2.5} />
+                </div>
+              )}
             </div>
           </div>
         </div>
