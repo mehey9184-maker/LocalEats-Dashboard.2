@@ -27,5 +27,11 @@ console.log('Supabase initialized with URL:', supabaseUrl ? `${supabaseUrl.subst
 
 export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
 
+export const getSupabase = () => supabase;
+
+export const isSupabaseMocked = () => {
+  return !supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder') || supabaseAnonKey === 'your-anon-key';
+};
+
 // The official dashboard URL for LocalEats South Africa
 export const DASHBOARD_URL = 'https://dashboard.localeatssa.co.za';

@@ -1,40 +1,67 @@
-export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'completed';
+export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+export type DeliveryStatus = 'finding_rider' | 'accepted' | 'picked_up' | 'delivered' | 'cancelled';
+export type UserVehicle = 'Road' | 'MTB' | 'E-Bike' | 'Motor';
 
 export interface Shop {
-  id: number;
+  id: string | number;
   name: string;
-  logo_url: string | null;
-  description: string;
-  location: string;
-  category: string;
-  is_active: boolean;
-  created_at: string;
+  logo_url?: string | null;
+  description?: string;
+  location?: string;
+  category?: string;
   owner_id: string | null;
   rating?: number;
 }
 
-export interface MenuItem {
-  id: number;
-  shop_id: number;
+export interface RiderProfile {
+  id: string;
   name: string;
-  price: number;
-  image_url: string;
-  is_available: boolean;
-  created_at: string;
-  // Note: category and description were not in the user's CREATE TABLE for menu_items
-  // but were used in the app logic. Keeping them as optional for now.
-  category?: string;
-  description?: string;
-  stock_quantity?: number;
+  full_name: string;
+  phone: string;
+  is_online: boolean;
+  vehicle_type: UserVehicle;
+  verification_status: 'verified' | 'pending' | 'rejected';
+  rating: number;
+  total_earnings: number;
+  total_deliveries: number;
+  active_points: number;
+  photo_url?: string;
+  current_latitude?: number;
+  current_longitude?: number;
+  updated_at: string;
 }
 
-export interface Order {
-  id: number;
-  shop_id: number;
-  user_id: string;
-  product_name: string;
+export interface DeliveryOrder {
+  id: string;
+  customer_name: string;
+  restaurant_name?: string;
+  shop_id: string | number;
+  address: string;
+  city: string;
   total_price: number;
+  delivery_fee: number;
+  delivery_status: DeliveryStatus;
   status: OrderStatus;
+  order_type: 'delivery' | 'pickup';
+  rider_id?: string | null;
+  items?: string[];
+  product_name?: string;
   created_at: string;
-  is_returning?: boolean;
+  updated_at: string;
+  distance_km?: number;
+  phone?: string;
+  merchant_rating?: number;
+  merchant_feedback?: string;
+  rider?: RiderProfile;
+  rider_dist_to_shop?: number;
+  price?: number; // legacy compat
+}
+
+export interface ShopConnection {
+  id: string;
+  rider_id: string;
+  shop_id: string | number;
+  shop_name?: string;
+  expires_at: string;
+  created_at: string;
 }
