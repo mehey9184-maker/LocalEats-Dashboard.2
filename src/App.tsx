@@ -157,7 +157,7 @@ export interface Order {
   delivery_fee?: number;
   rider_id?: string;
   restaurant_name?: string;
-  delivery_status?: 'finding_rider' | 'accepted' | 'picked_up' | 'delivered';
+  delivery_status?: 'finding_rider' | 'accepted' | 'picked_up' | 'delivered' | 'cancelled';
   order_type?: 'delivery' | 'collection';
 }
 
@@ -2153,7 +2153,8 @@ const DashboardOverview = ({
           <h3 className="text-lg font-headline font-bold text-on-surface px-2">Quick Actions</h3>
           {[
             { id: 'menu', title: 'Update Menu', sub: 'Modify items & pricing', icon: UtensilsCrossed, color: 'bg-primary-fixed text-primary' },
-            { id: 'insights', title: 'View Recent Reviews', sub: '12 new responses today', icon: Star, color: 'bg-secondary-fixed text-on-secondary-fixed' },
+            { id: 'riders', title: 'Rider Fleet', sub: 'Manage pairings & QR codes', icon: Bike, color: 'bg-blue-50 text-blue-600' },
+            { id: 'insights', title: 'Performance Insights', sub: 'View trends & analytics', icon: TrendingUp, color: 'bg-secondary-fixed text-on-secondary-fixed' },
             { id: 'orders', title: 'Kitchen Settings', sub: 'System & app preferences', icon: ReceiptText, color: 'bg-zinc-100 text-zinc-600' }
           ].map((action, i) => (
             <motion.button 
@@ -4173,7 +4174,7 @@ const OrdersManagement = ({
     toast.success('Orders exported as JSON!');
   };
 
-  const orderStatuses: (OrderStatus | 'All')[] = ['All', 'pending', 'preparing', 'ready', 'completed', 'cancelled'];
+  const orderStatuses: (OrderStatus | 'All')[] = ['All', 'pending', 'accepted', 'preparing', 'ready', 'completed', 'cancelled'];
 
   if (loading) {
     return (
@@ -6818,7 +6819,14 @@ const RiderManagement = ({
               <Bike size={32} />
             </div>
             <p className="text-on-surface-variant font-bold text-lg leading-tight mb-1">No active rider connections</p>
-            <p className="text-sm text-on-surface-variant/60 max-w-xs mx-auto">Generate a pairing code to allow riders to join your delivery network.</p>
+            <p className="text-sm text-on-surface-variant/60 max-w-xs mx-auto mb-6">Generate a pairing code to allow riders to join your delivery network.</p>
+            <button
+              onClick={generateCode}
+              className="flex items-center gap-2 px-8 py-4 bg-primary text-on-primary rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/20 mx-auto"
+            >
+              <Plus size={20} />
+              Generate First Pairing Code
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -7242,7 +7250,8 @@ export default function App() {
     } else if (data) {
       // Clean up orphaned rider requests (orders that are completed/cancelled but still 'finding_rider' OR older than timestamp but left stuck)
       const stuckOrders = data.filter((o: Record<string, unknown>) => 
-        (o.status === 'completed' && o.delivery_status === 'finding_rider')
+        (o.status === 'completed' && o.delivery_status === 'finding_rider') ||
+        (o.delivery_status === 'none')
       );
       
       if (stuckOrders.length > 0) {
@@ -7399,6 +7408,22 @@ export default function App() {
         if (message) updated.acceptance_message = message;
         if (status === 'preparing' && !o.accepted_at) updated.accepted_at = new Date().toISOString();
         if (estimatedTime) updated.estimated_delivery_time = estimatedTime;
+        
+        // Optimistic Rider Broadcast
+        if ((status === 'preparing' || status === 'ready' || status === 'accepted') && (o.order_type === 'delivery' || !o.order_type) && !o.delivery_status) {
+          updated.delivery_status = 'finding_rider';
+          updated.order_type = 'delivery';
+          updated.delivery_fee = 10;
+          updated.status = 'accepted'; // Force 'accepted' for Rider App query compatibility
+          updated.restaurant_name = o.restaurant_name || currentShop.name;
+          updated.city = o.city || currentShop.city;
+          updated.price = o.price || o.total_price || 0;
+          updated.total_price = o.total_price || o.price || 0;
+          if (!o.items || o.items.length === 0) {
+            updated.items = [o.product_name || 'Delivery Order'];
+          }
+        }
+
         if (status === 'completed' && o.delivery_status === 'finding_rider') {
           updated.delivery_status = undefined; // Hide from live track locally
         }
@@ -7409,16 +7434,37 @@ export default function App() {
     
     const updateData: Partial<Order> = { status };
     if (message) updateData.acceptance_message = message;
-    if (status === 'preparing') {
+    if (status === 'preparing' || status === 'ready' || status === 'accepted') {
       const order = orders.find(o => o.id === id);
-      if (order && !order.accepted_at) {
-        updateData.accepted_at = new Date().toISOString();
+      if (order) {
+        if (!order.accepted_at && (status === 'preparing' || status === 'accepted')) {
+          updateData.accepted_at = new Date().toISOString();
+        }
+        // Auto-broadcast to rider network if it's a delivery order and not already assigned/finding
+        if ((order.order_type === 'delivery' || !order.order_type) && !order.delivery_status) {
+          updateData.delivery_status = 'finding_rider';
+          updateData.delivery_fee = 10; 
+          updateData.order_type = 'delivery'; 
+          updateData.status = 'accepted'; // Matches what works in Auto-Broadcast
+          updateData.restaurant_name = order.restaurant_name || currentShop?.name || 'Local Merchant';
+          updateData.city = order.city || currentShop?.city || 'Unknown City';
+          updateData.shop_id = order.shop_id || currentShop?.id;
+          
+          if ((!order.items || order.items.length === 0) && order.product_name) {
+            updateData.items = [order.product_name];
+          } else if (!order.items || order.items.length === 0) {
+            updateData.items = ['Food Delivery'];
+          }
+          
+          updateData.price = order.price || order.total_price || 0;
+          updateData.total_price = order.total_price || order.price || 0;
+        }
       }
     }
     if (status === 'completed') {
       const order = orders.find(o => o.id === id);
       if (order && order.delivery_status === 'finding_rider') {
-        updateData.delivery_status = null as unknown as typeof order.delivery_status; // clear the rider status to remove from rider feed
+        updateData.delivery_status = null; // clear the rider status to remove from rider feed
       }
     }
     if (estimatedTime) updateData.estimated_delivery_time = estimatedTime;
@@ -7509,22 +7555,31 @@ export default function App() {
     const previousOrders = [...orders];
     setOrders(prev => prev.map(o => o.id === id ? { 
       ...o, 
-      status: o.status === 'pending' ? 'accepted' : o.status,
+      status: 'accepted',
       delivery_status: 'finding_rider', 
-      delivery_fee: 5,
+      delivery_fee: 10,
       rider_id: targetRiderId || o.rider_id,
-      order_type: 'delivery'
+      order_type: 'delivery',
+      restaurant_name: o.restaurant_name || currentShop.name,
+      city: o.city || currentShop.city,
+      price: o.price || o.total_price || 0,
+      total_price: o.total_price || o.price || 0,
     } : o));
     
     const currentOrder = orders.find(o => o.id === id);
     const updateData: Record<string, unknown> = { 
-      status: currentOrder?.status === 'pending' ? 'accepted' : currentOrder?.status,
+      status: 'accepted',
       delivery_status: 'finding_rider', 
-      delivery_fee: 5,
-      total_price: currentOrder?.price || currentOrder?.total_price || 0,
-      restaurant_name: currentShop.name,
-      items: currentOrder?.items || [],
-      order_type: 'delivery'
+      delivery_fee: 10,
+      price: currentOrder?.price || currentOrder?.total_price || 0,
+      total_price: currentOrder?.total_price || currentOrder?.price || 0,
+      restaurant_name: currentOrder?.restaurant_name || currentShop.name,
+      items: (currentOrder?.items && currentOrder.items.length > 0) 
+        ? currentOrder.items 
+        : (currentOrder?.product_name ? [currentOrder.product_name] : ['Food Delivery']),
+      order_type: 'delivery',
+      city: currentOrder?.city || currentShop.city,
+      shop_id: currentOrder?.shop_id || currentShop.id
     };
     if (targetRiderId) updateData.rider_id = targetRiderId;
     
@@ -7675,6 +7730,7 @@ export default function App() {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'menu', label: 'Menu', icon: UtensilsCrossed },
     { id: 'orders', label: 'Orders', icon: ReceiptText, badge: pendingOrdersCount > 0 ? pendingOrdersCount : null },
+    { id: 'riders', label: 'Riders', icon: Bike },
     { id: 'marketing', label: 'Marketing', icon: Zap },
     { id: 'coupons', label: 'Coupons', icon: Ticket },
     { id: 'payments', label: 'Payments', icon: CreditCard },
