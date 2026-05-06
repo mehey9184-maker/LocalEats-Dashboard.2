@@ -1,17 +1,23 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Toaster, toast } from 'sonner';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { Toaster, toast } from "sonner";
 import { GoogleGenAI } from "@google/genai";
-import { 
-  LayoutDashboard, 
-  UtensilsCrossed, 
-  ReceiptText, 
-  TrendingUp, 
-  Plus, 
-  Edit2, 
-  Trash2, 
-  CheckCircle2, 
-  Clock, 
+import {
+  LayoutDashboard,
+  UtensilsCrossed,
+  ReceiptText,
+  TrendingUp,
+  Plus,
+  Edit2,
+  Trash2,
+  CheckCircle2,
+  Clock,
   Search,
   Printer,
   Bell,
@@ -65,30 +71,36 @@ import {
   HelpCircle,
   QrCode,
   Lock,
-  ExternalLink
-} from 'lucide-react';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
+  ExternalLink,
+} from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
   YAxis,
   AreaChart,
   Area,
-  Tooltip, 
+  Tooltip,
   ResponsiveContainer,
   Cell,
   PieChart,
   Pie,
-  Legend
-} from 'recharts';
-import { format } from 'date-fns';
-import { createClient, User } from '@supabase/supabase-js';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-import imageCompression from 'browser-image-compression';
-import { LocalEatsLogo } from './components/LocalEatsLogo';
+  Legend,
+} from "recharts";
+import { format } from "date-fns";
+import { createClient, User } from "@supabase/supabase-js";
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+import imageCompression from "browser-image-compression";
+import { LocalEatsLogo } from "./components/LocalEatsLogo";
 
-export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+export type OrderStatus =
+  | "pending"
+  | "accepted"
+  | "preparing"
+  | "ready"
+  | "completed"
+  | "cancelled";
 
 export interface Shop {
   id: number;
@@ -109,7 +121,7 @@ export interface Shop {
   instagram?: string;
   facebook?: string;
   whatsapp?: string;
-  subscription_status?: 'trial' | 'active' | 'past_due' | 'expired';
+  subscription_status?: "trial" | "active" | "past_due" | "expired";
   trial_start_date?: string;
   last_payment_date?: string;
   next_payment_date?: string;
@@ -157,8 +169,13 @@ export interface Order {
   delivery_fee?: number;
   rider_id?: string;
   restaurant_name?: string;
-  delivery_status?: 'finding_rider' | 'accepted' | 'picked_up' | 'delivered' | 'cancelled';
-  order_type?: 'delivery' | 'collection';
+  delivery_status?:
+    | "finding_rider"
+    | "accepted"
+    | "picked_up"
+    | "delivered"
+    | "cancelled";
+  order_type?: "delivery" | "collection";
 }
 
 export interface RiderConnection {
@@ -168,7 +185,7 @@ export interface RiderConnection {
   rider_name: string | null;
   connection_code: string;
   expires_at: string;
-  status: 'active' | 'expired';
+  status: "active" | "expired";
   created_at: string;
 }
 
@@ -186,16 +203,16 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // The official dashboard URL for LocalEats South Africa
-const DASHBOARD_URL = 'https://dashboard.localeatssa.co.za';
+const DASHBOARD_URL = "https://dashboard.localeatssa.co.za";
 
 /**
  * 🛠 RIDER APP COORDINATION CHECKLIST (For Developer Reference)
- * 1. STATUS SYNC: The Merchant app uses 'preparing' for accepted orders. 
+ * 1. STATUS SYNC: The Merchant app uses 'preparing' for accepted orders.
  *    Ensure the Rider app feed listens for 'preparing' OR 'accepted'.
  *    (We've updated requestRider to force 'accepted' status for compatibility).
  * 2. ORDER TYPE: Ensure orders are created with order_type: 'delivery' to appear in rider feeds.
  * 3. SUPABASE REALTIME: Enable Realtime on 'orders' and 'rider_connections' tables in Supabase Dashboard.
- * 4. PAIRING: Merchants generate a 6-digit 'connection_code' in RiderManagement. 
+ * 4. PAIRING: Merchants generate a 6-digit 'connection_code' in RiderManagement.
  *    Riders must enter this to populate their 'rider_id' in rider_connections.
  */
 
@@ -203,7 +220,7 @@ const getRedirectUrl = () => {
   const origin = window.location.origin;
   // If we're on the production domain, use the official dashboard URL.
   // Otherwise (localhost or AI Studio preview), use the current origin.
-  if (origin.includes('localeatssa.co.za')) {
+  if (origin.includes("localeatssa.co.za")) {
     return DASHBOARD_URL;
   }
   return origin;
@@ -211,34 +228,47 @@ const getRedirectUrl = () => {
 
 const handleGoogleSignIn = async () => {
   await supabase.auth.signInWithOAuth({
-    provider: 'google',
+    provider: "google",
     options: {
-      redirectTo: getRedirectUrl()
-    }
+      redirectTo: getRedirectUrl(),
+    },
   });
 };
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Supabase URL or Anon Key is missing. Please check your environment variables.');
+  console.error(
+    "Supabase URL or Anon Key is missing. Please check your environment variables.",
+  );
 }
 
-const isSecretKey = supabaseAnonKey?.startsWith('sb_secret_');
-const isProbablyNotSupabaseKey = supabaseAnonKey?.length && supabaseAnonKey.length < 50 && !supabaseAnonKey.startsWith('eyJ');
+const isSecretKey = supabaseAnonKey?.startsWith("sb_secret_");
+const isProbablyNotSupabaseKey =
+  supabaseAnonKey?.length &&
+  supabaseAnonKey.length < 50 &&
+  !supabaseAnonKey.startsWith("eyJ");
 
 if (isSecretKey) {
-  const msg = 'CRITICAL SECURITY ERROR: You are using a Supabase SECRET key (service_role) in the browser. This is forbidden and will cause the app to crash. Please replace VITE_SUPABASE_ANON_KEY with the public "anon" key in your project secrets.';
+  const msg =
+    'CRITICAL SECURITY ERROR: You are using a Supabase SECRET key (service_role) in the browser. This is forbidden and will cause the app to crash. Please replace VITE_SUPABASE_ANON_KEY with the public "anon" key in your project secrets.';
   console.error(msg);
-  if (typeof window !== 'undefined') {
-    console.log('%c' + msg, 'color: white; background: red; font-size: 20px; padding: 10px; border-radius: 5px;');
+  if (typeof window !== "undefined") {
+    console.log(
+      "%c" + msg,
+      "color: white; background: red; font-size: 20px; padding: 10px; border-radius: 5px;",
+    );
   }
 }
 
 if (isProbablyNotSupabaseKey) {
-  const msg = 'WARNING: The Supabase Anon Key looks incorrect. It should be a long JWT string starting with "eyJ". Please check your Supabase dashboard.';
+  const msg =
+    'WARNING: The Supabase Anon Key looks incorrect. It should be a long JWT string starting with "eyJ". Please check your Supabase dashboard.';
   console.warn(msg);
 }
 
-console.log('Supabase initialized with URL:', supabaseUrl ? `${supabaseUrl.substring(0, 10)}...` : 'MISSING');
+console.log(
+  "Supabase initialized with URL:",
+  supabaseUrl ? `${supabaseUrl.substring(0, 10)}...` : "MISSING",
+);
 
 export interface Review {
   id: string;
@@ -256,7 +286,7 @@ export interface Announcement {
   shop_id: number;
   title: string;
   content: string;
-  type: 'deal' | 'info' | 'event';
+  type: "deal" | "info" | "event";
   created_at: string;
 }
 
@@ -264,7 +294,7 @@ export interface Coupon {
   id: string;
   shop_id: number;
   code: string;
-  discount_type: 'percentage' | 'fixed';
+  discount_type: "percentage" | "fixed";
   discount_value: number;
   min_order_value: number;
   is_active: boolean;
@@ -277,27 +307,37 @@ export interface Message {
   order_id: string;
   shop_id: number;
   user_id: string;
-  sender_type: 'merchant' | 'customer';
+  sender_type: "merchant" | "customer";
   content: string;
   created_at: string;
 }
 
-const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
+const supabase = createClient(supabaseUrl || "", supabaseAnonKey || "");
 
 /**
  * Global fetch wrapper with retry logic to handle intermittent "Failed to fetch" errors.
  */
-async function fetchWithRetry<T>(fn: () => Promise<{ data: T | null; error: unknown }>, retries = 3, delay = 1000): Promise<{ data: T | null; error: { message: string } | null }> {
+async function fetchWithRetry<T>(
+  fn: () => Promise<{ data: T | null; error: unknown }>,
+  retries = 3,
+  delay = 1000,
+): Promise<{ data: T | null; error: { message: string } | null }> {
   let lastError: { message: string } | null = null;
   for (let i = 0; i < retries; i++) {
     try {
       const result = await fn();
-      const { error } = result as { data: T | null; error: { message: string } | null };
+      const { error } = result as {
+        data: T | null;
+        error: { message: string } | null;
+      };
       if (!error) return result as { data: T | null; error: null };
       lastError = error;
-      
+
       // Only retry on network errors (Failed to fetch)
-      if (error.message !== 'Failed to fetch' && !error.message?.includes('network')) {
+      if (
+        error.message !== "Failed to fetch" &&
+        !error.message?.includes("network")
+      ) {
         return result as { data: T | null; error: { message: string } | null };
       }
     } catch (err) {
@@ -307,9 +347,9 @@ async function fetchWithRetry<T>(fn: () => Promise<{ data: T | null; error: unkn
         lastError = { message: String(err) };
       }
     }
-    
+
     if (i < retries - 1) {
-      await new Promise(r => setTimeout(r, delay * (i + 1)));
+      await new Promise((r) => setTimeout(r, delay * (i + 1)));
     }
   }
   return { data: null, error: lastError };
@@ -323,11 +363,11 @@ export function cn(...inputs: ClassValue[]) {
 
 const Skeleton: React.FC<{ className?: string }> = ({ className }) => {
   return (
-    <div 
+    <div
       className={cn(
         "bg-surface-container-highest/50 rounded-md animate-skeleton",
-        className
-      )} 
+        className,
+      )}
     />
   );
 };
@@ -338,8 +378,8 @@ interface SignInProps {
 }
 
 const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -350,7 +390,7 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    
+
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -363,10 +403,17 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
         onSuccess();
       }
     } catch (err: unknown) {
-      if (err instanceof Error && err.message?.includes('Forbidden use of secret API key')) {
-        setError('CRITICAL: You are using a Supabase SECRET key in the browser. Please update your project secrets with the public "anon" key.');
+      if (
+        err instanceof Error &&
+        err.message?.includes("Forbidden use of secret API key")
+      ) {
+        setError(
+          'CRITICAL: You are using a Supabase SECRET key in the browser. Please update your project secrets with the public "anon" key.',
+        );
       } else {
-        setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+        setError(
+          err instanceof Error ? err.message : "An unexpected error occurred.",
+        );
       }
     }
     setLoading(false);
@@ -374,20 +421,27 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      <div 
-        className="fixed inset-0 z-0 opacity-40 bg-cover bg-center" 
-        style={{ 
-          backgroundImage: 'linear-gradient(to bottom, rgba(250, 249, 248, 0.85), rgba(250, 249, 248, 0.95)), url(https://picsum.photos/seed/map/1200/800)' 
+      <div
+        className="fixed inset-0 z-0 opacity-40 bg-cover bg-center"
+        style={{
+          backgroundImage:
+            "linear-gradient(to bottom, rgba(250, 249, 248, 0.85), rgba(250, 249, 248, 0.95)), url(https://picsum.photos/seed/map/1200/800)",
         }}
       ></div>
 
       <main className="relative z-10 w-full max-w-md">
         <header className="text-center mb-10">
           <div className="inline-flex items-center justify-center mb-4">
-            <span className="text-4xl font-headline font-black text-primary tracking-tighter">LocalEats</span>
+            <span className="text-4xl font-headline font-black text-primary tracking-tighter">
+              LocalEats
+            </span>
           </div>
-          <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight mb-2">Welcome Back</h1>
-          <p className="text-on-surface-variant font-medium">Taste the finest flavors from your neighborhood</p>
+          <h1 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight mb-2">
+            Welcome Back
+          </h1>
+          <p className="text-on-surface-variant font-medium">
+            Taste the finest flavors from your neighborhood
+          </p>
         </header>
 
         <div className="bg-surface-container-lowest/70 backdrop-blur-2xl rounded-[2.5rem] p-8 md:p-10 shadow-[0_8px_32px_-4px_rgba(167,52,0,0.08)]">
@@ -400,21 +454,21 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
 
             <div className="space-y-2">
               <div className="relative group">
-                <input 
-                  className="peer w-full h-14 px-4 pt-4 bg-surface-container-low border-0 rounded-xl font-medium focus:ring-2 focus:ring-primary/40 transition-all outline-none" 
-                  id="email" 
-                  placeholder=" " 
+                <input
+                  className="peer w-full h-14 px-4 pt-4 bg-surface-container-low border-0 rounded-xl font-medium focus:ring-2 focus:ring-primary/40 transition-all outline-none"
+                  id="email"
+                  placeholder=" "
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
-                <label 
+                <label
                   className={cn(
                     "absolute left-4 top-4 text-on-surface-variant transition-all pointer-events-none origin-left font-medium",
                     "peer-focus:-translate-y-3 peer-focus:scale-85 peer-focus:text-primary",
-                    email && "-translate-y-3 scale-85 text-primary"
-                  )} 
+                    email && "-translate-y-3 scale-85 text-primary",
+                  )}
                   htmlFor="email"
                 >
                   Email
@@ -424,27 +478,27 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
 
             <div className="space-y-2">
               <div className="relative group">
-                <input 
-                  className="peer w-full h-14 px-4 pt-4 bg-surface-container-low border-0 rounded-xl font-medium focus:ring-2 focus:ring-primary/40 transition-all outline-none" 
-                  id="password" 
-                  placeholder=" " 
+                <input
+                  className="peer w-full h-14 px-4 pt-4 bg-surface-container-low border-0 rounded-xl font-medium focus:ring-2 focus:ring-primary/40 transition-all outline-none"
+                  id="password"
+                  placeholder=" "
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
-                <label 
+                <label
                   className={cn(
                     "absolute left-4 top-4 text-on-surface-variant transition-all pointer-events-none origin-left font-medium",
                     "peer-focus:-translate-y-3 peer-focus:scale-85 peer-focus:text-primary",
-                    password && "-translate-y-3 scale-85 text-primary"
-                  )} 
+                    password && "-translate-y-3 scale-85 text-primary",
+                  )}
                   htmlFor="password"
                 >
                   Password
                 </label>
-                <button 
-                  className="absolute right-4 top-4 text-on-surface-variant hover:text-primary transition-colors" 
+                <button
+                  className="absolute right-4 top-4 text-on-surface-variant hover:text-primary transition-colors"
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                 >
@@ -452,16 +506,21 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
                 </button>
               </div>
               <div className="flex justify-end">
-                <a className="text-sm font-semibold text-primary hover:text-primary-container transition-colors" href="#">Forgot Password?</a>
+                <a
+                  className="text-sm font-semibold text-primary hover:text-primary-container transition-colors"
+                  href="#"
+                >
+                  Forgot Password?
+                </a>
               </div>
             </div>
 
-            <button 
-              className="w-full h-14 bg-gradient-to-br from-primary to-primary-container text-on-primary font-headline font-bold text-lg rounded-full shadow-[0_8px_24px_-4px_rgba(167,52,0,0.24)] hover:scale-[0.98] transition-transform flex items-center justify-center gap-2 disabled:opacity-50" 
+            <button
+              className="w-full h-14 bg-gradient-to-br from-primary to-primary-container text-on-primary font-headline font-bold text-lg rounded-full shadow-[0_8px_24px_-4px_rgba(167,52,0,0.24)] hover:scale-[0.98] transition-transform flex items-center justify-center gap-2 disabled:opacity-50"
               type="submit"
               disabled={loading}
             >
-              {loading ? 'Signing In...' : 'Sign In'}
+              {loading ? "Signing In..." : "Sign In"}
               <ArrowRight size={20} />
             </button>
           </form>
@@ -470,29 +529,43 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-outline-variant/30"></div>
             </div>
-            <span className="relative bg-surface-container-lowest px-4 text-sm font-medium text-on-surface-variant">Or sign in with</span>
+            <span className="relative bg-surface-container-lowest px-4 text-sm font-medium text-on-surface-variant">
+              Or sign in with
+            </span>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             <button className="flex items-center justify-center h-14 bg-surface-container-low rounded-xl hover:bg-surface-container-high transition-colors">
               <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M17.05 20.28c-.96.95-2.04 1.72-3.24 1.72-1.16 0-1.54-.71-2.94-.71-1.4 0-1.83.7-2.94.7-1.16 0-2.32-.82-3.32-1.82-2.04-2.04-3.52-5.76-3.52-8.52 0-2.76 1.44-4.2 2.88-4.2 1.44 0 2.28.84 3.12.84.84 0 1.68-.84 3.12-.84 1.44 0 2.88 1.44 2.88 4.2 0 .6-.06 1.2-.18 1.8-.36 1.8-1.56 3.6-2.88 5.04zM12 5.04c0-1.68 1.44-3.12 3.12-3.12.12 0 .24 0 .36.12-.12 1.68-1.56 3.12-3.12 3.12-.12 0-.24 0-.36-.12z"/>
+                <path d="M17.05 20.28c-.96.95-2.04 1.72-3.24 1.72-1.16 0-1.54-.71-2.94-.71-1.4 0-1.83.7-2.94.7-1.16 0-2.32-.82-3.32-1.82-2.04-2.04-3.52-5.76-3.52-8.52 0-2.76 1.44-4.2 2.88-4.2 1.44 0 2.28.84 3.12.84.84 0 1.68-.84 3.12-.84 1.44 0 2.88 1.44 2.88 4.2 0 .6-.06 1.2-.18 1.8-.36 1.8-1.56 3.6-2.88 5.04zM12 5.04c0-1.68 1.44-3.12 3.12-3.12.12 0 .24 0 .36.12-.12 1.68-1.56 3.12-3.12 3.12-.12 0-.24 0-.36-.12z" />
               </svg>
             </button>
-            <button 
+            <button
               onClick={handleGoogleSignIn}
               className="flex items-center justify-center h-14 bg-surface-container-low rounded-xl hover:bg-surface-container-high transition-colors"
             >
               <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                <path
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  fill="#4285F4"
+                />
+                <path
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  fill="#34A853"
+                />
+                <path
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+                  fill="#FBBC05"
+                />
+                <path
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  fill="#EA4335"
+                />
               </svg>
             </button>
             <button className="flex items-center justify-center h-14 bg-surface-container-low rounded-xl hover:bg-surface-container-high transition-colors">
               <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
               </svg>
             </button>
           </div>
@@ -500,8 +573,8 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
 
         <footer className="mt-8 text-center">
           <p className="text-on-surface-variant font-medium">
-            Don't have an account? 
-            <button 
+            Don't have an account?
+            <button
               onClick={onSignUpClick}
               className="text-primary font-bold ml-1 hover:underline decoration-2 underline-offset-4 transition-all"
             >
@@ -520,12 +593,11 @@ interface SignUpProps {
 }
 
 const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
 
   const handleSignUp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -540,7 +612,7 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
           data: {
             full_name: name,
           },
-          emailRedirectTo: getRedirectUrl()
+          emailRedirectTo: getRedirectUrl(),
         },
       });
 
@@ -552,8 +624,10 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
         onSuccess(email);
       }
     } catch (err: unknown) {
-      console.error('Sign up error:', err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+      console.error("Sign up error:", err);
+      setError(
+        err instanceof Error ? err.message : "An unexpected error occurred.",
+      );
     }
     setLoading(false);
   };
@@ -561,8 +635,10 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
   return (
     <div className="min-h-screen bg-surface font-body text-on-surface antialiased">
       <header className="fixed top-0 w-full z-50 bg-[#faf9f8]/70 backdrop-blur-xl flex items-center justify-between px-6 h-16 w-full max-w-screen-xl mx-auto">
-        <div className="text-2xl font-black text-[#a73400] tracking-tight font-headline">LocalEats</div>
-        <button 
+        <div className="text-2xl font-black text-[#a73400] tracking-tight font-headline">
+          LocalEats
+        </div>
+        <button
           onClick={onSignInClick}
           className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity"
         >
@@ -571,17 +647,22 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
         </button>
       </header>
 
-      <main 
-        className="min-h-screen pt-16 flex items-center justify-center bg-cover bg-center" 
-        style={{ 
-          backgroundImage: 'linear-gradient(to bottom, rgba(250, 249, 248, 0.8), rgba(250, 249, 248, 0.95)), url(https://picsum.photos/seed/map/1200/800)' 
+      <main
+        className="min-h-screen pt-16 flex items-center justify-center bg-cover bg-center"
+        style={{
+          backgroundImage:
+            "linear-gradient(to bottom, rgba(250, 249, 248, 0.8), rgba(250, 249, 248, 0.95)), url(https://picsum.photos/seed/map/1200/800)",
         }}
       >
         <div className="w-full max-w-lg px-6 py-12">
           <div className="bg-surface-container-lowest/80 backdrop-blur-2xl p-8 md:p-12 rounded-[2.5rem] shadow-[0_8px_24px_-4_rgba(167,52,0,0.12)]">
             <div className="mb-10 text-center md:text-left">
-              <h1 className="font-headline text-4xl font-extrabold text-on-surface tracking-tight mb-3">Create Account</h1>
-              <p className="text-on-surface-variant font-medium">Join the community celebrating authentic local flavors.</p>
+              <h1 className="font-headline text-4xl font-extrabold text-on-surface tracking-tight mb-3">
+                Create Account
+              </h1>
+              <p className="text-on-surface-variant font-medium">
+                Join the community celebrating authentic local flavors.
+              </p>
             </div>
 
             <form className="space-y-6" onSubmit={handleSignUp}>
@@ -592,11 +673,16 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
               )}
 
               <div className="space-y-2">
-                <label className="block text-sm font-semibold text-on-surface ml-1" htmlFor="name">Full Name</label>
-                <input 
-                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50" 
-                  id="name" 
-                  placeholder="John Doe" 
+                <label
+                  className="block text-sm font-semibold text-on-surface ml-1"
+                  htmlFor="name"
+                >
+                  Full Name
+                </label>
+                <input
+                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50"
+                  id="name"
+                  placeholder="John Doe"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -605,11 +691,16 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
               </div>
 
               <div className="space-y-2">
-                <label className="block text-sm font-semibold text-on-surface ml-1" htmlFor="email">Email</label>
-                <input 
-                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50" 
-                  id="email" 
-                  placeholder="name@example.com" 
+                <label
+                  className="block text-sm font-semibold text-on-surface ml-1"
+                  htmlFor="email"
+                >
+                  Email
+                </label>
+                <input
+                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50"
+                  id="email"
+                  placeholder="name@example.com"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -618,11 +709,16 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
               </div>
 
               <div className="space-y-2">
-                <label className="block text-sm font-semibold text-on-surface ml-1" htmlFor="password">Password</label>
-                <input 
-                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50" 
-                  id="password" 
-                  placeholder="••••••••" 
+                <label
+                  className="block text-sm font-semibold text-on-surface ml-1"
+                  htmlFor="password"
+                >
+                  Password
+                </label>
+                <input
+                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50"
+                  id="password"
+                  placeholder="••••••••"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -630,34 +726,48 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
                 />
               </div>
 
-              <button 
-                className="w-full h-14 bg-gradient-to-br from-primary to-primary-container text-on-primary font-bold text-lg rounded-full shadow-[0_8px_24px_-4px_rgba(167,52,0,0.25)] hover:scale-[0.98] active:scale-95 transition-all duration-200 mt-4 disabled:opacity-50" 
+              <button
+                className="w-full h-14 bg-gradient-to-br from-primary to-primary-container text-on-primary font-bold text-lg rounded-full shadow-[0_8px_24px_-4px_rgba(167,52,0,0.25)] hover:scale-[0.98] active:scale-95 transition-all duration-200 mt-4 disabled:opacity-50"
                 type="submit"
                 disabled={loading}
               >
-                {loading ? 'Creating Account...' : 'Create Account'}
+                {loading ? "Creating Account..." : "Create Account"}
               </button>
             </form>
 
             <div className="mt-10">
               <div className="relative flex items-center justify-center mb-8">
                 <div className="flex-grow border-t border-outline-variant/30"></div>
-                <span className="mx-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Or continue with</span>
+                <span className="mx-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+                  Or continue with
+                </span>
                 <div className="flex-grow border-t border-outline-variant/30"></div>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <button className="flex items-center justify-center h-14 rounded-xl bg-surface-container-low hover:bg-surface-container-high transition-colors">
                   <Facebook className="text-blue-600" size={24} />
                 </button>
-                <button 
+                <button
                   onClick={handleGoogleSignIn}
                   className="flex items-center justify-center h-14 rounded-xl bg-surface-container-low hover:bg-surface-container-high transition-colors"
                 >
                   <svg className="w-6 h-6" viewBox="0 0 24 24">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    <path
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                      fill="#4285F4"
+                    />
+                    <path
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                      fill="#34A853"
+                    />
+                    <path
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+                      fill="#FBBC05"
+                    />
+                    <path
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                      fill="#EA4335"
+                    />
                   </svg>
                 </button>
                 <button className="flex items-center justify-center h-14 rounded-xl bg-surface-container-low hover:bg-surface-container-high transition-colors">
@@ -668,8 +778,8 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
 
             <div className="mt-10 text-center">
               <p className="text-on-surface-variant font-medium">
-                Already have an account? 
-                <button 
+                Already have an account?
+                <button
                   onClick={onSignInClick}
                   className="text-primary font-bold ml-1 hover:underline transition-all"
                 >
@@ -691,8 +801,13 @@ interface VerificationPendingProps {
   onSupport: () => void;
 }
 
-const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack, onVerified, onSupport }) => {
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+const VerificationPending: React.FC<VerificationPendingProps> = ({
+  email,
+  onBack,
+  onVerified,
+  onSupport,
+}) => {
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [timer, setTimer] = useState(59);
   const [showSuccess, setShowSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -700,7 +815,7 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
 
   useEffect(() => {
     if (timer > 0) {
-      const interval = setInterval(() => setTimer(prev => prev - 1), 1000);
+      const interval = setInterval(() => setTimer((prev) => prev - 1), 1000);
       return () => clearInterval(interval);
     }
   }, [timer]);
@@ -718,8 +833,11 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
     }
   };
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+  const handleKeyDown = (
+    index: number,
+    e: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
+    if (e.key === "Backspace" && !otp[index] && index > 0) {
       const prevInput = document.getElementById(`otp-${index - 1}`);
       prevInput?.focus();
     }
@@ -727,7 +845,7 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
-    const pastedData = e.clipboardData.getData('text').slice(0, 6).split('');
+    const pastedData = e.clipboardData.getData("text").slice(0, 6).split("");
     const newOtp = [...otp];
     pastedData.forEach((char, i) => {
       if (i < 6) newOtp[i] = char;
@@ -739,9 +857,9 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const code = otp.join('');
+    const code = otp.join("");
     if (code.length !== 6) {
-      setError('Please enter all 6 digits.');
+      setError("Please enter all 6 digits.");
       return;
     }
 
@@ -749,8 +867,8 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
     setError(null);
 
     // Master Code Bypass for testing
-    if (code === '200201') {
-      toast.success('Master code accepted!');
+    if (code === "200201") {
+      toast.success("Master code accepted!");
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
@@ -764,12 +882,14 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
       const { error } = await supabase.auth.verifyOtp({
         email,
         token: code,
-        type: 'signup',
+        type: "signup",
       });
 
       if (error) {
-        if (error.message.toLowerCase().includes('rate limit')) {
-          setError('Email limit reached (3 per hour). Please wait an hour or contact support.');
+        if (error.message.toLowerCase().includes("rate limit")) {
+          setError(
+            "Email limit reached (3 per hour). Please wait an hour or contact support.",
+          );
         } else {
           setError(error.message);
         }
@@ -781,8 +901,10 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
         }, 2000);
       }
     } catch (err: unknown) {
-      console.error('Verification error:', err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+      console.error("Verification error:", err);
+      setError(
+        err instanceof Error ? err.message : "An unexpected error occurred.",
+      );
     } finally {
       setLoading(false);
     }
@@ -790,29 +912,33 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
 
   const handleResend = async () => {
     if (timer > 0) return;
-    
+
     setError(null);
     try {
       const { error } = await supabase.auth.resend({
-        type: 'signup',
+        type: "signup",
         email,
       });
 
       if (error) {
-        if (error.message.toLowerCase().includes('rate limit')) {
-          setError('Email limit reached (3 per hour). Please wait an hour or contact support.');
+        if (error.message.toLowerCase().includes("rate limit")) {
+          setError(
+            "Email limit reached (3 per hour). Please wait an hour or contact support.",
+          );
         } else {
           setError(error.message);
         }
       } else {
         setTimer(59);
-        setOtp(['', '', '', '', '', '']);
-        const firstInput = document.getElementById('otp-0');
+        setOtp(["", "", "", "", "", ""]);
+        const firstInput = document.getElementById("otp-0");
         firstInput?.focus();
       }
     } catch (err: unknown) {
-      console.error('Resend error:', err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+      console.error("Resend error:", err);
+      setError(
+        err instanceof Error ? err.message : "An unexpected error occurred.",
+      );
     }
   };
 
@@ -820,13 +946,15 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
     <div className="min-h-screen bg-surface font-body text-on-surface antialiased">
       <header className="fixed top-0 w-full z-50 bg-[#faf9f8]/70 backdrop-blur-xl shadow-[0_8px_24px_-4px_rgba(167,52,0,0.12)]">
         <div className="flex items-center justify-between px-6 h-16 w-full max-w-7xl mx-auto">
-          <button 
+          <button
             onClick={onBack}
             className="p-2 text-primary hover:bg-surface-container-low rounded-full transition-colors active:scale-95 duration-200"
           >
             <ArrowLeft size={24} />
           </button>
-          <h1 className="font-headline text-2xl font-black text-primary tracking-tighter">LocalEats</h1>
+          <h1 className="font-headline text-2xl font-black text-primary tracking-tighter">
+            LocalEats
+          </h1>
           <div className="w-10"></div>
         </div>
       </header>
@@ -835,12 +963,16 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
         <div className="max-w-md w-full space-y-8">
           <section className="relative">
             <div className="text-center mb-10">
-              <h2 className="font-headline text-4xl font-extrabold text-on-surface tracking-tight leading-tight">Verify Your Account</h2>
+              <h2 className="font-headline text-4xl font-extrabold text-on-surface tracking-tight leading-tight">
+                Verify Your Account
+              </h2>
               <p className="text-on-surface-variant mt-3 font-body text-sm px-4 opacity-80">
-                We've sent a 6-digit security code to <span className="text-primary font-bold">{email}</span>. Enter it below to access the foundry.
+                We've sent a 6-digit security code to{" "}
+                <span className="text-primary font-bold">{email}</span>. Enter
+                it below to access the foundry.
               </p>
             </div>
-            
+
             <div className="bg-surface-container-lowest rounded-3xl p-8 shadow-[0_8px_32px_rgba(167,52,0,0.08)] border border-outline-variant/10">
               <form className="space-y-8" onSubmit={handleSubmit}>
                 {error && (
@@ -866,25 +998,29 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
                     />
                   ))}
                 </div>
-                <button 
-                  className="w-full h-14 bg-gradient-to-br from-primary to-primary-container text-on-primary rounded-full font-semibold text-base shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50" 
+                <button
+                  className="w-full h-14 bg-gradient-to-br from-primary to-primary-container text-on-primary rounded-full font-semibold text-base shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
                   type="submit"
                   disabled={loading}
                 >
-                  {loading ? 'Verifying...' : 'Submit Code'}
+                  {loading ? "Verifying..." : "Submit Code"}
                 </button>
               </form>
               <div className="mt-6 text-center space-y-4">
-                <button 
+                <button
                   onClick={handleResend}
                   className="text-primary font-semibold text-sm hover:underline underline-offset-4 decoration-primary/30 disabled:opacity-50"
                   disabled={timer > 0 || loading}
                 >
-                  {timer > 0 ? `Resend code in 00:${timer.toString().padStart(2, '0')}` : 'Resend code'}
+                  {timer > 0
+                    ? `Resend code in 00:${timer.toString().padStart(2, "0")}`
+                    : "Resend code"}
                 </button>
-                
+
                 <p className="text-[10px] text-on-surface-variant/60 uppercase tracking-widest font-bold">
-                  Don't see it? Check your <span className="text-primary/60">Spam</span> or <span className="text-primary/60">Promotions</span> folder.
+                  Don't see it? Check your{" "}
+                  <span className="text-primary/60">Spam</span> or{" "}
+                  <span className="text-primary/60">Promotions</span> folder.
                 </p>
               </div>
             </div>
@@ -892,7 +1028,9 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
 
           <div className="flex items-center gap-4 py-4">
             <div className="h-px bg-outline-variant/30 flex-1"></div>
-            <span className="text-outline text-xs font-bold uppercase tracking-widest">Or Status</span>
+            <span className="text-outline text-xs font-bold uppercase tracking-widest">
+              Or Status
+            </span>
             <div className="h-px bg-outline-variant/30 flex-1"></div>
           </div>
 
@@ -902,14 +1040,22 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
                 <div className="absolute inset-0 rounded-full border-4 border-primary/10"></div>
                 <div className="absolute inset-0 rounded-full border-4 border-t-primary border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-primary text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>restaurant_menu</span>
+                  <span
+                    className="material-symbols-outlined text-primary text-4xl"
+                    style={{ fontVariationSettings: "'FILL' 1" }}
+                  >
+                    restaurant_menu
+                  </span>
                 </div>
               </div>
-              
+
               <div className="space-y-2">
-                <h3 className="font-headline text-2xl font-bold text-on-surface">Approval Pending</h3>
+                <h3 className="font-headline text-2xl font-bold text-on-surface">
+                  Approval Pending
+                </h3>
                 <p className="text-on-surface-variant font-body text-sm leading-relaxed max-w-[280px] mx-auto">
-                  We're reviewing your application. You'll be notified once you're ready to start savoring!
+                  We're reviewing your application. You'll be notified once
+                  you're ready to start savoring!
                 </p>
               </div>
 
@@ -919,18 +1065,26 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
                     <CheckCircle2 className="text-primary" size={20} />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-bold text-on-surface">Account Created</p>
-                    <p className="text-xs text-on-surface-variant">Completed on Oct 12</p>
+                    <p className="text-sm font-bold text-on-surface">
+                      Account Created
+                    </p>
+                    <p className="text-xs text-on-surface-variant">
+                      Completed on Oct 12
+                    </p>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center gap-4 bg-surface-container-lowest p-4 rounded-2xl shadow-sm border border-primary/5">
                   <div className="bg-primary p-2 rounded-lg text-white">
                     <Clock size={20} />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-bold text-on-surface">Admin Review</p>
-                    <p className="text-xs text-primary font-medium">Currently in progress...</p>
+                    <p className="text-sm font-bold text-on-surface">
+                      Admin Review
+                    </p>
+                    <p className="text-xs text-primary font-medium">
+                      Currently in progress...
+                    </p>
                   </div>
                 </div>
 
@@ -939,13 +1093,17 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
                     <Rocket className="text-on-surface-variant" size={20} />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-bold text-on-surface">Foundry Access</p>
-                    <p className="text-xs text-on-surface-variant">Unlocks after approval</p>
+                    <p className="text-sm font-bold text-on-surface">
+                      Foundry Access
+                    </p>
+                    <p className="text-xs text-on-surface-variant">
+                      Unlocks after approval
+                    </p>
                   </div>
                 </div>
               </div>
 
-              <button 
+              <button
                 onClick={onSupport}
                 className="flex items-center gap-2 text-primary font-bold text-sm hover:translate-x-1 transition-transform"
               >
@@ -957,12 +1115,18 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({ email, onBack
         </div>
       </main>
 
-      <div className={cn(
-        "fixed bottom-12 left-1/2 -translate-x-1/2 bg-on-background text-background px-6 py-4 rounded-full shadow-2xl flex items-center gap-3 transition-all duration-300",
-        showSuccess ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
-      )}>
+      <div
+        className={cn(
+          "fixed bottom-12 left-1/2 -translate-x-1/2 bg-on-background text-background px-6 py-4 rounded-full shadow-2xl flex items-center gap-3 transition-all duration-300",
+          showSuccess
+            ? "opacity-100 translate-y-0"
+            : "opacity-0 translate-y-4 pointer-events-none",
+        )}
+      >
         <CheckCircle2 className="text-primary-fixed" size={20} />
-        <span className="font-label text-sm font-medium">Code verified successfully.</span>
+        <span className="font-label text-sm font-medium">
+          Code verified successfully.
+        </span>
       </div>
     </div>
   );
@@ -987,14 +1151,19 @@ interface EditProfileProps {
   userId: string;
 }
 
-const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, userId }) => {
+const EditProfile: React.FC<EditProfileProps> = ({
+  onBack,
+  onSave,
+  initialData,
+  userId,
+}) => {
   const [formData, setFormData] = useState({
-    fullName: initialData?.fullName || '',
-    email: initialData?.email || '',
-    phone: initialData?.phone || '',
-    location: initialData?.location || '',
-    address: initialData?.address || '',
-    avatarUrl: initialData?.avatarUrl || '',
+    fullName: initialData?.fullName || "",
+    email: initialData?.email || "",
+    phone: initialData?.phone || "",
+    location: initialData?.location || "",
+    address: initialData?.address || "",
+    avatarUrl: initialData?.avatarUrl || "",
   });
 
   const [uploading, setUploading] = useState(false);
@@ -1005,7 +1174,7 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
   const handleUpdateLocation = () => {
     setIsLocating(true);
     if (!navigator.geolocation) {
-      toast.error('Geolocation is not supported by your browser');
+      toast.error("Geolocation is not supported by your browser");
       setIsLocating(false);
       setShowMapPinConfirm(false);
       return;
@@ -1015,55 +1184,64 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
       async (position) => {
         try {
           const { latitude, longitude } = position.coords;
-          
+
           let data = null;
           let retryCount = 0;
           const maxRetries = 2;
-          
+
           while (retryCount <= maxRetries) {
             try {
-              const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+              const response = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
+              );
               data = await response.json();
               break;
             } catch (err) {
               retryCount++;
               if (retryCount > maxRetries) throw err;
-              await new Promise(r => setTimeout(r, 1000 * retryCount));
+              await new Promise((r) => setTimeout(r, 1000 * retryCount));
             }
           }
-          
+
           if (data && data.address) {
-            const city = data.address.city || data.address.town || data.address.village || data.address.suburb || '';
-            const state = data.address.state || '';
-            const road = data.address.road || '';
-            const houseNumber = data.address.house_number || '';
-            
-            const newLocation = [city, state].filter(Boolean).join(', ');
-            const newAddress = [houseNumber, road].filter(Boolean).join(' ');
-            
-            setFormData(prev => ({
+            const city =
+              data.address.city ||
+              data.address.town ||
+              data.address.village ||
+              data.address.suburb ||
+              "";
+            const state = data.address.state || "";
+            const road = data.address.road || "";
+            const houseNumber = data.address.house_number || "";
+
+            const newLocation = [city, state].filter(Boolean).join(", ");
+            const newAddress = [houseNumber, road].filter(Boolean).join(" ");
+
+            setFormData((prev) => ({
               ...prev,
               location: newLocation || prev.location,
-              address: newAddress || prev.address
+              address: newAddress || prev.address,
             }));
-            toast.success('Location updated successfully!');
+            toast.success("Location updated successfully!");
           } else {
-            toast.error('Could not determine address from coordinates.');
+            toast.error("Could not determine address from coordinates.");
           }
         } catch {
-          toast.error('Failed to get address details.');
+          toast.error("Failed to get address details.");
         } finally {
           setIsLocating(false);
           setShowMapPinConfirm(false);
         }
       },
       (error) => {
-        console.error('Geolocation error:', error);
-        toast.error(`Location access failed: ${error.message || 'Please check permissions'}`);
+        console.error("Geolocation error:", error);
+        toast.error(
+          `Location access failed: ${error.message || "Please check permissions"}`,
+        );
         setIsLocating(false);
         setShowMapPinConfirm(false);
       },
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 }
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 },
     );
   };
 
@@ -1073,51 +1251,57 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
 
     try {
       setUploading(true);
-      
-      const options = { maxSizeMB: 0.2, maxWidthOrHeight: 1024, useWebWorker: true };
+
+      const options = {
+        maxSizeMB: 0.2,
+        maxWidthOrHeight: 1024,
+        useWebWorker: true,
+      };
       const compressedFile = await imageCompression(file, options);
-      
-      const fileExt = compressedFile.name.split('.').pop() || 'jpg';
+
+      const fileExt = compressedFile.name.split(".").pop() || "jpg";
       const fileName = `${userId}-${Math.random()}.${fileExt}`;
       const filePath = `avatars/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('avatars')
+        .from("avatars")
         .upload(filePath, compressedFile);
 
       if (uploadError) {
         // If 'avatars' bucket doesn't exist, try 'menu-images' as fallback
         const { error: fallbackError } = await supabase.storage
-          .from('menu-images')
+          .from("menu-images")
           .upload(filePath, compressedFile);
-        
+
         if (fallbackError) throw uploadError;
-        
-        const { data: { publicUrl } } = supabase.storage
-          .from('menu-images')
-          .getPublicUrl(filePath);
-        
-        setFormData(prev => ({ ...prev, avatarUrl: publicUrl }));
+
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("menu-images").getPublicUrl(filePath);
+
+        setFormData((prev) => ({ ...prev, avatarUrl: publicUrl }));
       } else {
-        const { data: { publicUrl } } = supabase.storage
-          .from('avatars')
-          .getPublicUrl(filePath);
-        
-        setFormData(prev => ({ ...prev, avatarUrl: publicUrl }));
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("avatars").getPublicUrl(filePath);
+
+        setFormData((prev) => ({ ...prev, avatarUrl: publicUrl }));
       }
-      
-      toast.success('Photo uploaded successfully!');
+
+      toast.success("Photo uploaded successfully!");
     } catch (error: unknown) {
-      console.error('Upload Error:', error);
-      toast.error('Failed to upload photo. Please ensure a storage bucket exists.');
+      console.error("Upload Error:", error);
+      toast.error(
+        "Failed to upload photo. Please ensure a storage bucket exists.",
+      );
     } finally {
       setUploading(false);
     }
   };
 
   const [operatingHours, setOperatingHours] = useState({
-    open: initialData?.operatingHours?.open || '08:00',
-    close: initialData?.operatingHours?.close || '20:00',
+    open: initialData?.operatingHours?.open || "08:00",
+    close: initialData?.operatingHours?.close || "20:00",
   });
 
   const [preferences, setPreferences] = useState({
@@ -1134,13 +1318,15 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
       <header className="fixed top-0 w-full z-50 bg-surface/70 backdrop-blur-xl shadow-sm shadow-primary/5">
         <div className="flex items-center justify-between px-6 h-16 w-full max-w-screen-xl mx-auto">
           <div className="flex items-center gap-4">
-            <button 
+            <button
               onClick={onBack}
               className="active:scale-95 transition-transform duration-200 hover:opacity-80 p-2 rounded-full hover:bg-surface-container-low"
             >
               <ArrowLeft className="text-primary" size={24} />
             </button>
-            <h1 className="font-headline text-lg font-bold tracking-tight text-on-surface">Edit Profile</h1>
+            <h1 className="font-headline text-lg font-bold tracking-tight text-on-surface">
+              Edit Profile
+            </h1>
           </div>
           <button className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-low transition-colors">
             <MoreVertical className="text-on-surface-variant" size={24} />
@@ -1156,30 +1342,35 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
               {uploading ? (
                 <RefreshCw className="animate-spin text-primary" size={32} />
               ) : formData.avatarUrl ? (
-                <img 
-                  alt="User Profile" 
-                  className="w-full h-full object-cover" 
-                  src={formData.avatarUrl} 
+                <img
+                  alt="User Profile"
+                  className="w-full h-full object-cover"
+                  src={formData.avatarUrl}
                 />
               ) : (
-                <div 
+                <div
                   className="w-full h-full flex items-center justify-center bg-primary"
                   style={{
-                    background: 'radial-gradient(circle at 30% 30%, #ff9d4d 0%, #f58220 100%)'
+                    background:
+                      "radial-gradient(circle at 30% 30%, #ff9d4d 0%, #f58220 100%)",
                   }}
                 >
-                  <UserIcon size={64} className="text-white drop-shadow-md" strokeWidth={1.5} />
+                  <UserIcon
+                    size={64}
+                    className="text-white drop-shadow-md"
+                    strokeWidth={1.5}
+                  />
                 </div>
               )}
             </div>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              className="hidden" 
-              accept="image/*" 
-              onChange={handleFileChange} 
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              accept="image/*"
+              onChange={handleFileChange}
             />
-            <button 
+            <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
               className="absolute bottom-0 right-0 bg-gradient-to-br from-primary to-primary-container p-2.5 rounded-full text-on-primary shadow-lg active:scale-95 transition-transform disabled:opacity-50"
@@ -1187,40 +1378,58 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
               <Edit2 size={16} />
             </button>
           </div>
-          <p className="mt-4 font-headline font-bold text-on-surface-variant tracking-tight">Change Photo</p>
+          <p className="mt-4 font-headline font-bold text-on-surface-variant tracking-tight">
+            Change Photo
+          </p>
         </section>
 
         <section className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="font-headline text-xl font-bold tracking-tight text-on-surface">Personal Details</h2>
-            <span className="text-xs font-label text-primary font-bold tracking-widest uppercase px-2 py-1 bg-primary/10 rounded-full">Basic Info</span>
+            <h2 className="font-headline text-xl font-bold tracking-tight text-on-surface">
+              Personal Details
+            </h2>
+            <span className="text-xs font-label text-primary font-bold tracking-widest uppercase px-2 py-1 bg-primary/10 rounded-full">
+              Basic Info
+            </span>
           </div>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-on-surface-variant px-1">Full Name</label>
-              <input 
-                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface" 
-                type="text" 
+              <label className="block text-sm font-medium text-on-surface-variant px-1">
+                Full Name
+              </label>
+              <input
+                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface"
+                type="text"
                 value={formData.fullName}
-                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, fullName: e.target.value })
+                }
               />
             </div>
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-on-surface-variant px-1">Email Address</label>
-              <input 
-                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface" 
-                type="email" 
+              <label className="block text-sm font-medium text-on-surface-variant px-1">
+                Email Address
+              </label>
+              <input
+                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface"
+                type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
               />
             </div>
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-on-surface-variant px-1">Phone Number</label>
-              <input 
-                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface" 
-                type="tel" 
+              <label className="block text-sm font-medium text-on-surface-variant px-1">
+                Phone Number
+              </label>
+              <input
+                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface"
+                type="tel"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
               />
             </div>
           </div>
@@ -1228,43 +1437,58 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
 
         <section className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="font-headline text-xl font-bold tracking-tight text-on-surface">Home Location</h2>
-            <span className="text-xs font-label text-primary font-bold tracking-widest uppercase px-2 py-1 bg-primary/10 rounded-full">Address</span>
+            <h2 className="font-headline text-xl font-bold tracking-tight text-on-surface">
+              Home Location
+            </h2>
+            <span className="text-xs font-label text-primary font-bold tracking-widest uppercase px-2 py-1 bg-primary/10 rounded-full">
+              Address
+            </span>
           </div>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-on-surface-variant px-1">City / Region</label>
+              <label className="block text-sm font-medium text-on-surface-variant px-1">
+                City / Region
+              </label>
               <div className="relative">
-                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-primary" size={20} />
-                <input 
-                  className="w-full bg-surface-container-low border-none rounded-xl pl-12 pr-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface" 
-                  type="text" 
+                <MapPin
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-primary"
+                  size={20}
+                />
+                <input
+                  className="w-full bg-surface-container-low border-none rounded-xl pl-12 pr-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface"
+                  type="text"
                   value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, location: e.target.value })
+                  }
                   placeholder="e.g. Soweto, Johannesburg"
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-on-surface-variant px-1">Street Address</label>
-              <input 
-                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface" 
-                type="text" 
+              <label className="block text-sm font-medium text-on-surface-variant px-1">
+                Street Address
+              </label>
+              <input
+                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface"
+                type="text"
                 value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, address: e.target.value })
+                }
                 placeholder="e.g. 123 Vilakazi St"
               />
             </div>
           </div>
-          
+
           <div className="w-full h-32 rounded-xl overflow-hidden relative flex items-center justify-center">
-            <img 
-              alt="Map" 
-              className="absolute inset-0 w-full h-full object-cover grayscale opacity-60 pointer-events-none" 
-              src="https://picsum.photos/seed/map/1200/800" 
+            <img
+              alt="Map"
+              className="absolute inset-0 w-full h-full object-cover grayscale opacity-60 pointer-events-none"
+              src="https://picsum.photos/seed/map/1200/800"
             />
             <div className="absolute inset-0 bg-primary/5 pointer-events-none"></div>
-            <button 
+            <button
               type="button"
               onClick={(e) => {
                 e.preventDefault();
@@ -1274,40 +1498,59 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
               className="relative z-30 bg-surface-container-lowest/90 backdrop-blur-md px-6 py-3 rounded-full shadow-md hover:scale-105 hover:bg-surface-container-lowest transition-all cursor-pointer flex items-center gap-2"
             >
               <MapPin size={16} className="text-primary" />
-              <span className="text-sm font-bold text-primary">UPDATE MAP PIN</span>
+              <span className="text-sm font-bold text-primary">
+                UPDATE MAP PIN
+              </span>
             </button>
           </div>
         </section>
 
         <section className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="font-headline text-xl font-bold tracking-tight text-on-surface">Operating Hours</h2>
-            <span className="text-xs font-label text-primary font-bold tracking-widest uppercase px-2 py-1 bg-primary/10 rounded-full">Schedule</span>
+            <h2 className="font-headline text-xl font-bold tracking-tight text-on-surface">
+              Operating Hours
+            </h2>
+            <span className="text-xs font-label text-primary font-bold tracking-widest uppercase px-2 py-1 bg-primary/10 rounded-full">
+              Schedule
+            </span>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-on-surface-variant px-1">Opening Time</label>
-              <input 
-                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface" 
-                type="time" 
+              <label className="block text-sm font-medium text-on-surface-variant px-1">
+                Opening Time
+              </label>
+              <input
+                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface"
+                type="time"
                 value={operatingHours.open}
-                onChange={(e) => setOperatingHours({ ...operatingHours, open: e.target.value })}
+                onChange={(e) =>
+                  setOperatingHours({ ...operatingHours, open: e.target.value })
+                }
               />
             </div>
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-on-surface-variant px-1">Closing Time</label>
-              <input 
-                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface" 
-                type="time" 
+              <label className="block text-sm font-medium text-on-surface-variant px-1">
+                Closing Time
+              </label>
+              <input
+                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface"
+                type="time"
                 value={operatingHours.close}
-                onChange={(e) => setOperatingHours({ ...operatingHours, close: e.target.value })}
+                onChange={(e) =>
+                  setOperatingHours({
+                    ...operatingHours,
+                    close: e.target.value,
+                  })
+                }
               />
             </div>
           </div>
         </section>
 
         <section className="space-y-4">
-          <h2 className="font-headline text-xl font-bold tracking-tight text-on-surface">App Preferences</h2>
+          <h2 className="font-headline text-xl font-bold tracking-tight text-on-surface">
+            App Preferences
+          </h2>
           <div className="bg-surface-container-low rounded-xl overflow-hidden divide-y divide-surface-container-high">
             <div className="flex items-center justify-between p-5">
               <div className="flex items-center gap-3">
@@ -1315,16 +1558,25 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
                   <Bell className="text-on-surface-variant" size={20} />
                 </div>
                 <div>
-                  <p className="font-medium text-on-surface">Marketing Notifications</p>
-                  <p className="text-xs text-on-surface-variant">Deals, offers, and new arrivals</p>
+                  <p className="font-medium text-on-surface">
+                    Marketing Notifications
+                  </p>
+                  <p className="text-xs text-on-surface-variant">
+                    Deals, offers, and new arrivals
+                  </p>
                 </div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  className="sr-only peer" 
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
                   checked={preferences.marketing}
-                  onChange={() => setPreferences({ ...preferences, marketing: !preferences.marketing })}
+                  onChange={() =>
+                    setPreferences({
+                      ...preferences,
+                      marketing: !preferences.marketing,
+                    })
+                  }
                 />
                 <div className="w-11 h-6 bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
@@ -1336,15 +1588,22 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
                 </div>
                 <div>
                   <p className="font-medium text-on-surface">Dark Mode</p>
-                  <p className="text-xs text-on-surface-variant">Reduce eye strain at night</p>
+                  <p className="text-xs text-on-surface-variant">
+                    Reduce eye strain at night
+                  </p>
                 </div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  className="sr-only peer" 
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
                   checked={preferences.darkMode}
-                  onChange={() => setPreferences({ ...preferences, darkMode: !preferences.darkMode })}
+                  onChange={() =>
+                    setPreferences({
+                      ...preferences,
+                      darkMode: !preferences.darkMode,
+                    })
+                  }
                 />
                 <div className="w-11 h-6 bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
@@ -1353,26 +1612,28 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
         </section>
 
         <div className="pt-6 pb-12">
-          <button 
+          <button
             onClick={handleSave}
             className="w-full bg-gradient-to-br from-primary to-primary-container text-on-primary font-headline font-extrabold text-lg py-5 rounded-full shadow-lg shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3"
           >
             <span>Save Changes</span>
             <CheckCircle2 size={24} />
           </button>
-          <p className="text-center mt-6 text-on-surface-variant text-sm font-medium">Last updated: Oct 24, 2023</p>
+          <p className="text-center mt-6 text-on-surface-variant text-sm font-medium">
+            Last updated: Oct 24, 2023
+          </p>
         </div>
       </main>
 
       <AnimatePresence>
         {showMapPinConfirm && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
           >
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
@@ -1381,20 +1642,24 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-6 mx-auto">
                 <MapPin size={32} />
               </div>
-              <h3 className="text-2xl font-headline font-bold text-on-surface text-center mb-3">Update Location?</h3>
+              <h3 className="text-2xl font-headline font-bold text-on-surface text-center mb-3">
+                Update Location?
+              </h3>
               <p className="text-on-surface-variant text-center mb-8 leading-relaxed">
-                This will request your device's current location and automatically update your shop's City/Region and Street Address. Are you sure you want to proceed?
+                This will request your device's current location and
+                automatically update your shop's City/Region and Street Address.
+                Are you sure you want to proceed?
               </p>
-              
+
               <div className="flex gap-4">
-                <button 
+                <button
                   onClick={() => setShowMapPinConfirm(false)}
                   disabled={isLocating}
                   className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-on-surface-variant bg-surface-container-high hover:bg-surface-container-highest transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={handleUpdateLocation}
                   disabled={isLocating}
                   className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-on-primary bg-primary hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
@@ -1419,35 +1684,70 @@ const EditProfile: React.FC<EditProfileProps> = ({ onBack, onSave, initialData, 
 
 // --- Components ---
 
-const StatCard = ({ title, value, change, icon: Icon, colorClass }: { title: string, value: string | number, change?: string, icon: React.ElementType, colorClass: string }) => (
+const StatCard = ({
+  title,
+  value,
+  change,
+  icon: Icon,
+  colorClass,
+}: {
+  title: string;
+  value: string | number;
+  change?: string;
+  icon: React.ElementType;
+  colorClass: string;
+}) => (
   <div className="bg-surface-container-lowest p-4 md:p-8 rounded-xl shadow-sm border border-outline-variant/10 group hover:shadow-md transition-all duration-300">
     <div className="flex justify-between items-start mb-2 md:mb-4">
       <div className={cn("p-2 md:p-3 rounded-2xl", colorClass)}>
         <Icon size={20} className="md:w-6 md:h-6" />
       </div>
-      <span className={cn("text-[10px] font-bold px-2 py-0.5 md:py-1 rounded-full", 
-        change?.startsWith('+') ? "text-emerald-600 bg-emerald-50" : "text-primary bg-primary-fixed"
-      )}>
+      <span
+        className={cn(
+          "text-[10px] font-bold px-2 py-0.5 md:py-1 rounded-full",
+          change?.startsWith("+")
+            ? "text-emerald-600 bg-emerald-50"
+            : "text-primary bg-primary-fixed",
+        )}
+      >
         {change}
       </span>
     </div>
-    <p className="text-on-surface-variant text-[10px] md:text-sm font-semibold uppercase tracking-wider mb-1">{title}</p>
-    <p className="text-xl md:text-3xl font-headline font-bold text-on-surface">{value}</p>
+    <p className="text-on-surface-variant text-[10px] md:text-sm font-semibold uppercase tracking-wider mb-1">
+      {title}
+    </p>
+    <p className="text-xl md:text-3xl font-headline font-bold text-on-surface">
+      {value}
+    </p>
   </div>
 );
 
 // --- Components ---
 
-const OnboardingChecklist = ({ shops, user, onNavigate, onEditProfile, hasMenu }: { shops: Shop[], user: User | null, onNavigate: (tab: string) => void, onEditProfile: () => void, hasMenu: boolean }) => {
-  const userOwnedShops = shops.filter(s => s.owner_id === user?.id);
+const OnboardingChecklist = ({
+  shops,
+  user,
+  onNavigate,
+  onEditProfile,
+  hasMenu,
+}: {
+  shops: Shop[];
+  user: User | null;
+  onNavigate: (tab: string) => void;
+  onEditProfile: () => void;
+  hasMenu: boolean;
+}) => {
+  const userOwnedShops = shops.filter((s) => s.owner_id === user?.id);
   const hasShop = userOwnedShops.length > 0;
-  const hasOperatingHours = user?.user_metadata?.operating_hours?.open && user?.user_metadata?.operating_hours?.close;
-  
+  const hasOperatingHours =
+    user?.user_metadata?.operating_hours?.open &&
+    user?.user_metadata?.operating_hours?.close;
+
   if (hasShop && hasOperatingHours && hasMenu) return null;
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }} 
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className="bg-primary/5 border border-primary/20 rounded-2xl md:rounded-3xl p-4 md:p-8 mb-8 md:mb-12"
     >
@@ -1455,62 +1755,113 @@ const OnboardingChecklist = ({ shops, user, onNavigate, onEditProfile, hasMenu }
         <div className="p-1.5 md:p-2 bg-primary/10 rounded-lg">
           <Rocket className="text-primary w-5 h-5 md:w-6 md:h-6" />
         </div>
-        <h2 className="text-xl md:text-2xl font-headline font-bold text-on-surface tracking-tight">Getting Started</h2>
+        <h2 className="text-xl md:text-2xl font-headline font-bold text-on-surface tracking-tight">
+          Getting Started
+        </h2>
       </div>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
-        <button 
-          onClick={() => onNavigate('menu')}
+        <button
+          onClick={() => onNavigate("menu")}
           className={cn(
             "flex items-center justify-between p-4 md:p-5 rounded-xl md:rounded-2xl border transition-all",
-            hasShop ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-white border-outline-variant hover:border-primary group"
+            hasShop
+              ? "bg-emerald-50 border-emerald-100 text-emerald-700"
+              : "bg-white border-outline-variant hover:border-primary group",
           )}
         >
           <div className="flex items-center gap-3 md:gap-4">
-            <div className={cn("p-2 rounded-full", hasShop ? "bg-emerald-100" : "bg-surface-container-high group-hover:bg-primary/10")}>
+            <div
+              className={cn(
+                "p-2 rounded-full",
+                hasShop
+                  ? "bg-emerald-100"
+                  : "bg-surface-container-high group-hover:bg-primary/10",
+              )}
+            >
               {hasShop ? <CheckCircle2 size={18} /> : <Store size={18} />}
             </div>
             <div className="text-left">
-              <p className="font-semibold text-sm md:text-base">Create your first Shop</p>
-              <p className="text-[10px] md:text-xs opacity-70">{hasShop ? 'Completed' : 'Required to start selling'}</p>
+              <p className="font-semibold text-sm md:text-base">
+                Create your first Shop
+              </p>
+              <p className="text-[10px] md:text-xs opacity-70">
+                {hasShop ? "Completed" : "Required to start selling"}
+              </p>
             </div>
           </div>
           {!hasShop && <ChevronRight size={18} className="text-primary" />}
         </button>
 
-        <button 
+        <button
           onClick={onEditProfile}
           className={cn(
             "flex items-center justify-between p-4 md:p-5 rounded-xl md:rounded-2xl border transition-all",
-            hasOperatingHours ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-white border-outline-variant hover:border-primary group"
+            hasOperatingHours
+              ? "bg-emerald-50 border-emerald-100 text-emerald-700"
+              : "bg-white border-outline-variant hover:border-primary group",
           )}
         >
           <div className="flex items-center gap-3 md:gap-4">
-            <div className={cn("p-2 rounded-full", hasOperatingHours ? "bg-emerald-100" : "bg-surface-container-high group-hover:bg-primary/10")}>
-              {hasOperatingHours ? <CheckCircle2 size={18} /> : <Clock size={18} />}
+            <div
+              className={cn(
+                "p-2 rounded-full",
+                hasOperatingHours
+                  ? "bg-emerald-100"
+                  : "bg-surface-container-high group-hover:bg-primary/10",
+              )}
+            >
+              {hasOperatingHours ? (
+                <CheckCircle2 size={18} />
+              ) : (
+                <Clock size={18} />
+              )}
             </div>
             <div className="text-left">
-              <p className="font-semibold text-sm md:text-base">Set Operating Hours</p>
-              <p className="text-[10px] md:text-xs opacity-70">{hasOperatingHours ? 'Completed' : 'Automate your shop status'}</p>
+              <p className="font-semibold text-sm md:text-base">
+                Set Operating Hours
+              </p>
+              <p className="text-[10px] md:text-xs opacity-70">
+                {hasOperatingHours ? "Completed" : "Automate your shop status"}
+              </p>
             </div>
           </div>
-          {!hasOperatingHours && <ChevronRight size={18} className="text-primary" />}
+          {!hasOperatingHours && (
+            <ChevronRight size={18} className="text-primary" />
+          )}
         </button>
 
-        <button 
-          onClick={() => onNavigate('menu')}
+        <button
+          onClick={() => onNavigate("menu")}
           className={cn(
             "flex items-center justify-between p-4 md:p-5 rounded-xl md:rounded-2xl border transition-all",
-            hasMenu ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-white border-outline-variant hover:border-primary group"
+            hasMenu
+              ? "bg-emerald-50 border-emerald-100 text-emerald-700"
+              : "bg-white border-outline-variant hover:border-primary group",
           )}
         >
           <div className="flex items-center gap-3 md:gap-4">
-            <div className={cn("p-2 rounded-full", hasMenu ? "bg-emerald-100" : "bg-surface-container-high group-hover:bg-primary/10")}>
-              {hasMenu ? <CheckCircle2 size={18} /> : <UtensilsCrossed size={18} />}
+            <div
+              className={cn(
+                "p-2 rounded-full",
+                hasMenu
+                  ? "bg-emerald-100"
+                  : "bg-surface-container-high group-hover:bg-primary/10",
+              )}
+            >
+              {hasMenu ? (
+                <CheckCircle2 size={18} />
+              ) : (
+                <UtensilsCrossed size={18} />
+              )}
             </div>
             <div className="text-left">
-              <p className="font-semibold text-sm md:text-base">Add Menu Items</p>
-              <p className="text-[10px] md:text-xs opacity-70">{hasMenu ? 'Completed' : 'Upload your delicious dishes'}</p>
+              <p className="font-semibold text-sm md:text-base">
+                Add Menu Items
+              </p>
+              <p className="text-[10px] md:text-xs opacity-70">
+                {hasMenu ? "Completed" : "Upload your delicious dishes"}
+              </p>
             </div>
           </div>
           {!hasMenu && <ChevronRight size={18} className="text-primary" />}
@@ -1519,7 +1870,8 @@ const OnboardingChecklist = ({ shops, user, onNavigate, onEditProfile, hasMenu }
       {!hasOperatingHours && hasShop && (
         <p className="mt-4 text-[10px] md:text-xs text-orange-600 font-medium flex items-center gap-1.5 bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl">
           <AlertCircle size={14} />
-          Your shop will remain closed until you set operating hours in your profile.
+          Your shop will remain closed until you set operating hours in your
+          profile.
         </p>
       )}
     </motion.div>
@@ -1531,26 +1883,30 @@ const OnboardingChecklist = ({ shops, user, onNavigate, onEditProfile, hasMenu }
 const PaymentHistory = ({ shopId }: { shopId: number }) => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'All' | 'success' | 'pending' | 'failed'>('All');
-  const [sortField, setSortField] = useState<'payment_date' | 'amount'>('payment_date');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState<
+    "All" | "success" | "pending" | "failed"
+  >("All");
+  const [sortField, setSortField] = useState<"payment_date" | "amount">(
+    "payment_date",
+  );
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     const fetchPayments = async () => {
       setLoading(true);
       try {
         const { data, error } = await supabase
-          .from('payments')
-          .select('*')
-          .eq('shop_id', shopId)
-          .order(sortField, { ascending: sortDirection === 'asc' });
+          .from("payments")
+          .select("*")
+          .eq("shop_id", shopId)
+          .order(sortField, { ascending: sortDirection === "asc" });
 
         if (error) throw error;
         setPayments(data || []);
       } catch (error) {
-        console.error('Error fetching payments:', error);
-        toast.error('Failed to load payment history');
+        console.error("Error fetching payments:", error);
+        toast.error("Failed to load payment history");
       } finally {
         setLoading(false);
       }
@@ -1559,19 +1915,20 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
     fetchPayments();
   }, [shopId, sortField, sortDirection]);
 
-  const filteredPayments = payments.filter(p => {
-    const matchesSearch = p.transaction_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         p.payment_method.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterStatus === 'All' || p.status === filterStatus;
+  const filteredPayments = payments.filter((p) => {
+    const matchesSearch =
+      p.transaction_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.payment_method.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesFilter = filterStatus === "All" || p.status === filterStatus;
     return matchesSearch && matchesFilter;
   });
 
-  const handleSort = (field: 'payment_date' | 'amount') => {
+  const handleSort = (field: "payment_date" | "amount") => {
     if (sortField === field) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
       setSortField(field);
-      setSortDirection('desc');
+      setSortDirection("desc");
     }
   };
 
@@ -1580,7 +1937,9 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
       <div className="space-y-6">
         <Skeleton className="h-12 w-64" />
         <div className="space-y-4">
-          {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-20 rounded-xl" />)}
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-20 rounded-xl" />
+          ))}
         </div>
       </div>
     );
@@ -1589,11 +1948,15 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
   return (
     <div className="space-y-8">
       <section className="space-y-1">
-        <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Payment History</h2>
-        <p className="text-sm text-on-surface-variant font-medium">View and manage your subscription payments and transactions.</p>
+        <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
+          Payment History
+        </h2>
+        <p className="text-sm text-on-surface-variant font-medium">
+          View and manage your subscription payments and transactions.
+        </p>
       </section>
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         className="bg-gradient-to-r from-emerald-500 to-teal-600 p-6 rounded-3xl text-white shadow-lg flex flex-col md:flex-row items-center justify-between gap-6"
@@ -1603,9 +1966,12 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
             <Sparkles size={28} className="text-white" />
           </div>
           <div>
-            <h3 className="text-xl font-headline font-black tracking-tight">0% Commission - You Keep 100%</h3>
+            <h3 className="text-xl font-headline font-black tracking-tight">
+              0% Commission - You Keep 100%
+            </h3>
             <p className="text-emerald-50 font-medium text-sm mt-1">
-              LocalEats is currently 100% free for all vendors. Grow your business without worrying about fees!
+              LocalEats is currently 100% free for all vendors. Grow your
+              business without worrying about fees!
             </p>
           </div>
         </div>
@@ -1616,8 +1982,11 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
 
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="relative w-full md:w-96">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={18} />
-          <input 
+          <Search
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
+            size={18}
+          />
+          <input
             type="text"
             placeholder="Search by Transaction ID or Method..."
             value={searchTerm}
@@ -1626,9 +1995,13 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
           />
         </div>
         <div className="flex gap-3 w-full md:w-auto">
-          <select 
+          <select
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as 'All' | 'success' | 'pending' | 'failed')}
+            onChange={(e) =>
+              setFilterStatus(
+                e.target.value as "All" | "success" | "pending" | "failed",
+              )
+            }
             className="flex-1 md:flex-none bg-surface-container-low border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold outline-none"
           >
             <option value="All">All Statuses</option>
@@ -1637,20 +2010,24 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
             <option value="failed">Failed</option>
           </select>
           <div className="flex gap-1 bg-surface-container-low p-1 rounded-xl border border-outline-variant/10">
-            <button 
-              onClick={() => handleSort('payment_date')}
+            <button
+              onClick={() => handleSort("payment_date")}
               className={cn(
                 "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-                sortField === 'payment_date' ? "bg-primary text-on-primary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-high"
+                sortField === "payment_date"
+                  ? "bg-primary text-on-primary shadow-sm"
+                  : "text-on-surface-variant hover:bg-surface-container-high",
               )}
             >
               Date
             </button>
-            <button 
-              onClick={() => handleSort('amount')}
+            <button
+              onClick={() => handleSort("amount")}
               className={cn(
                 "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-                sortField === 'amount' ? "bg-primary text-on-primary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-high"
+                sortField === "amount"
+                  ? "bg-primary text-on-primary shadow-sm"
+                  : "text-on-surface-variant hover:bg-surface-container-high",
               )}
             >
               Amount
@@ -1661,60 +2038,101 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
 
       <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full min-w-[600px] text-left border-collapse">
             <thead>
               <tr className="border-b border-outline-variant/10 bg-surface-container-low/30">
-                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Date</th>
-                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Transaction ID</th>
-                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Method</th>
-                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Amount</th>
-                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 text-center">Status</th>
+                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                  Date
+                </th>
+                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                  Transaction ID
+                </th>
+                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                  Method
+                </th>
+                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                  Amount
+                </th>
+                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 text-center">
+                  Status
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/5">
-              {filteredPayments.length > 0 ? filteredPayments.map((payment) => (
-                <tr key={payment.id} className="hover:bg-surface-container-low/50 transition-colors group">
-                  <td className="py-5 px-6">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-sm text-on-surface">{format(new Date(payment.payment_date), 'MMM dd, yyyy')}</span>
-                      <span className="text-[10px] text-on-surface-variant font-medium">{format(new Date(payment.payment_date), 'HH:mm')}</span>
-                    </div>
-                  </td>
-                  <td className="py-5 px-6">
-                    <span className="font-mono text-xs text-on-surface-variant font-medium">{payment.transaction_id}</span>
-                  </td>
-                  <td className="py-5 px-6">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-surface-container-high flex items-center justify-center">
-                        {payment.payment_method === 'OTT' ? <Ticket size={14} className="text-primary" /> : <CreditCard size={14} className="text-primary" />}
+              {filteredPayments.length > 0 ? (
+                filteredPayments.map((payment) => (
+                  <tr
+                    key={payment.id}
+                    className="hover:bg-surface-container-low/50 transition-colors group"
+                  >
+                    <td className="py-5 px-6">
+                      <div className="flex flex-col">
+                        <span className="font-bold text-sm text-on-surface">
+                          {format(
+                            new Date(payment.payment_date),
+                            "MMM dd, yyyy",
+                          )}
+                        </span>
+                        <span className="text-[10px] text-on-surface-variant font-medium">
+                          {format(new Date(payment.payment_date), "HH:mm")}
+                        </span>
                       </div>
-                      <span className="text-sm font-bold text-on-surface">{payment.payment_method}</span>
-                    </div>
-                  </td>
-                  <td className="py-5 px-6">
-                    <span className="font-headline font-black text-on-surface">R {Number(payment.amount || 0).toFixed(2)}</span>
-                  </td>
-                  <td className="py-5 px-6">
-                    <div className="flex justify-center">
-                      <span className={cn(
-                        "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                        payment.status === 'success' ? "bg-emerald-100 text-emerald-700" :
-                        payment.status === 'pending' ? "bg-amber-100 text-amber-700" :
-                        "bg-rose-100 text-rose-700"
-                      )}>
-                        {payment.status}
+                    </td>
+                    <td className="py-5 px-6">
+                      <span className="font-mono text-xs text-on-surface-variant font-medium">
+                        {payment.transaction_id}
                       </span>
-                    </div>
-                  </td>
-                </tr>
-              )) : (
+                    </td>
+                    <td className="py-5 px-6">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-surface-container-high flex items-center justify-center">
+                          {payment.payment_method === "OTT" ? (
+                            <Ticket size={14} className="text-primary" />
+                          ) : (
+                            <CreditCard size={14} className="text-primary" />
+                          )}
+                        </div>
+                        <span className="text-sm font-bold text-on-surface">
+                          {payment.payment_method}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-5 px-6">
+                      <span className="font-headline font-black text-on-surface">
+                        R {Number(payment.amount || 0).toFixed(2)}
+                      </span>
+                    </td>
+                    <td className="py-5 px-6">
+                      <div className="flex justify-center">
+                        <span
+                          className={cn(
+                            "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                            payment.status === "success"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : payment.status === "pending"
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-rose-100 text-rose-700",
+                          )}
+                        >
+                          {payment.status}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
                 <tr>
                   <td colSpan={5} className="py-20 text-center">
                     <div className="flex flex-col items-center gap-4">
                       <div className="w-16 h-16 bg-surface-container-low rounded-full flex items-center justify-center">
-                        <ReceiptText className="text-on-surface-variant/20" size={32} />
+                        <ReceiptText
+                          className="text-on-surface-variant/20"
+                          size={32}
+                        />
                       </div>
-                      <p className="text-on-surface-variant italic text-sm">No payment records found.</p>
+                      <p className="text-on-surface-variant italic text-sm">
+                        No payment records found.
+                      </p>
                     </div>
                   </td>
                 </tr>
@@ -1727,32 +2145,34 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
   );
 };
 
-const DashboardOverview = ({ 
-  orders, 
-  loading, 
-  shops, 
-  user, 
-  onRefresh, 
-  onNavigate, 
-  onEditProfile, 
+const DashboardOverview = ({
+  orders,
+  loading,
+  shops,
+  user,
+  onRefresh,
+  onNavigate,
+  onEditProfile,
   menuItems,
   trialInfo,
-  currentShop
-}: { 
-  orders: Order[], 
-  loading: boolean, 
-  shops: Shop[], 
-  user: User | null, 
-  onRefresh: () => void, 
-  onNavigate: (tab: string) => void, 
-  onEditProfile: () => void, 
-  menuItems: MenuItem[],
-  trialInfo: { daysRemaining: number; isExpired: boolean } | null,
-  currentShop: Shop | undefined
+  currentShop,
+}: {
+  orders: Order[];
+  loading: boolean;
+  shops: Shop[];
+  user: User | null;
+  onRefresh: () => void;
+  onNavigate: (tab: string) => void;
+  onEditProfile: () => void;
+  menuItems: MenuItem[];
+  trialInfo: { daysRemaining: number; isExpired: boolean } | null;
+  currentShop: Shop | undefined;
 }) => {
-  const [followerCount, setFollowerCount] = useState<number | string>('--');
-  const [followerTrend, setFollowerTrend] = useState<string>('0');
-  const [recentFollowers, setRecentFollowers] = useState<{ id: string; created_at: string }[]>([]);
+  const [followerCount, setFollowerCount] = useState<number | string>("--");
+  const [followerTrend, setFollowerTrend] = useState<string>("0");
+  const [recentFollowers, setRecentFollowers] = useState<
+    { id: string; created_at: string }[]
+  >([]);
 
   // Helper for weekly reset
   const getStartOfWeek = () => {
@@ -1765,69 +2185,75 @@ const DashboardOverview = ({
   };
 
   const startOfWeek = getStartOfWeek();
-  const weeklyOrders = orders.filter(o => new Date(o.created_at) >= startOfWeek);
+  const weeklyOrders = orders.filter(
+    (o) => new Date(o.created_at) >= startOfWeek,
+  );
 
   // Robust total sales calculation (Weekly)
   const weeklySales = weeklyOrders.reduce((acc, curr) => {
-    const price = typeof curr.total_price === 'string' 
-      ? parseFloat(curr.total_price.replace(/[^0-9.]/g, '')) 
-      : Number(curr.total_price);
+    const price =
+      typeof curr.total_price === "string"
+        ? parseFloat(curr.total_price.replace(/[^0-9.]/g, ""))
+        : Number(curr.total_price);
     return acc + (isNaN(price) ? 0 : price);
   }, 0);
 
   const totalSales = orders.reduce((acc, curr) => {
-    const price = typeof curr.total_price === 'string' 
-      ? parseFloat(curr.total_price.replace(/[^0-9.]/g, '')) 
-      : Number(curr.total_price);
+    const price =
+      typeof curr.total_price === "string"
+        ? parseFloat(curr.total_price.replace(/[^0-9.]/g, ""))
+        : Number(curr.total_price);
     return acc + (isNaN(price) ? 0 : price);
   }, 0);
 
   const orderCount = weeklyOrders.length;
   const hasMenu = menuItems.length > 0;
-  const [timeframe, setTimeframe] = useState<'weekly' | 'monthly'>('monthly');
+  const [timeframe, setTimeframe] = useState<"weekly" | "monthly">("monthly");
 
   const avgPrepTime = useMemo(() => {
-    const pendingCount = orders.filter(o => o.status === 'pending' || o.status === 'preparing').length;
-    return Number(Math.min(12 + (pendingCount * 1.5), 45)).toFixed(1);
+    const pendingCount = orders.filter(
+      (o) => o.status === "pending" || o.status === "preparing",
+    ).length;
+    return Number(Math.min(12 + pendingCount * 1.5, 45)).toFixed(1);
   }, [orders]);
 
   const fetchFollowers = async () => {
     if (!currentShop?.id) return;
-    
+
     try {
       const { count, error } = await supabase
-        .from('shop_followers')
-        .select('*', { count: 'exact', head: true })
-        .eq('shop_id', currentShop.id);
-      
+        .from("shop_followers")
+        .select("*", { count: "exact", head: true })
+        .eq("shop_id", currentShop.id);
+
       if (error) throw error;
       setFollowerCount(count || 0);
 
       const yesterday = new Date();
       yesterday.setHours(yesterday.getHours() - 24);
-      
+
       const { count: recentCount, error: trendError } = await supabase
-        .from('shop_followers')
-        .select('*', { count: 'exact', head: true })
-        .eq('shop_id', currentShop.id)
-        .gt('created_at', yesterday.toISOString());
+        .from("shop_followers")
+        .select("*", { count: "exact", head: true })
+        .eq("shop_id", currentShop.id)
+        .gt("created_at", yesterday.toISOString());
 
       if (!trendError) {
         setFollowerTrend(`+${recentCount || 0}`);
       }
 
       const { data: recentData, error: recentError } = await supabase
-        .from('shop_followers')
-        .select('id, created_at')
-        .eq('shop_id', currentShop.id)
-        .order('created_at', { ascending: false })
+        .from("shop_followers")
+        .select("id, created_at")
+        .eq("shop_id", currentShop.id)
+        .order("created_at", { ascending: false })
         .limit(5);
 
       if (!recentError && recentData) {
         setRecentFollowers(recentData);
       }
     } catch (err) {
-      console.error('Error fetching followers:', err);
+      console.error("Error fetching followers:", err);
       setFollowerCount(0);
     }
   };
@@ -1841,16 +2267,16 @@ const DashboardOverview = ({
     const channel = supabase
       .channel(`shop_followers_${currentShop.id}`)
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: '*',
-          schema: 'public',
-          table: 'shop_followers',
-          filter: `shop_id=eq.${currentShop.id}`
+          event: "*",
+          schema: "public",
+          table: "shop_followers",
+          filter: `shop_id=eq.${currentShop.id}`,
         },
         () => {
           fetchFollowers();
-        }
+        },
       )
       .subscribe();
 
@@ -1858,96 +2284,106 @@ const DashboardOverview = ({
       supabase.removeChannel(channel);
     };
   }, [currentShop?.id, fetchFollowers]);
-  
+
   // Use real trend data from the last 7 or 30 days
   const trendData = useMemo(() => {
     if (orders.length === 0) return [];
-    
-    const daysCount = timeframe === 'weekly' ? 7 : 30;
+
+    const daysCount = timeframe === "weekly" ? 7 : 30;
     const lastDays = Array.from({ length: daysCount }, (_, index) => {
       const d = new Date();
       d.setDate(d.getDate() - index);
       return {
-        date: d.toISOString().split('T')[0],
-        dayName: daysCount === 7 ? format(d, 'EEE') : format(d, 'MMM d'),
-        count: 0
+        date: d.toISOString().split("T")[0],
+        dayName: daysCount === 7 ? format(d, "EEE") : format(d, "MMM d"),
+        count: 0,
       };
     }).reverse();
 
-    orders.forEach(order => {
+    orders.forEach((order) => {
       try {
         if (!order.created_at) return;
         const dateObj = new Date(order.created_at);
         if (isNaN(dateObj.getTime())) return;
-        const orderDate = dateObj.toISOString().split('T')[0];
-        const day = lastDays.find(d => d.date === orderDate);
+        const orderDate = dateObj.toISOString().split("T")[0];
+        const day = lastDays.find((d) => d.date === orderDate);
         if (day) day.count++;
       } catch (e) {
-        console.error('Error parsing order date:', e);
+        console.error("Error parsing order date:", e);
       }
     });
 
-    return lastDays.map(d => ({ name: d.dayName, value: d.count }));
+    return lastDays.map((d) => ({ name: d.dayName, value: d.count }));
   }, [orders, timeframe]);
 
   const exportWeeklyCSV = () => {
     if (weeklyOrders.length === 0) {
-      toast.error('No orders this week to export');
+      toast.error("No orders this week to export");
       return;
     }
 
-    const headers = ['Order ID', 'Product', 'Price', 'Status', 'Date'];
+    const headers = ["Order ID", "Product", "Price", "Status", "Date"];
     const csvContent = [
-      headers.join(','),
-      ...weeklyOrders.map(o => [
-        o.id,
-        `"${o.product_name}"`,
-        o.total_price,
-        o.status,
-        new Date(o.created_at).toLocaleDateString()
-      ].join(','))
-    ].join('\n');
+      headers.join(","),
+      ...weeklyOrders.map((o) =>
+        [
+          o.id,
+          `"${o.product_name}"`,
+          o.total_price,
+          o.status,
+          new Date(o.created_at).toLocaleDateString(),
+        ].join(","),
+      ),
+    ].join("\n");
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `localeats_weekly_report_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `localeats_weekly_report_${new Date().toISOString().split("T")[0]}.csv`,
+    );
+    link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success('Weekly report exported successfully!');
+    toast.success("Weekly report exported successfully!");
   };
 
   const generateTestOrder = async () => {
     if (!currentShop) return;
-    
+
     const testOrder = {
       shop_id: currentShop.id,
       user_id: user?.id || null,
-      customer_name: 'Debug Customer',
-      phone: '000 000 0000',
-      email: 'debug@example.com',
-      address: currentShop.address || '123 Default St',
-      city: currentShop.city || 'Default City',
-      product_name: 'Test Burger (Debug)',
+      customer_name: "Debug Customer",
+      phone: "000 000 0000",
+      email: "debug@example.com",
+      address: currentShop.address || "123 Default St",
+      city: "Tembisa",
+      product_name: "Test Burger (Debug)",
       restaurant_name: currentShop.name,
       total_price: 55,
       price: 55,
-      status: 'pending',
-      order_type: 'delivery',
-      items: ['Test Burger (Debug)'],
-      created_at: new Date().toISOString()
+      status: "pending",
+      order_type: "delivery",
+      items: ["Test Burger (Debug)"],
+      created_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from('orders').insert(testOrder).select().single();
+    const { error } = await supabase
+      .from("orders")
+      .insert(testOrder)
+      .select()
+      .single();
     if (error) {
-      toast.error('Failed to generate test order: ' + error.message);
+      toast.error("Failed to generate test order: " + error.message);
     } else {
-      toast.success('Test order generated! Go to Orders to accept it.', {
-        description: 'Once accepted, click "Invoke Rider Dispatch" to test the Rider app feed.',
-        duration: 8000
+      toast.success("Test order generated! Go to Orders to accept it.", {
+        description:
+          'Once accepted, click "Invoke Rider Dispatch" to test the Rider app feed.',
+        duration: 8000,
       });
       onRefresh();
     }
@@ -1961,12 +2397,16 @@ const DashboardOverview = ({
           <Skeleton className="h-4 w-48" />
         </section>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-40 rounded-xl" />)}
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-40 rounded-xl" />
+          ))}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <Skeleton className="lg:col-span-8 h-80 rounded-xl" />
           <div className="lg:col-span-4 space-y-4">
-            {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-24 rounded-xl" />
+            ))}
           </div>
         </div>
       </div>
@@ -1975,14 +2415,21 @@ const DashboardOverview = ({
 
   return (
     <div className="space-y-8 md:space-y-12">
-      <motion.section initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
+      <motion.section
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
         <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div className="space-y-1">
-            <h1 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Good morning, Chef!</h1>
-            <p className="text-sm text-on-surface-variant font-medium">Here is what's happening in your kitchen today.</p>
+            <h1 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
+              Good morning, Chef!
+            </h1>
+            <p className="text-sm text-on-surface-variant font-medium">
+              Here is what's happening in your kitchen today.
+            </p>
           </div>
           <div className="flex gap-2">
-            <button 
+            <button
               onClick={generateTestOrder}
               className="p-3 bg-primary/5 text-primary rounded-xl hover:bg-primary/10 transition-colors border border-primary/10 flex items-center gap-2 text-xs font-bold"
               title="Generate Debug Order"
@@ -1990,7 +2437,7 @@ const DashboardOverview = ({
               <Plus size={18} />
               <span className="hidden sm:inline">Test Order</span>
             </button>
-            <button 
+            <button
               onClick={exportWeeklyCSV}
               className="p-3 bg-surface-container-low text-primary rounded-xl hover:bg-surface-container-high transition-colors shadow-sm self-end sm:self-auto flex items-center gap-2 text-xs font-bold"
               title="Download Weekly Report"
@@ -1998,10 +2445,10 @@ const DashboardOverview = ({
               <Download size={18} />
               <span className="hidden sm:inline">Weekly Report</span>
             </button>
-            <button 
+            <button
               onClick={() => {
                 onRefresh();
-                toast.success('Dashboard refreshed');
+                toast.success("Dashboard refreshed");
               }}
               className="p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm self-end sm:self-auto"
               title="Refresh Dashboard"
@@ -2012,81 +2459,127 @@ const DashboardOverview = ({
         </div>
       </motion.section>
 
-      <OnboardingChecklist shops={shops} user={user} onNavigate={onNavigate} onEditProfile={onEditProfile} hasMenu={hasMenu} />
+      <OnboardingChecklist
+        shops={shops}
+        user={user}
+        onNavigate={onNavigate}
+        onEditProfile={onEditProfile}
+        hasMenu={hasMenu}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-          <StatCard 
-            title="Weekly Sales" 
-            value={`R ${weeklySales.toLocaleString()}`} 
-            change={`${Number((weeklySales / (totalSales || 1)) * 100).toFixed(1)}% of total`} 
-            icon={TrendingUp} 
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <StatCard
+            title="Weekly Sales"
+            value={`R ${weeklySales.toLocaleString()}`}
+            change={`${Number((weeklySales / (totalSales || 1)) * 100).toFixed(1)}% of total`}
+            icon={TrendingUp}
             colorClass="bg-primary-fixed text-primary"
           />
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-          <StatCard 
-            title="Weekly Orders" 
-            value={orderCount} 
-            change="This Week" 
-            icon={ReceiptText} 
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <StatCard
+            title="Weekly Orders"
+            value={orderCount}
+            change="This Week"
+            icon={ReceiptText}
             colorClass="bg-orange-50 text-orange-700"
           />
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-          <StatCard 
-            title="Low Stock" 
-            value={menuItems.filter(i => (i.stock_quantity || 0) < 5).length} 
-            change="Alert" 
-            icon={AlertCircle} 
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <StatCard
+            title="Low Stock"
+            value={menuItems.filter((i) => (i.stock_quantity || 0) < 5).length}
+            change="Alert"
+            icon={AlertCircle}
             colorClass="bg-error/10 text-error"
           />
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-          <StatCard 
-            title="Followers" 
-            value={followerCount} 
-            change={followerTrend} 
-            icon={Users} 
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+        >
+          <StatCard
+            title="Followers"
+            value={followerCount}
+            change={followerTrend}
+            icon={Users}
             colorClass="bg-blue-50 text-blue-600"
           />
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-          <StatCard 
-            title="Avg. Prep" 
-            value={`${avgPrepTime}m`} 
-            change="0" 
-            icon={Clock} 
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <StatCard
+            title="Avg. Prep"
+            value={`${avgPrepTime}m`}
+            change="0"
+            icon={Clock}
             colorClass="bg-zinc-100 text-zinc-700"
           />
         </motion.div>
         {trialInfo && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-            <div className={cn(
-              "p-6 rounded-3xl border border-outline-variant/10 shadow-sm flex flex-col justify-between h-full",
-              trialInfo.isExpired ? "bg-error/5" : "bg-primary/5"
-            )}>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+          >
+            <div
+              className={cn(
+                "p-6 rounded-3xl border border-outline-variant/10 shadow-sm flex flex-col justify-between h-full",
+                trialInfo.isExpired ? "bg-error/5" : "bg-primary/5",
+              )}
+            >
               <div className="flex justify-between items-start mb-4">
-                <div className={cn(
-                  "p-3 rounded-2xl",
-                  trialInfo.isExpired ? "bg-error/10 text-error" : "bg-primary/10 text-primary"
-                )}>
+                <div
+                  className={cn(
+                    "p-3 rounded-2xl",
+                    trialInfo.isExpired
+                      ? "bg-error/10 text-error"
+                      : "bg-primary/10 text-primary",
+                  )}
+                >
                   <Zap size={20} />
                 </div>
-                <div className={cn(
-                  "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                  trialInfo.isExpired ? "bg-error text-white" : "bg-primary text-on-primary"
-                )}>
-                  {trialInfo.isExpired ? 'Expired' : 'Trial'}
+                <div
+                  className={cn(
+                    "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                    trialInfo.isExpired
+                      ? "bg-error text-white"
+                      : "bg-primary text-on-primary",
+                  )}
+                >
+                  {trialInfo.isExpired ? "Expired" : "Trial"}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-wider mb-1">Subscription</p>
+                <p className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-wider mb-1">
+                  Subscription
+                </p>
                 <h3 className="text-2xl font-black text-on-surface">
-                  {trialInfo.isExpired ? 'Action Required' : `${trialInfo.daysRemaining} Days Left`}
+                  {trialInfo.isExpired
+                    ? "Action Required"
+                    : `${trialInfo.daysRemaining} Days Left`}
                 </h3>
                 <p className="text-[10px] font-medium text-on-surface-variant mt-1">
-                  {trialInfo.isExpired ? 'Your trial has ended.' : `Your free trial for ${currentShop?.name || 'your shop'} is active.`}
+                  {trialInfo.isExpired
+                    ? "Your trial has ended."
+                    : `Your free trial for ${currentShop?.name || "your shop"} is active.`}
                 </p>
               </div>
             </div>
@@ -2095,93 +2588,173 @@ const DashboardOverview = ({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }} 
-          animate={{ opacity: 1, scale: 1 }} 
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.4 }}
           className="lg:col-span-8 bg-surface-container-low rounded-xl p-8 border border-outline-variant/5"
         >
           <div className="flex justify-between items-center mb-10">
             <div>
-              <h2 className="text-xl font-headline font-bold text-on-surface">Order Volume Trends</h2>
-              <p className="text-sm text-on-surface-variant">Live performance tracking</p>
+              <h2 className="text-xl font-headline font-bold text-on-surface">
+                Order Volume Trends
+              </h2>
+              <p className="text-sm text-on-surface-variant">
+                Live performance tracking
+              </p>
             </div>
             {orders.length > 0 && (
               <div className="flex gap-2">
-                <button 
-                  onClick={() => setTimeframe('weekly')}
-                  className={cn("px-4 py-1.5 rounded-full text-xs font-bold shadow-sm transition-all", timeframe === 'weekly' ? "bg-primary text-on-primary" : "bg-white dark:bg-surface-container-high text-on-surface-variant")}
+                <button
+                  onClick={() => setTimeframe("weekly")}
+                  className={cn(
+                    "px-4 py-1.5 rounded-full text-xs font-bold shadow-sm transition-all",
+                    timeframe === "weekly"
+                      ? "bg-primary text-on-primary"
+                      : "bg-white dark:bg-surface-container-high text-on-surface-variant",
+                  )}
                 >
                   Weekly
                 </button>
-                <button 
-                  onClick={() => setTimeframe('monthly')}
-                  className={cn("px-4 py-1.5 rounded-full text-xs font-bold shadow-sm transition-all", timeframe === 'monthly' ? "bg-primary text-on-primary" : "bg-white dark:bg-surface-container-high text-on-surface-variant")}
+                <button
+                  onClick={() => setTimeframe("monthly")}
+                  className={cn(
+                    "px-4 py-1.5 rounded-full text-xs font-bold shadow-sm transition-all",
+                    timeframe === "monthly"
+                      ? "bg-primary text-on-primary"
+                      : "bg-white dark:bg-surface-container-high text-on-surface-variant",
+                  )}
                 >
                   Monthly
                 </button>
               </div>
             )}
           </div>
-          
-          <div className="h-64 w-full flex items-center justify-center" style={{ minHeight: '256px' }}>
+
+          <div
+            className="h-64 w-full flex items-center justify-center"
+            style={{ minHeight: "256px" }}
+          >
             {orders.length > 0 ? (
-              <ResponsiveContainer width="99%" height="100%" minHeight={256} minWidth={1}>
+              <ResponsiveContainer
+                width="99%"
+                height="100%"
+                minHeight={256}
+                minWidth={1}
+              >
                 <BarChart data={trendData}>
                   <Bar dataKey="value" radius={[8, 8, 0, 0]}>
                     {trendData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={index === 4 ? '#a73400' : '#a734004d'} />
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={index === 4 ? "#a73400" : "#a734004d"}
+                      />
                     ))}
                   </Bar>
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#5c4037' }} />
-                  <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 10, fontWeight: 700, fill: "#5c4037" }}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "transparent" }}
+                    contentStyle={{
+                      borderRadius: "8px",
+                      border: "none",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    }}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
               <div className="text-center">
                 <div className="p-4 bg-surface-container-high rounded-full inline-block mb-4">
-                  <TrendingUp className="text-on-surface-variant opacity-20" size={48} />
+                  <TrendingUp
+                    className="text-on-surface-variant opacity-20"
+                    size={48}
+                  />
                 </div>
-                <p className="text-on-surface-variant font-medium">No order history yet</p>
-                <p className="text-xs text-on-surface-variant opacity-60">Complete your first order to see trends</p>
+                <p className="text-on-surface-variant font-medium">
+                  No order history yet
+                </p>
+                <p className="text-xs text-on-surface-variant opacity-60">
+                  Complete your first order to see trends
+                </p>
               </div>
             )}
           </div>
         </motion.div>
 
         <div className="lg:col-span-4 space-y-4">
-          <h3 className="text-lg font-headline font-bold text-on-surface px-2">Quick Actions</h3>
+          <h3 className="text-lg font-headline font-bold text-on-surface px-2">
+            Quick Actions
+          </h3>
           {[
-            { id: 'menu', title: 'Update Menu', sub: 'Modify items & pricing', icon: UtensilsCrossed, color: 'bg-primary-fixed text-primary' },
-            { id: 'riders', title: 'Rider Fleet', sub: 'Manage pairings & QR codes', icon: Bike, color: 'bg-blue-50 text-blue-600' },
-            { id: 'insights', title: 'Performance Insights', sub: 'View trends & analytics', icon: TrendingUp, color: 'bg-secondary-fixed text-on-secondary-fixed' },
-            { id: 'orders', title: 'Kitchen Settings', sub: 'System & app preferences', icon: ReceiptText, color: 'bg-zinc-100 text-zinc-600' }
+            {
+              id: "menu",
+              title: "Update Menu",
+              sub: "Modify items & pricing",
+              icon: UtensilsCrossed,
+              color: "bg-primary-fixed text-primary",
+            },
+            {
+              id: "riders",
+              title: "Rider Fleet",
+              sub: "Manage pairings & QR codes",
+              icon: Bike,
+              color: "bg-blue-50 text-blue-600",
+            },
+            {
+              id: "insights",
+              title: "Performance Insights",
+              sub: "View trends & analytics",
+              icon: TrendingUp,
+              color: "bg-secondary-fixed text-on-secondary-fixed",
+            },
+            {
+              id: "orders",
+              title: "Kitchen Settings",
+              sub: "System & app preferences",
+              icon: ReceiptText,
+              color: "bg-zinc-100 text-zinc-600",
+            },
           ].map((action, i) => (
-            <motion.button 
+            <motion.button
               whileHover={{ x: 4 }}
               whileTap={{ scale: 0.98 }}
-              key={i} 
+              key={i}
               onClick={() => onNavigate(action.id)}
               className="w-full flex items-center justify-between p-5 rounded-xl bg-surface-container-lowest border border-outline-variant/10 hover:bg-primary/5 transition-colors group"
             >
               <div className="flex items-center gap-4">
-                <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", action.color)}>
+                <div
+                  className={cn(
+                    "w-12 h-12 rounded-xl flex items-center justify-center",
+                    action.color,
+                  )}
+                >
                   <action.icon size={20} />
                 </div>
                 <div className="text-left">
                   <p className="font-bold text-on-surface">{action.title}</p>
-                  <p className="text-xs text-on-surface-variant">{action.sub}</p>
+                  <p className="text-xs text-on-surface-variant">
+                    {action.sub}
+                  </p>
                 </div>
               </div>
-              <ChevronRight size={20} className="text-on-surface-variant group-hover:translate-x-1 transition-transform" />
+              <ChevronRight
+                size={20}
+                className="text-on-surface-variant group-hover:translate-x-1 transition-transform"
+              />
             </motion.button>
           ))}
         </div>
       </div>
 
       {/* Low Stock Alerts Section */}
-      {menuItems.filter(i => (i.stock_quantity || 0) < 5).length > 0 && (
-        <motion.section 
+      {menuItems.filter((i) => (i.stock_quantity || 0) < 5).length > 0 && (
+        <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-error/5 border border-error/20 rounded-[2rem] p-8"
@@ -2192,92 +2765,145 @@ const DashboardOverview = ({
                 <AlertCircle size={24} />
               </div>
               <div>
-                <h2 className="text-xl font-headline font-bold text-on-surface">Low Stock Alerts</h2>
-                <p className="text-sm text-on-surface-variant">These items are running low and need restocking soon.</p>
+                <h2 className="text-xl font-headline font-bold text-on-surface">
+                  Low Stock Alerts
+                </h2>
+                <p className="text-sm text-on-surface-variant">
+                  These items are running low and need restocking soon.
+                </p>
               </div>
             </div>
-            <button 
-              onClick={() => onNavigate('menu')}
+            <button
+              onClick={() => onNavigate("menu")}
               className="px-6 py-2 bg-error text-white text-xs font-bold rounded-full hover:bg-error/90 transition-colors shadow-sm"
             >
               Restock Now
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {menuItems.filter(i => (i.stock_quantity || 0) < 5).map(item => (
-              <div key={item.id} className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-4 group hover:border-error/30 transition-colors">
-                <div className="w-12 h-12 rounded-xl overflow-hidden bg-surface-container flex items-center justify-center">
-                  {!isPlaceholderImage(item.image_url) ? (
-                    <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <FoodPlaceholder size={20} />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-sm text-on-surface truncate">{item.name}</h4>
-                  <div className="flex items-center gap-2 mt-1">
-                    <div className="flex-1 h-1 bg-surface-container rounded-full overflow-hidden">
-                      <div className="h-full bg-error rounded-full" style={{ width: `${(item.stock_quantity || 0) * 20}%` }} />
+            {menuItems
+              .filter((i) => (i.stock_quantity || 0) < 5)
+              .map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-4 group hover:border-error/30 transition-colors"
+                >
+                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-surface-container flex items-center justify-center">
+                    {!isPlaceholderImage(item.image_url) ? (
+                      <img
+                        src={item.image_url}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <FoodPlaceholder size={20} />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-sm text-on-surface truncate">
+                      {item.name}
+                    </h4>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex-1 h-1 bg-surface-container rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-error rounded-full"
+                          style={{
+                            width: `${(item.stock_quantity || 0) * 20}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-black text-error">
+                        {item.stock_quantity || 0} left
+                      </span>
                     </div>
-                    <span className="text-[10px] font-black text-error">{item.stock_quantity || 0} left</span>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </div>
         </motion.section>
       )}
 
       {/* Recent Activity Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <motion.section 
+        <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
           className="lg:col-span-8 bg-surface-container-lowest rounded-[2rem] p-8 border border-outline-variant/10 shadow-sm"
         >
           <div className="flex justify-between items-center mb-8">
-            <h2 className="text-xl font-headline font-bold text-on-surface">Recent Activity</h2>
-            <button onClick={() => onNavigate('orders')} className="text-xs font-bold text-primary hover:underline">View All Activity</button>
+            <h2 className="text-xl font-headline font-bold text-on-surface">
+              Recent Activity
+            </h2>
+            <button
+              onClick={() => onNavigate("orders")}
+              className="text-xs font-bold text-primary hover:underline"
+            >
+              View All Activity
+            </button>
           </div>
           <div className="space-y-6">
             {orders.slice(0, 5).map((order) => (
-              <div key={order.id} className="flex items-center justify-between group">
+              <div
+                key={order.id}
+                className="flex items-center justify-between group"
+              >
                 <div className="flex items-center gap-4">
-                  <div className={cn(
-                    "w-10 h-10 rounded-full flex items-center justify-center",
-                    order.status === 'completed' ? "bg-emerald-100 text-emerald-600" : 
-                    order.status === 'pending' ? "bg-primary/10 text-primary" : "bg-blue-100 text-blue-600"
-                  )}>
-                    {order.status === 'completed' ? <CheckCircle2 size={18} /> : <Clock size={18} />}
+                  <div
+                    className={cn(
+                      "w-10 h-10 rounded-full flex items-center justify-center",
+                      order.status === "completed"
+                        ? "bg-emerald-100 text-emerald-600"
+                        : order.status === "pending"
+                          ? "bg-primary/10 text-primary"
+                          : "bg-blue-100 text-blue-600",
+                    )}
+                  >
+                    {order.status === "completed" ? (
+                      <CheckCircle2 size={18} />
+                    ) : (
+                      <Clock size={18} />
+                    )}
                   </div>
                   <div>
                     <p className="text-sm font-bold text-on-surface">
-                      Order <span className="text-primary">#{order.id}</span> {order.status === 'completed' ? 'completed' : 'received'}
+                      Order <span className="text-primary">#{order.id}</span>{" "}
+                      {order.status === "completed" ? "completed" : "received"}
                     </p>
-                    <p className="text-xs text-on-surface-variant">{order.product_name} • {format(new Date(order.created_at), 'h:mm a')}</p>
+                    <p className="text-xs text-on-surface-variant">
+                      {order.product_name} •{" "}
+                      {format(new Date(order.created_at), "h:mm a")}
+                    </p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-on-surface">R {Number(order.total_price || 0).toFixed(2)}</p>
-                  <p className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-widest">{order.status}</p>
+                  <p className="text-sm font-bold text-on-surface">
+                    R {Number(order.total_price || 0).toFixed(2)}
+                  </p>
+                  <p className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-widest">
+                    {order.status}
+                  </p>
                 </div>
               </div>
             ))}
             {orders.length === 0 && (
-              <div className="py-12 text-center text-on-surface-variant italic">No recent activity to show.</div>
+              <div className="py-12 text-center text-on-surface-variant italic">
+                No recent activity to show.
+              </div>
             )}
           </div>
         </motion.section>
 
-        <motion.section 
+        <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6 }}
           className="lg:col-span-4 bg-surface-container-lowest rounded-[2rem] p-8 border border-outline-variant/10 shadow-sm"
         >
           <div className="flex justify-between items-center mb-8">
-            <h2 className="text-xl font-headline font-bold text-on-surface">Recent Followers</h2>
+            <h2 className="text-xl font-headline font-bold text-on-surface">
+              Recent Followers
+            </h2>
             <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
               <Users size={16} />
             </div>
@@ -2285,14 +2911,19 @@ const DashboardOverview = ({
           <div className="space-y-6">
             {recentFollowers.length > 0 ? (
               recentFollowers.map((follower) => (
-                <div key={follower.id} className="flex items-center gap-4 group">
+                <div
+                  key={follower.id}
+                  className="flex items-center gap-4 group"
+                >
                   <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xs">
                     {follower.id.slice(0, 2).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-on-surface truncate">New Follower</p>
+                    <p className="text-sm font-bold text-on-surface truncate">
+                      New Follower
+                    </p>
                     <p className="text-[10px] text-on-surface-variant/60 font-medium">
-                      {format(new Date(follower.created_at), 'MMM d, h:mm a')}
+                      {format(new Date(follower.created_at), "MMM d, h:mm a")}
                     </p>
                   </div>
                   <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
@@ -2303,8 +2934,12 @@ const DashboardOverview = ({
                 <div className="w-16 h-16 bg-surface-container rounded-full flex items-center justify-center mx-auto text-on-surface-variant/20">
                   <Users size={32} />
                 </div>
-                <p className="text-on-surface-variant text-sm font-medium italic">No followers yet.</p>
-                <p className="text-[10px] text-on-surface-variant/60 leading-tight">Share your shop link to get more followers!</p>
+                <p className="text-on-surface-variant text-sm font-medium italic">
+                  No followers yet.
+                </p>
+                <p className="text-[10px] text-on-surface-variant/60 leading-tight">
+                  Share your shop link to get more followers!
+                </p>
               </div>
             )}
           </div>
@@ -2314,43 +2949,51 @@ const DashboardOverview = ({
   );
 };
 
-const CreateShop = ({ user, onShopCreated }: { user: User | null, onShopCreated: () => void }) => {
+const CreateShop = ({
+  user,
+  onShopCreated,
+}: {
+  user: User | null;
+  onShopCreated: () => void;
+}) => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    location: '',
-    category: 'Restaurant',
-    phone: '',
-    email: '',
+    name: "",
+    description: "",
+    location: "",
+    category: "Restaurant",
+    phone: "",
+    email: "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
-      toast.error('You must be logged in to create a shop.');
+      toast.error("You must be logged in to create a shop.");
       return;
     }
     setLoading(true);
     try {
-      const { error } = await supabase.from('shops').insert({
+      const { error } = await supabase.from("shops").insert({
         ...formData,
         owner_id: user.id,
         is_active: true,
       });
 
       if (error) throw error;
-      toast.success('Shop created successfully!');
+      toast.success("Shop created successfully!");
       onShopCreated();
     } catch (err: unknown) {
-      toast.error(`Failed to create shop: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      toast.error(
+        `Failed to create shop: ${err instanceof Error ? err.message : "Unknown error"}`,
+      );
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       className="max-w-3xl mx-auto bg-surface-container-lowest p-8 md:p-12 rounded-[2.5rem] shadow-xl border border-outline-variant/10"
@@ -2359,28 +3002,40 @@ const CreateShop = ({ user, onShopCreated }: { user: User | null, onShopCreated:
         <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
           <Store className="text-primary" size={40} />
         </div>
-        <h2 className="text-3xl font-headline font-extrabold text-on-surface mb-2">Create Your Shop</h2>
-        <p className="text-on-surface-variant">Tell us about your kitchen to get started.</p>
+        <h2 className="text-3xl font-headline font-extrabold text-on-surface mb-2">
+          Create Your Shop
+        </h2>
+        <p className="text-on-surface-variant">
+          Tell us about your kitchen to get started.
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
-            <label className="block text-sm font-semibold text-on-surface ml-1">Shop Name</label>
-            <input 
+            <label className="block text-sm font-semibold text-on-surface ml-1">
+              Shop Name
+            </label>
+            <input
               required
               className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
               placeholder="e.g. Mama's Kitchen"
               value={formData.name}
-              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
             />
           </div>
           <div className="space-y-2">
-            <label className="block text-sm font-semibold text-on-surface ml-1">Category</label>
-            <select 
+            <label className="block text-sm font-semibold text-on-surface ml-1">
+              Category
+            </label>
+            <select
               className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
               value={formData.category}
-              onChange={e => setFormData({ ...formData, category: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, category: e.target.value })
+              }
             >
               <option>Restaurant</option>
               <option>Bakery</option>
@@ -2392,126 +3047,175 @@ const CreateShop = ({ user, onShopCreated }: { user: User | null, onShopCreated:
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm font-semibold text-on-surface ml-1">Description</label>
-          <textarea 
+          <label className="block text-sm font-semibold text-on-surface ml-1">
+            Description
+          </label>
+          <textarea
             required
             className="w-full p-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all min-h-[100px]"
             placeholder="Tell customers what makes your shop special..."
             value={formData.description}
-            onChange={e => setFormData({ ...formData, description: e.target.value })}
+            onChange={(e) =>
+              setFormData({ ...formData, description: e.target.value })
+            }
           />
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm font-semibold text-on-surface ml-1">Location</label>
-          <input 
+          <label className="block text-sm font-semibold text-on-surface ml-1">
+            Location
+          </label>
+          <input
             required
             className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
             placeholder="e.g. Soweto, Johannesburg"
             value={formData.location}
-            onChange={e => setFormData({ ...formData, location: e.target.value })}
+            onChange={(e) =>
+              setFormData({ ...formData, location: e.target.value })
+            }
           />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
-            <label className="block text-sm font-semibold text-on-surface ml-1">Contact Phone</label>
-            <input 
+            <label className="block text-sm font-semibold text-on-surface ml-1">
+              Contact Phone
+            </label>
+            <input
               type="tel"
               className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
               placeholder="e.g. +27 12 345 6789"
               value={formData.phone}
-              onChange={e => setFormData({ ...formData, phone: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, phone: e.target.value })
+              }
             />
           </div>
           <div className="space-y-2">
-            <label className="block text-sm font-semibold text-on-surface ml-1">Contact Email</label>
-            <input 
+            <label className="block text-sm font-semibold text-on-surface ml-1">
+              Contact Email
+            </label>
+            <input
               type="email"
               className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
               placeholder="e.g. hello@mamas.co.za"
               value={formData.email}
-              onChange={e => setFormData({ ...formData, email: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, email: e.target.value })
+              }
             />
           </div>
         </div>
 
-        <button 
+        <button
           disabled={loading}
           className="w-full h-14 bg-gradient-to-br from-primary to-primary-container text-on-primary font-bold text-lg rounded-full shadow-lg hover:scale-[0.98] active:scale-95 transition-all disabled:opacity-50 mt-4"
           type="submit"
         >
-          {loading ? 'Creating...' : 'Launch Shop'}
+          {loading ? "Creating..." : "Launch Shop"}
         </button>
       </form>
     </motion.div>
   );
 };
 
-const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[], loading: boolean, user: User | null, onRefreshMenu?: () => void }) => {
-  const userOwnedShops = useMemo(() => 
-    shops.filter(s => s.owner_id === user?.id),
-    [shops, user?.id]
+const MenuManagement = ({
+  shops,
+  loading,
+  user,
+  onRefreshMenu,
+}: {
+  shops: Shop[];
+  loading: boolean;
+  user: User | null;
+  onRefreshMenu?: () => void;
+}) => {
+  const userOwnedShops = useMemo(
+    () => shops.filter((s) => s.owner_id === user?.id),
+    [shops, user?.id],
   );
-  
+
   const [selectedShopId, setSelectedShopId] = useState<number | null>(() => {
-    const owned = shops.filter(s => s.owner_id === user?.id);
+    const owned = shops.filter((s) => s.owner_id === user?.id);
     return owned[0]?.id || null;
   });
-  
+
   // Update selectedShopId if userOwnedShops changes and current selectedShopId is not in the list
   useEffect(() => {
-    if (userOwnedShops.length > 0 && (!selectedShopId || !userOwnedShops.find(s => s.id === selectedShopId))) {
+    if (
+      userOwnedShops.length > 0 &&
+      (!selectedShopId || !userOwnedShops.find((s) => s.id === selectedShopId))
+    ) {
       setSelectedShopId(userOwnedShops[0].id);
     }
   }, [userOwnedShops, selectedShopId]);
 
   const [items, setItems] = useState<MenuItem[]>([]);
-  
-  const [formData, setFormData] = useState({ name: '', price: '', category: 'Main Course', description: '', stock_quantity: '10' });
+
+  const [formData, setFormData] = useState({
+    name: "",
+    price: "",
+    category: "Main Course",
+    description: "",
+    stock_quantity: "10",
+  });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState<string>('All');
-  const [priceRange, setPriceRange] = useState<{ min: string, max: string }>({ min: '', max: '' });
-  const [stockFilter, setStockFilter] = useState<'All' | 'Low Stock' | 'In Stock'>('All');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterCategory, setFilterCategory] = useState<string>("All");
+  const [priceRange, setPriceRange] = useState<{ min: string; max: string }>({
+    min: "",
+    max: "",
+  });
+  const [stockFilter, setStockFilter] = useState<
+    "All" | "Low Stock" | "In Stock"
+  >("All");
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
-  const filteredItems = items.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         (item.description?.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesCategory = filterCategory === 'All' || item.category === filterCategory;
-    
+  const filteredItems = items.filter((item) => {
+    const matchesSearch =
+      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory =
+      filterCategory === "All" || item.category === filterCategory;
+
     const price = item.price;
     const minPrice = priceRange.min ? parseFloat(priceRange.min) : 0;
     const maxPrice = priceRange.max ? parseFloat(priceRange.max) : Infinity;
     const matchesPrice = price >= minPrice && price <= maxPrice;
-    
+
     const stock = item.stock_quantity || 0;
-    const matchesStock = stockFilter === 'All' || 
-                        (stockFilter === 'Low Stock' && stock < 5) || 
-                        (stockFilter === 'In Stock' && stock >= 5);
-                        
+    const matchesStock =
+      stockFilter === "All" ||
+      (stockFilter === "Low Stock" && stock < 5) ||
+      (stockFilter === "In Stock" && stock >= 5);
+
     return matchesSearch && matchesCategory && matchesPrice && matchesStock;
   });
 
-  const categories = ['All', 'Main Course', 'Appetizers', 'Desserts', 'Beverages'];
+  const categories = [
+    "All",
+    "Main Course",
+    "Appetizers",
+    "Desserts",
+    "Beverages",
+  ];
 
   const fetchMenu = useCallback(async () => {
     if (!selectedShopId) return;
     try {
       const { data, error } = await supabase
-        .from('menu_items')
-        .select('*')
-        .eq('shop_id', selectedShopId);
+        .from("menu_items")
+        .select("*")
+        .eq("shop_id", selectedShopId);
       if (data) {
         setItems(data);
       } else if (error) {
-        console.error('Fetch Menu Error:', error);
+        console.error("Fetch Menu Error:", error);
       }
     } finally {
       // Done
@@ -2531,14 +3235,18 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
       // Real-time subscription for menu items of this shop
       const menuChannel = supabase
         .channel(`menu_items_${selectedShopId}`)
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
-          table: 'menu_items',
-          filter: `shop_id=eq.${selectedShopId}`
-        }, () => {
-          void fetchMenu();
-        })
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "menu_items",
+            filter: `shop_id=eq.${selectedShopId}`,
+          },
+          () => {
+            void fetchMenu();
+          },
+        )
         .subscribe();
 
       return () => {
@@ -2549,14 +3257,16 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
 
   const toggleAvailability = async (item: MenuItem) => {
     const { error } = await supabase
-      .from('menu_items')
+      .from("menu_items")
       .update({ is_available: !item.is_available })
-      .eq('id', item.id);
+      .eq("id", item.id);
 
     if (error) {
       toast.error(`Failed to update availability: ${error.message}`);
     } else {
-      toast.success(`${item.name} is now ${!item.is_available ? 'available' : 'unavailable'}`);
+      toast.success(
+        `${item.name} is now ${!item.is_available ? "available" : "unavailable"}`,
+      );
       fetchMenu();
     }
   };
@@ -2575,7 +3285,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
 
   const handleSubmit = async (e: React.FormEvent) => {
     if (!user) {
-      toast.error('Not authenticated');
+      toast.error("Not authenticated");
       setUploading(false);
       return;
     }
@@ -2587,78 +3297,101 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
     let imageUrl = imagePreview; // Use the current preview state as the base
 
     if (imageFile) {
-      const options = { maxSizeMB: 0.2, maxWidthOrHeight: 1024, useWebWorker: true };
+      const options = {
+        maxSizeMB: 0.2,
+        maxWidthOrHeight: 1024,
+        useWebWorker: true,
+      };
       const compressedFile = await imageCompression(imageFile, options);
-      
-      const fileExt = compressedFile.name.split('.').pop() || 'jpg';
+
+      const fileExt = compressedFile.name.split(".").pop() || "jpg";
       const fileName = `${Math.random()}.${fileExt}`;
       const filePath = `${user.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('menu-images')
+        .from("menu-images")
         .upload(filePath, compressedFile);
 
       if (uploadError) {
-        console.error('Upload Error:', uploadError);
-        toast.error('Failed to upload image. Please ensure "menu-images" bucket exists in Supabase and is set to Public.');
+        console.error("Upload Error:", uploadError);
+        toast.error(
+          'Failed to upload image. Please ensure "menu-images" bucket exists in Supabase and is set to Public.',
+        );
         setUploading(false);
         return;
       }
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('menu-images')
-        .getPublicUrl(filePath);
-      
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("menu-images").getPublicUrl(filePath);
+
       imageUrl = publicUrl;
     }
 
     if (editingItem) {
-      const { error } = await supabase.from('menu_items').update({
-        name: formData.name,
-        price: parseFloat(formData.price),
-        category: formData.category,
-        description: formData.description,
-        stock_quantity: parseInt(formData.stock_quantity),
-        image_url: imageUrl
-      }).eq('id', editingItem.id);
+      const { error } = await supabase
+        .from("menu_items")
+        .update({
+          name: formData.name,
+          price: parseFloat(formData.price),
+          category: formData.category,
+          description: formData.description,
+          stock_quantity: parseInt(formData.stock_quantity),
+          image_url: imageUrl,
+        })
+        .eq("id", editingItem.id);
 
       setUploading(false);
 
       if (!error) {
-        toast.success('Menu item updated successfully');
+        toast.success("Menu item updated successfully");
         setEditingItem(null);
-        setFormData({ name: '', price: '', category: 'Main Course', description: '', stock_quantity: '10' });
+        setFormData({
+          name: "",
+          price: "",
+          category: "Main Course",
+          description: "",
+          stock_quantity: "10",
+        });
         setImageFile(null);
         setImagePreview(null);
         fetchMenu();
         onRefreshMenu?.();
       } else {
-        console.error('Supabase Update Error:', error);
+        console.error("Supabase Update Error:", error);
         toast.error(`Failed to update menu item: ${error.message}`);
       }
     } else {
-      const { error } = await supabase.from('menu_items').insert([{
-        name: formData.name,
-        price: parseFloat(formData.price),
-        category: formData.category,
-        description: formData.description,
-        stock_quantity: parseInt(formData.stock_quantity),
-        shop_id: selectedShopId,
-        is_available: true,
-        image_url: imageUrl
-      }]);
+      const { error } = await supabase.from("menu_items").insert([
+        {
+          name: formData.name,
+          price: parseFloat(formData.price),
+          category: formData.category,
+          description: formData.description,
+          stock_quantity: parseInt(formData.stock_quantity),
+          shop_id: selectedShopId,
+          is_available: true,
+          image_url: imageUrl,
+        },
+      ]);
 
       setUploading(false);
 
       if (!error) {
-        toast.success('Menu item added successfully');
-        setFormData({ name: '', price: '', category: 'Main Course', description: '', stock_quantity: '10' });
+        toast.success("Menu item added successfully");
+        setFormData({
+          name: "",
+          price: "",
+          category: "Main Course",
+          description: "",
+          stock_quantity: "10",
+        });
         setImageFile(null);
         setImagePreview(null);
         fetchMenu();
         onRefreshMenu?.();
       } else {
-        console.error('Supabase Insert Error:', error);
+        console.error("Supabase Insert Error:", error);
         toast.error(`Failed to add menu item: ${error.message}`);
       }
     }
@@ -2669,53 +3402,65 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
     setFormData({
       name: item.name,
       price: item.price.toString(),
-      category: item.category || 'Main Course',
-      description: item.description || '',
-      stock_quantity: (item.stock_quantity || 0).toString()
+      category: item.category || "Main Course",
+      description: item.description || "",
+      stock_quantity: (item.stock_quantity || 0).toString(),
     });
     setImagePreview(item.image_url);
     // Scroll to form
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const cancelEdit = () => {
     setEditingItem(null);
-    setFormData({ name: '', price: '', category: 'Main Course', description: '', stock_quantity: '10' });
+    setFormData({
+      name: "",
+      price: "",
+      category: "Main Course",
+      description: "",
+      stock_quantity: "10",
+    });
     setImageFile(null);
     setImagePreview(null);
   };
 
   const generateAIImage = async () => {
     if (!formData.name) {
-      toast.error('Please enter a name for the menu item first');
+      toast.error("Please enter a name for the menu item first");
       return;
     }
 
     setIsGeneratingImage(true);
     try {
       if (!import.meta.env.VITE_GEMINI_API_KEY) {
-        throw new Error('Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your environment variables.');
+        throw new Error(
+          "Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your environment variables.",
+        );
       }
-      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
-      const prompt = `A professional food photography shot of ${formData.name}. ${formData.description ? `Description: ${formData.description}.` : ''} High quality, appetizing, studio lighting, neutral background.`;
-      
+      const ai = new GoogleGenAI({
+        apiKey: import.meta.env.VITE_GEMINI_API_KEY,
+      });
+      const prompt = `A professional food photography shot of ${formData.name}. ${formData.description ? `Description: ${formData.description}.` : ""} High quality, appetizing, studio lighting, neutral background.`;
+
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
+        model: "gemini-2.5-flash-image",
         contents: {
-          parts: [{ text: prompt }]
+          parts: [{ text: prompt }],
         },
         config: {
           imageConfig: {
-            aspectRatio: "4:3"
-          }
-        }
+            aspectRatio: "4:3",
+          },
+        },
       });
 
       if (!response.candidates?.[0]?.content?.parts) {
-        throw new Error('The AI model did not return any image parts. Try a different name.');
+        throw new Error(
+          "The AI model did not return any image parts. Try a different name.",
+        );
       }
 
-      let base64Data = '';
+      let base64Data = "";
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
           base64Data = part.inlineData.data;
@@ -2726,58 +3471,75 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
       if (base64Data) {
         const imageUrl = `data:image/png;base64,${base64Data}`;
         setImagePreview(imageUrl);
-        
+
         // Convert base64 to File object for Supabase upload
         const res = await fetch(imageUrl);
         const blob = await res.blob();
-        const file = new File([blob], `${formData.name.replace(/\s+/g, '_')}_ai.png`, { type: 'image/png' });
+        const file = new File(
+          [blob],
+          `${formData.name.replace(/\s+/g, "_")}_ai.png`,
+          { type: "image/png" },
+        );
         setImageFile(file);
-        
-        toast.success('AI Image generated successfully!');
+
+        toast.success("AI Image generated successfully!");
       } else {
-        throw new Error('No image data received from AI');
+        throw new Error("No image data received from AI");
       }
     } catch (error) {
-      console.error('AI Image Generation Error:', error);
-      toast.error(`AI Generation failed: ${error instanceof Error ? error.message : 'Please try again.'}`);
+      console.error("AI Image Generation Error:", error);
+      toast.error(
+        `AI Generation failed: ${error instanceof Error ? error.message : "Please try again."}`,
+      );
     } finally {
       setIsGeneratingImage(false);
     }
   };
 
-  const handleBulkAction = async (action: 'available' | 'unavailable' | 'delete' | 'category', value?: string) => {
+  const handleBulkAction = async (
+    action: "available" | "unavailable" | "delete" | "category",
+    value?: string,
+  ) => {
     if (selectedItems.length === 0) return;
-    
-    const confirmMessage = action === 'delete' 
-      ? `Are you sure you want to delete ${selectedItems.length} items?`
-      : action === 'category'
-      ? `Change category to "${value}" for ${selectedItems.length} items?`
-      : `Mark ${selectedItems.length} items as ${action}?`;
-      
+
+    const confirmMessage =
+      action === "delete"
+        ? `Are you sure you want to delete ${selectedItems.length} items?`
+        : action === "category"
+          ? `Change category to "${value}" for ${selectedItems.length} items?`
+          : `Mark ${selectedItems.length} items as ${action}?`;
+
     if (!window.confirm(confirmMessage)) return;
 
     try {
-      if (action === 'delete') {
-        const { error } = await supabase.from('menu_items').delete().in('id', selectedItems);
+      if (action === "delete") {
+        const { error } = await supabase
+          .from("menu_items")
+          .delete()
+          .in("id", selectedItems);
         if (error) throw error;
         toast.success(`Deleted ${selectedItems.length} items`);
-      } else if (action === 'category') {
-        const { error } = await supabase.from('menu_items')
+      } else if (action === "category") {
+        const { error } = await supabase
+          .from("menu_items")
           .update({ category: value })
-          .in('id', selectedItems);
+          .in("id", selectedItems);
         if (error) throw error;
         toast.success(`Updated category for ${selectedItems.length} items`);
       } else {
-        const { error } = await supabase.from('menu_items')
-          .update({ is_available: action === 'available' })
-          .in('id', selectedItems);
+        const { error } = await supabase
+          .from("menu_items")
+          .update({ is_available: action === "available" })
+          .in("id", selectedItems);
         if (error) throw error;
         toast.success(`Updated ${selectedItems.length} items`);
       }
       setSelectedItems([]);
       fetchMenu();
     } catch (error: unknown) {
-      toast.error(`Bulk action failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(
+        `Bulk action failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
     }
   };
 
@@ -2785,28 +3547,28 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
     if (selectedItems.length === filteredItems.length) {
       setSelectedItems([]);
     } else {
-      setSelectedItems(filteredItems.map(i => i.id));
+      setSelectedItems(filteredItems.map((i) => i.id));
     }
   };
 
   const toggleSelectItem = (id: number) => {
-    setSelectedItems(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    setSelectedItems((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id],
     );
   };
 
   const handleDelete = async (id: number) => {
-    const { error } = await supabase.from('menu_items').delete().eq('id', id);
+    const { error } = await supabase.from("menu_items").delete().eq("id", id);
     if (!error) {
-      toast.success('Item deleted');
+      toast.success("Item deleted");
       fetchMenu();
       onRefreshMenu?.();
     } else {
-      toast.error('Failed to delete item');
+      toast.error("Failed to delete item");
     }
   };
 
-  const selectedShop = shops.find(s => s.id === selectedShopId);
+  const selectedShop = shops.find((s) => s.id === selectedShopId);
 
   if (loading) {
     return (
@@ -2815,7 +3577,9 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <Skeleton className="lg:col-span-5 h-[500px] rounded-[2rem]" />
           <div className="lg:col-span-7 grid grid-cols-1 md:grid-cols-2 gap-6">
-            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-80 rounded-[2rem]" />)}
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-80 rounded-[2rem]" />
+            ))}
           </div>
         </div>
       </div>
@@ -2824,7 +3588,7 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
 
   return (
     <div className="space-y-12">
-      <motion.section 
+      <motion.section
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-surface-container-low p-8 rounded-3xl border border-outline-variant/5"
@@ -2832,25 +3596,38 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
         <div className="flex items-center gap-6">
           <div className="w-20 h-20 rounded-2xl overflow-hidden bg-white shadow-sm border border-outline-variant/10 flex items-center justify-center">
             {!isPlaceholderImage(selectedShop?.logo_url) ? (
-              <img 
-                src={selectedShop!.logo_url!} 
-                alt={selectedShop?.name} 
+              <img
+                src={selectedShop!.logo_url!}
+                alt={selectedShop?.name}
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div 
+              <div
                 className="w-full h-full flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #ff9d42 0%, #f58220 100%)' }}
+                style={{
+                  background:
+                    "linear-gradient(135deg, #ff9d42 0%, #f58220 100%)",
+                }}
               >
-                <Store size={32} className="text-white drop-shadow-sm" strokeWidth={1.5} />
+                <Store
+                  size={32}
+                  className="text-white drop-shadow-sm"
+                  strokeWidth={1.5}
+                />
               </div>
             )}
           </div>
           <div>
-            <h2 className="text-2xl font-headline font-bold text-on-surface">{selectedShop?.name || "Your Shop"}</h2>
+            <h2 className="text-2xl font-headline font-bold text-on-surface">
+              {selectedShop?.name || "Your Shop"}
+            </h2>
             <div className="flex items-center gap-4 mt-1 text-on-surface-variant text-sm font-medium">
-              <span className="flex items-center gap-1"><MapPin size={14} /> {selectedShop?.location}</span>
-              <span className="flex items-center gap-1"><Store size={14} /> {selectedShop?.category}</span>
+              <span className="flex items-center gap-1">
+                <MapPin size={14} /> {selectedShop?.location}
+              </span>
+              <span className="flex items-center gap-1">
+                <Store size={14} /> {selectedShop?.category}
+              </span>
             </div>
           </div>
         </div>
@@ -2860,445 +3637,620 @@ const MenuManagement = ({ shops, loading, user, onRefreshMenu }: { shops: Shop[]
         <CreateShop user={user} onShopCreated={onRefreshMenu || (() => {})} />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <motion.section 
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.1 }}
-          className="lg:col-span-5 space-y-8"
-        >
-          <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-            <div className="space-y-2">
-              <h2 className="text-2xl md:text-3xl font-bold tracking-tight font-headline text-on-surface">
-                {editingItem ? 'Edit Your' : 'Curate Your'} <span className="text-primary italic">Offerings</span>
-              </h2>
-              <p className="text-sm text-on-surface-variant font-medium max-w-md">
-                {editingItem ? 'Update the details of your menu item below.' : 'Transform ingredients into inspiration. Define your signature dishes for the LocalEats community.'}
-              </p>
+          <motion.section
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.1 }}
+            className="lg:col-span-5 space-y-8"
+          >
+            <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+              <div className="space-y-2">
+                <h2 className="text-2xl md:text-3xl font-bold tracking-tight font-headline text-on-surface">
+                  {editingItem ? "Edit Your" : "Curate Your"}{" "}
+                  <span className="text-primary italic">Offerings</span>
+                </h2>
+                <p className="text-sm text-on-surface-variant font-medium max-w-md">
+                  {editingItem
+                    ? "Update the details of your menu item below."
+                    : "Transform ingredients into inspiration. Define your signature dishes for the LocalEats community."}
+                </p>
+              </div>
+              {!editingItem && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    toast.info("Bulk Import feature coming soon!", {
+                      description:
+                        "You will be able to upload a CSV or use AI to scan your physical menu.",
+                    })
+                  }
+                  className="px-4 py-2 bg-surface-container-high text-primary font-bold text-xs rounded-xl hover:bg-primary/10 transition-colors flex items-center gap-2 shadow-sm"
+                >
+                  <Upload size={16} />
+                  Bulk Import
+                </button>
+              )}
             </div>
-            {!editingItem && (
-              <button 
-                type="button"
-                onClick={() => toast.info('Bulk Import feature coming soon!', { description: 'You will be able to upload a CSV or use AI to scan your physical menu.' })}
-                className="px-4 py-2 bg-surface-container-high text-primary font-bold text-xs rounded-xl hover:bg-primary/10 transition-colors flex items-center gap-2 shadow-sm"
-              >
-                <Upload size={16} />
-                Bulk Import
-              </button>
-            )}
-          </div>
-          <div className="bg-surface-container-lowest p-8 rounded-[2rem] shadow-[0_8px_24px_-4px_rgba(167,52,0,0.06)] border border-outline-variant/10">
-            <form className="space-y-6" onSubmit={handleSubmit}>
-              <div className="space-y-1.5">
-                <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">Item Name</label>
-                <input 
-                  className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-surface-variant/40" 
-                  placeholder="e.g. Truffle Infused Tagliatelle" 
-                  type="text"
-                  value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="col-span-1 space-y-1.5">
-                  <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">Price (R)</label>
-                  <input 
-                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all" 
-                    placeholder="0.00" 
-                    type="number"
-                    value={formData.price}
-                    onChange={e => setFormData({...formData, price: e.target.value})}
+            <div className="bg-surface-container-lowest p-8 rounded-[2rem] shadow-[0_8px_24px_-4px_rgba(167,52,0,0.06)] border border-outline-variant/10">
+              <form className="space-y-6" onSubmit={handleSubmit}>
+                <div className="space-y-1.5">
+                  <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">
+                    Item Name
+                  </label>
+                  <input
+                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-surface-variant/40"
+                    placeholder="e.g. Truffle Infused Tagliatelle"
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
                     required
                   />
                 </div>
-                <div className="col-span-1 space-y-1.5">
-                  <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">Stock</label>
-                  <input 
-                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all" 
-                    placeholder="Qty" 
-                    type="number"
-                    value={formData.stock_quantity}
-                    onChange={e => setFormData({...formData, stock_quantity: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="col-span-1 space-y-1.5">
-                  <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">Category</label>
-                  <select 
-                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all appearance-none"
-                    value={formData.category}
-                    onChange={e => setFormData({...formData, category: e.target.value})}
-                  >
-                    <option>Main Course</option>
-                    <option>Appetizers</option>
-                    <option>Desserts</option>
-                    <option>Beverages</option>
-                  </select>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">Description</label>
-                <textarea 
-                  className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-surface-variant/40" 
-                  placeholder="Tell the story of this dish..." 
-                  rows={3}
-                  value={formData.description}
-                  onChange={e => setFormData({...formData, description: e.target.value})}
-                ></textarea>
-              </div>
-              <div className="space-y-1.5">
-                <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">Item Image</label>
-                <div className="flex flex-col gap-4">
-                  <div className="relative w-full h-40 rounded-2xl overflow-hidden border border-outline-variant/10 shadow-inner">
-                    {!isPlaceholderImage(imagePreview) ? (
-                      <img src={imagePreview!} alt="Preview" className="w-full h-full object-cover animate-in fade-in duration-500" />
-                    ) : (
-                      <FoodPlaceholder size={48} />
-                    )}
-                    {imagePreview && (
-                      <button 
-                        type="button"
-                        onClick={() => { setImageFile(null); setImagePreview(null); }}
-                        className="absolute top-3 right-3 p-2 bg-error/90 text-on-error rounded-full shadow-lg hover:bg-error transition-all hover:scale-110 active:scale-95"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <label className={cn(
-                      "flex-1 flex flex-col items-center justify-center h-32 border-2 border-dashed rounded-xl cursor-pointer transition-all",
-                      imageFile ? "border-primary/40 bg-primary/5" : "border-outline-variant/30 hover:border-primary/40 hover:bg-primary/5"
-                    )}>
-                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                        <Upload className="w-8 h-8 mb-2 text-on-surface-variant/40" />
-                        <p className="text-xs text-on-surface-variant/60 font-medium">
-                          {imageFile ? imageFile.name : "Click to upload image"}
-                        </p>
-                      </div>
-                      <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="col-span-1 space-y-1.5">
+                    <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">
+                      Price (R)
                     </label>
-                    <button 
-                      type="button"
-                      onClick={generateAIImage}
-                      disabled={isGeneratingImage || !formData.name}
-                      className="w-32 h-32 flex flex-col items-center justify-center bg-surface-container-high rounded-xl border-2 border-outline-variant/10 hover:bg-surface-container-highest transition-all disabled:opacity-50 group"
+                    <input
+                      className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all"
+                      placeholder="0.00"
+                      type="number"
+                      value={formData.price}
+                      onChange={(e) =>
+                        setFormData({ ...formData, price: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="col-span-1 space-y-1.5">
+                    <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">
+                      Stock
+                    </label>
+                    <input
+                      className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all"
+                      placeholder="Qty"
+                      type="number"
+                      value={formData.stock_quantity}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          stock_quantity: e.target.value,
+                        })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="col-span-1 space-y-1.5">
+                    <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">
+                      Category
+                    </label>
+                    <select
+                      className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all appearance-none"
+                      value={formData.category}
+                      onChange={(e) =>
+                        setFormData({ ...formData, category: e.target.value })
+                      }
                     >
-                      {isGeneratingImage ? (
-                        <RefreshCw className="w-8 h-8 mb-2 text-primary animate-spin" />
+                      <option>Main Course</option>
+                      <option>Appetizers</option>
+                      <option>Desserts</option>
+                      <option>Beverages</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">
+                    Description
+                  </label>
+                  <textarea
+                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-surface-variant/40"
+                    placeholder="Tell the story of this dish..."
+                    rows={3}
+                    value={formData.description}
+                    onChange={(e) =>
+                      setFormData({ ...formData, description: e.target.value })
+                    }
+                  ></textarea>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">
+                    Item Image
+                  </label>
+                  <div className="flex flex-col gap-4">
+                    <div className="relative w-full h-40 rounded-2xl overflow-hidden border border-outline-variant/10 shadow-inner">
+                      {!isPlaceholderImage(imagePreview) ? (
+                        <img
+                          src={imagePreview!}
+                          alt="Preview"
+                          className="w-full h-full object-cover animate-in fade-in duration-500"
+                        />
                       ) : (
-                        <Sparkles className="w-8 h-8 mb-2 text-primary group-hover:scale-110 transition-transform" />
+                        <FoodPlaceholder size={48} />
                       )}
-                      <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-tighter">AI Generate</p>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <button 
-                  className={cn(
-                    "flex-1 py-4 rounded-full font-bold shadow-md hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100",
-                    editingItem ? "bg-primary text-on-primary" : "bg-gradient-to-br from-primary to-primary-container text-on-primary"
-                  )}
-                  type="submit"
-                  disabled={uploading}
-                >
-                  {uploading ? (
-                    <Clock className="animate-spin" size={20} />
-                  ) : (
-                    editingItem ? <Edit2 size={20} /> : <Plus size={20} />
-                  )}
-                  {uploading ? 'Processing...' : (editingItem ? 'Update Item' : 'Add New Item')}
-                </button>
-                {editingItem && (
-                  <button 
-                    type="button"
-                    onClick={cancelEdit}
-                    className="px-6 py-4 rounded-full bg-surface-container-high text-on-surface font-bold hover:bg-surface-container-highest transition-all"
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </form>
-          </div>
-        </motion.section>
-
-        <section className="lg:col-span-7 space-y-6">
-          <div className="flex flex-col gap-4">
-            <div className="bg-surface-container-low p-4 md:p-6 rounded-2xl md:rounded-3xl border border-outline-variant/10 space-y-4">
-              <div className="flex flex-col md:flex-row gap-4 items-end">
-                <div className="w-full md:flex-1 space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase text-on-surface-variant/60 ml-1">Search Items</label>
-                  <div className="relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={18} />
-                    <input 
-                      type="text"
-                      placeholder="Search name or description..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none text-sm"
-                    />
-                  </div>
-                </div>
-                
-                <div className="w-full md:w-48 space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase text-on-surface-variant/60 ml-1">Category</label>
-                  <select 
-                    value={filterCategory}
-                    onChange={(e) => setFilterCategory(e.target.value)}
-                    className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all appearance-none"
-                  >
-                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-
-                <div className="w-full md:w-64 space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase text-on-surface-variant/60 ml-1">Price Range (R)</label>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="number" 
-                      placeholder="Min" 
-                      value={priceRange.min}
-                      onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
-                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all"
-                    />
-                    <span className="text-on-surface-variant/40">-</span>
-                    <input 
-                      type="number" 
-                      placeholder="Max" 
-                      value={priceRange.max}
-                      onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
-                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all"
-                    />
-                  </div>
-                </div>
-
-                <div className="w-full md:w-48 space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase text-on-surface-variant/60 ml-1">Stock Status</label>
-                  <select 
-                    value={stockFilter}
-                    onChange={(e) => setStockFilter(e.target.value as 'All' | 'Low Stock' | 'In Stock')}
-                    className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all appearance-none"
-                  >
-                    <option value="All">All Items</option>
-                    <option value="Low Stock">Low Stock (&lt; 5)</option>
-                    <option value="In Stock">In Stock (5+)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {selectedItems.length > 0 && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-primary-container p-4 rounded-2xl flex items-center justify-between border border-primary/20 shadow-sm"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="bg-primary text-on-primary w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
-                    {selectedItems.length}
-                  </div>
-                  <span className="text-on-primary-container font-bold text-sm">Items Selected</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button 
-                    onClick={() => handleBulkAction('available')}
-                    className="px-4 py-2 bg-white dark:bg-surface-container-high text-primary font-bold text-xs rounded-full hover:bg-primary hover:text-on-primary transition-all flex items-center gap-1.5"
-                  >
-                    <Check size={14} /> Available
-                  </button>
-                  <button 
-                    onClick={() => handleBulkAction('unavailable')}
-                    className="px-4 py-2 bg-white dark:bg-surface-container-high text-on-surface-variant font-bold text-xs rounded-full hover:bg-surface-container-highest transition-all flex items-center gap-1.5"
-                  >
-                    <X size={14} /> Unavailable
-                  </button>
-                  <div className="relative">
-                    <button 
-                      onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                      className="px-4 py-2 bg-white dark:bg-surface-container-high text-on-surface-variant font-bold text-xs rounded-full hover:bg-surface-container-highest transition-all flex items-center gap-1.5"
-                    >
-                      <Layers size={14} /> Change Category
-                    </button>
-                    <AnimatePresence>
-                      {showCategoryDropdown && (
-                        <motion.div 
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 10 }}
-                          className="absolute bottom-full left-0 mb-2 bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-xl p-2 min-w-[150px] z-50"
+                      {imagePreview && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setImageFile(null);
+                            setImagePreview(null);
+                          }}
+                          className="absolute top-3 right-3 p-2 bg-error/90 text-on-error rounded-full shadow-lg hover:bg-error transition-all hover:scale-110 active:scale-95"
                         >
-                          {categories.filter(c => c !== 'All').map(cat => (
-                            <button
-                              key={cat}
-                              onClick={() => {
-                                handleBulkAction('category', cat);
-                                setShowCategoryDropdown(false);
-                              }}
-                              className="w-full text-left px-3 py-2 text-xs font-medium hover:bg-primary/10 rounded-lg transition-colors"
-                            >
-                              {cat}
-                            </button>
-                          ))}
-                        </motion.div>
+                          <Trash2 size={16} />
+                        </button>
                       )}
-                    </AnimatePresence>
-                  </div>
-                  <button 
-                    onClick={() => handleBulkAction('delete')}
-                    className="px-4 py-2 bg-error/10 text-error font-bold text-xs rounded-full hover:bg-error hover:text-on-error transition-all flex items-center gap-1.5"
-                  >
-                    <Trash2 size={14} /> Delete
-                  </button>
-                </div>
-              </motion.div>
-            )}
-
-            <div className="flex items-center justify-between px-2">
-              <button 
-                onClick={toggleSelectAll}
-                className="text-xs font-bold text-primary flex items-center gap-2 hover:underline"
-              >
-                {selectedItems.length === filteredItems.length && filteredItems.length > 0 ? (
-                  <><CheckSquare size={16} /> Deselect All</>
-                ) : (
-                  <><Square size={16} /> Select All Visible</>
-                )}
-              </button>
-              <div className="text-[10px] font-bold text-on-surface-variant/40 uppercase tracking-widest">
-                Showing {filteredItems.length} of {items.length} items
-              </div>
-            </div>
-
-            {filterCategory !== 'All' && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest">Active Filter:</span>
-                <button 
-                  onClick={() => setFilterCategory('All')}
-                  className="px-3 py-1 bg-primary/10 text-primary rounded-full text-[10px] font-bold flex items-center gap-1"
-                >
-                  {filterCategory} <Plus size={12} className="rotate-45" />
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
-            {filteredItems.length === 0 ? (
-              <div className="col-span-full py-12 md:py-20 text-center bg-surface-container-low rounded-2xl md:rounded-[2rem] border-2 border-dashed border-outline-variant/20">
-                <p className="text-on-surface-variant font-medium text-sm md:text-base">No items found matching your criteria.</p>
-                <button onClick={() => { setSearchTerm(''); setFilterCategory('All'); }} className="mt-4 text-primary font-bold underline text-sm md:text-base">Clear all filters</button>
-              </div>
-            ) : filteredItems.map((item, i) => (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: i * 0.05 }}
-                key={item.id} 
-                className={cn(
-                  "group relative bg-surface-container-lowest rounded-2xl md:rounded-[2rem] overflow-hidden shadow-sm hover:shadow-[0_8px_32px_-8px_rgba(167,52,0,0.15)] transition-all duration-300 border border-outline-variant/10",
-                  selectedItems.includes(item.id) && "ring-2 ring-primary ring-offset-2"
-                )}
-              >
-                <button 
-                  onClick={() => toggleSelectItem(item.id)}
-                  className={cn(
-                    "absolute top-4 left-4 z-20 p-1.5 rounded-lg transition-all",
-                    selectedItems.includes(item.id) ? "bg-primary text-on-primary" : "bg-black/20 text-white opacity-0 group-hover:opacity-100 backdrop-blur-md"
-                  )}
-                >
-                  {selectedItems.includes(item.id) ? <CheckSquare size={16} /> : <Square size={16} />}
-                </button>
-                <div className="relative h-40 md:h-48 bg-surface-container flex items-center justify-center overflow-hidden">
-                  {!isPlaceholderImage(item.image_url) ? (
-                    <img className={cn("w-full h-full object-cover", !item.is_available && "grayscale opacity-50")} src={item.image_url} alt={item.name} />
-                  ) : (
-                    <FoodPlaceholder size={48} />
-                  )}
-                  {!item.is_available && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                      <span className="bg-error text-white px-3 md:px-4 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-widest shadow-lg">Out of Stock</span>
                     </div>
-                  )}
-                  <div className="absolute top-3 right-3 md:top-4 md:right-4 bg-surface/90 backdrop-blur-md px-2.5 py-1 rounded-full text-primary font-bold text-xs md:text-sm shadow-sm">
-                    R {Number(item.price || 0).toFixed(2)}
-                  </div>
-                </div>
-                <div className="p-4 md:p-6 space-y-2 md:space-y-3">
-                  <div className="flex justify-between items-start gap-2">
-                    <h4 className="font-headline font-semibold text-base md:text-lg leading-tight line-clamp-1">{item.name}</h4>
-                    <div className="flex gap-1 items-center shrink-0">
-                      <button 
-                        onClick={() => toggleAvailability(item)}
+                    <div className="flex gap-2">
+                      <label
                         className={cn(
-                          "flex items-center gap-1 px-1.5 py-0.5 md:py-1 rounded-full transition-all text-[9px] md:text-[10px] font-bold uppercase tracking-tighter",
-                          item.is_available 
-                            ? "bg-primary/10 text-primary hover:bg-primary/20" 
-                            : "bg-on-surface-variant/10 text-on-surface-variant hover:bg-on-surface-variant/20"
+                          "flex-1 flex flex-col items-center justify-center h-32 border-2 border-dashed rounded-xl cursor-pointer transition-all",
+                          imageFile
+                            ? "border-primary/40 bg-primary/5"
+                            : "border-outline-variant/30 hover:border-primary/40 hover:bg-primary/5",
                         )}
-                        title={item.is_available ? "Mark as Unavailable" : "Mark as Available"}
                       >
-                        {item.is_available ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-                        <span className="hidden xs:inline">{item.is_available ? 'Available' : 'Unavailable'}</span>
-                      </button>
-                      <button 
-                        onClick={() => handleEdit(item)}
-                        className="p-1.5 md:p-2 text-on-surface-variant/40 hover:text-primary transition-colors"
+                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                          <Upload className="w-8 h-8 mb-2 text-on-surface-variant/40" />
+                          <p className="text-xs text-on-surface-variant/60 font-medium">
+                            {imageFile
+                              ? imageFile.name
+                              : "Click to upload image"}
+                          </p>
+                        </div>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/*"
+                          onChange={handleFileChange}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={generateAIImage}
+                        disabled={isGeneratingImage || !formData.name}
+                        className="w-32 h-32 flex flex-col items-center justify-center bg-surface-container-high rounded-xl border-2 border-outline-variant/10 hover:bg-surface-container-highest transition-all disabled:opacity-50 group"
                       >
-                        <Edit2 size={16} className="md:w-[18px] md:h-[18px]" />
-                      </button>
-                      <button 
-                        onClick={() => {
-                          if (window.confirm('Are you sure you want to delete this item?')) {
-                            handleDelete(item.id);
-                          }
-                        }} 
-                        className="p-1.5 md:p-2 text-on-surface-variant/40 hover:text-error transition-colors"
-                      >
-                        <Trash2 size={16} className="md:w-[18px] md:h-[18px]" />
+                        {isGeneratingImage ? (
+                          <RefreshCw className="w-8 h-8 mb-2 text-primary animate-spin" />
+                        ) : (
+                          <Sparkles className="w-8 h-8 mb-2 text-primary group-hover:scale-110 transition-transform" />
+                        )}
+                        <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-tighter">
+                          AI Generate
+                        </p>
                       </button>
                     </div>
                   </div>
-                  <p className="text-on-surface-variant text-[10px] md:text-xs line-clamp-2 min-h-[2.5em]">{item.description || "No description provided."}</p>
-                  <div className="flex gap-2 pt-2 items-center justify-between border-t border-outline-variant/5">
-                    <span className="px-2 py-0.5 bg-surface-container-high rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{item.category || "General"}</span>
-                    <span className={cn(
-                      "text-[9px] md:text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-1",
-                      (item.stock_quantity || 0) < 5 ? "bg-error text-on-error animate-pulse shadow-[0_0_12px_rgba(255,0,0,0.3)]" : "bg-emerald-100 text-emerald-600"
-                    )}>
-                      {(item.stock_quantity || 0) < 5 && <AlertCircle size={10} />}
-                      Stock: {item.stock_quantity || 0}
-                      {(item.stock_quantity || 0) < 5 && <span className="ml-1 text-[8px] font-black underline hidden xs:inline">LOW STOCK</span>}
+                </div>
+                <div className="flex gap-4">
+                  <button
+                    className={cn(
+                      "flex-1 py-4 rounded-full font-bold shadow-md hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100",
+                      editingItem
+                        ? "bg-primary text-on-primary"
+                        : "bg-gradient-to-br from-primary to-primary-container text-on-primary",
+                    )}
+                    type="submit"
+                    disabled={uploading}
+                  >
+                    {uploading ? (
+                      <Clock className="animate-spin" size={20} />
+                    ) : editingItem ? (
+                      <Edit2 size={20} />
+                    ) : (
+                      <Plus size={20} />
+                    )}
+                    {uploading
+                      ? "Processing..."
+                      : editingItem
+                        ? "Update Item"
+                        : "Add New Item"}
+                  </button>
+                  {editingItem && (
+                    <button
+                      type="button"
+                      onClick={cancelEdit}
+                      className="px-6 py-4 rounded-full bg-surface-container-high text-on-surface font-bold hover:bg-surface-container-highest transition-all"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
+          </motion.section>
+
+          <section className="lg:col-span-7 space-y-6">
+            <div className="flex flex-col gap-4">
+              <div className="bg-surface-container-low p-4 md:p-6 rounded-2xl md:rounded-3xl border border-outline-variant/10 space-y-4">
+                <div className="flex flex-col md:flex-row gap-4 items-end">
+                  <div className="w-full md:flex-1 space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase text-on-surface-variant/60 ml-1">
+                      Search Items
+                    </label>
+                    <div className="relative">
+                      <Search
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
+                        size={18}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Search name or description..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="w-full md:w-48 space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase text-on-surface-variant/60 ml-1">
+                      Category
+                    </label>
+                    <select
+                      value={filterCategory}
+                      onChange={(e) => setFilterCategory(e.target.value)}
+                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all appearance-none"
+                    >
+                      {categories.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="w-full md:w-64 space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase text-on-surface-variant/60 ml-1">
+                      Price Range (R)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        placeholder="Min"
+                        value={priceRange.min}
+                        onChange={(e) =>
+                          setPriceRange((prev) => ({
+                            ...prev,
+                            min: e.target.value,
+                          }))
+                        }
+                        className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all"
+                      />
+                      <span className="text-on-surface-variant/40">-</span>
+                      <input
+                        type="number"
+                        placeholder="Max"
+                        value={priceRange.max}
+                        onChange={(e) =>
+                          setPriceRange((prev) => ({
+                            ...prev,
+                            max: e.target.value,
+                          }))
+                        }
+                        className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="w-full md:w-48 space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase text-on-surface-variant/60 ml-1">
+                      Stock Status
+                    </label>
+                    <select
+                      value={stockFilter}
+                      onChange={(e) =>
+                        setStockFilter(
+                          e.target.value as "All" | "Low Stock" | "In Stock",
+                        )
+                      }
+                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-xl md:rounded-2xl py-2.5 px-4 text-sm focus:ring-2 focus:ring-primary/40 transition-all appearance-none"
+                    >
+                      <option value="All">All Items</option>
+                      <option value="Low Stock">Low Stock (&lt; 5)</option>
+                      <option value="In Stock">In Stock (5+)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {selectedItems.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-primary-container p-4 rounded-2xl flex items-center justify-between border border-primary/20 shadow-sm"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="bg-primary text-on-primary w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
+                      {selectedItems.length}
+                    </div>
+                    <span className="text-on-primary-container font-bold text-sm">
+                      Items Selected
                     </span>
                   </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => handleBulkAction("available")}
+                      className="px-4 py-2 bg-white dark:bg-surface-container-high text-primary font-bold text-xs rounded-full hover:bg-primary hover:text-on-primary transition-all flex items-center gap-1.5"
+                    >
+                      <Check size={14} /> Available
+                    </button>
+                    <button
+                      onClick={() => handleBulkAction("unavailable")}
+                      className="px-4 py-2 bg-white dark:bg-surface-container-high text-on-surface-variant font-bold text-xs rounded-full hover:bg-surface-container-highest transition-all flex items-center gap-1.5"
+                    >
+                      <X size={14} /> Unavailable
+                    </button>
+                    <div className="relative">
+                      <button
+                        onClick={() =>
+                          setShowCategoryDropdown(!showCategoryDropdown)
+                        }
+                        className="px-4 py-2 bg-white dark:bg-surface-container-high text-on-surface-variant font-bold text-xs rounded-full hover:bg-surface-container-highest transition-all flex items-center gap-1.5"
+                      >
+                        <Layers size={14} /> Change Category
+                      </button>
+                      <AnimatePresence>
+                        {showCategoryDropdown && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            className="absolute bottom-full left-0 mb-2 bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-xl p-2 min-w-[150px] z-50"
+                          >
+                            {categories
+                              .filter((c) => c !== "All")
+                              .map((cat) => (
+                                <button
+                                  key={cat}
+                                  onClick={() => {
+                                    handleBulkAction("category", cat);
+                                    setShowCategoryDropdown(false);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-xs font-medium hover:bg-primary/10 rounded-lg transition-colors"
+                                >
+                                  {cat}
+                                </button>
+                              ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                    <button
+                      onClick={() => handleBulkAction("delete")}
+                      className="px-4 py-2 bg-error/10 text-error font-bold text-xs rounded-full hover:bg-error hover:text-on-error transition-all flex items-center gap-1.5"
+                    >
+                      <Trash2 size={14} /> Delete
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
+              <div className="flex items-center justify-between px-2">
+                <button
+                  onClick={toggleSelectAll}
+                  className="text-xs font-bold text-primary flex items-center gap-2 hover:underline"
+                >
+                  {selectedItems.length === filteredItems.length &&
+                  filteredItems.length > 0 ? (
+                    <>
+                      <CheckSquare size={16} /> Deselect All
+                    </>
+                  ) : (
+                    <>
+                      <Square size={16} /> Select All Visible
+                    </>
+                  )}
+                </button>
+                <div className="text-[10px] font-bold text-on-surface-variant/40 uppercase tracking-widest">
+                  Showing {filteredItems.length} of {items.length} items
                 </div>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-      </div>
+              </div>
+
+              {filterCategory !== "All" && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest">
+                    Active Filter:
+                  </span>
+                  <button
+                    onClick={() => setFilterCategory("All")}
+                    className="px-3 py-1 bg-primary/10 text-primary rounded-full text-[10px] font-bold flex items-center gap-1"
+                  >
+                    {filterCategory} <Plus size={12} className="rotate-45" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+              {filteredItems.length === 0 ? (
+                <div className="col-span-full py-12 md:py-20 text-center bg-surface-container-low rounded-2xl md:rounded-[2rem] border-2 border-dashed border-outline-variant/20">
+                  <p className="text-on-surface-variant font-medium text-sm md:text-base">
+                    No items found matching your criteria.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setSearchTerm("");
+                      setFilterCategory("All");
+                    }}
+                    className="mt-4 text-primary font-bold underline text-sm md:text-base"
+                  >
+                    Clear all filters
+                  </button>
+                </div>
+              ) : (
+                filteredItems.map((item, i) => (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: i * 0.05 }}
+                    key={item.id}
+                    className={cn(
+                      "group relative bg-surface-container-lowest rounded-2xl md:rounded-[2rem] overflow-hidden shadow-sm hover:shadow-[0_8px_32px_-8px_rgba(167,52,0,0.15)] transition-all duration-300 border border-outline-variant/10",
+                      selectedItems.includes(item.id) &&
+                        "ring-2 ring-primary ring-offset-2",
+                    )}
+                  >
+                    <button
+                      onClick={() => toggleSelectItem(item.id)}
+                      className={cn(
+                        "absolute top-4 left-4 z-20 p-1.5 rounded-lg transition-all",
+                        selectedItems.includes(item.id)
+                          ? "bg-primary text-on-primary"
+                          : "bg-black/20 text-white opacity-0 group-hover:opacity-100 backdrop-blur-md",
+                      )}
+                    >
+                      {selectedItems.includes(item.id) ? (
+                        <CheckSquare size={16} />
+                      ) : (
+                        <Square size={16} />
+                      )}
+                    </button>
+                    <div className="relative h-40 md:h-48 bg-surface-container flex items-center justify-center overflow-hidden">
+                      {!isPlaceholderImage(item.image_url) ? (
+                        <img
+                          className={cn(
+                            "w-full h-full object-cover",
+                            !item.is_available && "grayscale opacity-50",
+                          )}
+                          src={item.image_url}
+                          alt={item.name}
+                        />
+                      ) : (
+                        <FoodPlaceholder size={48} />
+                      )}
+                      {!item.is_available && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                          <span className="bg-error text-white px-3 md:px-4 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-widest shadow-lg">
+                            Out of Stock
+                          </span>
+                        </div>
+                      )}
+                      <div className="absolute top-3 right-3 md:top-4 md:right-4 bg-surface/90 backdrop-blur-md px-2.5 py-1 rounded-full text-primary font-bold text-xs md:text-sm shadow-sm">
+                        R {Number(item.price || 0).toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="p-4 md:p-6 space-y-2 md:space-y-3">
+                      <div className="flex justify-between items-start gap-2">
+                        <h4 className="font-headline font-semibold text-base md:text-lg leading-tight line-clamp-1">
+                          {item.name}
+                        </h4>
+                        <div className="flex gap-1 items-center shrink-0">
+                          <button
+                            onClick={() => toggleAvailability(item)}
+                            className={cn(
+                              "flex items-center gap-1 px-1.5 py-0.5 md:py-1 rounded-full transition-all text-[9px] md:text-[10px] font-bold uppercase tracking-tighter",
+                              item.is_available
+                                ? "bg-primary/10 text-primary hover:bg-primary/20"
+                                : "bg-on-surface-variant/10 text-on-surface-variant hover:bg-on-surface-variant/20",
+                            )}
+                            title={
+                              item.is_available
+                                ? "Mark as Unavailable"
+                                : "Mark as Available"
+                            }
+                          >
+                            {item.is_available ? (
+                              <ToggleRight size={16} />
+                            ) : (
+                              <ToggleLeft size={16} />
+                            )}
+                            <span className="hidden xs:inline">
+                              {item.is_available ? "Available" : "Unavailable"}
+                            </span>
+                          </button>
+                          <button
+                            onClick={() => handleEdit(item)}
+                            className="p-1.5 md:p-2 text-on-surface-variant/40 hover:text-primary transition-colors"
+                          >
+                            <Edit2
+                              size={16}
+                              className="md:w-[18px] md:h-[18px]"
+                            />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  "Are you sure you want to delete this item?",
+                                )
+                              ) {
+                                handleDelete(item.id);
+                              }
+                            }}
+                            className="p-1.5 md:p-2 text-on-surface-variant/40 hover:text-error transition-colors"
+                          >
+                            <Trash2
+                              size={16}
+                              className="md:w-[18px] md:h-[18px]"
+                            />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-on-surface-variant text-[10px] md:text-xs line-clamp-2 min-h-[2.5em]">
+                        {item.description || "No description provided."}
+                      </p>
+                      <div className="flex gap-2 pt-2 items-center justify-between border-t border-outline-variant/5">
+                        <span className="px-2 py-0.5 bg-surface-container-high rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                          {item.category || "General"}
+                        </span>
+                        <span
+                          className={cn(
+                            "text-[9px] md:text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-1",
+                            (item.stock_quantity || 0) < 5
+                              ? "bg-error text-on-error animate-pulse shadow-[0_0_12px_rgba(255,0,0,0.3)]"
+                              : "bg-emerald-100 text-emerald-600",
+                          )}
+                        >
+                          {(item.stock_quantity || 0) < 5 && (
+                            <AlertCircle size={10} />
+                          )}
+                          Stock: {item.stock_quantity || 0}
+                          {(item.stock_quantity || 0) < 5 && (
+                            <span className="ml-1 text-[8px] font-black underline hidden xs:inline">
+                              LOW STOCK
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))
+              )}
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );
 };
 
-const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => void, user: User | null }) => {
+const ShopProfile = ({
+  shop,
+  onRefresh,
+  user,
+}: {
+  shop: Shop;
+  onRefresh: () => void;
+  user: User | null;
+}) => {
   const [loading, setLoading] = useState(false);
-  const [uploadingType, setUploadingType] = useState<'logo' | null>(null);
+  const [uploadingType, setUploadingType] = useState<"logo" | null>(null);
   const [showMapPinConfirm, setShowMapPinConfirm] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [formData, setFormData] = useState({
-    name: shop.name || '',
-    description: shop.description || '',
-    location: shop.location || '',
-    category: shop.category || 'Restaurant',
-    phone: shop.phone || '',
-    email: shop.email || '',
-    instagram: shop.instagram || '',
-    facebook: shop.facebook || '',
-    whatsapp: shop.whatsapp || '',
-    logo_url: shop.logo_url || '',
+    name: shop.name || "",
+    description: shop.description || "",
+    location: shop.location || "",
+    category: shop.category || "Restaurant",
+    phone: shop.phone || "",
+    email: shop.email || "",
+    instagram: shop.instagram || "",
+    facebook: shop.facebook || "",
+    whatsapp: shop.whatsapp || "",
+    logo_url: shop.logo_url || "",
   });
 
   const [debouncedLocation, setDebouncedLocation] = useState(formData.location);
@@ -3313,7 +4265,7 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
   const handleUpdateLocation = () => {
     setIsLocating(true);
     if (!navigator.geolocation) {
-      toast.error('Geolocation is not supported by your browser');
+      toast.error("Geolocation is not supported by your browser");
       setIsLocating(false);
       setShowMapPinConfirm(false);
       return;
@@ -3323,53 +4275,64 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
       async (position) => {
         try {
           const { latitude, longitude } = position.coords;
-          
+
           let data = null;
           let retryCount = 0;
           const maxRetries = 2;
-          
+
           while (retryCount <= maxRetries) {
             try {
-              const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+              const response = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
+              );
               data = await response.json();
               break;
             } catch (err) {
               retryCount++;
               if (retryCount > maxRetries) throw err;
-              await new Promise(r => setTimeout(r, 1000 * retryCount));
+              await new Promise((r) => setTimeout(r, 1000 * retryCount));
             }
           }
-          
+
           if (data && data.address) {
-            const city = data.address.city || data.address.town || data.address.village || data.address.suburb || '';
-            const state = data.address.state || '';
-            const road = data.address.road || '';
-            const houseNumber = data.address.house_number || '';
-            
-            const newLocation = [houseNumber, road, city, state].filter(Boolean).join(', ');
-            
-            setFormData(prev => ({
+            const city =
+              data.address.city ||
+              data.address.town ||
+              data.address.village ||
+              data.address.suburb ||
+              "";
+            const state = data.address.state || "";
+            const road = data.address.road || "";
+            const houseNumber = data.address.house_number || "";
+
+            const newLocation = [houseNumber, road, city, state]
+              .filter(Boolean)
+              .join(", ");
+
+            setFormData((prev) => ({
               ...prev,
-              location: newLocation || prev.location
+              location: newLocation || prev.location,
             }));
-            toast.success('Location updated successfully!');
+            toast.success("Location updated successfully!");
           } else {
-            toast.error('Could not determine address from coordinates.');
+            toast.error("Could not determine address from coordinates.");
           }
         } catch {
-          toast.error('Failed to get address details.');
+          toast.error("Failed to get address details.");
         } finally {
           setIsLocating(false);
           setShowMapPinConfirm(false);
         }
       },
       (error) => {
-        console.error('Geolocation error:', error);
-        toast.error(`Location access failed: ${error.message || 'Please check permissions'}`);
+        console.error("Geolocation error:", error);
+        toast.error(
+          `Location access failed: ${error.message || "Please check permissions"}`,
+        );
         setIsLocating(false);
         setShowMapPinConfirm(false);
       },
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 }
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 },
     );
   };
 
@@ -3378,23 +4341,28 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
     setLoading(true);
     try {
       const { error } = await supabase
-        .from('shops')
+        .from("shops")
         .update(formData)
-        .eq('id', shop.id);
+        .eq("id", shop.id);
 
       if (error) throw error;
-      toast.success('Shop profile updated successfully!');
+      toast.success("Shop profile updated successfully!");
       onRefresh();
     } catch (err: unknown) {
-      toast.error(`Failed to update profile: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      toast.error(
+        `Failed to update profile: ${err instanceof Error ? err.message : "Unknown error"}`,
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo') => {
+  const handleImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    type: "logo",
+  ) => {
     if (!user) {
-      toast.error('Not authenticated');
+      toast.error("Not authenticated");
       return;
     }
 
@@ -3403,36 +4371,44 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
 
     setUploadingType(type);
     try {
-      const options = { maxSizeMB: 0.2, maxWidthOrHeight: 1024, useWebWorker: true };
+      const options = {
+        maxSizeMB: 0.2,
+        maxWidthOrHeight: 1024,
+        useWebWorker: true,
+      };
       const compressedFile = await imageCompression(file, options);
-      
-      const fileExt = compressedFile.name.split('.').pop() || 'jpg';
+
+      const fileExt = compressedFile.name.split(".").pop() || "jpg";
       const fileName = `${shop.id}-${type}-${Math.random()}.${fileExt}`;
       const filePath = `${user.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('shop-assets')
+        .from("shop-assets")
         .upload(filePath, compressedFile);
 
       if (uploadError) {
-        if (uploadError.message.includes('bucket not found')) {
-          throw new Error('Storage bucket "shop-assets" not found. Please create it in Supabase Storage and set it to Public.');
+        if (uploadError.message.includes("bucket not found")) {
+          throw new Error(
+            'Storage bucket "shop-assets" not found. Please create it in Supabase Storage and set it to Public.',
+          );
         }
         throw uploadError;
       }
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('shop-assets')
-        .getPublicUrl(filePath);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("shop-assets").getPublicUrl(filePath);
 
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        logo_url: publicUrl
+        logo_url: publicUrl,
       }));
-      
-      toast.success('Logo uploaded! Save to apply changes.');
+
+      toast.success("Logo uploaded! Save to apply changes.");
     } catch (err: unknown) {
-      toast.error(`Upload failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      toast.error(
+        `Upload failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+      );
     } finally {
       setUploadingType(null);
     }
@@ -3442,43 +4418,67 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
     <div className="space-y-6 md:space-y-8 pb-24 md:pb-20">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
-          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Storefront Profile</h2>
-          <p className="text-xs md:text-sm text-on-surface-variant font-medium">Customize how your shop appears to customers.</p>
+          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
+            Storefront Profile
+          </h2>
+          <p className="text-xs md:text-sm text-on-surface-variant font-medium">
+            Customize how your shop appears to customers.
+          </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className={cn(
-            "px-3 md:px-4 py-1.5 md:py-2 rounded-2xl text-[10px] md:text-xs font-bold uppercase tracking-widest flex items-center gap-2",
-            shop.is_active ? "bg-emerald-100 text-emerald-600" : "bg-error/10 text-error"
-          )}>
-            <div className={cn("w-1.5 md:w-2 h-1.5 md:h-2 rounded-full", shop.is_active ? "bg-emerald-500 animate-pulse" : "bg-error")} />
-            {shop.is_active ? 'Live on App' : 'Hidden'}
+          <div
+            className={cn(
+              "px-3 md:px-4 py-1.5 md:py-2 rounded-2xl text-[10px] md:text-xs font-bold uppercase tracking-widest flex items-center gap-2",
+              shop.is_active
+                ? "bg-emerald-100 text-emerald-600"
+                : "bg-error/10 text-error",
+            )}
+          >
+            <div
+              className={cn(
+                "w-1.5 md:w-2 h-1.5 md:h-2 rounded-full",
+                shop.is_active ? "bg-emerald-500 animate-pulse" : "bg-error",
+              )}
+            />
+            {shop.is_active ? "Live on App" : "Hidden"}
           </div>
         </div>
       </header>
 
-      <form onSubmit={handleUpdate} className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
+      <form
+        onSubmit={handleUpdate}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8"
+      >
         <div className="lg:col-span-2 space-y-6">
           <section className="bg-surface-container-lowest p-5 md:p-8 rounded-2xl md:rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
             <h3 className="text-base md:text-lg font-semibold flex items-center gap-2">
               <Store size={18} className="text-primary md:w-5 md:h-5" />
               Basic Information
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <div className="space-y-2">
-                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Shop Name</label>
-                <input 
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
+                  Shop Name
+                </label>
+                <input
                   className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
                   value={formData.name}
-                  onChange={e => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Category</label>
-                <select 
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
+                  Category
+                </label>
+                <select
                   className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
                   value={formData.category}
-                  onChange={e => setFormData({ ...formData, category: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, category: e.target.value })
+                  }
                 >
                   <option>Restaurant</option>
                   <option>Bakery</option>
@@ -3490,18 +4490,24 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Description</label>
-              <textarea 
+              <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
+                Description
+              </label>
+              <textarea
                 className="w-full p-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all min-h-[80px] md:min-h-[100px] text-sm md:text-base"
                 value={formData.description}
-                onChange={e => setFormData({ ...formData, description: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, description: e.target.value })
+                }
               />
             </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Location Address</label>
-                <button 
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
+                  Location Address
+                </label>
+                <button
                   type="button"
                   onClick={() => setShowMapPinConfirm(true)}
                   className="text-[10px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 px-2 py-1 rounded-full transition-colors flex items-center gap-1"
@@ -3511,14 +4517,16 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
                 </button>
               </div>
               <div className="relative">
-                <MapPin 
-                  size={16} 
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40 md:w-[18px] md:h-[18px]" 
+                <MapPin
+                  size={16}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40 md:w-[18px] md:h-[18px]"
                 />
-                <input 
+                <input
                   className="w-full h-10 md:h-12 pl-10 md:pl-12 pr-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
                   value={formData.location}
-                  onChange={e => setFormData({ ...formData, location: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, location: e.target.value })
+                  }
                   placeholder="Enter your shop address..."
                 />
               </div>
@@ -3529,9 +4537,11 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
                     height="100%"
                     frameBorder="0"
                     style={{ border: 0 }}
-                    src={`https://www.google.com/maps/embed/v1/place?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}&q=${encodeURIComponent(debouncedLocation)}`}
+                    src={`https://www.google.com/maps/embed/v1/place?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""}&q=${encodeURIComponent(debouncedLocation)}`}
                     allowFullScreen
-                    className={cn(!import.meta.env.VITE_GOOGLE_MAPS_API_KEY && "hidden")}
+                    className={cn(
+                      !import.meta.env.VITE_GOOGLE_MAPS_API_KEY && "hidden",
+                    )}
                   ></iframe>
                   {!import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3">
@@ -3539,10 +4549,14 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
                         <MapPin className="text-primary" size={24} />
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-on-surface">Map Preview</p>
-                        <p className="text-[10px] text-on-surface-variant">Enter a valid address to see it on the map.</p>
+                        <p className="text-sm font-bold text-on-surface">
+                          Map Preview
+                        </p>
+                        <p className="text-[10px] text-on-surface-variant">
+                          Enter a valid address to see it on the map.
+                        </p>
                       </div>
-                      <a 
+                      <a
                         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formData.location)}`}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -3565,19 +4579,27 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <div className="space-y-2">
-                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Phone Number</label>
-                <input 
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
+                  Phone Number
+                </label>
+                <input
                   className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
                   value={formData.phone}
-                  onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone: e.target.value })
+                  }
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Email Address</label>
-                <input 
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
+                  Email Address
+                </label>
+                <input
                   className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
                   value={formData.email}
-                  onChange={e => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
                 />
               </div>
             </div>
@@ -3587,33 +4609,39 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
                 <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1 flex items-center gap-1">
                   <Instagram size={12} /> Instagram
                 </label>
-                <input 
+                <input
                   placeholder="@username"
                   className="w-full h-10 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm"
                   value={formData.instagram}
-                  onChange={e => setFormData({ ...formData, instagram: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, instagram: e.target.value })
+                  }
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1 flex items-center gap-1">
                   <Facebook size={12} /> Facebook
                 </label>
-                <input 
+                <input
                   placeholder="page name"
                   className="w-full h-10 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm"
                   value={formData.facebook}
-                  onChange={e => setFormData({ ...formData, facebook: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, facebook: e.target.value })
+                  }
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1 flex items-center gap-1">
                   <MessageCircle size={12} /> WhatsApp
                 </label>
-                <input 
+                <input
                   placeholder="number"
                   className="w-full h-10 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm"
                   value={formData.whatsapp}
-                  onChange={e => setFormData({ ...formData, whatsapp: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, whatsapp: e.target.value })
+                  }
                 />
               </div>
             </div>
@@ -3623,41 +4651,52 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
         <div className="space-y-6">
           {/* Live Preview Card */}
           <div className="bg-surface-container-lowest p-6 rounded-[2rem] border border-outline-variant/10 shadow-sm overflow-hidden hidden lg:block">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 mb-4 ml-1">Live App Preview</h3>
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 mb-4 ml-1">
+              Live App Preview
+            </h3>
             <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-surface-container-low mb-4 shadow-inner">
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-primary/10" />
               <div className="absolute bottom-4 left-4 right-4 flex items-end gap-3">
                 <div className="w-12 h-12 rounded-xl bg-white shadow-lg shrink-0 overflow-hidden flex items-center justify-center">
                   {!isPlaceholderImage(formData.logo_url) ? (
-                    <img src={formData.logo_url!} className="w-full h-full object-cover" alt="Logo" />
+                    <img
+                      src={formData.logo_url!}
+                      className="w-full h-full object-cover"
+                      alt="Logo"
+                    />
                   ) : (
-                    <div 
+                    <div
                       className="w-full h-full flex items-center justify-center"
-                      style={{ background: 'linear-gradient(135deg, #ff9d42 0%, #f58220 100%)' }}
+                      style={{
+                        background:
+                          "linear-gradient(135deg, #ff9d42 0%, #f58220 100%)",
+                      }}
                     >
                       <Store size={20} className="text-white" strokeWidth={2} />
                     </div>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-white font-semibold text-lg leading-tight truncate">{formData.name || "Shop Name"}</h4>
+                  <h4 className="text-white font-semibold text-lg leading-tight truncate">
+                    {formData.name || "Shop Name"}
+                  </h4>
                   <div className="flex items-center gap-1 text-white/70 text-[10px] truncate">
                     <MapPin size={10} />
                     {formData.location || "Location"}
                   </div>
                 </div>
-                <button 
+                <button
                   type="button"
                   onClick={async () => {
                     try {
                       const { error } = await supabase
-                        .from('shop_followers')
+                        .from("shop_followers")
                         .insert({ shop_id: shop.id, user_id: user?.id });
                       if (error) throw error;
-                      toast.success('You are now following this shop! (Test)');
+                      toast.success("You are now following this shop! (Test)");
                       onRefresh();
                     } catch {
-                      toast.error('Failed to follow shop. (Test)');
+                      toast.error("Failed to follow shop. (Test)");
                     }
                   }}
                   className="px-3 py-1 bg-primary text-white text-[10px] font-bold rounded-full shadow-lg hover:bg-primary/90 transition-colors"
@@ -3666,7 +4705,10 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
                 </button>
               </div>
             </div>
-            <p className="text-[10px] text-on-surface-variant text-center italic leading-tight">This is how your shop card appears to customers in the LocalEats app.</p>
+            <p className="text-[10px] text-on-surface-variant text-center italic leading-tight">
+              This is how your shop card appears to customers in the LocalEats
+              app.
+            </p>
           </div>
 
           <section className="bg-surface-container-lowest p-5 md:p-8 rounded-2xl md:rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
@@ -3677,37 +4719,63 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Shop Logo</label>
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
+                  Shop Logo
+                </label>
                 <div className="relative group">
                   <div className="w-16 md:w-24 h-16 md:h-24 rounded-2xl bg-surface-container-low overflow-hidden border-2 border-dashed border-outline-variant/20 flex items-center justify-center">
-                    {uploadingType === 'logo' ? (
-                      <RefreshCw className="animate-spin text-primary" size={24} />
+                    {uploadingType === "logo" ? (
+                      <RefreshCw
+                        className="animate-spin text-primary"
+                        size={24}
+                      />
                     ) : !isPlaceholderImage(formData.logo_url) ? (
-                      <img src={formData.logo_url!} className="w-full h-full object-cover" alt="Logo" />
+                      <img
+                        src={formData.logo_url!}
+                        className="w-full h-full object-cover"
+                        alt="Logo"
+                      />
                     ) : (
-                      <div 
+                      <div
                         className="w-full h-full flex items-center justify-center"
-                        style={{ background: 'linear-gradient(135deg, #ff9d42 0%, #f58220 100%)' }}
+                        style={{
+                          background:
+                            "linear-gradient(135deg, #ff9d42 0%, #f58220 100%)",
+                        }}
                       >
-                        <Store size={32} className="text-white drop-shadow-md" strokeWidth={1.5} />
+                        <Store
+                          size={32}
+                          className="text-white drop-shadow-md"
+                          strokeWidth={1.5}
+                        />
                       </div>
                     )}
                   </div>
                   <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
                     <Upload size={18} className="md:w-5 md:h-5" />
-                    <input type="file" className="hidden" accept="image/*" onChange={e => handleImageUpload(e, 'logo')} disabled={!!uploadingType} />
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*"
+                      onChange={(e) => handleImageUpload(e, "logo")}
+                      disabled={!!uploadingType}
+                    />
                   </label>
                 </div>
               </div>
             </div>
           </section>
 
-          <button 
+          <button
             type="submit"
             disabled={loading}
             className="w-full py-3 md:py-4 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {loading ? <RefreshCw className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}
+            {loading ? (
+              <RefreshCw className="animate-spin" size={18} />
+            ) : (
+              <CheckCircle2 size={18} />
+            )}
             Save Changes
           </button>
         </div>
@@ -3715,13 +4783,13 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
 
       <AnimatePresence>
         {showMapPinConfirm && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
           >
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
@@ -3730,20 +4798,24 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-6 mx-auto">
                 <MapPin size={32} />
               </div>
-              <h3 className="text-2xl font-headline font-bold text-on-surface text-center mb-3">Update Location?</h3>
+              <h3 className="text-2xl font-headline font-bold text-on-surface text-center mb-3">
+                Update Location?
+              </h3>
               <p className="text-on-surface-variant text-center mb-8 leading-relaxed">
-                This will request your device's current location and automatically update your shop's address. Are you sure you want to proceed?
+                This will request your device's current location and
+                automatically update your shop's address. Are you sure you want
+                to proceed?
               </p>
-              
+
               <div className="flex gap-4">
-                <button 
+                <button
                   onClick={() => setShowMapPinConfirm(false)}
                   disabled={isLocating}
                   className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-on-surface-variant bg-surface-container-high hover:bg-surface-container-highest transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={handleUpdateLocation}
                   disabled={isLocating}
                   className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-on-primary bg-primary hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
@@ -3766,20 +4838,30 @@ const ShopProfile = ({ shop, onRefresh, user }: { shop: Shop, onRefresh: () => v
   );
 };
 
-const ChatWindow = ({ orderId, shopId, userId, onClose }: { orderId: string, shopId: number, userId: string, onClose: () => void }) => {
+const ChatWindow = ({
+  orderId,
+  shopId,
+  userId,
+  onClose,
+}: {
+  orderId: string;
+  shopId: number;
+  userId: string;
+  onClose: () => void;
+}) => {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState('');
+  const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchMessages = async () => {
       const { data, error } = await supabase
-        .from('chat_messages')
-        .select('*')
-        .eq('order_id', orderId)
-        .order('created_at', { ascending: true });
-      
+        .from("chat_messages")
+        .select("*")
+        .eq("order_id", orderId)
+        .order("created_at", { ascending: true });
+
       if (!error && data) setMessages(data);
       setLoading(false);
     };
@@ -3789,14 +4871,18 @@ const ChatWindow = ({ orderId, shopId, userId, onClose }: { orderId: string, sho
     // Real-time subscription
     const channel = supabase
       .channel(`chat:${orderId}`)
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'chat_messages',
-        filter: `order_id=eq.${orderId}`
-      }, (payload) => {
-        setMessages(prev => [...prev, payload.new as Message]);
-      })
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+          filter: `order_id=eq.${orderId}`,
+        },
+        (payload) => {
+          setMessages((prev) => [...prev, payload.new as Message]);
+        },
+      )
       .subscribe();
 
     return () => {
@@ -3819,13 +4905,13 @@ const ChatWindow = ({ orderId, shopId, userId, onClose }: { orderId: string, sho
       shop_id: shopId,
       user_id: userId,
       sender_id: shopId.toString(), // Shop is sender
-      sender_type: 'shop',
-      content: newMessage.trim()
+      sender_type: "shop",
+      content: newMessage.trim(),
     };
 
-    const { error } = await supabase.from('chat_messages').insert(message);
-    if (error) toast.error('Failed to send message');
-    else setNewMessage('');
+    const { error } = await supabase.from("chat_messages").insert(message);
+    if (error) toast.error("Failed to send message");
+    else setNewMessage("");
   };
 
   return (
@@ -3833,51 +4919,76 @@ const ChatWindow = ({ orderId, shopId, userId, onClose }: { orderId: string, sho
       <div className="p-4 bg-primary text-on-primary flex justify-between items-center">
         <div className="flex items-center gap-2">
           <MessageCircle size={18} />
-          <span className="font-bold text-sm">Customer Chat - #LE-{orderId}</span>
+          <span className="font-bold text-sm">
+            Customer Chat - #LE-{orderId}
+          </span>
         </div>
-        <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full transition-colors">
+        <button
+          onClick={onClose}
+          className="p-1 hover:bg-white/20 rounded-full transition-colors"
+        >
           <X size={18} />
         </button>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-surface-container-lowest">
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto p-4 space-y-4 bg-surface-container-lowest"
+      >
         {loading ? (
-          <div className="flex justify-center p-4"><RefreshCw className="animate-spin text-primary/40" size={24} /></div>
+          <div className="flex justify-center p-4">
+            <RefreshCw className="animate-spin text-primary/40" size={24} />
+          </div>
         ) : messages.length === 0 ? (
           <div className="text-center text-on-surface-variant/40 py-12">
-            <p className="text-xs italic">No messages yet. Start the conversation!</p>
+            <p className="text-xs italic">
+              No messages yet. Start the conversation!
+            </p>
           </div>
         ) : (
           messages.map((msg) => (
-            <div key={msg.id} className={cn(
-              "flex flex-col max-w-[80%]",
-              msg.sender_type === 'shop' ? "ml-auto items-end" : "mr-auto items-start"
-            )}>
-              <div className={cn(
-                "px-4 py-2 rounded-2xl text-sm shadow-sm",
-                msg.sender_type === 'shop' 
-                  ? "bg-primary text-on-primary rounded-tr-none" 
-                  : "bg-surface-container-high text-on-surface rounded-tl-none"
-              )}>
+            <div
+              key={msg.id}
+              className={cn(
+                "flex flex-col max-w-[80%]",
+                msg.sender_type === "shop"
+                  ? "ml-auto items-end"
+                  : "mr-auto items-start",
+              )}
+            >
+              <div
+                className={cn(
+                  "px-4 py-2 rounded-2xl text-sm shadow-sm",
+                  msg.sender_type === "shop"
+                    ? "bg-primary text-on-primary rounded-tr-none"
+                    : "bg-surface-container-high text-on-surface rounded-tl-none",
+                )}
+              >
                 {msg.content}
               </div>
               <span className="text-[9px] text-on-surface-variant/60 mt-1">
-                {format(new Date(msg.created_at), 'HH:mm')}
+                {format(new Date(msg.created_at), "HH:mm")}
               </span>
             </div>
           ))
         )}
       </div>
 
-      <form onSubmit={sendMessage} className="p-3 bg-surface-container-low border-t border-outline-variant/10 flex gap-2">
-        <input 
+      <form
+        onSubmit={sendMessage}
+        className="p-3 bg-surface-container-low border-t border-outline-variant/10 flex gap-2"
+      >
+        <input
           type="text"
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
           placeholder="Type a message..."
           className="flex-1 bg-surface-container-lowest border border-outline-variant/20 rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
         />
-        <button type="submit" className="p-2 bg-primary text-on-primary rounded-full hover:scale-105 transition-transform">
+        <button
+          type="submit"
+          className="p-2 bg-primary text-on-primary rounded-full hover:scale-105 transition-transform"
+        >
           <Send size={18} />
         </button>
       </form>
@@ -3885,85 +4996,106 @@ const ChatWindow = ({ orderId, shopId, userId, onClose }: { orderId: string, sho
   );
 };
 
-const ReviewsList = ({ reviews, onRespond }: { reviews: Review[], onRespond: (id: string, response: string) => void }) => {
+const ReviewsList = ({
+  reviews,
+  onRespond,
+}: {
+  reviews: Review[];
+  onRespond: (id: string, response: string) => void;
+}) => {
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
-  const [responseText, setResponseText] = useState('');
+  const [responseText, setResponseText] = useState("");
 
   return (
     <div className="space-y-4">
       {reviews.length === 0 ? (
         <div className="text-center py-12 bg-surface-container-low rounded-3xl border-2 border-dashed border-outline-variant/20">
           <Star className="mx-auto text-on-surface-variant/20 mb-4" size={48} />
-          <p className="text-on-surface-variant font-medium">No reviews yet. They will appear here when customers rate your shop.</p>
+          <p className="text-on-surface-variant font-medium">
+            No reviews yet. They will appear here when customers rate your shop.
+          </p>
         </div>
       ) : (
         reviews.map((review) => (
-          <div key={review.id} className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4">
+          <div
+            key={review.id}
+            className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4"
+          >
             <div className="flex justify-between items-start">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-on-surface">{review.customer_name}</span>
+                  <span className="font-bold text-on-surface">
+                    {review.customer_name}
+                  </span>
                   <div className="flex gap-0.5">
                     {[1, 2, 3, 4, 5].map((star) => (
-                      <Star 
-                        key={star} 
-                        size={14} 
-                        className={cn(star <= review.rating ? "text-primary fill-primary" : "text-on-surface-variant/20")} 
+                      <Star
+                        key={star}
+                        size={14}
+                        className={cn(
+                          star <= review.rating
+                            ? "text-primary fill-primary"
+                            : "text-on-surface-variant/20",
+                        )}
                       />
                     ))}
                   </div>
                 </div>
                 <p className="text-[10px] text-on-surface-variant font-medium uppercase tracking-widest">
-                  {format(new Date(review.created_at), 'MMMM d, yyyy')}
+                  {format(new Date(review.created_at), "MMMM d, yyyy")}
                 </p>
               </div>
             </div>
-            
-            <p className="text-sm text-on-surface leading-relaxed italic">"{review.comment}"</p>
-            
+
+            <p className="text-sm text-on-surface leading-relaxed italic">
+              "{review.comment}"
+            </p>
+
             {review.response ? (
               <div className="bg-primary/5 p-4 rounded-2xl border-l-4 border-primary space-y-1">
-                <span className="text-[10px] font-bold text-primary uppercase tracking-widest">Your Response</span>
-                <p className="text-sm text-on-surface-variant italic">"{review.response}"</p>
+                <span className="text-[10px] font-bold text-primary uppercase tracking-widest">
+                  Your Response
+                </span>
+                <p className="text-sm text-on-surface-variant italic">
+                  "{review.response}"
+                </p>
+              </div>
+            ) : respondingTo === review.id ? (
+              <div className="space-y-3">
+                <textarea
+                  value={responseText}
+                  onChange={(e) => setResponseText(e.target.value)}
+                  placeholder="Write a professional response..."
+                  className="w-full bg-surface-container-low border border-primary/20 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                  rows={3}
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      onRespond(review.id, responseText);
+                      setRespondingTo(null);
+                      setResponseText("");
+                    }}
+                    className="px-6 py-2 bg-primary text-on-primary rounded-full text-xs font-bold"
+                  >
+                    Post Response
+                  </button>
+                  <button
+                    onClick={() => setRespondingTo(null)}
+                    className="px-6 py-2 bg-surface-container-high text-on-surface-variant rounded-full text-xs font-bold"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             ) : (
-              respondingTo === review.id ? (
-                <div className="space-y-3">
-                  <textarea 
-                    value={responseText}
-                    onChange={(e) => setResponseText(e.target.value)}
-                    placeholder="Write a professional response..."
-                    className="w-full bg-surface-container-low border border-primary/20 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                    rows={3}
-                  />
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => {
-                        onRespond(review.id, responseText);
-                        setRespondingTo(null);
-                        setResponseText('');
-                      }}
-                      className="px-6 py-2 bg-primary text-on-primary rounded-full text-xs font-bold"
-                    >
-                      Post Response
-                    </button>
-                    <button 
-                      onClick={() => setRespondingTo(null)}
-                      className="px-6 py-2 bg-surface-container-high text-on-surface-variant rounded-full text-xs font-bold"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button 
-                  onClick={() => setRespondingTo(review.id)}
-                  className="flex items-center gap-2 text-primary text-xs font-bold hover:underline"
-                >
-                  <MessageSquare size={14} />
-                  Respond to Review
-                </button>
-              )
+              <button
+                onClick={() => setRespondingTo(review.id)}
+                className="flex items-center gap-2 text-primary text-xs font-bold hover:underline"
+              >
+                <MessageSquare size={14} />
+                Respond to Review
+              </button>
             )}
           </div>
         ))
@@ -3972,36 +5104,36 @@ const ReviewsList = ({ reviews, onRespond }: { reviews: Review[], onRespond: (id
   );
 };
 
-const OrdersManagement = ({ 
-  orders, 
-  onUpdateStatus, 
-  onDeleteAllOrders, 
-  loading, 
-  onRefresh, 
-  kitchenMode, 
+const OrdersManagement = ({
+  orders,
+  onUpdateStatus,
+  onDeleteAllOrders,
+  loading,
+  onRefresh,
+  kitchenMode,
   setKitchenMode,
   soundAlerts,
   setSoundAlerts,
   onRequestRider,
-  currentShop
-}: { 
-  orders: Order[], 
-  onUpdateStatus: (id: string, status: OrderStatus, message?: string) => void, 
-  onDeleteAllOrders: () => void, 
-  loading: boolean, 
-  onRefresh: () => void, 
-  kitchenMode: boolean, 
-  setKitchenMode: (val: boolean) => void,
-  soundAlerts: boolean,
-  setSoundAlerts: (val: boolean) => void,
-  onRequestRider: (id: string, riderId?: string) => void,
-  onUnassignRider: (id: string) => void,
-  currentShop: Shop | undefined
+  currentShop,
+}: {
+  orders: Order[];
+  onUpdateStatus: (id: string, status: OrderStatus, message?: string) => void;
+  onDeleteAllOrders: () => void;
+  loading: boolean;
+  onRefresh: () => void;
+  kitchenMode: boolean;
+  setKitchenMode: (val: boolean) => void;
+  soundAlerts: boolean;
+  setSoundAlerts: (val: boolean) => void;
+  onRequestRider: (id: string, riderId?: string) => void;
+  onUnassignRider: (id: string) => void;
+  currentShop: Shop | undefined;
 }) => {
-  const [viewMode, setViewMode] = useState<'active' | 'history'>('active');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [phoneSearch, setPhoneSearch] = useState('');
+  const [viewMode, setViewMode] = useState<"active" | "history">("active");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [phoneSearch, setPhoneSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [acceptingOrderId, setAcceptingOrderId] = useState<string | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
@@ -4009,50 +5141,65 @@ const OrdersManagement = ({
   const [chatOrderId, setChatOrderId] = useState<string | null>(null);
   const [showRiderPicker, setShowRiderPicker] = useState<string | null>(null);
   const [connectedRiders, setConnectedRiders] = useState<RiderConnection[]>([]);
-  
+
   useEffect(() => {
     if (currentShop) {
       const fetchRiders = async () => {
         const { data } = await supabase
-          .from('rider_connections')
-          .select('*')
-          .eq('shop_id', currentShop.id)
-          .gt('expires_at', new Date().toISOString())
-          .not('rider_id', 'is', null);
+          .from("rider_connections")
+          .select("*")
+          .eq("shop_id", currentShop.id)
+          .gt("expires_at", new Date().toISOString())
+          .not("rider_id", "is", null);
         if (data) setConnectedRiders(data as RiderConnection[]);
       };
       void fetchRiders();
-      const sub = supabase.channel('riders-sync').on('postgres_changes', { event: '*', schema: 'public', table: 'rider_connections' }, () => void fetchRiders()).subscribe();
-      return () => { void supabase.removeChannel(sub); };
+      const sub = supabase
+        .channel("riders-sync")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "rider_connections" },
+          () => void fetchRiders(),
+        )
+        .subscribe();
+      return () => {
+        void supabase.removeChannel(sub);
+      };
     }
   }, [currentShop]);
-  const [customMessage, setCustomMessage] = useState('We have received your order and are starting to prepare it!');
-  const [estimatedTime, setEstimatedTime] = useState('20-30 mins');
+  const [customMessage, setCustomMessage] = useState(
+    "We have received your order and are starting to prepare it!",
+  );
+  const [estimatedTime, setEstimatedTime] = useState("20-30 mins");
 
   const avgPrepTime = useMemo(() => {
-    const pendingCount = orders.filter(o => o.status === 'pending' || o.status === 'preparing').length;
+    const pendingCount = orders.filter(
+      (o) => o.status === "pending" || o.status === "preparing",
+    ).length;
     // Base 12 mins + 1.5 mins per pending order, capped at 45
-    return Number(Math.min(12 + (pendingCount * 1.5), 45)).toFixed(1);
+    return Number(Math.min(12 + pendingCount * 1.5, 45)).toFixed(1);
   }, [orders]);
 
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-  const [recentlyChangedOrders, setRecentlyChangedOrders] = useState<Record<string, boolean>>({});
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+  const [recentlyChangedOrders, setRecentlyChangedOrders] = useState<
+    Record<string, boolean>
+  >({});
   const prevOrdersRef = useRef<Order[]>([]);
   const [maxConcurrentOrders, setMaxConcurrentOrders] = useState(() => {
-    return Number(localStorage.getItem('maxConcurrentOrders')) || 10;
+    return Number(localStorage.getItem("maxConcurrentOrders")) || 10;
   });
 
   useEffect(() => {
     if (prevOrdersRef.current.length > 0) {
       const changes: Record<string, boolean> = {};
-      orders.forEach(order => {
-        const prevOrder = prevOrdersRef.current.find(o => o.id === order.id);
+      orders.forEach((order) => {
+        const prevOrder = prevOrdersRef.current.find((o) => o.id === order.id);
         if (prevOrder && prevOrder.status !== order.status) {
           changes[order.id] = true;
           // Clear highlight after 5 seconds
           setTimeout(() => {
-            setRecentlyChangedOrders(prev => {
+            setRecentlyChangedOrders((prev) => {
               const next = { ...prev };
               delete next[order.id];
               return next;
@@ -4062,7 +5209,7 @@ const OrdersManagement = ({
       });
       if (Object.keys(changes).length > 0) {
         setTimeout(() => {
-          setRecentlyChangedOrders(prev => ({ ...prev, ...changes }));
+          setRecentlyChangedOrders((prev) => ({ ...prev, ...changes }));
         }, 0);
       }
     }
@@ -4070,38 +5217,53 @@ const OrdersManagement = ({
   }, [orders]);
 
   useEffect(() => {
-    localStorage.setItem('maxConcurrentOrders', maxConcurrentOrders.toString());
+    localStorage.setItem("maxConcurrentOrders", maxConcurrentOrders.toString());
   }, [maxConcurrentOrders]);
 
-  const activeCount = orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length;
+  const activeCount = orders.filter(
+    (o) => o.status !== "completed" && o.status !== "cancelled",
+  ).length;
   const isLimitReached = activeCount >= maxConcurrentOrders;
-  
+
   // Calculate customer loyalty
-  const customerOrderCounts = orders.reduce((acc: Record<string, number>, order) => {
-    acc[order.user_id] = (acc[order.user_id] || 0) + 1;
-    return acc;
-  }, {});
+  const customerOrderCounts = orders.reduce(
+    (acc: Record<string, number>, order) => {
+      acc[order.user_id] = (acc[order.user_id] || 0) + 1;
+      return acc;
+    },
+    {},
+  );
 
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [ordersPaused, setOrdersPaused] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<OrderStatus | 'All'>('All');
-  const [sortField, setSortField] = useState<'id' | 'total_price' | 'created_at'>('created_at');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [filterStatus, setFilterStatus] = useState<OrderStatus | "All">("All");
+  const [sortField, setSortField] = useState<
+    "id" | "total_price" | "created_at"
+  >("created_at");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
-  const activeOrders = orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled');
-  const historyOrders = orders.filter(o => o.status === 'completed' || o.status === 'cancelled');
-  const baseOrders = viewMode === 'active' ? activeOrders : historyOrders;
-  
-  const filteredOrders = baseOrders.filter(o => {
-    const matchesSearch = o.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         o.id.toString().includes(searchTerm);
-    const matchesCustomer = !customerSearch || o.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
+  const activeOrders = orders.filter(
+    (o) => o.status !== "completed" && o.status !== "cancelled",
+  );
+  const historyOrders = orders.filter(
+    (o) => o.status === "completed" || o.status === "cancelled",
+  );
+  const baseOrders = viewMode === "active" ? activeOrders : historyOrders;
+
+  const filteredOrders = baseOrders.filter((o) => {
+    const matchesSearch =
+      o.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.id.toString().includes(searchTerm);
+    const matchesCustomer =
+      !customerSearch ||
+      o.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
     const matchesPhone = !phoneSearch || o.phone?.includes(phoneSearch);
-    const matchesFilter = filterStatus === 'All' || o.status === filterStatus;
-    
+    const matchesFilter = filterStatus === "All" || o.status === filterStatus;
+
     let matchesDate = true;
     if (startDate) {
-      matchesDate = matchesDate && new Date(o.created_at) >= new Date(startDate);
+      matchesDate =
+        matchesDate && new Date(o.created_at) >= new Date(startDate);
     }
     if (endDate) {
       const end = new Date(endDate);
@@ -4109,72 +5271,103 @@ const OrdersManagement = ({
       matchesDate = matchesDate && new Date(o.created_at) <= end;
     }
 
-    return matchesSearch && matchesCustomer && matchesPhone && matchesFilter && matchesDate;
+    return (
+      matchesSearch &&
+      matchesCustomer &&
+      matchesPhone &&
+      matchesFilter &&
+      matchesDate
+    );
   });
 
   const displayedOrders = [...filteredOrders].sort((a, b) => {
     let comparison = 0;
-    if (sortField === 'id') {
+    if (sortField === "id") {
       comparison = a.id.localeCompare(b.id);
-    } else if (sortField === 'total_price') {
+    } else if (sortField === "total_price") {
       comparison = Number(a.total_price) - Number(b.total_price);
-    } else if (sortField === 'created_at') {
-      comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    } else if (sortField === "created_at") {
+      comparison =
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
     }
-    return sortDirection === 'asc' ? comparison : -comparison;
+    return sortDirection === "asc" ? comparison : -comparison;
   });
 
-  const handleSort = (field: 'id' | 'total_price' | 'created_at') => {
+  const handleSort = (field: "id" | "total_price" | "created_at") => {
     if (sortField === field) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
       setSortField(field);
-      setSortDirection('desc');
+      setSortDirection("desc");
     }
   };
 
   const exportToCSV = () => {
-    const headers = ['Order ID', 'Product Name', 'Total Price', 'Status', 'Date', 'Customer', 'Address'];
+    const headers = [
+      "Order ID",
+      "Product Name",
+      "Total Price",
+      "Status",
+      "Date",
+      "Customer",
+      "Address",
+    ];
     const csvContent = [
-      headers.join(','),
-      ...orders.map(o => [
-        o.id,
-        `"${o.product_name.replace(/"/g, '""')}"`,
-        o.total_price,
-        o.status,
-        format(new Date(o.created_at), 'yyyy-MM-dd HH:mm:ss'),
-        `"${o.customer_name.replace(/"/g, '""')}"`,
-        `"${o.address.replace(/"/g, '""')}, ${o.city.replace(/"/g, '""')}"`
-      ].join(','))
-    ].join('\n');
+      headers.join(","),
+      ...orders.map((o) =>
+        [
+          o.id,
+          `"${o.product_name.replace(/"/g, '""')}"`,
+          o.total_price,
+          o.status,
+          format(new Date(o.created_at), "yyyy-MM-dd HH:mm:ss"),
+          `"${o.customer_name.replace(/"/g, '""')}"`,
+          `"${o.address.replace(/"/g, '""')}, ${o.city.replace(/"/g, '""')}"`,
+        ].join(","),
+      ),
+    ].join("\n");
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `orders_export_${format(new Date(), 'yyyyMMdd_HHmmss')}.csv`);
-    link.style.visibility = 'hidden';
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `orders_export_${format(new Date(), "yyyyMMdd_HHmmss")}.csv`,
+    );
+    link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success('Orders exported as CSV!');
+    toast.success("Orders exported as CSV!");
   };
 
   const exportToJSON = () => {
     const jsonContent = JSON.stringify(orders, null, 2);
-    const blob = new Blob([jsonContent], { type: 'application/json' });
-    const link = document.createElement('a');
+    const blob = new Blob([jsonContent], { type: "application/json" });
+    const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `orders_export_${format(new Date(), 'yyyyMMdd_HHmmss')}.json`);
-    link.style.visibility = 'hidden';
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `orders_export_${format(new Date(), "yyyyMMdd_HHmmss")}.json`,
+    );
+    link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success('Orders exported as JSON!');
+    toast.success("Orders exported as JSON!");
   };
 
-  const orderStatuses: (OrderStatus | 'All')[] = ['All', 'pending', 'accepted', 'preparing', 'ready', 'completed', 'cancelled'];
+  const orderStatuses: (OrderStatus | "All")[] = [
+    "All",
+    "pending",
+    "accepted",
+    "preparing",
+    "ready",
+    "completed",
+    "cancelled",
+  ];
 
   if (loading) {
     return (
@@ -4182,7 +5375,9 @@ const OrdersManagement = ({
         <Skeleton className="h-40 rounded-3xl" />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-64 rounded-xl" />)}
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-64 rounded-xl" />
+            ))}
           </div>
           <Skeleton className="lg:col-span-4 h-96 rounded-3xl" />
         </div>
@@ -4194,236 +5389,301 @@ const OrdersManagement = ({
     <div className="space-y-12">
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="max-w-2xl space-y-1">
-          <span className="font-label text-[11px] font-bold uppercase tracking-[0.2em] text-primary mb-2 block">Live Operations</span>
-          <h2 className="font-headline text-2xl md:text-3xl font-bold text-on-surface tracking-tight">Orders Management</h2>
-          <p className="text-sm text-on-surface-variant font-medium">Streamline your kitchen workflow and monitor real-time fulfillment across all delivery channels.</p>
+          <span className="font-label text-[11px] font-bold uppercase tracking-[0.2em] text-primary mb-2 block">
+            Live Operations
+          </span>
+          <h2 className="font-headline text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
+            Orders Management
+          </h2>
+          <p className="text-sm text-on-surface-variant font-medium">
+            Streamline your kitchen workflow and monitor real-time fulfillment
+            across all delivery channels.
+          </p>
         </div>
-          <div className="flex flex-col gap-4 items-end">
-            <div className="flex gap-3">
-              <button 
-                onClick={() => {
-                  toast.info('Clearing all orders...');
-                  onDeleteAllOrders();
-                }}
-                className="flex items-center gap-2 px-6 py-2.5 bg-error/10 text-error rounded-full text-sm font-bold shadow-sm hover:bg-error/20 transition-all cursor-pointer relative z-20"
-              >
-                <Trash2 size={18} />
-                Clear All Orders
-              </button>
-              <button 
-                onClick={() => {
-                  toast.info('Refreshing orders...');
-                  onRefresh();
-                }}
-                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded-full text-sm font-bold shadow-sm hover:scale-105 transition-all cursor-pointer relative z-20"
-              >
-                <Clock size={18} />
-                Refresh Orders
-              </button>
-              <button 
-                onClick={exportToCSV}
-                className="flex items-center gap-2 px-6 py-2.5 bg-surface-container-high text-on-surface rounded-full text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-              >
-                <FileDown size={18} />
-                CSV
-              </button>
-              <button 
-                onClick={exportToJSON}
-                className="flex items-center gap-2 px-6 py-2.5 bg-surface-container-high text-on-surface rounded-full text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-              >
-                <FileDown size={18} />
-                JSON
-              </button>
-            </div>
-              <div className="flex p-1.5 bg-surface-container-low rounded-full w-fit">
-                <button 
-                  onClick={() => setViewMode('active')}
-                  className={cn(
-                    "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                    viewMode === 'active' ? "bg-surface-container-lowest shadow-sm text-primary" : "text-on-secondary-container hover:bg-surface-container-high"
-                  )}
-                >
-                  Current Orders
-                </button>
-                <button 
-                  onClick={() => setViewMode('history')}
-                  className={cn(
-                    "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                    viewMode === 'history' ? "bg-surface-container-lowest shadow-sm text-primary" : "text-on-secondary-container hover:bg-surface-container-high"
-                  )}
-                >
-                  Order History
-                </button>
-              </div>
-              <button 
-                onClick={() => setKitchenMode(!kitchenMode)}
-                className={cn(
-                  "flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all border-2",
-                  kitchenMode ? "bg-primary text-on-primary border-primary" : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20"
-                )}
-              >
-                <UtensilsCrossed size={18} />
-                Kitchen Mode {kitchenMode ? 'ON' : 'OFF'}
-              </button>
-            </div>
+        <div className="flex flex-col gap-4 items-start md:items-end w-full md:w-auto">
+          <div className="flex flex-wrap gap-3 justify-start md:justify-end">
+            <button
+              onClick={() => {
+                toast.info("Clearing all orders...");
+                onDeleteAllOrders();
+              }}
+              className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-error/10 text-error rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-error/20 transition-all cursor-pointer relative z-20"
+            >
+              <Trash2 size={16} className="md:w-[18px] md:h-[18px]" />
+              Clear All
+            </button>
+            <button
+              onClick={() => {
+                toast.info("Refreshing orders...");
+                onRefresh();
+              }}
+              className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-primary text-on-primary rounded-full text-xs md:text-sm font-bold shadow-sm hover:scale-105 transition-all cursor-pointer relative z-20"
+            >
+              <Clock size={16} className="md:w-[18px] md:h-[18px]" />
+              Refresh
+            </button>
+            <button
+              onClick={exportToCSV}
+              className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
+            >
+              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
+              CSV
+            </button>
+            <button
+              onClick={exportToJSON}
+              className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
+            >
+              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
+              JSON
+            </button>
+          </div>
+          <div className="flex p-1.5 bg-surface-container-low rounded-full w-fit">
+            <button
+              onClick={() => setViewMode("active")}
+              className={cn(
+                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                viewMode === "active"
+                  ? "bg-surface-container-lowest shadow-sm text-primary"
+                  : "text-on-secondary-container hover:bg-surface-container-high",
+              )}
+            >
+              Current Orders
+            </button>
+            <button
+              onClick={() => setViewMode("history")}
+              className={cn(
+                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                viewMode === "history"
+                  ? "bg-surface-container-lowest shadow-sm text-primary"
+                  : "text-on-secondary-container hover:bg-surface-container-high",
+              )}
+            >
+              Order History
+            </button>
+          </div>
+          <button
+            onClick={() => setKitchenMode(!kitchenMode)}
+            className={cn(
+              "flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all border-2",
+              kitchenMode
+                ? "bg-primary text-on-primary border-primary"
+                : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
+            )}
+          >
+            <UtensilsCrossed size={18} />
+            Kitchen Mode {kitchenMode ? "ON" : "OFF"}
+          </button>
+        </div>
       </section>
 
-      <div className={cn("grid grid-cols-1 gap-8 items-start", !kitchenMode && "lg:grid-cols-12")}>
-        <div className={cn(kitchenMode ? "col-span-full" : "lg:col-span-8", "space-y-6")}>
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-8 items-start",
+          !kitchenMode && "lg:grid-cols-12",
+        )}
+      >
+        <div
+          className={cn(
+            kitchenMode ? "col-span-full" : "lg:col-span-8",
+            "space-y-6",
+          )}
+        >
           <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-center gap-4 mb-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">Filter Status:</span>
-                    {orderStatuses.map(status => (
-                      <button
-                        key={status}
-                        onClick={() => setFilterStatus(status)}
-                        className={cn(
-                          "px-4 py-1.5 rounded-full text-xs font-bold transition-all border-2",
-                          filterStatus === status 
-                            ? "bg-primary/10 text-primary border-primary" 
-                            : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20"
-                        )}
-                      >
-                        {status.charAt(0).toUpperCase() + status.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                  
-                  <div className="flex items-center gap-2 bg-surface-container-low p-1 rounded-full border border-outline-variant/20">
-                    <span className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-widest ml-3">Dates:</span>
-                    <input 
-                      type="date" 
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1"
-                    />
-                    <span className="text-on-surface-variant/40">to</span>
-                    <input 
-                      type="date" 
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1 mr-2"
-                    />
-                    {(startDate || endDate) && (
-                      <button 
-                        onClick={() => { setStartDate(''); setEndDate(''); }}
-                        className="p-1 hover:bg-surface-container-high rounded-full text-error transition-colors mr-1"
-                      >
-                        <X size={14} />
-                      </button>
+            <div className="flex flex-wrap items-center gap-4 mb-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
+                  Filter Status:
+                </span>
+                {orderStatuses.map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setFilterStatus(status)}
+                    className={cn(
+                      "px-4 py-1.5 rounded-full text-xs font-bold transition-all border-2",
+                      filterStatus === status
+                        ? "bg-primary/10 text-primary border-primary"
+                        : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
                     )}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-headline text-xl font-bold flex items-center gap-2">
-                    {viewMode === 'active' ? 'Active Queue' : 'Order History'}
-                    <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">{displayedOrders.length} Orders</span>
-                  </h3>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => setShowSearch(!showSearch)}
-                      className={cn("p-2 rounded-full transition-colors", showSearch ? "bg-primary text-on-primary" : "hover:bg-surface-container-low text-on-surface-variant")}
-                    >
-                      <Search size={20} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4 mb-2 overflow-x-auto pb-2 scrollbar-hide">
-                  <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">Sort by:</span>
-                  {[
-                    { id: 'created_at', label: 'Date', icon: Clock },
-                    { id: 'total_price', label: 'Price', icon: TrendingUp },
-                    { id: 'id', label: 'Order ID', icon: ReceiptText }
-                  ].map((field) => (
-                    <button
-                      key={field.id}
-                      onClick={() => handleSort(field.id as 'id' | 'total_price' | 'created_at')}
-                      className={cn(
-                        "flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all shrink-0 border-2",
-                        sortField === field.id 
-                          ? "bg-primary text-on-primary border-primary shadow-[0_4px_12px_rgba(167,52,0,0.3)] scale-105 ring-2 ring-primary/20" 
-                          : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20"
-                      )}
-                    >
-                      <field.icon size={14} className={cn(sortField === field.id ? "animate-pulse" : "")} />
-                      {field.label}
-                      {sortField === field.id && (
-                        <motion.span 
-                          initial={{ scale: 0, rotate: -180 }}
-                          animate={{ scale: 1, rotate: 0 }}
-                          className="ml-1 bg-white/20 p-0.5 rounded-full flex items-center justify-center"
-                        >
-                          {sortDirection === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
-                        </motion.span>
-                      )}
-                    </button>
-                  ))}
-                </div>
+                  >
+                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                  </button>
+                ))}
               </div>
 
-            <AnimatePresence>
-              {showSearch && (
-                <motion.div 
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden space-y-4"
-                >
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="relative">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={18} />
-                      <input 
-                        autoFocus
-                        type="text"
-                        placeholder="Search product or ID..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-3 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none"
-                      />
-                    </div>
-                    <div className="relative">
-                      <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={18} />
-                      <input 
-                        type="text"
-                        placeholder="Customer Name..."
-                        value={customerSearch}
-                        onChange={(e) => setCustomerSearch(e.target.value)}
-                        className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-3 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none"
-                      />
-                    </div>
-                    <div className="relative">
-                      <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={18} />
-                      <input 
-                        type="text"
-                        placeholder="Phone Number..."
-                        value={phoneSearch}
-                        onChange={(e) => setPhoneSearch(e.target.value)}
-                        className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-3 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none"
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+              <div className="flex items-center gap-2 bg-surface-container-low p-1 rounded-full border border-outline-variant/20">
+                <span className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-widest ml-3">
+                  Dates:
+                </span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1"
+                />
+                <span className="text-on-surface-variant/40">to</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1 mr-2"
+                />
+                {(startDate || endDate) && (
+                  <button
+                    onClick={() => {
+                      setStartDate("");
+                      setEndDate("");
+                    }}
+                    className="p-1 hover:bg-surface-container-high rounded-full text-error transition-colors mr-1"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
 
-            {displayedOrders.length === 0 ? (
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-headline text-xl font-bold flex items-center gap-2">
+                {viewMode === "active" ? "Active Queue" : "Order History"}
+                <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">
+                  {displayedOrders.length} Orders
+                </span>
+              </h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowSearch(!showSearch)}
+                  className={cn(
+                    "p-2 rounded-full transition-colors",
+                    showSearch
+                      ? "bg-primary text-on-primary"
+                      : "hover:bg-surface-container-low text-on-surface-variant",
+                  )}
+                >
+                  <Search size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 mb-2 overflow-x-auto pb-2 scrollbar-hide">
+              <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">
+                Sort by:
+              </span>
+              {[
+                { id: "created_at", label: "Date", icon: Clock },
+                { id: "total_price", label: "Price", icon: TrendingUp },
+                { id: "id", label: "Order ID", icon: ReceiptText },
+              ].map((field) => (
+                <button
+                  key={field.id}
+                  onClick={() =>
+                    handleSort(field.id as "id" | "total_price" | "created_at")
+                  }
+                  className={cn(
+                    "flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all shrink-0 border-2",
+                    sortField === field.id
+                      ? "bg-primary text-on-primary border-primary shadow-[0_4px_12px_rgba(167,52,0,0.3)] scale-105 ring-2 ring-primary/20"
+                      : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
+                  )}
+                >
+                  <field.icon
+                    size={14}
+                    className={cn(
+                      sortField === field.id ? "animate-pulse" : "",
+                    )}
+                  />
+                  {field.label}
+                  {sortField === field.id && (
+                    <motion.span
+                      initial={{ scale: 0, rotate: -180 }}
+                      animate={{ scale: 1, rotate: 0 }}
+                      className="ml-1 bg-white/20 p-0.5 rounded-full flex items-center justify-center"
+                    >
+                      {sortDirection === "asc" ? (
+                        <ArrowUp size={12} />
+                      ) : (
+                        <ArrowDown size={12} />
+                      )}
+                    </motion.span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {showSearch && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden space-y-4"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="relative">
+                    <Search
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
+                      size={18}
+                    />
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Search product or ID..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-3 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none"
+                    />
+                  </div>
+                  <div className="relative">
+                    <UserIcon
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
+                      size={18}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Customer Name..."
+                      value={customerSearch}
+                      onChange={(e) => setCustomerSearch(e.target.value)}
+                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-3 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none"
+                    />
+                  </div>
+                  <div className="relative">
+                    <Phone
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
+                      size={18}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Phone Number..."
+                      value={phoneSearch}
+                      onChange={(e) => setPhoneSearch(e.target.value)}
+                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-3 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none"
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {displayedOrders.length === 0 ? (
             <div className="bg-surface-container-low rounded-[2rem] p-12 flex flex-col items-center text-center space-y-6 border-2 border-dashed border-outline-variant/20">
               <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center">
-                {viewMode === 'active' ? <Clock className="text-primary" size={40} /> : <ReceiptText className="text-primary" size={40} />}
+                {viewMode === "active" ? (
+                  <Clock className="text-primary" size={40} />
+                ) : (
+                  <ReceiptText className="text-primary" size={40} />
+                )}
               </div>
               <div className="space-y-2">
-                <h4 className="font-headline text-2xl font-bold">{viewMode === 'active' ? 'All caught up!' : 'No history yet'}</h4>
+                <h4 className="font-headline text-2xl font-bold">
+                  {viewMode === "active" ? "All caught up!" : "No history yet"}
+                </h4>
                 <p className="text-on-surface-variant max-w-xs mx-auto">
-                  {viewMode === 'active' 
-                    ? 'Your kitchen is currently clear. New orders will appear here as they arrive.' 
-                    : 'Completed orders will appear here once they are fulfilled.'}
+                  {viewMode === "active"
+                    ? "Your kitchen is currently clear. New orders will appear here as they arrive."
+                    : "Completed orders will appear here once they are fulfilled."}
                 </p>
               </div>
-              {viewMode === 'active' && (
-                <button 
+              {viewMode === "active" && (
+                <button
                   onClick={onRefresh}
                   className="px-8 py-3 bg-surface-container-lowest text-primary font-bold rounded-full shadow-sm hover:scale-105 transition-all border border-primary/10"
                 >
@@ -4432,512 +5692,783 @@ const OrdersManagement = ({
               )}
             </div>
           ) : (
-            <div className={cn(
-              "grid gap-6",
-              kitchenMode ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3" : "grid-cols-1 md:grid-cols-2"
-            )}>
-              {displayedOrders.map(order => {
+            <div
+              className={cn(
+                "grid gap-6",
+                kitchenMode
+                  ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+                  : "grid-cols-1 md:grid-cols-2",
+              )}
+            >
+              {displayedOrders.map((order) => {
                 const orderCount = customerOrderCounts[order.user_id] || 0;
                 const isReturning = orderCount > 1;
-                
+
                 // Timer Alert Logic: If order is pending/preparing for more than 20 mins
                 const orderTime = new Date(order.created_at).getTime();
                 const now = new Date().getTime();
                 const diffMins = Math.floor((now - orderTime) / (1000 * 60));
-                const isOverdue = diffMins >= 20 && (order.status === 'pending' || order.status === 'preparing');
+                const isOverdue =
+                  diffMins >= 20 &&
+                  (order.status === "pending" || order.status === "preparing");
 
                 return (
-                <motion.div 
-                  layout
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  key={order.id} 
-                  className={cn(
-                    "group rounded-xl p-6 shadow-sm border transition-all duration-300 cursor-pointer",
-                    isOverdue ? "bg-error/5 border-error/30 ring-1 ring-error/20" :
-                    order.status === 'pending' ? "bg-primary-light border-primary/20" : 
-                    order.status === 'preparing' ? "bg-primary/10 border-primary/10" :
-                    order.status === 'ready' ? "bg-tertiary/10 border-tertiary/20" :
-                    "bg-surface-container-highest border-transparent",
-                    kitchenMode && "p-8 border-2",
-                    expandedOrderId === order.id && "ring-2 ring-primary/10 border-primary/20"
-                  )}
-                  onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-                >
-                  <div className="flex justify-between items-start mb-6">
-                    <div className="relative">
-                      {isOverdue && (
-                        <div className="absolute -top-3 -left-3 bg-error text-white text-[9px] font-black px-2 py-0.5 rounded-full animate-bounce shadow-lg z-20">
-                          OVERDUE ({diffMins}m)
-                        </div>
-                      )}
-                      {recentlyChangedOrders[order.id] && (
-                        <motion.div 
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          className="absolute -top-2 -left-2 w-4 h-4 bg-primary rounded-full border-2 border-white z-10"
-                        />
-                      )}
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={cn("font-label text-[10px] font-bold uppercase tracking-widest block", 
-                          order.status === 'pending' ? "text-primary" : "text-on-surface-variant/60"
-                        )}>#LE-{order.id}</span>
-                        {isReturning && (
-                          <span className="bg-emerald-100 text-emerald-700 text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <Star size={10} fill="currentColor" />
-                            RETURNING ({orderCount})
-                          </span>
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    key={order.id}
+                    className={cn(
+                      "group rounded-xl p-6 shadow-sm border transition-all duration-300 cursor-pointer",
+                      isOverdue
+                        ? "bg-error/5 border-error/30 ring-1 ring-error/20"
+                        : order.status === "pending"
+                          ? "bg-primary-light border-primary/20"
+                          : order.status === "preparing"
+                            ? "bg-primary/10 border-primary/10"
+                            : order.status === "ready"
+                              ? "bg-tertiary/10 border-tertiary/20"
+                              : "bg-surface-container-highest border-transparent",
+                      kitchenMode && "p-8 border-2",
+                      expandedOrderId === order.id &&
+                        "ring-2 ring-primary/10 border-primary/20",
+                    )}
+                    onClick={() =>
+                      setExpandedOrderId(
+                        expandedOrderId === order.id ? null : order.id,
+                      )
+                    }
+                  >
+                    <div className="flex justify-between items-start mb-6">
+                      <div className="relative">
+                        {isOverdue && (
+                          <div className="absolute -top-3 -left-3 bg-error text-white text-[9px] font-black px-2 py-0.5 rounded-full animate-bounce shadow-lg z-20">
+                            OVERDUE ({diffMins}m)
+                          </div>
                         )}
-                      </div>
-                      <h4 className={cn("font-headline font-semibold text-on-surface", kitchenMode ? "text-2xl" : "text-lg")}>
-                        {order.customer_name || `Customer #${order.user_id.slice(0, 5)}`}
-                      </h4>
-                      <div className="flex flex-col gap-1 mt-2">
-                        <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-                          <Phone size={12} />
-                          <span>{order.phone || 'No phone'}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-                          <MapPin size={12} />
-                          <span className="line-clamp-1">{order.address}, {order.city}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 mt-3 text-[10px] font-bold text-primary/60 uppercase tracking-wider">
-                        {expandedOrderId === order.id ? 'Hide Details' : 'View Details'}
-                        <motion.div
-                          animate={{ rotate: expandedOrderId === order.id ? 90 : 0 }}
-                          transition={{ duration: 0.2 }}
-                        >
-                          <ChevronRight size={12} />
-                        </motion.div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end">
-                      <span className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold",
-                        order.status === 'pending' ? "bg-primary-fixed text-on-primary-fixed" :
-                        order.status === 'accepted' ? "bg-blue-100 text-blue-700" :
-                        order.status === 'preparing' ? "bg-primary/10 text-primary" :
-                        order.status === 'ready' ? "bg-tertiary/10 text-tertiary" :
-                        "bg-surface-container-highest text-on-surface-variant"
-                      )}>
-                        {order.status === 'pending' || order.status === 'preparing' || order.status === 'accepted' ? (
-                          <span className="relative flex h-2 w-2">
-                            <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", 
-                              order.status === 'accepted' ? "bg-blue-500" : "bg-primary"
-                            )}></span>
-                            <span className={cn("relative inline-flex rounded-full h-2 w-2",
-                              order.status === 'accepted' ? "bg-blue-500" : "bg-primary"
-                            )}></span>
+                        {recentlyChangedOrders[order.id] && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="absolute -top-2 -left-2 w-4 h-4 bg-primary rounded-full border-2 border-white z-10"
+                          />
+                        )}
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className={cn(
+                              "font-label text-[10px] font-bold uppercase tracking-widest block",
+                              order.status === "pending"
+                                ? "text-primary"
+                                : "text-on-surface-variant/60",
+                            )}
+                          >
+                            #LE-{order.id}
                           </span>
-                        ) : <CheckCircle2 size={14} />}
-                        {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                      </span>
-                      <span className="text-[11px] font-semibold text-on-surface-variant mt-2 flex items-center gap-1">
-                        <Clock size={14} />
-                        {format(new Date(order.created_at), 'HH:mm')}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 mb-6">
-                    <div className={cn("flex justify-between items-center", kitchenMode ? "text-xl" : "text-sm")}>
-                      <span className="text-on-surface-variant font-medium">{order.product_name}</span>
-                      <span className="text-on-surface font-semibold">R {Number(order.total_price || 0).toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  <AnimatePresence>
-                    {expandedOrderId === order.id && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden border-t border-outline-variant/10 pt-6 mb-8 space-y-6"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="space-y-3">
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Order Items</span>
-                          <div className="bg-surface-container-low rounded-2xl overflow-hidden border border-outline-variant/10">
-                            <table className="w-full text-left text-sm">
-                              <thead className="bg-surface-container-high text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                                <tr>
-                                  <th className="px-4 py-2">Item</th>
-                                  <th className="px-4 py-2 text-center">Qty</th>
-                                  <th className="px-4 py-2 text-right">Price</th>
-                                  <th className="px-4 py-2 text-right">Total</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-outline-variant/10">
-                                {order.items && order.items.length > 0 ? (
-                                  order.items.map((item, idx) => (
-                                    <tr key={idx} className="hover:bg-surface-container-highest/30 transition-colors">
-                                      <td className="px-4 py-3 font-medium text-on-surface">{(typeof item === 'object' && item !== null && 'name' in item) ? item.name : String(item)}</td>
-                                      <td className="px-4 py-3 text-center text-on-surface-variant">{(typeof item === 'object' && item !== null && 'quantity' in item) ? item.quantity : 1}</td>
-                                      <td className="px-4 py-3 text-right text-on-surface-variant">R {Number((typeof item === 'object' && item !== null && 'price' in item) ? item.price : 0).toFixed(2)}</td>
-                                      <td className="px-4 py-3 text-right font-bold text-on-surface">R {(Number((typeof item === 'object' && item !== null && 'price' in item) ? item.price : 0) * Number((typeof item === 'object' && item !== null && 'quantity' in item) ? item.quantity : 1)).toFixed(2)}</td>
-                                    </tr>
-                                  ))
-                                ) : (
-                                  <tr>
-                                    <td className="px-4 py-3 font-medium text-on-surface">{order.product_name}</td>
-                                    <td className="px-4 py-3 text-center text-on-surface-variant">1</td>
-                                    <td className="px-4 py-3 text-right text-on-surface-variant">R {Number(order.total_price || 0).toFixed(2)}</td>
-                                    <td className="px-4 py-3 text-right font-bold text-on-surface">R {Number(order.total_price || 0).toFixed(2)}</td>
-                                  </tr>
-                                )}
-                              </tbody>
-                              <tfoot className="bg-surface-container-low border-t border-outline-variant/20">
-                                <tr>
-                                  <td colSpan={3} className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Grand Total</td>
-                                  <td className="px-4 py-3 text-right font-bold text-primary text-lg">R {Number(order.total_price || 0).toFixed(2)}</td>
-                                </tr>
-                              </tfoot>
-                            </table>
+                          {isReturning && (
+                            <span className="bg-emerald-100 text-emerald-700 text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                              <Star size={10} fill="currentColor" />
+                              RETURNING ({orderCount})
+                            </span>
+                          )}
+                        </div>
+                        <h4
+                          className={cn(
+                            "font-headline font-semibold text-on-surface",
+                            kitchenMode ? "text-2xl" : "text-lg",
+                          )}
+                        >
+                          {order.customer_name ||
+                            `Customer #${order.user_id.slice(0, 5)}`}
+                        </h4>
+                        <div className="flex flex-col gap-1 mt-2">
+                          <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                            <Phone size={12} />
+                            <span>{order.phone || "No phone"}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                            <MapPin size={12} />
+                            <span className="line-clamp-1">
+                              {order.address}, {order.city}
+                            </span>
                           </div>
                         </div>
+                        <div className="flex items-center gap-1 mt-3 text-[10px] font-bold text-primary/60 uppercase tracking-wider">
+                          {expandedOrderId === order.id
+                            ? "Hide Details"
+                            : "View Details"}
+                          <motion.div
+                            animate={{
+                              rotate: expandedOrderId === order.id ? 90 : 0,
+                            }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <ChevronRight size={12} />
+                          </motion.div>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold",
+                            order.status === "pending"
+                              ? "bg-primary-fixed text-on-primary-fixed"
+                              : order.status === "accepted"
+                                ? "bg-blue-100 text-blue-700"
+                                : order.status === "preparing"
+                                  ? "bg-primary/10 text-primary"
+                                  : order.status === "ready"
+                                    ? "bg-tertiary/10 text-tertiary"
+                                    : "bg-surface-container-highest text-on-surface-variant",
+                          )}
+                        >
+                          {order.status === "pending" ||
+                          order.status === "preparing" ||
+                          order.status === "accepted" ? (
+                            <span className="relative flex h-2 w-2">
+                              <span
+                                className={cn(
+                                  "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
+                                  order.status === "accepted"
+                                    ? "bg-blue-500"
+                                    : "bg-primary",
+                                )}
+                              ></span>
+                              <span
+                                className={cn(
+                                  "relative inline-flex rounded-full h-2 w-2",
+                                  order.status === "accepted"
+                                    ? "bg-blue-500"
+                                    : "bg-primary",
+                                )}
+                              ></span>
+                            </span>
+                          ) : (
+                            <CheckCircle2 size={14} />
+                          )}
+                          {order.status.charAt(0).toUpperCase() +
+                            order.status.slice(1)}
+                        </span>
+                        <span className="text-[11px] font-semibold text-on-surface-variant mt-2 flex items-center gap-1">
+                          <Clock size={14} />
+                          {format(new Date(order.created_at), "HH:mm")}
+                        </span>
+                      </div>
+                    </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-1 sm:col-span-2">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Fulfillment</span>
-                            <div className="inline-flex items-center px-2 py-1 rounded bg-secondary/10 text-secondary text-xs font-black uppercase tracking-widest">
-                              {order.order_type === 'collection' ? 'Customer Collection' : 'Delivery'}
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Customer Name</span>
-                            <p className="text-sm font-semibold text-on-surface">{order.customer_name || 'Not provided'}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Phone Number</span>
-                            <p className="text-sm font-semibold text-on-surface">{order.phone || 'Not provided'}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Payment Method</span>
-                            <p className="text-sm font-semibold text-primary">{order.payment_method || 'Cash on Delivery'}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Email Address</span>
-                            <p className="text-sm font-semibold text-on-surface">{order.email || 'Not provided'}</p>
-                          </div>
-                          <div className="space-y-1 sm:col-span-2">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Delivery Address</span>
-                            <p className="text-sm font-semibold text-on-surface">{order.address}, {order.city}{order.country ? `, ${order.country}` : ''}</p>
-                          </div>
-                          {order.accepted_at && (
-                            <div className="space-y-1">
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Accepted At</span>
-                              <p className="text-sm font-semibold text-on-surface">{format(new Date(order.accepted_at), 'HH:mm:ss')}</p>
-                            </div>
-                          )}
-                          {order.estimated_delivery_time && (
-                            <div className="space-y-1">
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Est. Delivery</span>
-                              <p className="text-sm font-semibold text-primary">{order.estimated_delivery_time}</p>
-                            </div>
-                          )}
-                          {order.notes && (
-                            <div className="space-y-1 sm:col-span-2">
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Order Notes</span>
-                              <div className="p-3 bg-surface-container-low rounded-lg text-sm text-on-surface-variant italic">
-                                "{order.notes}"
-                              </div>
-                            </div>
-                          )}
+                    <div className="space-y-3 mb-6">
+                      <div
+                        className={cn(
+                          "flex justify-between items-center",
+                          kitchenMode ? "text-xl" : "text-sm",
+                        )}
+                      >
+                        <span className="text-on-surface-variant font-medium">
+                          {order.product_name}
+                        </span>
+                        <span className="text-on-surface font-semibold">
+                          R {Number(order.total_price || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
 
-                          <div className="space-y-4 sm:col-span-2 border-t border-outline-variant/10 pt-6 mt-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
-                                <Zap size={14} />
-                                Delivery Ecosystem
-                              </span>
-                              {order.delivery_status && (
-                                <span className={cn(
-                                  "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter",
-                                  order.delivery_status === 'finding_rider' ? "bg-amber-100 text-amber-700 animate-pulse" :
-                                  order.delivery_status === 'picked_up' ? "bg-blue-100 text-blue-700" :
-                                  "bg-emerald-100 text-emerald-700"
-                                )}>
-                                  {order.delivery_status.replace('_', ' ')}
-                                </span>
-                              )}
-                            </div>
-                            
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                              <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/5">
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/50 block mb-1">Fee Collection</span>
-                                <p className="text-sm font-black text-on-surface">R {Number(order.delivery_fee || 0).toFixed(2)}</p>
-                              </div>
-                              <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/5">
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/50 block mb-1">Rider Assignment</span>
-                                <div className="flex items-center justify-between">
-                                  <p className="text-xs font-mono text-on-surface-variant truncate">
-                                    {order.rider_id ? order.rider_id.split('-')[0] : 'Idle...'}
-                                  </p>
-                                  {order.rider_id && order.delivery_status !== 'delivered' && (
-                                    <button 
-                                      onClick={(e) => { e.stopPropagation(); onUnassignRider(order.id); }}
-                                      className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold hover:bg-red-200"
-                                    >
-                                      Remove
-                                    </button>
+                    <AnimatePresence>
+                      {expandedOrderId === order.id && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden border-t border-outline-variant/10 pt-6 mb-8 space-y-6"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="space-y-3">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                              Order Items
+                            </span>
+                            <div className="bg-surface-container-low rounded-2xl overflow-x-auto border border-outline-variant/10">
+                              <table className="w-full min-w-[300px] text-left text-sm">
+                                <thead className="bg-surface-container-high text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                                  <tr>
+                                    <th className="px-4 py-2">Item</th>
+                                    <th className="px-4 py-2 text-center">
+                                      Qty
+                                    </th>
+                                    <th className="px-4 py-2 text-right">
+                                      Price
+                                    </th>
+                                    <th className="px-4 py-2 text-right">
+                                      Total
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-outline-variant/10">
+                                  {order.items && order.items.length > 0 ? (
+                                    order.items.map((item, idx) => (
+                                      <tr
+                                        key={idx}
+                                        className="hover:bg-surface-container-highest/30 transition-colors"
+                                      >
+                                        <td className="px-4 py-3 font-medium text-on-surface">
+                                          {typeof item === "object" &&
+                                          item !== null &&
+                                          "name" in item
+                                            ? item.name
+                                            : String(item)}
+                                        </td>
+                                        <td className="px-4 py-3 text-center text-on-surface-variant">
+                                          {typeof item === "object" &&
+                                          item !== null &&
+                                          "quantity" in item
+                                            ? item.quantity
+                                            : 1}
+                                        </td>
+                                        <td className="px-4 py-3 text-right text-on-surface-variant">
+                                          R{" "}
+                                          {Number(
+                                            typeof item === "object" &&
+                                              item !== null &&
+                                              "price" in item
+                                              ? item.price
+                                              : 0,
+                                          ).toFixed(2)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-bold text-on-surface">
+                                          R{" "}
+                                          {(
+                                            Number(
+                                              typeof item === "object" &&
+                                                item !== null &&
+                                                "price" in item
+                                                ? item.price
+                                                : 0,
+                                            ) *
+                                            Number(
+                                              typeof item === "object" &&
+                                                item !== null &&
+                                                "quantity" in item
+                                                ? item.quantity
+                                                : 1,
+                                            )
+                                          ).toFixed(2)}
+                                        </td>
+                                      </tr>
+                                    ))
+                                  ) : (
+                                    <tr>
+                                      <td className="px-4 py-3 font-medium text-on-surface">
+                                        {order.product_name}
+                                      </td>
+                                      <td className="px-4 py-3 text-center text-on-surface-variant">
+                                        1
+                                      </td>
+                                      <td className="px-4 py-3 text-right text-on-surface-variant">
+                                        R{" "}
+                                        {Number(order.total_price || 0).toFixed(
+                                          2,
+                                        )}
+                                      </td>
+                                      <td className="px-4 py-3 text-right font-bold text-on-surface">
+                                        R{" "}
+                                        {Number(order.total_price || 0).toFixed(
+                                          2,
+                                        )}
+                                      </td>
+                                    </tr>
                                   )}
-                                </div>
+                                </tbody>
+                                <tfoot className="bg-surface-container-low border-t border-outline-variant/20">
+                                  <tr>
+                                    <td
+                                      colSpan={3}
+                                      className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60"
+                                    >
+                                      Grand Total
+                                    </td>
+                                    <td className="px-4 py-3 text-right font-bold text-primary text-lg">
+                                      R{" "}
+                                      {Number(order.total_price || 0).toFixed(
+                                        2,
+                                      )}
+                                    </td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1 sm:col-span-2">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                                Fulfillment
+                              </span>
+                              <div className="inline-flex items-center px-2 py-1 rounded bg-secondary/10 text-secondary text-xs font-black uppercase tracking-widest">
+                                {order.order_type === "collection"
+                                  ? "Customer Collection"
+                                  : "Delivery"}
                               </div>
-                              <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/5">
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/50 block mb-1">Live Track</span>
-                                <p className="text-xs font-bold text-on-surface-variant">
-                                  {order.delivery_status ? 'Active Protocol' : 'No Signal'}
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                                Customer Name
+                              </span>
+                              <p className="text-sm font-semibold text-on-surface">
+                                {order.customer_name || "Not provided"}
+                              </p>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                                Phone Number
+                              </span>
+                              <p className="text-sm font-semibold text-on-surface">
+                                {order.phone || "Not provided"}
+                              </p>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                                Payment Method
+                              </span>
+                              <p className="text-sm font-semibold text-primary">
+                                {order.payment_method || "Cash on Delivery"}
+                              </p>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                                Email Address
+                              </span>
+                              <p className="text-sm font-semibold text-on-surface">
+                                {order.email || "Not provided"}
+                              </p>
+                            </div>
+                            <div className="space-y-1 sm:col-span-2">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                                Delivery Address
+                              </span>
+                              <p className="text-sm font-semibold text-on-surface">
+                                {order.address}, {order.city}
+                                {order.country ? `, ${order.country}` : ""}
+                              </p>
+                            </div>
+                            {order.accepted_at && (
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                                  Accepted At
+                                </span>
+                                <p className="text-sm font-semibold text-on-surface">
+                                  {format(
+                                    new Date(order.accepted_at),
+                                    "HH:mm:ss",
+                                  )}
                                 </p>
                               </div>
-                            </div>
-                            
-                            {!order.delivery_status && order.status !== 'completed' && order.order_type !== 'collection' && (
-                              <div className="space-y-2">
-                                {showRiderPicker === order.id ? (
-                                  <div className="bg-surface-container p-4 rounded-xl border-2 border-primary/20 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[10px] font-black uppercase text-primary tracking-widest">Select Rider to Tag</span>
-                                      <button onClick={(e) => { e.stopPropagation(); setShowRiderPicker(null); }} className="text-on-surface-variant/40 hover:text-on-surface">
-                                        <X size={14} />
-                                      </button>
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1">
-                                      {connectedRiders.map(rider => (
+                            )}
+                            {order.estimated_delivery_time && (
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                                  Est. Delivery
+                                </span>
+                                <p className="text-sm font-semibold text-primary">
+                                  {order.estimated_delivery_time}
+                                </p>
+                              </div>
+                            )}
+                            {order.notes && (
+                              <div className="space-y-1 sm:col-span-2">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                                  Order Notes
+                                </span>
+                                <div className="p-3 bg-surface-container-low rounded-lg text-sm text-on-surface-variant italic">
+                                  "{order.notes}"
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="space-y-4 sm:col-span-2 border-t border-outline-variant/10 pt-6 mt-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                                  <Zap size={14} />
+                                  Delivery Ecosystem
+                                </span>
+                                {order.delivery_status && (
+                                  <span
+                                    className={cn(
+                                      "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter",
+                                      order.delivery_status === "finding_rider"
+                                        ? "bg-amber-100 text-amber-700 animate-pulse"
+                                        : order.delivery_status === "picked_up"
+                                          ? "bg-blue-100 text-blue-700"
+                                          : "bg-emerald-100 text-emerald-700",
+                                    )}
+                                  >
+                                    {order.delivery_status.replace("_", " ")}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/5">
+                                  <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/50 block mb-1">
+                                    Fee Collection
+                                  </span>
+                                  <p className="text-sm font-black text-on-surface">
+                                    R{" "}
+                                    {Number(order.delivery_fee || 0).toFixed(2)}
+                                  </p>
+                                </div>
+                                <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/5">
+                                  <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/50 block mb-1">
+                                    Rider Assignment
+                                  </span>
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-xs font-mono text-on-surface-variant truncate">
+                                      {order.rider_id
+                                        ? order.rider_id.split("-")[0]
+                                        : "Idle..."}
+                                    </p>
+                                    {order.rider_id &&
+                                      order.delivery_status !== "delivered" && (
                                         <button
-                                          key={rider.id}
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            onRequestRider(order.id, rider.rider_id!);
-                                            setShowRiderPicker(null);
+                                            onUnassignRider(order.id);
                                           }}
-                                          className="flex items-center justify-between p-3 bg-surface-container-high hover:bg-primary/10 rounded-xl transition-all border border-outline-variant/10 group text-left"
+                                          className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold hover:bg-red-200"
                                         >
-                                          <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                                              <Bike size={16} />
-                                            </div>
-                                            <div>
-                                              <p className="text-xs font-bold text-on-surface">{rider.rider_name || 'Quick Rider'}</p>
-                                              <p className="text-[9px] text-on-surface-variant/60 font-mono">{rider.connection_code}</p>
-                                            </div>
-                                          </div>
-                                          <ArrowRight size={14} className="text-primary opacity-0 group-hover:opacity-100 transition-all" />
+                                          Remove
                                         </button>
-                                      ))}
+                                      )}
+                                  </div>
+                                </div>
+                                <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/5">
+                                  <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/50 block mb-1">
+                                    Live Track
+                                  </span>
+                                  <p className="text-xs font-bold text-on-surface-variant">
+                                    {order.delivery_status
+                                      ? "Active Protocol"
+                                      : "No Signal"}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {!order.delivery_status &&
+                                order.status !== "completed" &&
+                                order.order_type !== "collection" && (
+                                  <div className="space-y-2">
+                                    {showRiderPicker === order.id ? (
+                                      <div className="bg-surface-container p-4 rounded-xl border-2 border-primary/20 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[10px] font-black uppercase text-primary tracking-widest">
+                                            Select Rider to Tag
+                                          </span>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setShowRiderPicker(null);
+                                            }}
+                                            className="text-on-surface-variant/40 hover:text-on-surface"
+                                          >
+                                            <X size={14} />
+                                          </button>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1">
+                                          {connectedRiders.map((rider) => (
+                                            <button
+                                              key={rider.id}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                onRequestRider(
+                                                  order.id,
+                                                  rider.rider_id!,
+                                                );
+                                                setShowRiderPicker(null);
+                                              }}
+                                              className="flex items-center justify-between p-3 bg-surface-container-high hover:bg-primary/10 rounded-xl transition-all border border-outline-variant/10 group text-left"
+                                            >
+                                              <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                                  <Bike size={16} />
+                                                </div>
+                                                <div>
+                                                  <p className="text-xs font-bold text-on-surface">
+                                                    {rider.rider_name ||
+                                                      "Quick Rider"}
+                                                  </p>
+                                                  <p className="text-[9px] text-on-surface-variant/60 font-mono">
+                                                    {rider.connection_code}
+                                                  </p>
+                                                </div>
+                                              </div>
+                                              <ArrowRight
+                                                size={14}
+                                                className="text-primary opacity-0 group-hover:opacity-100 transition-all"
+                                              />
+                                            </button>
+                                          ))}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              onRequestRider(order.id);
+                                              setShowRiderPicker(null);
+                                            }}
+                                            className="p-3 text-[10px] font-black uppercase tracking-widest text-on-surface-variant/60 hover:text-primary transition-colors italic"
+                                          >
+                                            Broadcast to all (Public)
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          onRequestRider(order.id);
-                                          setShowRiderPicker(null);
+                                          if (connectedRiders.length > 0) {
+                                            setShowRiderPicker(order.id);
+                                          } else {
+                                            onRequestRider(order.id);
+                                          }
                                         }}
-                                        className="p-3 text-[10px] font-black uppercase tracking-widest text-on-surface-variant/60 hover:text-primary transition-colors italic"
+                                        className="w-full h-12 bg-primary/10 text-primary border-2 border-primary/20 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-primary hover:text-on-primary transition-all flex items-center justify-center gap-2 group shadow-sm active:scale-95"
                                       >
-                                        Broadcast to all (Public)
+                                        <Rocket
+                                          size={16}
+                                          className="group-hover:animate-bounce"
+                                        />
+                                        {connectedRiders.length > 0
+                                          ? `Tag Rider (${connectedRiders.length} Online)`
+                                          : "Invoke Rider Dispatch (R 5.00)"}
                                       </button>
-                                    </div>
+                                    )}
                                   </div>
-                                ) : (
-                                  <button 
+                                )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {viewMode === "active" && (
+                      <div
+                        className="flex flex-col gap-4"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center gap-3">
+                          {order.status === "pending" && (
+                            <div className="flex-1 flex flex-col gap-2">
+                              {(order.order_type === "delivery" ||
+                                !order.order_type) &&
+                                !order.delivery_status && (
+                                  <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      if (connectedRiders.length > 0) {
-                                        setShowRiderPicker(order.id);
-                                      } else {
-                                        onRequestRider(order.id);
-                                      }
+                                      onRequestRider(order.id);
                                     }}
-                                    className="w-full h-12 bg-primary/10 text-primary border-2 border-primary/20 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-primary hover:text-on-primary transition-all flex items-center justify-center gap-2 group shadow-sm active:scale-95"
+                                    className={cn(
+                                      "w-full bg-orange-600 text-white font-black rounded-full shadow-lg hover:bg-orange-700 transition-all mb-2 flex items-center justify-center gap-2 border-2 border-orange-400/30 py-4",
+                                      kitchenMode ? "text-xl" : "text-sm",
+                                    )}
                                   >
-                                    <Rocket size={16} className="group-hover:animate-bounce" />
-                                    {connectedRiders.length > 0 ? `Tag Rider (${connectedRiders.length} Online)` : 'Invoke Rider Dispatch (R 5.00)'}
+                                    <Rocket
+                                      size={20}
+                                      className="animate-pulse"
+                                    />
+                                    REQUEST RIDER NOW
                                   </button>
                                 )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {viewMode === 'active' && (
-                    <div className="flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-3">
-                        {order.status === 'pending' && (
-                          <div className="flex-1 flex flex-col gap-2">
-                             {(order.order_type === 'delivery' || !order.order_type) && !order.delivery_status && (
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onRequestRider(order.id);
-                                }}
-                                className={cn(
-                                  "w-full bg-orange-600 text-white font-black rounded-full shadow-lg hover:bg-orange-700 transition-all mb-2 flex items-center justify-center gap-2 border-2 border-orange-400/30 py-4",
-                                  kitchenMode ? "text-xl" : "text-sm"
-                                )}
-                              >
-                                <Rocket size={20} className="animate-pulse" />
-                                REQUEST RIDER NOW
-                              </button>
-                            )}
-                            {acceptingOrderId === order.id ? (
-                              <motion.div 
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="space-y-2"
-                              >
-                                <input 
-                                  type="text"
-                                  value={customMessage}
-                                  onChange={(e) => setCustomMessage(e.target.value)}
-                                  className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none"
-                                  placeholder="Enter message..."
-                                  autoFocus
-                                />
-                                <div className="flex gap-2">
-                                  <button 
-                                    onClick={() => {
-                                      onUpdateStatus(order.id, 'preparing', customMessage);
-                                      setAcceptingOrderId(null);
-                                    }}
-                                    className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-full"
-                                  >
-                                    Send & Accept
-                                  </button>
-                                  <button 
-                                    onClick={() => setAcceptingOrderId(null)}
-                                    className="px-4 py-2 bg-surface-container-high text-on-surface-variant text-xs font-bold rounded-full"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              </motion.div>
-                            ) : (
-                              <div className="space-y-2">
-                                {isLimitReached && (
-                                  <div className="flex items-center gap-2 p-2 bg-error/10 text-error rounded-lg text-[10px] font-bold">
-                                    <AlertCircle size={12} />
-                                    ORDER LIMIT REACHED ({maxConcurrentOrders})
-                                  </div>
-                                )}
-                                <button 
-                                  onClick={() => setAcceptingOrderId(order.id)}
-                                  disabled={isLimitReached}
-                                  className={cn(
-                                    "w-full bg-primary text-white font-bold rounded-full shadow-md hover:bg-primary-container transition-colors disabled:opacity-50 disabled:grayscale",
-                                    kitchenMode ? "py-5 text-lg" : "py-3 text-sm"
-                                  )}
+                              {acceptingOrderId === order.id ? (
+                                <motion.div
+                                  initial={{ opacity: 0, y: 10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  className="space-y-2"
                                 >
-                                  Accept Order
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {(order.status === 'preparing' || order.status === 'accepted') && (
-                          <div className="flex-1 flex flex-col gap-2">
-                             {(order.order_type === 'delivery' || !order.order_type) && !order.delivery_status && (
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onRequestRider(order.id);
-                                }}
-                                className={cn(
-                                  "w-full bg-orange-600 text-white font-black rounded-full shadow-lg hover:bg-orange-700 transition-all mb-2 flex items-center justify-center gap-2 border-2 border-orange-400/30 py-4",
-                                  kitchenMode ? "text-xl" : "text-sm"
-                                )}
-                              >
-                                <Rocket size={20} className="animate-pulse" />
-                                REQUEST RIDER NOW
-                              </button>
-                            )}
-                            {order.status === 'accepted' && (
-                              <button 
-                                onClick={() => onUpdateStatus(order.id, 'preparing')}
-                                className={cn(
-                                  "w-full bg-primary text-white font-bold rounded-full shadow-md hover:bg-primary-container transition-colors mb-2",
-                                  kitchenMode ? "py-5 text-lg" : "py-3 text-sm"
-                                )}
-                              >
-                                Start Preparing
-                              </button>
-                            )}
-                            {readyOrderId === order.id ? (
-                              <motion.div 
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="space-y-2"
-                              >
-                                <div className="flex flex-col gap-1">
-                                  <label className="text-[10px] font-bold text-on-surface-variant uppercase ml-1">Est. Delivery Time</label>
-                                  <input 
+                                  <input
                                     type="text"
-                                    value={estimatedTime}
-                                    onChange={(e) => setEstimatedTime(e.target.value)}
+                                    value={customMessage}
+                                    onChange={(e) =>
+                                      setCustomMessage(e.target.value)
+                                    }
                                     className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none"
-                                    placeholder="e.g. 20-30 mins"
+                                    placeholder="Enter message..."
                                     autoFocus
                                   />
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => {
+                                        onUpdateStatus(
+                                          order.id,
+                                          "preparing",
+                                          customMessage,
+                                        );
+                                        setAcceptingOrderId(null);
+                                      }}
+                                      className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-full"
+                                    >
+                                      Send & Accept
+                                    </button>
+                                    <button
+                                      onClick={() => setAcceptingOrderId(null)}
+                                      className="px-4 py-2 bg-surface-container-high text-on-surface-variant text-xs font-bold rounded-full"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </motion.div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {isLimitReached && (
+                                    <div className="flex items-center gap-2 p-2 bg-error/10 text-error rounded-lg text-[10px] font-bold">
+                                      <AlertCircle size={12} />
+                                      ORDER LIMIT REACHED ({maxConcurrentOrders}
+                                      )
+                                    </div>
+                                  )}
+                                  <button
+                                    onClick={() =>
+                                      setAcceptingOrderId(order.id)
+                                    }
+                                    disabled={isLimitReached}
+                                    className={cn(
+                                      "w-full bg-primary text-white font-bold rounded-full shadow-md hover:bg-primary-container transition-colors disabled:opacity-50 disabled:grayscale",
+                                      kitchenMode
+                                        ? "py-5 text-lg"
+                                        : "py-3 text-sm",
+                                    )}
+                                  >
+                                    Accept Order
+                                  </button>
                                 </div>
-                                <div className="flex gap-2">
-                                  <button 
-                                    onClick={() => {
-                                      onUpdateStatus(order.id, 'ready', undefined, estimatedTime);
-                                      setReadyOrderId(null);
+                              )}
+                            </div>
+                          )}
+                          {(order.status === "preparing" ||
+                            order.status === "accepted") && (
+                            <div className="flex-1 flex flex-col gap-2">
+                              {(order.order_type === "delivery" ||
+                                !order.order_type) &&
+                                !order.delivery_status && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onRequestRider(order.id);
                                     }}
-                                    className="flex-1 py-2 bg-tertiary text-white text-xs font-bold rounded-full"
+                                    className={cn(
+                                      "w-full bg-orange-600 text-white font-black rounded-full shadow-lg hover:bg-orange-700 transition-all mb-2 flex items-center justify-center gap-2 border-2 border-orange-400/30 py-4",
+                                      kitchenMode ? "text-xl" : "text-sm",
+                                    )}
                                   >
-                                    Confirm & Ready
+                                    <Rocket
+                                      size={20}
+                                      className="animate-pulse"
+                                    />
+                                    REQUEST RIDER NOW
                                   </button>
-                                  <button 
-                                    onClick={() => setReadyOrderId(null)}
-                                    className="px-4 py-2 bg-surface-container-high text-on-surface-variant text-xs font-bold rounded-full"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              </motion.div>
-                            ) : (
-                              <button 
-                                onClick={() => setReadyOrderId(order.id)}
-                                className={cn(
-                                  "w-full bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-full shadow-[0_8px_24px_-4px_rgba(167,52,0,0.2)] hover:scale-[0.98] transition-transform",
-                                  kitchenMode ? "py-5 text-lg" : "py-3 text-sm"
                                 )}
-                              >
-                                Mark as Ready
-                              </button>
-                            )}
-                          </div>
-                        )}
-                        {order.status === 'ready' && (
-                          <button 
-                            onClick={() => onUpdateStatus(order.id, 'completed')}
-                            className={cn(
-                              "flex-1 bg-tertiary text-white font-bold rounded-full hover:bg-tertiary-container transition-colors shadow-md",
-                              kitchenMode ? "py-5 text-lg" : "py-3 text-sm"
-                            )}
-                          >
-                            Mark as Completed
-                          </button>
-                        )}
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => setChatOrderId(chatOrderId === order.id ? null : order.id)}
-                            className={cn(
-                              "bg-surface-container-high rounded-full text-on-surface-variant hover:bg-surface-container-highest transition-all",
-                              kitchenMode ? "p-5" : "p-3",
-                              chatOrderId === order.id && "bg-primary text-on-primary"
-                            )}
-                            title="Chat with Customer"
-                          >
-                            <MessageCircle size={kitchenMode ? 24 : 18} />
-                          </button>
-                          <button 
-                            onClick={() => {
-                              const printWindow = window.open('', '_blank');
-                              if (printWindow) {
-                                printWindow.document.write(`
+                              {order.status === "accepted" && (
+                                <button
+                                  onClick={() =>
+                                    onUpdateStatus(order.id, "preparing")
+                                  }
+                                  className={cn(
+                                    "w-full bg-primary text-white font-bold rounded-full shadow-md hover:bg-primary-container transition-colors mb-2",
+                                    kitchenMode
+                                      ? "py-5 text-lg"
+                                      : "py-3 text-sm",
+                                  )}
+                                >
+                                  Start Preparing
+                                </button>
+                              )}
+                              {readyOrderId === order.id ? (
+                                <motion.div
+                                  initial={{ opacity: 0, y: 10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  className="space-y-2"
+                                >
+                                  <div className="flex flex-col gap-1">
+                                    <label className="text-[10px] font-bold text-on-surface-variant uppercase ml-1">
+                                      Est. Delivery Time
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={estimatedTime}
+                                      onChange={(e) =>
+                                        setEstimatedTime(e.target.value)
+                                      }
+                                      className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none"
+                                      placeholder="e.g. 20-30 mins"
+                                      autoFocus
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => {
+                                        onUpdateStatus(
+                                          order.id,
+                                          "ready",
+                                          undefined,
+                                          estimatedTime,
+                                        );
+                                        setReadyOrderId(null);
+                                      }}
+                                      className="flex-1 py-2 bg-tertiary text-white text-xs font-bold rounded-full"
+                                    >
+                                      Confirm & Ready
+                                    </button>
+                                    <button
+                                      onClick={() => setReadyOrderId(null)}
+                                      className="px-4 py-2 bg-surface-container-high text-on-surface-variant text-xs font-bold rounded-full"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </motion.div>
+                              ) : (
+                                <button
+                                  onClick={() => setReadyOrderId(order.id)}
+                                  className={cn(
+                                    "w-full bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-full shadow-[0_8px_24px_-4px_rgba(167,52,0,0.2)] hover:scale-[0.98] transition-transform",
+                                    kitchenMode
+                                      ? "py-5 text-lg"
+                                      : "py-3 text-sm",
+                                  )}
+                                >
+                                  Mark as Ready
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {order.status === "ready" && (
+                            <button
+                              onClick={() =>
+                                onUpdateStatus(order.id, "completed")
+                              }
+                              className={cn(
+                                "flex-1 bg-tertiary text-white font-bold rounded-full hover:bg-tertiary-container transition-colors shadow-md",
+                                kitchenMode ? "py-5 text-lg" : "py-3 text-sm",
+                              )}
+                            >
+                              Mark as Completed
+                            </button>
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() =>
+                                setChatOrderId(
+                                  chatOrderId === order.id ? null : order.id,
+                                )
+                              }
+                              className={cn(
+                                "bg-surface-container-high rounded-full text-on-surface-variant hover:bg-surface-container-highest transition-all",
+                                kitchenMode ? "p-5" : "p-3",
+                                chatOrderId === order.id &&
+                                  "bg-primary text-on-primary",
+                              )}
+                              title="Chat with Customer"
+                            >
+                              <MessageCircle size={kitchenMode ? 24 : 18} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                const printWindow = window.open("", "_blank");
+                                if (printWindow) {
+                                  printWindow.document.write(`
                                   <html>
                                     <head>
                                       <title>Receipt #LE-${order.id}</title>
@@ -4953,21 +6484,39 @@ const OrdersManagement = ({
                                       <div class="header">
                                         <h2>LocalEats</h2>
                                         <p>Order #LE-${order.id}</p>
-                                        <p>${format(new Date(order.created_at), 'yyyy-MM-dd HH:mm')}</p>
+                                        <p>${format(new Date(order.created_at), "yyyy-MM-dd HH:mm")}</p>
                                       </div>
                                       <div class="items">
-                                        ${(order.items || []).map((i) => {
-                                          const isObj = typeof i === 'object' && i !== null;
-                                          const p = (isObj && 'price' in i) ? (i as {price: number}).price : 0;
-                                          const q = (isObj && 'quantity' in i) ? (i as {quantity: number}).quantity : 1;
-                                          const n = (isObj && 'name' in i) ? (i as {name: string}).name : String(i);
-                                          return `
+                                        ${
+                                          (order.items || [])
+                                            .map((i) => {
+                                              const isObj =
+                                                typeof i === "object" &&
+                                                i !== null;
+                                              const p =
+                                                isObj && "price" in i
+                                                  ? (i as { price: number })
+                                                      .price
+                                                  : 0;
+                                              const q =
+                                                isObj && "quantity" in i
+                                                  ? (i as { quantity: number })
+                                                      .quantity
+                                                  : 1;
+                                              const n =
+                                                isObj && "name" in i
+                                                  ? (i as { name: string }).name
+                                                  : String(i);
+                                              return `
                                             <div class="item">
                                               <span>${q}x ${n}</span>
                                               <span>R${Number(p * q).toFixed(2)}</span>
                                             </div>
                                           `;
-                                        }).join('') || `<div class="item"><span>1x ${order.product_name}</span><span>R${Number(order.total_price || 0).toFixed(2)}</span></div>`}
+                                            })
+                                            .join("") ||
+                                          `<div class="item"><span>1x ${order.product_name}</span><span>R${Number(order.total_price || 0).toFixed(2)}</span></div>`
+                                        }
                                       </div>
                                       <div class="total">
                                         <div class="item">
@@ -4984,57 +6533,64 @@ const OrdersManagement = ({
                                     </body>
                                   </html>
                                 `);
-                                printWindow.document.close();
-                              } else {
-                                toast.error('Pop-up blocked. Please allow pop-ups to print receipts.');
-                              }
-                            }}
-                            className={cn(
-                              "bg-surface-container-high rounded-full text-on-surface-variant hover:bg-surface-container-highest transition-all",
-                              kitchenMode ? "p-5" : "p-3"
-                            )}
-                            title="Print Kitchen Ticket"
-                          >
-                            <Printer size={kitchenMode ? 24 : 18} />
-                          </button>
-                          {order.status !== 'completed' && order.status !== 'cancelled' && (
-                            <button
-                              onClick={() => {
-                                if(window.confirm('Are you sure you want to cancel this order? This cannot be undone.')) {
-                                  onUpdateStatus(order.id, 'cancelled');
+                                  printWindow.document.close();
+                                } else {
+                                  toast.error(
+                                    "Pop-up blocked. Please allow pop-ups to print receipts.",
+                                  );
                                 }
                               }}
                               className={cn(
-                                "ml-auto bg-error/10 text-error rounded-full hover:bg-error/20 transition-all font-bold tracking-widest uppercase text-[10px]",
-                                kitchenMode ? "px-6 py-2" : "px-4 py-2"
+                                "bg-surface-container-high rounded-full text-on-surface-variant hover:bg-surface-container-highest transition-all",
+                                kitchenMode ? "p-5" : "p-3",
                               )}
+                              title="Print Kitchen Ticket"
                             >
-                              Cancel Order
+                              <Printer size={kitchenMode ? 24 : 18} />
                             </button>
-                          )}
+                            {order.status !== "completed" &&
+                              order.status !== "cancelled" && (
+                                <button
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        "Are you sure you want to cancel this order? This cannot be undone.",
+                                      )
+                                    ) {
+                                      onUpdateStatus(order.id, "cancelled");
+                                    }
+                                  }}
+                                  className={cn(
+                                    "ml-auto bg-error/10 text-error rounded-full hover:bg-error/20 transition-all font-bold tracking-widest uppercase text-[10px]",
+                                    kitchenMode ? "px-6 py-2" : "px-4 py-2",
+                                  )}
+                                >
+                                  Cancel Order
+                                </button>
+                              )}
+                          </div>
                         </div>
+
+                        <AnimatePresence>
+                          {chatOrderId === order.id && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <ChatWindow
+                                orderId={order.id}
+                                shopId={order.shop_id}
+                                userId={order.user_id}
+                                onClose={() => setChatOrderId(null)}
+                              />
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
-                      
-                      <AnimatePresence>
-                        {chatOrderId === order.id && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="overflow-hidden"
-                          >
-                            <ChatWindow 
-                              orderId={order.id} 
-                              shopId={order.shop_id} 
-                              userId={order.user_id} 
-                              onClose={() => setChatOrderId(null)} 
-                            />
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  )}
-                </motion.div>
+                    )}
+                  </motion.div>
                 );
               })}
             </div>
@@ -5052,34 +6608,44 @@ const OrdersManagement = ({
                 <div className="flex items-center justify-between p-4 bg-surface-container-low rounded-2xl">
                   <div className="flex flex-col">
                     <span className="text-sm font-bold">Sound Alerts</span>
-                    <span className="text-[10px] text-on-surface-variant">Play sound for new orders</span>
+                    <span className="text-[10px] text-on-surface-variant">
+                      Play sound for new orders
+                    </span>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setSoundAlerts(!soundAlerts)}
                     className={cn(
                       "w-12 h-6 rounded-full relative transition-all duration-300",
-                      soundAlerts ? "bg-primary" : "bg-surface-container-highest"
+                      soundAlerts
+                        ? "bg-primary"
+                        : "bg-surface-container-highest",
                     )}
                   >
-                    <div className={cn(
-                      "absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300",
-                      soundAlerts ? "right-1" : "left-1"
-                    )}></div>
+                    <div
+                      className={cn(
+                        "absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300",
+                        soundAlerts ? "right-1" : "left-1",
+                      )}
+                    ></div>
                   </button>
                 </div>
 
                 <div className="p-4 bg-surface-container-low rounded-2xl space-y-3">
                   <div className="flex flex-col">
                     <span className="text-sm font-bold">Order Limit</span>
-                    <span className="text-[10px] text-on-surface-variant">Max concurrent active orders</span>
+                    <span className="text-[10px] text-on-surface-variant">
+                      Max concurrent active orders
+                    </span>
                   </div>
                   <div className="flex items-center gap-4">
-                    <input 
-                      type="range" 
-                      min="1" 
-                      max="50" 
+                    <input
+                      type="range"
+                      min="1"
+                      max="50"
                       value={maxConcurrentOrders}
-                      onChange={(e) => setMaxConcurrentOrders(Number(e.target.value))}
+                      onChange={(e) =>
+                        setMaxConcurrentOrders(Number(e.target.value))
+                      }
                       className="flex-1 accent-primary"
                     />
                     <span className="bg-primary/10 text-primary px-3 py-1 rounded-lg text-sm font-bold min-w-[3rem] text-center">
@@ -5092,78 +6658,156 @@ const OrdersManagement = ({
 
             <div className="bg-surface-container-high rounded-3xl p-8 relative overflow-hidden">
               <div className="relative z-10">
-                <h4 className="font-headline text-lg font-bold text-on-surface mb-6">Status Overview</h4>
+                <h4 className="font-headline text-lg font-bold text-on-surface mb-6">
+                  Status Overview
+                </h4>
                 <div className="space-y-5">
-                {[
-                  { label: 'New Orders', count: orders.filter(o => o.status === 'pending').length, color: 'bg-primary-fixed' },
-                  { label: 'Preparing', count: orders.filter(o => o.status === 'preparing').length, color: 'bg-primary' },
-                  { label: 'Ready for Pickup', count: orders.filter(o => o.status === 'ready').length, color: 'bg-tertiary' },
-                  { label: 'Completed', count: orders.filter(o => o.status === 'completed').length, color: 'bg-secondary' },
-                  { label: 'Cancelled', count: orders.filter(o => o.status === 'cancelled').length, color: 'bg-error' }
-                ].map((stat, i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={cn("w-1.5 h-1.5 rounded-full", stat.color)}></div>
-                      <span className="text-sm font-semibold text-on-surface-variant">{stat.label}</span>
+                  {[
+                    {
+                      label: "New Orders",
+                      count: orders.filter((o) => o.status === "pending")
+                        .length,
+                      color: "bg-primary-fixed",
+                    },
+                    {
+                      label: "Preparing",
+                      count: orders.filter((o) => o.status === "preparing")
+                        .length,
+                      color: "bg-primary",
+                    },
+                    {
+                      label: "Ready for Pickup",
+                      count: orders.filter((o) => o.status === "ready").length,
+                      color: "bg-tertiary",
+                    },
+                    {
+                      label: "Completed",
+                      count: orders.filter((o) => o.status === "completed")
+                        .length,
+                      color: "bg-secondary",
+                    },
+                    {
+                      label: "Cancelled",
+                      count: orders.filter((o) => o.status === "cancelled")
+                        .length,
+                      color: "bg-error",
+                    },
+                  ].map((stat, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={cn("w-1.5 h-1.5 rounded-full", stat.color)}
+                        ></div>
+                        <span className="text-sm font-semibold text-on-surface-variant">
+                          {stat.label}
+                        </span>
+                      </div>
+                      <span className="font-headline font-bold">
+                        {stat.count}
+                      </span>
                     </div>
-                    <span className="font-headline font-bold">{stat.count}</span>
+                  ))}
+                </div>
+                <div className="mt-8 pt-8 border-t border-on-surface/5">
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">
+                    Avg. Prep Time
                   </div>
-                ))}
+                  <div className="text-3xl font-headline font-extrabold text-primary">
+                    {avgPrepTime} min
+                  </div>
+                  <div className="text-xs text-on-surface-variant mt-1">
+                    Based on current load
+                  </div>
+                </div>
               </div>
-              <div className="mt-8 pt-8 border-t border-on-surface/5">
-                <div className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Avg. Prep Time</div>
-                <div className="text-3xl font-headline font-extrabold text-primary">{avgPrepTime} min</div>
-                <div className="text-xs text-on-surface-variant mt-1">Based on current load</div>
-              </div>
+              <div className="absolute -right-12 -bottom-12 w-48 h-48 bg-primary/5 rounded-full blur-3xl"></div>
             </div>
-            <div className="absolute -right-12 -bottom-12 w-48 h-48 bg-primary/5 rounded-full blur-3xl"></div>
-          </div>
 
-          <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-3xl p-6">
-            <h4 className="font-headline text-base font-bold text-on-surface mb-4">Kitchen Hub</h4>
-            <div className="space-y-3">
-              <button 
-                onClick={() => {
-                  setAlertsEnabled(!alertsEnabled);
-                  toast.success(`Order alerts ${!alertsEnabled ? 'enabled' : 'disabled'}`);
-                }}
-                className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors group"
-              >
-                <div className="flex items-center gap-3">
-                  <Bell size={20} className={alertsEnabled ? "text-primary" : "text-on-surface-variant/40"} />
-                  <span className="text-sm font-bold">New Order Alerts</span>
-                </div>
-                <div className={cn("w-10 h-6 rounded-full relative transition-colors", alertsEnabled ? "bg-primary" : "bg-surface-container-highest")}>
-                  <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full transition-all", alertsEnabled ? "right-1" : "left-1")}></div>
-                </div>
-              </button>
-              <button 
-                onClick={() => {
-                  setOrdersPaused(!ordersPaused);
-                  toast.warning(`Kitchen is now ${!ordersPaused ? 'PAUSED' : 'ACTIVE'}`);
-                }}
-                className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <PauseCircle size={20} className={ordersPaused ? "text-error" : "text-on-surface-variant"} />
-                  <span className="text-sm font-bold">{ordersPaused ? 'Resume Orders' : 'Pause New Orders'}</span>
-                </div>
-                <ChevronRight size={20} className={cn("text-on-surface-variant transition-transform", ordersPaused && "rotate-90")} />
-              </button>
-              <button 
-                onClick={() => toast.info('Opening printer settings...')}
-                className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <Printer size={20} className="text-on-surface-variant" />
-                  <span className="text-sm font-bold">Printer Settings</span>
-                </div>
-                <span className="text-xs font-bold text-tertiary">Online</span>
-              </button>
+            <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-3xl p-6">
+              <h4 className="font-headline text-base font-bold text-on-surface mb-4">
+                Kitchen Hub
+              </h4>
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    setAlertsEnabled(!alertsEnabled);
+                    toast.success(
+                      `Order alerts ${!alertsEnabled ? "enabled" : "disabled"}`,
+                    );
+                  }}
+                  className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors group"
+                >
+                  <div className="flex items-center gap-3">
+                    <Bell
+                      size={20}
+                      className={
+                        alertsEnabled
+                          ? "text-primary"
+                          : "text-on-surface-variant/40"
+                      }
+                    />
+                    <span className="text-sm font-bold">New Order Alerts</span>
+                  </div>
+                  <div
+                    className={cn(
+                      "w-10 h-6 rounded-full relative transition-colors",
+                      alertsEnabled
+                        ? "bg-primary"
+                        : "bg-surface-container-highest",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                        alertsEnabled ? "right-1" : "left-1",
+                      )}
+                    ></div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    setOrdersPaused(!ordersPaused);
+                    toast.warning(
+                      `Kitchen is now ${!ordersPaused ? "PAUSED" : "ACTIVE"}`,
+                    );
+                  }}
+                  className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <PauseCircle
+                      size={20}
+                      className={
+                        ordersPaused ? "text-error" : "text-on-surface-variant"
+                      }
+                    />
+                    <span className="text-sm font-bold">
+                      {ordersPaused ? "Resume Orders" : "Pause New Orders"}
+                    </span>
+                  </div>
+                  <ChevronRight
+                    size={20}
+                    className={cn(
+                      "text-on-surface-variant transition-transform",
+                      ordersPaused && "rotate-90",
+                    )}
+                  />
+                </button>
+                <button
+                  onClick={() => toast.info("Opening printer settings...")}
+                  className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <Printer size={20} className="text-on-surface-variant" />
+                    <span className="text-sm font-bold">Printer Settings</span>
+                  </div>
+                  <span className="text-xs font-bold text-tertiary">
+                    Online
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
       </div>
     </div>
   );
@@ -5172,7 +6816,9 @@ const OrdersManagement = ({
 const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
-  const [campaignType, setCampaignType] = useState<'email' | 'sms' | 'social'>('email');
+  const [campaignType, setCampaignType] = useState<"email" | "sms" | "social">(
+    "email",
+  );
 
   const handleGenerateCampaign = () => {
     setIsGenerating(true);
@@ -5185,29 +6831,59 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
   return (
     <div className="space-y-8">
       <header className="space-y-1">
-        <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Marketing</h2>
-        <p className="text-sm text-on-surface-variant font-medium">Grow {currentShop?.name || 'your business'} with powerful marketing tools.</p>
+        <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
+          Marketing
+        </h2>
+        <p className="text-sm text-on-surface-variant font-medium">
+          Grow {currentShop?.name || "your business"} with powerful marketing
+          tools.
+        </p>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { title: 'Email Campaigns', desc: 'Send newsletters and promotions to your customers.', icon: Mail, color: 'bg-blue-500', type: 'email' },
-          { title: 'SMS Marketing', desc: 'Reach customers directly on their phones.', icon: MessageSquare, color: 'bg-green-500', type: 'sms' },
-          { title: 'Social Media', desc: 'Connect your social accounts to post updates.', icon: Share2, color: 'bg-purple-500', type: 'social' },
+          {
+            title: "Email Campaigns",
+            desc: "Send newsletters and promotions to your customers.",
+            icon: Mail,
+            color: "bg-blue-500",
+            type: "email",
+          },
+          {
+            title: "SMS Marketing",
+            desc: "Reach customers directly on their phones.",
+            icon: MessageSquare,
+            color: "bg-green-500",
+            type: "sms",
+          },
+          {
+            title: "Social Media",
+            desc: "Connect your social accounts to post updates.",
+            icon: Share2,
+            color: "bg-purple-500",
+            type: "social",
+          },
         ].map((tool, i) => (
           <motion.div
             key={i}
             whileHover={{ y: -5 }}
             className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4"
           >
-            <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-white", tool.color)}>
+            <div
+              className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center text-white",
+                tool.color,
+              )}
+            >
               <tool.icon size={24} />
             </div>
             <h3 className="text-lg font-bold text-on-surface">{tool.title}</h3>
-            <p className="text-sm text-on-surface-variant leading-relaxed">{tool.desc}</p>
-            <button 
+            <p className="text-sm text-on-surface-variant leading-relaxed">
+              {tool.desc}
+            </p>
+            <button
               onClick={() => {
-                setCampaignType(tool.type as 'email' | 'sms' | 'social');
+                setCampaignType(tool.type as "email" | "sms" | "social");
                 setShowCampaignModal(true);
               }}
               className="w-full py-2 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors"
@@ -5226,10 +6902,16 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
             <QrCode size={24} />
           </div>
           <h3 className="text-lg font-bold text-on-surface">Table Ordering</h3>
-          <p className="text-sm text-on-surface-variant leading-relaxed">Generate QR codes for specific tables so dine-in customers can order.</p>
-          <button 
+          <p className="text-sm text-on-surface-variant leading-relaxed">
+            Generate QR codes for specific tables so dine-in customers can
+            order.
+          </p>
+          <button
             onClick={() => {
-              toast.info('Table Ordering coming soon!', { description: 'You will be able to generate unique QR codes for each table.' });
+              toast.info("Table Ordering coming soon!", {
+                description:
+                  "You will be able to generate unique QR codes for each table.",
+              });
             }}
             className="w-full py-2 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors mt-auto"
           >
@@ -5246,18 +6928,20 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
             <Printer size={24} />
           </div>
           <h3 className="text-lg font-bold text-on-surface">Printable Flyer</h3>
-          <p className="text-sm text-on-surface-variant leading-relaxed">Generate a branded PDF with a QR code linking to your shop.</p>
-          <button 
+          <p className="text-sm text-on-surface-variant leading-relaxed">
+            Generate a branded PDF with a QR code linking to your shop.
+          </p>
+          <button
             onClick={async () => {
               if (!currentShop) return;
               try {
-                const { jsPDF } = await import('jspdf');
-                const QRCode = (await import('qrcode')).default;
-                
+                const { jsPDF } = await import("jspdf");
+                const QRCode = (await import("qrcode")).default;
+
                 const doc = new jsPDF({
-                  orientation: 'portrait',
-                  unit: 'mm',
-                  format: 'a4'
+                  orientation: "portrait",
+                  unit: "mm",
+                  format: "a4",
                 });
 
                 const pageWidth = doc.internal.pageSize.getWidth();
@@ -5265,24 +6949,36 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
 
                 // Background
                 doc.setFillColor(250, 249, 248);
-                doc.rect(0, 0, pageWidth, pageHeight, 'F');
+                doc.rect(0, 0, pageWidth, pageHeight, "F");
 
                 // Header / Brand
                 doc.setTextColor(255, 84, 0);
                 doc.setFontSize(40);
-                doc.setFont('helvetica', 'bold');
-                doc.text('LocalEats', pageWidth / 2, 40, { align: 'center' });
+                doc.setFont("helvetica", "bold");
+                doc.text("LocalEats", pageWidth / 2, 40, { align: "center" });
 
                 // Shop Name
                 doc.setTextColor(26, 28, 30);
                 doc.setFontSize(28);
-                doc.text(`Order from ${currentShop.name}`, pageWidth / 2, 65, { align: 'center' });
+                doc.text(`Order from ${currentShop.name}`, pageWidth / 2, 65, {
+                  align: "center",
+                });
 
                 // Subtitle
                 doc.setFontSize(16);
                 doc.setTextColor(83, 67, 63);
-                doc.text('Scan the code below to view our menu', pageWidth / 2, 80, { align: 'center' });
-                doc.text('and follow us on the LocalEats app!', pageWidth / 2, 88, { align: 'center' });
+                doc.text(
+                  "Scan the code below to view our menu",
+                  pageWidth / 2,
+                  80,
+                  { align: "center" },
+                );
+                doc.text(
+                  "and follow us on the LocalEats app!",
+                  pageWidth / 2,
+                  88,
+                  { align: "center" },
+                );
 
                 // Generate QR Code
                 const shopUrl = `https://www.localeatssa.co.za/?shopId=${currentShop.id}`;
@@ -5290,34 +6986,43 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
                   width: 400,
                   margin: 2,
                   color: {
-                    dark: '#1A1C1E',
-                    light: '#FFFFFF'
-                  }
+                    dark: "#1A1C1E",
+                    light: "#FFFFFF",
+                  },
                 });
 
                 // Add QR Code to PDF
                 const qrSize = 80;
                 const qrX = (pageWidth - qrSize) / 2;
                 const qrY = 110;
-                doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+                doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
 
                 // Call to action below QR
                 doc.setFontSize(20);
                 doc.setTextColor(255, 84, 0);
-                doc.setFont('helvetica', 'bold');
-                doc.text('Skip the queue. Order ahead.', pageWidth / 2, 210, { align: 'center' });
+                doc.setFont("helvetica", "bold");
+                doc.text("Skip the queue. Order ahead.", pageWidth / 2, 210, {
+                  align: "center",
+                });
 
                 // Footer
                 doc.setFontSize(12);
                 doc.setTextColor(133, 115, 110);
-                doc.setFont('helvetica', 'normal');
-                doc.text('Powered by LocalEats South Africa', pageWidth / 2, 280, { align: 'center' });
+                doc.setFont("helvetica", "normal");
+                doc.text(
+                  "Powered by LocalEats South Africa",
+                  pageWidth / 2,
+                  280,
+                  { align: "center" },
+                );
 
-                doc.save(`LocalEats_Promo_${currentShop.name.replace(/\s+/g, '_')}.pdf`);
-                toast.success('Flyer generated successfully!');
+                doc.save(
+                  `LocalEats_Promo_${currentShop.name.replace(/\s+/g, "_")}.pdf`,
+                );
+                toast.success("Flyer generated successfully!");
               } catch (err) {
                 console.error(err);
-                toast.error('Failed to generate flyer.');
+                toast.error("Failed to generate flyer.");
               }
             }}
             className="w-full py-2 mt-auto bg-primary text-on-primary font-bold rounded-xl text-xs hover:bg-primary/90 transition-colors"
@@ -5334,8 +7039,11 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
               <Sparkles size={24} />
               AI Marketing Assistant
             </h3>
-            <p className="text-on-surface-variant">Let our AI help you create the perfect marketing campaign based on your shop's performance data and customer trends.</p>
-            <button 
+            <p className="text-on-surface-variant">
+              Let our AI help you create the perfect marketing campaign based on
+              your shop's performance data and customer trends.
+            </p>
+            <button
               onClick={handleGenerateCampaign}
               disabled={isGenerating}
               className="px-6 py-3 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2 mx-auto md:mx-0"
@@ -5355,7 +7063,10 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
           </div>
           <div className="w-full md:w-64 h-48 bg-surface-container-lowest rounded-2xl border border-outline-variant/10 flex items-center justify-center relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-            <Zap size={64} className="text-primary/20 group-hover:scale-110 transition-transform duration-500" />
+            <Zap
+              size={64}
+              className="text-primary/20 group-hover:scale-110 transition-transform duration-500"
+            />
           </div>
         </div>
       </div>
@@ -5363,30 +7074,39 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
       {/* Campaign Builder Modal (Simplified) */}
       {showCampaignModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-on-surface/20 backdrop-blur-sm">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className="bg-surface-container-lowest w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden"
           >
             <div className="p-8 space-y-6">
               <div className="flex justify-between items-center">
-                <h3 className="text-2xl font-headline font-bold text-on-surface">Create {campaignType.toUpperCase()} Campaign</h3>
-                <button onClick={() => setShowCampaignModal(false)} className="p-2 hover:bg-surface-container rounded-full transition-colors">
+                <h3 className="text-2xl font-headline font-bold text-on-surface">
+                  Create {campaignType.toUpperCase()} Campaign
+                </h3>
+                <button
+                  onClick={() => setShowCampaignModal(false)}
+                  className="p-2 hover:bg-surface-container rounded-full transition-colors"
+                >
                   <X size={24} />
                 </button>
               </div>
 
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-on-surface ml-1">Campaign Name</label>
-                  <input 
-                    type="text" 
+                  <label className="text-sm font-bold text-on-surface ml-1">
+                    Campaign Name
+                  </label>
+                  <input
+                    type="text"
                     placeholder="e.g., Weekend Flash Sale"
                     className="w-full px-4 py-3 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-on-surface ml-1">Target Audience</label>
+                  <label className="text-sm font-bold text-on-surface ml-1">
+                    Target Audience
+                  </label>
                   <select className="w-full px-4 py-3 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/20">
                     <option>All Customers</option>
                     <option>New Customers (Last 30 days)</option>
@@ -5395,8 +7115,10 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-on-surface ml-1">Campaign Message</label>
-                  <textarea 
+                  <label className="text-sm font-bold text-on-surface ml-1">
+                    Campaign Message
+                  </label>
+                  <textarea
                     rows={4}
                     placeholder="Write your message here..."
                     className="w-full px-4 py-3 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/20 resize-none"
@@ -5405,15 +7127,15 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
               </div>
 
               <div className="flex gap-4 pt-4">
-                <button 
+                <button
                   onClick={() => setShowCampaignModal(false)}
                   className="flex-1 py-4 bg-surface-container text-on-surface font-bold rounded-2xl hover:bg-surface-container-high transition-all"
                 >
                   Save Draft
                 </button>
-                <button 
+                <button
                   onClick={() => {
-                    toast.success('Campaign scheduled successfully!');
+                    toast.success("Campaign scheduled successfully!");
                     setShowCampaignModal(false);
                   }}
                   className="flex-1 py-4 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] transition-all"
@@ -5433,26 +7155,35 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[
-            { 
-              title: 'Create Urgency with Expiry Dates', 
-              strategy: 'Set short-term expiry dates (24-48 hours) for flash sales. This triggers FOMO (Fear Of Missing Out) and drives immediate action.' 
+            {
+              title: "Create Urgency with Expiry Dates",
+              strategy:
+                "Set short-term expiry dates (24-48 hours) for flash sales. This triggers FOMO (Fear Of Missing Out) and drives immediate action.",
             },
-            { 
-              title: 'Target First-Time Customers', 
-              strategy: 'Offer a "WELCOME10" code for 10% off their first order. This lowers the barrier to entry and builds initial trust.' 
+            {
+              title: "Target First-Time Customers",
+              strategy:
+                'Offer a "WELCOME10" code for 10% off their first order. This lowers the barrier to entry and builds initial trust.',
             },
-            { 
-              title: 'Reward Loyalty', 
-              strategy: 'Send exclusive codes to customers who haven\'t ordered in 30 days. Personalization increases redemption rates by up to 40%.' 
+            {
+              title: "Reward Loyalty",
+              strategy:
+                "Send exclusive codes to customers who haven't ordered in 30 days. Personalization increases redemption rates by up to 40%.",
             },
-            { 
-              title: 'Social Media Exclusives', 
-              strategy: 'Create unique codes for Instagram vs Facebook (e.g., INSTA5, FB5) to track which platform brings in more high-value customers.' 
-            }
+            {
+              title: "Social Media Exclusives",
+              strategy:
+                "Create unique codes for Instagram vs Facebook (e.g., INSTA5, FB5) to track which platform brings in more high-value customers.",
+            },
           ].map((item, i) => (
-            <div key={i} className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/5">
+            <div
+              key={i}
+              className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/5"
+            >
               <h4 className="font-bold text-on-surface mb-2">{item.title}</h4>
-              <p className="text-sm text-on-surface-variant leading-relaxed">{item.strategy}</p>
+              <p className="text-sm text-on-surface-variant leading-relaxed">
+                {item.strategy}
+              </p>
             </div>
           ))}
         </div>
@@ -5461,16 +7192,22 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
   );
 };
 
-const Coupons = ({ currentShop, orders }: { currentShop: Shop | undefined, orders: Order[] }) => {
+const Coupons = ({
+  currentShop,
+  orders,
+}: {
+  currentShop: Shop | undefined;
+  orders: Order[];
+}) => {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newCoupon, setNewCoupon] = useState({
-    code: '',
-    discount_type: 'percentage' as 'percentage' | 'fixed',
-    discount_value: '',
-    min_order_value: '',
-    expiry_date: ''
+    code: "",
+    discount_type: "percentage" as "percentage" | "fixed",
+    discount_value: "",
+    min_order_value: "",
+    expiry_date: "",
   });
 
   useEffect(() => {
@@ -5478,14 +7215,14 @@ const Coupons = ({ currentShop, orders }: { currentShop: Shop | undefined, order
       if (!currentShop?.id) return;
       try {
         const { data, error } = await supabase
-          .from('coupons')
-          .select('*')
-          .eq('shop_id', currentShop.id)
-          .order('created_at', { ascending: false });
-        
+          .from("coupons")
+          .select("*")
+          .eq("shop_id", currentShop.id)
+          .order("created_at", { ascending: false });
+
         if (!error && data) setCoupons(data);
       } catch (err) {
-        console.error('Error fetching coupons:', err);
+        console.error("Error fetching coupons:", err);
       } finally {
         setLoading(false);
       }
@@ -5497,63 +7234,85 @@ const Coupons = ({ currentShop, orders }: { currentShop: Shop | undefined, order
     e.preventDefault();
     if (!currentShop?.id) return;
 
-    const { error } = await supabase
-      .from('coupons')
-      .insert([{
+    const { error } = await supabase.from("coupons").insert([
+      {
         shop_id: currentShop.id,
         code: newCoupon.code.toUpperCase(),
         discount_type: newCoupon.discount_type,
         discount_value: parseFloat(newCoupon.discount_value),
         min_order_value: parseFloat(newCoupon.min_order_value) || 0,
         expiry_date: newCoupon.expiry_date || null,
-        is_active: true
-      }]);
+        is_active: true,
+      },
+    ]);
 
     if (error) {
-      toast.error('Failed to create coupon');
+      toast.error("Failed to create coupon");
     } else {
-      toast.success('Coupon created successfully!');
+      toast.success("Coupon created successfully!");
       setShowCreateModal(false);
-      setNewCoupon({ code: '', discount_type: 'percentage', discount_value: '', min_order_value: '', expiry_date: '' });
+      setNewCoupon({
+        code: "",
+        discount_type: "percentage",
+        discount_value: "",
+        min_order_value: "",
+        expiry_date: "",
+      });
       // Refresh
-      const { data } = await supabase.from('coupons').select('*').eq('shop_id', currentShop.id).order('created_at', { ascending: false });
+      const { data } = await supabase
+        .from("coupons")
+        .select("*")
+        .eq("shop_id", currentShop.id)
+        .order("created_at", { ascending: false });
       if (data) setCoupons(data);
     }
   };
 
   const toggleCoupon = async (id: string, isActive: boolean) => {
     const { error } = await supabase
-      .from('coupons')
+      .from("coupons")
       .update({ is_active: !isActive })
-      .eq('id', id);
-    
+      .eq("id", id);
+
     if (!error) {
-      setCoupons(prev => prev.map(c => c.id === id ? { ...c, is_active: !isActive } : c));
-      toast.success(`Coupon ${!isActive ? 'activated' : 'deactivated'}`);
+      setCoupons((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, is_active: !isActive } : c)),
+      );
+      toast.success(`Coupon ${!isActive ? "activated" : "deactivated"}`);
     }
   };
 
   const getPerformance = (code: string) => {
-    const redemptions = orders.filter(o => o.coupon_code === code);
-    const totalDiscount = redemptions.reduce((acc, curr) => acc + (curr.discount_amount || 0), 0);
-    const totalSales = redemptions.reduce((acc, curr) => acc + Number(curr.total_price), 0);
+    const redemptions = orders.filter((o) => o.coupon_code === code);
+    const totalDiscount = redemptions.reduce(
+      (acc, curr) => acc + (curr.discount_amount || 0),
+      0,
+    );
+    const totalSales = redemptions.reduce(
+      (acc, curr) => acc + Number(curr.total_price),
+      0,
+    );
     return {
       count: redemptions.length,
       discount: totalDiscount,
-      sales: totalSales
+      sales: totalSales,
     };
   };
 
   return (
     <div className="space-y-8">
-      <header className="flex justify-between items-end">
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 sm:gap-0">
         <div className="space-y-1">
-          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Coupons</h2>
-          <p className="text-sm text-on-surface-variant font-medium">Manage discount codes and track performance.</p>
+          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
+            Coupons
+          </h2>
+          <p className="text-sm text-on-surface-variant font-medium">
+            Manage discount codes and track performance.
+          </p>
         </div>
-        <button 
+        <button
           onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] transition-all"
+          className="flex items-center gap-2 px-6 py-3 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] transition-all w-full sm:w-auto justify-center"
         >
           <Plus size={20} />
           Create Coupon
@@ -5563,16 +7322,41 @@ const Coupons = ({ currentShop, orders }: { currentShop: Shop | undefined, order
       {/* Performance Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
-          { label: 'Total Redemptions', value: orders.filter(o => o.coupon_code).length, icon: Ticket, color: 'text-blue-500' },
-          { label: 'Total Discounts Given', value: `R${Number(orders.reduce((acc, curr) => acc + (curr.discount_amount || 0), 0)).toFixed(2)}`, icon: Zap, color: 'text-orange-500' },
-          { label: 'Coupon-Driven Sales', value: `R${Number(orders.filter(o => o.coupon_code).reduce((acc, curr) => acc + Number(curr.total_price), 0)).toFixed(2)}`, icon: TrendingUp, color: 'text-green-500' },
+          {
+            label: "Total Redemptions",
+            value: orders.filter((o) => o.coupon_code).length,
+            icon: Ticket,
+            color: "text-blue-500",
+          },
+          {
+            label: "Total Discounts Given",
+            value: `R${Number(orders.reduce((acc, curr) => acc + (curr.discount_amount || 0), 0)).toFixed(2)}`,
+            icon: Zap,
+            color: "text-orange-500",
+          },
+          {
+            label: "Coupon-Driven Sales",
+            value: `R${Number(orders.filter((o) => o.coupon_code).reduce((acc, curr) => acc + Number(curr.total_price), 0)).toFixed(2)}`,
+            icon: TrendingUp,
+            color: "text-green-500",
+          },
         ].map((stat, i) => (
-          <div key={i} className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/10 shadow-sm flex items-center gap-4">
-            <div className={cn("w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center", stat.color)}>
+          <div
+            key={i}
+            className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/10 shadow-sm flex items-center gap-4"
+          >
+            <div
+              className={cn(
+                "w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center",
+                stat.color,
+              )}
+            >
               <stat.icon size={24} />
             </div>
             <div>
-              <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">{stat.label}</p>
+              <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
+                {stat.label}
+              </p>
               <p className="text-xl font-black text-on-surface">{stat.value}</p>
             </div>
           </div>
@@ -5581,44 +7365,76 @@ const Coupons = ({ currentShop, orders }: { currentShop: Shop | undefined, order
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2].map(i => <div key={i} className="h-32 bg-surface-container animate-pulse rounded-3xl" />)}
+          {[1, 2].map((i) => (
+            <div
+              key={i}
+              className="h-32 bg-surface-container animate-pulse rounded-3xl"
+            />
+          ))}
         </div>
       ) : coupons.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {coupons.map(coupon => {
+          {coupons.map((coupon) => {
             const perf = getPerformance(coupon.code);
-            const isExpired = coupon.expiry_date && new Date(coupon.expiry_date) < new Date();
-            
+            const isExpired =
+              coupon.expiry_date && new Date(coupon.expiry_date) < new Date();
+
             return (
-              <div key={coupon.id} className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4">
+              <div
+                key={coupon.id}
+                className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4"
+              >
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-lg font-black font-mono text-primary tracking-wider">{coupon.code}</span>
-                      <span className={cn(
-                        "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest",
-                        coupon.is_active && !isExpired ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                      )}>
-                        {isExpired ? 'Expired' : coupon.is_active ? 'Active' : 'Inactive'}
+                      <span className="text-lg font-black font-mono text-primary tracking-wider">
+                        {coupon.code}
+                      </span>
+                      <span
+                        className={cn(
+                          "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest",
+                          coupon.is_active && !isExpired
+                            ? "bg-green-100 text-green-700"
+                            : "bg-red-100 text-red-700",
+                        )}
+                      >
+                        {isExpired
+                          ? "Expired"
+                          : coupon.is_active
+                            ? "Active"
+                            : "Inactive"}
                       </span>
                     </div>
                     <p className="text-sm text-on-surface-variant font-medium">
-                      {coupon.discount_type === 'percentage' ? `${coupon.discount_value}% OFF` : `R${coupon.discount_value} OFF`}
+                      {coupon.discount_type === "percentage"
+                        ? `${coupon.discount_value}% OFF`
+                        : `R${coupon.discount_value} OFF`}
                     </p>
                     {coupon.expiry_date && (
-                      <p className={cn("text-[10px] font-bold flex items-center gap-1", isExpired ? "text-red-500" : "text-on-surface-variant/60")}>
+                      <p
+                        className={cn(
+                          "text-[10px] font-bold flex items-center gap-1",
+                          isExpired
+                            ? "text-red-500"
+                            : "text-on-surface-variant/60",
+                        )}
+                      >
                         <Calendar size={12} />
-                        Expires: {format(new Date(coupon.expiry_date), 'MMM dd, yyyy')}
+                        Expires:{" "}
+                        {format(new Date(coupon.expiry_date), "MMM dd, yyyy")}
                       </p>
                     )}
                   </div>
-                  <button 
+                  <button
                     onClick={() => toggleCoupon(coupon.id, coupon.is_active)}
                     disabled={isExpired}
                     className={cn(
                       "p-3 rounded-2xl transition-colors",
-                      isExpired ? "bg-surface-container text-on-surface-variant/20 cursor-not-allowed" :
-                      coupon.is_active ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-green-50 text-green-600 hover:bg-green-100"
+                      isExpired
+                        ? "bg-surface-container text-on-surface-variant/20 cursor-not-allowed"
+                        : coupon.is_active
+                          ? "bg-red-50 text-red-600 hover:bg-red-100"
+                          : "bg-green-50 text-green-600 hover:bg-green-100",
                     )}
                   >
                     {coupon.is_active ? <X size={20} /> : <Check size={20} />}
@@ -5627,16 +7443,28 @@ const Coupons = ({ currentShop, orders }: { currentShop: Shop | undefined, order
 
                 <div className="pt-4 border-t border-outline-variant/5 grid grid-cols-3 gap-2">
                   <div className="text-center">
-                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase">Used</p>
-                    <p className="text-sm font-black text-on-surface">{perf.count}</p>
+                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase">
+                      Used
+                    </p>
+                    <p className="text-sm font-black text-on-surface">
+                      {perf.count}
+                    </p>
                   </div>
                   <div className="text-center">
-                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase">Saved</p>
-                    <p className="text-sm font-black text-on-surface">R{Number(perf.discount || 0).toFixed(0)}</p>
+                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase">
+                      Saved
+                    </p>
+                    <p className="text-sm font-black text-on-surface">
+                      R{Number(perf.discount || 0).toFixed(0)}
+                    </p>
                   </div>
                   <div className="text-center">
-                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase">Sales</p>
-                    <p className="text-sm font-black text-on-surface">R{Number(perf.sales || 0).toFixed(0)}</p>
+                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase">
+                      Sales
+                    </p>
+                    <p className="text-sm font-black text-on-surface">
+                      R{Number(perf.sales || 0).toFixed(0)}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -5645,10 +7473,16 @@ const Coupons = ({ currentShop, orders }: { currentShop: Shop | undefined, order
         </div>
       ) : (
         <div className="bg-surface-container-low/30 rounded-3xl p-12 text-center border-2 border-dashed border-outline-variant/10">
-          <Ticket size={48} className="mx-auto text-on-surface-variant/20 mb-4" />
+          <Ticket
+            size={48}
+            className="mx-auto text-on-surface-variant/20 mb-4"
+          />
           <h3 className="text-lg font-bold text-on-surface">No Coupons Yet</h3>
-          <p className="text-sm text-on-surface-variant max-w-xs mx-auto mt-2">Create your first discount code to attract more customers to your shop.</p>
-          <button 
+          <p className="text-sm text-on-surface-variant max-w-xs mx-auto mt-2">
+            Create your first discount code to attract more customers to your
+            shop.
+          </p>
+          <button
             onClick={() => setShowCreateModal(true)}
             className="mt-6 px-6 py-2 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors"
           >
@@ -5676,31 +7510,53 @@ const Coupons = ({ currentShop, orders }: { currentShop: Shop | undefined, order
             >
               <form onSubmit={handleCreateCoupon} className="p-8 space-y-6">
                 <header className="flex justify-between items-center">
-                  <h3 className="text-2xl font-headline font-black text-on-surface tracking-tight">New Coupon</h3>
-                  <button type="button" onClick={() => setShowCreateModal(false)} className="p-2 hover:bg-surface-container rounded-full transition-colors">
+                  <h3 className="text-2xl font-headline font-black text-on-surface tracking-tight">
+                    New Coupon
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(false)}
+                    className="p-2 hover:bg-surface-container rounded-full transition-colors"
+                  >
                     <X size={20} />
                   </button>
                 </header>
 
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">Coupon Code</label>
+                    <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                      Coupon Code
+                    </label>
                     <input
                       required
                       type="text"
                       placeholder="e.g. WELCOME10"
                       value={newCoupon.code}
-                      onChange={e => setNewCoupon({ ...newCoupon, code: e.target.value.toUpperCase() })}
+                      onChange={(e) =>
+                        setNewCoupon({
+                          ...newCoupon,
+                          code: e.target.value.toUpperCase(),
+                        })
+                      }
                       className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 focus:ring-4 focus:ring-primary/5 outline-none transition-all font-mono font-bold uppercase"
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">Type</label>
+                      <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                        Type
+                      </label>
                       <select
                         value={newCoupon.discount_type}
-                        onChange={e => setNewCoupon({ ...newCoupon, discount_type: e.target.value as 'percentage' | 'fixed' })}
+                        onChange={(e) =>
+                          setNewCoupon({
+                            ...newCoupon,
+                            discount_type: e.target.value as
+                              | "percentage"
+                              | "fixed",
+                          })
+                        }
                         className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 outline-none transition-all font-bold appearance-none"
                       >
                         <option value="percentage">Percentage (%)</option>
@@ -5708,35 +7564,58 @@ const Coupons = ({ currentShop, orders }: { currentShop: Shop | undefined, order
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">Value</label>
+                      <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                        Value
+                      </label>
                       <input
                         required
                         type="number"
-                        placeholder={newCoupon.discount_type === 'percentage' ? "10" : "50"}
+                        placeholder={
+                          newCoupon.discount_type === "percentage" ? "10" : "50"
+                        }
                         value={newCoupon.discount_value}
-                        onChange={e => setNewCoupon({ ...newCoupon, discount_value: e.target.value })}
+                        onChange={(e) =>
+                          setNewCoupon({
+                            ...newCoupon,
+                            discount_value: e.target.value,
+                          })
+                        }
                         className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 outline-none transition-all font-bold"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">Min Order Value (R)</label>
+                    <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                      Min Order Value (R)
+                    </label>
                     <input
                       type="number"
                       placeholder="0.00"
                       value={newCoupon.min_order_value}
-                      onChange={e => setNewCoupon({ ...newCoupon, min_order_value: e.target.value })}
+                      onChange={(e) =>
+                        setNewCoupon({
+                          ...newCoupon,
+                          min_order_value: e.target.value,
+                        })
+                      }
                       className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 outline-none transition-all font-bold"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">Expiry Date (Optional)</label>
+                    <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                      Expiry Date (Optional)
+                    </label>
                     <input
                       type="date"
                       value={newCoupon.expiry_date}
-                      onChange={e => setNewCoupon({ ...newCoupon, expiry_date: e.target.value })}
+                      onChange={(e) =>
+                        setNewCoupon({
+                          ...newCoupon,
+                          expiry_date: e.target.value,
+                        })
+                      }
                       className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 outline-none transition-all font-bold"
                     />
                   </div>
@@ -5757,20 +7636,32 @@ const Coupons = ({ currentShop, orders }: { currentShop: Shop | undefined, order
   );
 };
 
-const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[], menuItems: MenuItem[], loading: boolean, currentShop: Shop | undefined }) => {
+const Insights = ({
+  orders,
+  menuItems,
+  loading,
+  currentShop,
+}: {
+  orders: Order[];
+  menuItems: MenuItem[];
+  loading: boolean;
+  currentShop: Shop | undefined;
+}) => {
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [followerCount, setFollowerCount] = useState<number | string>('--');
-  const [followerTrendData, setFollowerTrendData] = useState<{ name: string; value: number }[]>([]);
+  const [followerCount, setFollowerCount] = useState<number | string>("--");
+  const [followerTrendData, setFollowerTrendData] = useState<
+    { name: string; value: number }[]
+  >([]);
 
   useEffect(() => {
     const fetchReviews = async () => {
       if (!currentShop?.id) return;
       const { data, error } = await supabase
-        .from('reviews')
-        .select('*')
-        .eq('shop_id', currentShop.id)
-        .order('created_at', { ascending: false });
-      
+        .from("reviews")
+        .select("*")
+        .eq("shop_id", currentShop.id)
+        .order("created_at", { ascending: false });
+
       if (!error && data) setReviews(data);
     };
     fetchReviews();
@@ -5778,27 +7669,29 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
 
   const handleResponse = async (reviewId: string, response: string) => {
     const { error } = await supabase
-      .from('reviews')
+      .from("reviews")
       .update({ response })
-      .eq('id', reviewId);
+      .eq("id", reviewId);
 
     if (error) {
-      toast.error('Failed to save response');
+      toast.error("Failed to save response");
     } else {
-      toast.success('Response saved!');
-      setReviews(prev => prev.map(r => r.id === reviewId ? { ...r, response } : r));
+      toast.success("Response saved!");
+      setReviews((prev) =>
+        prev.map((r) => (r.id === reviewId ? { ...r, response } : r)),
+      );
     }
   };
 
   const fetchFollowerInsights = async () => {
     if (!currentShop?.id) return;
-    
+
     try {
       const { count, error } = await supabase
-        .from('shop_followers')
-        .select('*', { count: 'exact', head: true })
-        .eq('shop_id', currentShop.id);
-      
+        .from("shop_followers")
+        .select("*", { count: "exact", head: true })
+        .eq("shop_id", currentShop.id);
+
       if (error) throw error;
       setFollowerCount(count || 0);
 
@@ -5807,28 +7700,30 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
         const d = new Date();
         d.setDate(d.getDate() - index);
         return {
-          date: d.toISOString().split('T')[0],
-          dayName: format(d, 'EEE'),
-          count: 0
+          date: d.toISOString().split("T")[0],
+          dayName: format(d, "EEE"),
+          count: 0,
         };
       }).reverse();
 
       const { data: trendData, error: trendError } = await supabase
-        .from('shop_followers')
-        .select('created_at')
-        .eq('shop_id', currentShop.id)
-        .gt('created_at', last7Days[0].date);
+        .from("shop_followers")
+        .select("created_at")
+        .eq("shop_id", currentShop.id)
+        .gt("created_at", last7Days[0].date);
 
       if (!trendError && trendData) {
-        trendData.forEach(f => {
-          const date = new Date(f.created_at).toISOString().split('T')[0];
-          const day = last7Days.find(d => d.date === date);
+        trendData.forEach((f) => {
+          const date = new Date(f.created_at).toISOString().split("T")[0];
+          const day = last7Days.find((d) => d.date === date);
           if (day) day.count++;
         });
-        setFollowerTrendData(last7Days.map(d => ({ name: d.dayName, value: d.count })));
+        setFollowerTrendData(
+          last7Days.map((d) => ({ name: d.dayName, value: d.count })),
+        );
       }
     } catch (err) {
-      console.error('Error fetching follower insights:', err);
+      console.error("Error fetching follower insights:", err);
     }
   };
 
@@ -5841,16 +7736,16 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
     const channel = supabase
       .channel(`insights_followers_${currentShop.id}`)
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: '*',
-          schema: 'public',
-          table: 'shop_followers',
-          filter: `shop_id=eq.${currentShop.id}`
+          event: "*",
+          schema: "public",
+          table: "shop_followers",
+          filter: `shop_id=eq.${currentShop.id}`,
         },
         () => {
           fetchFollowerInsights();
-        }
+        },
       )
       .subscribe();
 
@@ -5859,11 +7754,13 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
     };
   }, [currentShop?.id, fetchFollowerInsights]);
 
-  const [selectedItemForTrend, setSelectedItemForTrend] = useState<string | null>(null);
+  const [selectedItemForTrend, setSelectedItemForTrend] = useState<
+    string | null
+  >(null);
 
   const peakHoursData = useMemo(() => {
     const hours = Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0 }));
-    orders.forEach(order => {
+    orders.forEach((order) => {
       const date = new Date(order.created_at);
       if (!isNaN(date.getTime())) {
         const hour = date.getHours();
@@ -5872,41 +7769,48 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
     });
 
     const peaks = [
-      { time: '12:00 PM', hour: 12, label: 'Lunch Rush' },
-      { time: '03:00 PM', hour: 15, label: 'Afternoon Slump' },
-      { time: '07:00 PM', hour: 19, label: 'Dinner Peak' },
-      { time: '09:00 PM', hour: 21, label: 'Late Night' }
+      { time: "12:00 PM", hour: 12, label: "Lunch Rush" },
+      { time: "03:00 PM", hour: 15, label: "Afternoon Slump" },
+      { time: "07:00 PM", hour: 19, label: "Dinner Peak" },
+      { time: "09:00 PM", hour: 21, label: "Late Night" },
     ];
 
-    const maxCount = Math.max(...hours.map(h => h.count), 1);
+    const maxCount = Math.max(...hours.map((h) => h.count), 1);
 
-    return peaks.map(p => ({
+    return peaks.map((p) => ({
       ...p,
       val: (hours[p.hour].count / maxCount) * 100,
-      color: hours[p.hour].count > (maxCount * 0.7) ? 'bg-primary' : 'bg-on-surface-variant/20'
+      color:
+        hours[p.hour].count > maxCount * 0.7
+          ? "bg-primary"
+          : "bg-on-surface-variant/20",
     }));
   }, [orders]);
 
   const itemTrendData = useMemo(() => {
     if (!selectedItemForTrend) return [];
-    
+
     const last7Days = Array.from({ length: 7 }, (_, index) => {
       const d = new Date();
       d.setDate(d.getDate() - index);
       return {
-        date: d.toISOString().split('T')[0],
-        dayName: format(d, 'EEE'),
-        revenue: 0
+        date: d.toISOString().split("T")[0],
+        dayName: format(d, "EEE"),
+        revenue: 0,
       };
     }).reverse();
 
-    orders.filter(o => o.product_name === selectedItemForTrend).forEach(order => {
-      const orderDate = new Date(order.created_at).toISOString().split('T')[0];
-      const day = last7Days.find(d => d.date === orderDate);
-      if (day) day.revenue += Number(order.total_price);
-    });
+    orders
+      .filter((o) => o.product_name === selectedItemForTrend)
+      .forEach((order) => {
+        const orderDate = new Date(order.created_at)
+          .toISOString()
+          .split("T")[0];
+        const day = last7Days.find((d) => d.date === orderDate);
+        if (day) day.revenue += Number(order.total_price);
+      });
 
-    return last7Days.map(d => ({ name: d.dayName, value: d.revenue }));
+    return last7Days.map((d) => ({ name: d.dayName, value: d.revenue }));
   }, [orders, selectedItemForTrend]);
 
   // Calculate top sellers from orders
@@ -5917,43 +7821,48 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
 
   const exportToCSV = () => {
     if (orders.length === 0) {
-      toast.error('No orders to export');
+      toast.error("No orders to export");
       return;
     }
 
-    const headers = ['Order ID', 'Product', 'Price', 'Status', 'Date'];
+    const headers = ["Order ID", "Product", "Price", "Status", "Date"];
     const csvContent = [
-      headers.join(','),
-      ...orders.map(o => [
-        o.id,
-        `"${o.product_name}"`,
-        o.total_price,
-        o.status,
-        new Date(o.created_at).toLocaleDateString()
-      ].join(','))
-    ].join('\n');
+      headers.join(","),
+      ...orders.map((o) =>
+        [
+          o.id,
+          `"${o.product_name}"`,
+          o.total_price,
+          o.status,
+          new Date(o.created_at).toLocaleDateString(),
+        ].join(","),
+      ),
+    ].join("\n");
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `localeats_report_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `localeats_report_${new Date().toISOString().split("T")[0]}.csv`,
+    );
+    link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success('Report exported successfully!');
+    toast.success("Report exported successfully!");
   };
 
   const topSellers = useMemo(() => {
     return Object.entries(productCounts)
       .map(([name, count]) => {
-        const menuItem = menuItems.find(mi => mi.name === name);
-        return { 
-          name, 
-          count, 
+        const menuItem = menuItems.find((mi) => mi.name === name);
+        return {
+          name,
+          count,
           image_url: menuItem?.image_url,
-          id: menuItem?.id
+          id: menuItem?.id,
         };
       })
       .sort((a, b) => b.count - a.count)
@@ -5962,84 +7871,134 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
 
   // Detailed Menu Analytics
   const menuAnalytics = useMemo(() => {
-    return menuItems.map(item => {
-      const itemOrders = orders.filter(o => o.product_name === item.name);
-      const totalRevenue = itemOrders.reduce((sum, o) => sum + Number(o.total_price), 0);
-      const salesCount = itemOrders.length;
-      
-      // Calculate sales trend (last 7 days vs previous 7 days)
-      const now = new Date();
-      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
-      
-      const recentSales = itemOrders.filter(o => new Date(o.created_at) >= sevenDaysAgo).length;
-      const previousSales = itemOrders.filter(o => {
-        const date = new Date(o.created_at);
-        return date >= fourteenDaysAgo && date < sevenDaysAgo;
-      }).length;
-      
-      const trend = previousSales === 0 ? (recentSales > 0 ? 100 : 0) : ((recentSales - previousSales) / previousSales) * 100;
-      
-      return {
-        ...item,
-        totalRevenue,
-        salesCount,
-        trend
-      };
-    }).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    return menuItems
+      .map((item) => {
+        const itemOrders = orders.filter((o) => o.product_name === item.name);
+        const totalRevenue = itemOrders.reduce(
+          (sum, o) => sum + Number(o.total_price),
+          0,
+        );
+        const salesCount = itemOrders.length;
+
+        // Calculate sales trend (last 7 days vs previous 7 days)
+        const now = new Date();
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const fourteenDaysAgo = new Date(
+          now.getTime() - 14 * 24 * 60 * 60 * 1000,
+        );
+
+        const recentSales = itemOrders.filter(
+          (o) => new Date(o.created_at) >= sevenDaysAgo,
+        ).length;
+        const previousSales = itemOrders.filter((o) => {
+          const date = new Date(o.created_at);
+          return date >= fourteenDaysAgo && date < sevenDaysAgo;
+        }).length;
+
+        const trend =
+          previousSales === 0
+            ? recentSales > 0
+              ? 100
+              : 0
+            : ((recentSales - previousSales) / previousSales) * 100;
+
+        return {
+          ...item,
+          totalRevenue,
+          salesCount,
+          trend,
+        };
+      })
+      .sort((a, b) => b.totalRevenue - a.totalRevenue);
   }, [orders, menuItems]);
 
-  const categoryRevenue = orders.reduce((acc: Record<string, number>, order) => {
-    const item = menuItems.find(i => i.name === order.product_name);
-    const category = item?.category || 'Other';
-    acc[category] = (acc[category] || 0) + Number(order.total_price);
-    return acc;
-  }, {});
+  const categoryRevenue = orders.reduce(
+    (acc: Record<string, number>, order) => {
+      const item = menuItems.find((i) => i.name === order.product_name);
+      const category = item?.category || "Other";
+      acc[category] = (acc[category] || 0) + Number(order.total_price);
+      return acc;
+    },
+    {},
+  );
 
   const dailyEarningsData = useMemo(() => {
     const last7Days = Array.from({ length: 7 }, (_, index) => {
       const d = new Date();
       d.setDate(d.getDate() - index);
       return {
-        date: d.toISOString().split('T')[0],
-        dayName: format(d, 'EEE'),
-        earnings: 0
+        date: d.toISOString().split("T")[0],
+        dayName: format(d, "EEE"),
+        earnings: 0,
       };
     }).reverse();
 
-    orders.filter(o => o.status === 'completed' || o.status === 'preparing' || o.status === 'ready').forEach(order => {
-      const orderDate = new Date(order.created_at).toISOString().split('T')[0];
-      const day = last7Days.find(d => d.date === orderDate);
-      if (day) day.earnings += Number(order.total_price);
-    });
+    orders
+      .filter(
+        (o) =>
+          o.status === "completed" ||
+          o.status === "preparing" ||
+          o.status === "ready",
+      )
+      .forEach((order) => {
+        const orderDate = new Date(order.created_at)
+          .toISOString()
+          .split("T")[0];
+        const day = last7Days.find((d) => d.date === orderDate);
+        if (day) day.earnings += Number(order.total_price);
+      });
 
-    return last7Days.map(d => ({ name: d.dayName, earnings: d.earnings }));
+    return last7Days.map((d) => ({ name: d.dayName, earnings: d.earnings }));
   }, [orders]);
 
   const couponPerformance = useMemo(() => {
-    const couponOrders = orders.filter(o => o.coupon_code);
-    const totalDiscount = couponOrders.reduce((acc, curr) => acc + (curr.discount_amount || 0), 0);
-    const totalSales = couponOrders.reduce((acc, curr) => acc + Number(curr.total_price), 0);
-    
-    const byCode = couponOrders.reduce((acc: Record<string, { count: number, discount: number, sales: number }>, order) => {
-      const code = order.coupon_code!;
-      if (!acc[code]) acc[code] = { count: 0, discount: 0, sales: 0 };
-      acc[code].count++;
-      acc[code].discount += (order.discount_amount || 0);
-      acc[code].sales += Number(order.total_price);
-      return acc;
-    }, {});
+    const couponOrders = orders.filter((o) => o.coupon_code);
+    const totalDiscount = couponOrders.reduce(
+      (acc, curr) => acc + (curr.discount_amount || 0),
+      0,
+    );
+    const totalSales = couponOrders.reduce(
+      (acc, curr) => acc + Number(curr.total_price),
+      0,
+    );
+
+    const byCode = couponOrders.reduce(
+      (
+        acc: Record<string, { count: number; discount: number; sales: number }>,
+        order,
+      ) => {
+        const code = order.coupon_code!;
+        if (!acc[code]) acc[code] = { count: 0, discount: 0, sales: 0 };
+        acc[code].count++;
+        acc[code].discount += order.discount_amount || 0;
+        acc[code].sales += Number(order.total_price);
+        return acc;
+      },
+      {},
+    );
 
     return {
       totalRedemptions: couponOrders.length,
       totalDiscount,
       totalSales,
-      byCode: Object.entries(byCode).map(([code, stats]) => ({ code, ...stats })).sort((a, b) => b.sales - a.sales)
+      byCode: Object.entries(byCode)
+        .map(([code, stats]) => ({ code, ...stats }))
+        .sort((a, b) => b.sales - a.sales),
     };
   }, [orders]);
 
-  const pieData = Object.entries(categoryRevenue).map(([name, value]) => ({ name, value }));
-  const COLORS = ['#FF6321', '#FF9F43', '#FFC107', '#4CAF50', '#2196F3', '#9C27B0'];
+  const pieData = Object.entries(categoryRevenue).map(([name, value]) => ({
+    name,
+    value,
+  }));
+  const COLORS = [
+    "#FF6321",
+    "#FF9F43",
+    "#FFC107",
+    "#4CAF50",
+    "#2196F3",
+    "#9C27B0",
+  ];
 
   if (loading) {
     return (
@@ -6060,13 +8019,20 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
 
   return (
     <div className="space-y-12">
-      <motion.section initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2 font-headline">Business Insights</h1>
-        <p className="text-on-surface-variant font-body">Data-driven performance overview for LocalEats.</p>
+      <motion.section
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <h1 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2 font-headline">
+          Business Insights
+        </h1>
+        <p className="text-on-surface-variant font-body">
+          Data-driven performance overview for LocalEats.
+        </p>
       </motion.section>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-        <motion.section 
+        <motion.section
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.1 }}
@@ -6074,9 +8040,16 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
         >
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
             <div>
-              <h2 className="text-sm font-bold uppercase tracking-widest text-on-surface-variant/60 mb-1">Daily Earnings (Last 7 Days)</h2>
+              <h2 className="text-sm font-bold uppercase tracking-widest text-on-surface-variant/60 mb-1">
+                Daily Earnings (Last 7 Days)
+              </h2>
               <div className="flex items-baseline gap-3">
-                <span className="text-4xl font-black text-on-surface font-headline">R {(dailyEarningsData.reduce((acc, d) => acc + d.earnings, 0)).toLocaleString()}</span>
+                <span className="text-4xl font-black text-on-surface font-headline">
+                  R{" "}
+                  {dailyEarningsData
+                    .reduce((acc, d) => acc + d.earnings, 0)
+                    .toLocaleString()}
+                </span>
                 <span className="flex items-center text-sm font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
                   <TrendingUp size={14} className="mr-1" />
                   Real-time
@@ -6084,15 +8057,15 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
               </div>
             </div>
             <div className="flex gap-2">
-              <button 
+              <button
                 onClick={exportToCSV}
                 className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors"
               >
                 <Download size={14} />
                 Export CSV
               </button>
-              <button 
-                onClick={() => toast.info('Historical data coming soon')}
+              <button
+                onClick={() => toast.info("Historical data coming soon")}
                 className="px-4 py-2 text-xs font-bold rounded-full bg-primary text-on-primary"
               >
                 Snapshot
@@ -6108,31 +8081,48 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
                     <stop offset="100%" stopColor="#ff9d4d" stopOpacity={0.8} />
                   </linearGradient>
                 </defs>
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fill: 'var(--on-surface-variant)', fontSize: 10, fontWeight: 700 }}
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{
+                    fill: "var(--on-surface-variant)",
+                    fontSize: 10,
+                    fontWeight: 700,
+                  }}
                   dy={10}
                 />
                 <YAxis hide />
-                <Tooltip 
-                  cursor={{ fill: 'var(--primary)', opacity: 0.05 }}
-                  contentStyle={{ 
-                    backgroundColor: '#fff', 
-                    borderRadius: '16px', 
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)',
-                    padding: '12px'
+                <Tooltip
+                  cursor={{ fill: "var(--primary)", opacity: 0.05 }}
+                  contentStyle={{
+                    backgroundColor: "#fff",
+                    borderRadius: "16px",
+                    border: "1px solid #e2e8f0",
+                    boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)",
+                    padding: "12px",
                   }}
-                  itemStyle={{ color: '#f58220', fontWeight: 800, fontSize: '14px' }}
-                  labelStyle={{ color: '#64748b', fontWeight: 700, fontSize: '10px', marginBottom: '4px', textTransform: 'uppercase' }}
-                  formatter={(value: number) => [`R${value.toLocaleString()}`, 'Earnings']}
+                  itemStyle={{
+                    color: "#f58220",
+                    fontWeight: 800,
+                    fontSize: "14px",
+                  }}
+                  labelStyle={{
+                    color: "#64748b",
+                    fontWeight: 700,
+                    fontSize: "10px",
+                    marginBottom: "4px",
+                    textTransform: "uppercase",
+                  }}
+                  formatter={(value: number) => [
+                    `R${value.toLocaleString()}`,
+                    "Earnings",
+                  ]}
                 />
-                <Bar 
-                  dataKey="earnings" 
-                  fill="url(#barGradient)" 
-                  radius={[6, 6, 0, 0]} 
+                <Bar
+                  dataKey="earnings"
+                  fill="url(#barGradient)"
+                  radius={[6, 6, 0, 0]}
                   barSize={32}
                   animationBegin={200}
                 />
@@ -6141,15 +8131,22 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
           </div>
         </motion.section>
 
-        <motion.section 
+        <motion.section
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.15 }}
           className="md:col-span-4 bg-surface-container-lowest rounded-xl p-8 shadow-[0_8px_24px_-4px_rgba(167,52,0,0.05)] border border-outline-variant/10"
         >
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-on-surface-variant/60 mb-6">Revenue by Category</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-on-surface-variant/60 mb-6">
+            Revenue by Category
+          </h2>
           <div className="h-64">
-            <ResponsiveContainer width="99%" height="100%" minHeight={256} minWidth={1}>
+            <ResponsiveContainer
+              width="99%"
+              height="100%"
+              minHeight={256}
+              minWidth={1}
+            >
               <PieChart>
                 <Pie
                   data={pieData}
@@ -6161,44 +8158,77 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
                   dataKey="value"
                 >
                   {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS[index % COLORS.length]}
+                    />
                   ))}
                 </Pie>
-                <Tooltip 
-                  contentStyle={{ backgroundColor: 'var(--surface-container-lowest)', borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  itemStyle={{ color: 'var(--on-surface)', fontSize: '12px', fontWeight: 'bold' }}
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "var(--surface-container-lowest)",
+                    borderRadius: "12px",
+                    border: "none",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                  }}
+                  itemStyle={{
+                    color: "var(--on-surface)",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                  }}
                 />
-                <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }} />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  iconType="circle"
+                  wrapperStyle={{
+                    fontSize: "10px",
+                    fontWeight: "bold",
+                    textTransform: "uppercase",
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
         </motion.section>
 
-        <motion.section 
+        <motion.section
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
           className="md:col-span-4 bg-surface-container-lowest rounded-xl p-8 shadow-[0_8px_24px_-4px_rgba(167,52,0,0.05)] border border-outline-variant/10"
         >
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-sm font-semibold uppercase tracking-widest text-on-surface-variant/60">Coupon Impact</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-widest text-on-surface-variant/60">
+              Coupon Impact
+            </h2>
             <Ticket size={20} className="text-primary" />
           </div>
-          
+
           <div className="space-y-6">
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-surface-container-low rounded-2xl">
-                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Total Discount</p>
-                <p className="text-lg font-black text-on-surface">R{Number(couponPerformance.totalDiscount || 0).toFixed(2)}</p>
+                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">
+                  Total Discount
+                </p>
+                <p className="text-lg font-black text-on-surface">
+                  R{Number(couponPerformance.totalDiscount || 0).toFixed(2)}
+                </p>
               </div>
               <div className="p-4 bg-surface-container-low rounded-2xl">
-                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Coupon Sales</p>
-                <p className="text-lg font-black text-on-surface">R{Number(couponPerformance.totalSales || 0).toFixed(2)}</p>
+                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">
+                  Coupon Sales
+                </p>
+                <p className="text-lg font-black text-on-surface">
+                  R{Number(couponPerformance.totalSales || 0).toFixed(2)}
+                </p>
               </div>
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-xs font-bold text-on-surface uppercase tracking-widest">Top Codes</h3>
+              <h3 className="text-xs font-bold text-on-surface uppercase tracking-widest">
+                Top Codes
+              </h3>
               {couponPerformance.byCode.length > 0 ? (
                 <div className="space-y-3">
                   {couponPerformance.byCode.slice(0, 3).map((coupon, i) => (
@@ -6207,26 +8237,37 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
                         <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
                           {i + 1}
                         </div>
-                        <span className="font-mono font-bold text-on-surface text-sm">{coupon.code}</span>
+                        <span className="font-mono font-bold text-on-surface text-sm">
+                          {coupon.code}
+                        </span>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold text-on-surface">R{Number(coupon.sales || 0).toFixed(0)}</p>
-                        <p className="text-[10px] font-bold text-on-surface-variant uppercase">{coupon.count} uses</p>
+                        <p className="text-sm font-bold text-on-surface">
+                          R{Number(coupon.sales || 0).toFixed(0)}
+                        </p>
+                        <p className="text-[10px] font-bold text-on-surface-variant uppercase">
+                          {coupon.count} uses
+                        </p>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="py-10 text-center bg-surface-container-low rounded-2xl border border-dashed border-outline-variant/30">
-                  <Ticket className="mx-auto text-on-surface-variant/20 mb-2" size={24} />
-                  <p className="text-xs text-on-surface-variant">No coupon data</p>
+                  <Ticket
+                    className="mx-auto text-on-surface-variant/20 mb-2"
+                    size={24}
+                  />
+                  <p className="text-xs text-on-surface-variant">
+                    No coupon data
+                  </p>
                 </div>
               )}
             </div>
           </div>
         </motion.section>
 
-        <motion.section 
+        <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35 }}
@@ -6237,23 +8278,29 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
             Peak Order Hours
           </h2>
           <div className="space-y-6">
-            {orders.length > 0 ? peakHoursData.map((p, i) => (
-              <div key={i} className="space-y-2">
-                <div className="flex justify-between items-center text-xs font-bold">
-                  <span className="text-on-surface">{p.time}</span>
-                  <span className="text-on-surface-variant uppercase tracking-widest">{p.label}</span>
+            {orders.length > 0 ? (
+              peakHoursData.map((p, i) => (
+                <div key={i} className="space-y-2">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span className="text-on-surface">{p.time}</span>
+                    <span className="text-on-surface-variant uppercase tracking-widest">
+                      {p.label}
+                    </span>
+                  </div>
+                  <div className="w-full h-4 bg-surface-container rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${p.val}%` }}
+                      transition={{ duration: 1, delay: 0.5 + i * 0.1 }}
+                      className={cn("h-full rounded-full", p.color)}
+                    />
+                  </div>
                 </div>
-                <div className="w-full h-4 bg-surface-container rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${p.val}%` }}
-                    transition={{ duration: 1, delay: 0.5 + (i * 0.1) }}
-                    className={cn("h-full rounded-full", p.color)}
-                  />
-                </div>
-              </div>
-            )) : (
-              <p className="text-on-surface-variant text-sm italic py-8 text-center">No peak data yet.</p>
+              ))
+            ) : (
+              <p className="text-on-surface-variant text-sm italic py-8 text-center">
+                No peak data yet.
+              </p>
             )}
           </div>
           <p className="mt-8 text-xs text-on-surface-variant italic leading-snug">
@@ -6261,7 +8308,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
           </p>
         </motion.section>
 
-        <motion.section 
+        <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
@@ -6269,47 +8316,63 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
         >
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-semibold">Top Sellers</h2>
-            <button 
-              onClick={() => toast.info('Detailed sales report coming soon')}
+            <button
+              onClick={() => toast.info("Detailed sales report coming soon")}
               className="text-primary text-xs font-bold underline cursor-pointer bg-transparent border-none"
             >
               View All
             </button>
           </div>
           <div className="space-y-5">
-            {topSellers.length > 0 ? topSellers.map((item, i) => (
-              <motion.div 
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.5 + (i * 0.1) }}
-                key={i} 
-                className="flex items-center justify-between group cursor-pointer p-2 -m-2 rounded-xl hover:bg-surface-container-low transition-colors"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-xl overflow-hidden bg-surface-container flex items-center justify-center">
-                    {!isPlaceholderImage(item.image_url) ? (
-                      <img className="w-full h-full object-cover group-hover:scale-110 transition-transform" src={item.image_url} alt={item.name} />
-                    ) : (
-                      <FoodPlaceholder size={24} />
-                    )}
+            {topSellers.length > 0 ? (
+              topSellers.map((item, i) => (
+                <motion.div
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.5 + i * 0.1 }}
+                  key={i}
+                  className="flex items-center justify-between group cursor-pointer p-2 -m-2 rounded-xl hover:bg-surface-container-low transition-colors"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-xl overflow-hidden bg-surface-container flex items-center justify-center">
+                      {!isPlaceholderImage(item.image_url) ? (
+                        <img
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                          src={item.image_url}
+                          alt={item.name}
+                        />
+                      ) : (
+                        <FoodPlaceholder size={24} />
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-on-surface">
+                        {item.name}
+                      </h4>
+                      <p className="text-xs text-on-surface-variant">
+                        Popular Choice
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-semibold text-on-surface">{item.name}</h4>
-                    <p className="text-xs text-on-surface-variant">Popular Choice</p>
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-on-surface">
+                      {item.count}
+                    </div>
+                    <div className="text-[10px] font-bold uppercase text-on-surface-variant/60">
+                      Orders Total
+                    </div>
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-lg font-bold text-on-surface">{item.count}</div>
-                  <div className="text-[10px] font-bold uppercase text-on-surface-variant/60">Orders Total</div>
-                </div>
-              </motion.div>
-            )) : (
-              <p className="text-on-surface-variant text-sm italic">No sales data yet.</p>
+                </motion.div>
+              ))
+            ) : (
+              <p className="text-on-surface-variant text-sm italic">
+                No sales data yet.
+              </p>
             )}
           </div>
         </motion.section>
 
-        <motion.section 
+        <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.45 }}
@@ -6317,48 +8380,94 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
         >
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-semibold">Item Popularity</h2>
-            <select 
+            <select
               className="text-xs font-bold bg-surface-container-low border-none rounded-lg px-2 py-1 outline-none"
-              value={selectedItemForTrend || ''}
+              value={selectedItemForTrend || ""}
               onChange={(e) => setSelectedItemForTrend(e.target.value || null)}
             >
               <option value="">Select Item</option>
-              {menuItems.map(item => (
-                <option key={item.id} value={item.name}>{item.name}</option>
+              {menuItems.map((item) => (
+                <option key={item.id} value={item.name}>
+                  {item.name}
+                </option>
               ))}
             </select>
           </div>
-          
+
           {selectedItemForTrend ? (
             <div className="h-48 w-full">
-              <ResponsiveContainer width="99%" height="100%" minHeight={192} minWidth={1}>
+              <ResponsiveContainer
+                width="99%"
+                height="100%"
+                minHeight={192}
+                minWidth={1}
+              >
                 <AreaChart data={itemTrendData}>
                   <defs>
                     <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
+                      <stop
+                        offset="5%"
+                        stopColor="var(--primary)"
+                        stopOpacity={0.3}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor="var(--primary)"
+                        stopOpacity={0}
+                      />
                     </linearGradient>
                   </defs>
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: 'var(--surface-container-lowest)', borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                    itemStyle={{ color: 'var(--primary)', fontSize: '12px', fontWeight: 'bold' }}
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "var(--surface-container-lowest)",
+                      borderRadius: "12px",
+                      border: "none",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    }}
+                    itemStyle={{
+                      color: "var(--primary)",
+                      fontSize: "12px",
+                      fontWeight: "bold",
+                    }}
                   />
-                  <Area type="monotone" dataKey="value" stroke="var(--primary)" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: 'var(--on-surface-variant)' }} />
+                  <Area
+                    type="monotone"
+                    dataKey="value"
+                    stroke="var(--primary)"
+                    strokeWidth={3}
+                    fillOpacity={1}
+                    fill="url(#colorValue)"
+                  />
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      fill: "var(--on-surface-variant)",
+                    }}
+                  />
                   <YAxis hide />
                 </AreaChart>
               </ResponsiveContainer>
-              <p className="text-[10px] text-center text-on-surface-variant/60 font-bold uppercase tracking-widest mt-4">7-Day Revenue Trend for {selectedItemForTrend}</p>
+              <p className="text-[10px] text-center text-on-surface-variant/60 font-bold uppercase tracking-widest mt-4">
+                7-Day Revenue Trend for {selectedItemForTrend}
+              </p>
             </div>
           ) : (
             <div className="h-48 flex flex-col items-center justify-center text-center space-y-3 bg-surface-container-low/30 rounded-2xl border-2 border-dashed border-outline-variant/10">
               <BarChart3 className="text-on-surface-variant/20" size={40} />
-              <p className="text-xs text-on-surface-variant font-medium">Select a menu item to view its<br/>popularity trend over time.</p>
+              <p className="text-xs text-on-surface-variant font-medium">
+                Select a menu item to view its
+                <br />
+                popularity trend over time.
+              </p>
             </div>
           )}
         </motion.section>
 
-        <motion.section 
+        <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
@@ -6370,7 +8479,12 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
                 <Users size={20} className="text-blue-600" />
                 Follower Growth
               </h2>
-              <p className="text-xs text-on-surface-variant font-medium mt-1">Total Followers: <span className="text-blue-600 font-semibold">{followerCount}</span></p>
+              <p className="text-xs text-on-surface-variant font-medium mt-1">
+                Total Followers:{" "}
+                <span className="text-blue-600 font-semibold">
+                  {followerCount}
+                </span>
+              </p>
             </div>
             <div className="flex gap-2">
               <div className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-bold rounded-full uppercase tracking-widest">
@@ -6378,38 +8492,66 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
               </div>
             </div>
           </div>
-          
+
           <div className="h-64 w-full">
-            <ResponsiveContainer width="99%" height="100%" minHeight={256} minWidth={1}>
+            <ResponsiveContainer
+              width="99%"
+              height="100%"
+              minHeight={256}
+              minWidth={1}
+            >
               <AreaChart data={followerTrendData}>
                 <defs>
-                  <linearGradient id="colorFollowers" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                  <linearGradient
+                    id="colorFollowers"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fontWeight: 700, fill: 'var(--on-surface-variant)' }} 
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    fill: "var(--on-surface-variant)",
+                  }}
                 />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fontWeight: 700, fill: 'var(--on-surface-variant)' }} 
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    fill: "var(--on-surface-variant)",
+                  }}
                 />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: 'var(--surface-container-lowest)', borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  itemStyle={{ color: '#2563eb', fontSize: '12px', fontWeight: 'bold' }}
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "var(--surface-container-lowest)",
+                    borderRadius: "12px",
+                    border: "none",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                  }}
+                  itemStyle={{
+                    color: "#2563eb",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                  }}
                 />
-                <Area 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="#2563eb" 
-                  strokeWidth={3} 
-                  fillOpacity={1} 
-                  fill="url(#colorFollowers)" 
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#2563eb"
+                  strokeWidth={3}
+                  fillOpacity={1}
+                  fill="url(#colorFollowers)"
                   animationDuration={1500}
                 />
               </AreaChart>
@@ -6417,23 +8559,35 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
           </div>
           <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
-              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">Total Followers</p>
-              <p className="text-2xl font-black text-blue-900">{followerCount}</p>
+              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">
+                Total Followers
+              </p>
+              <p className="text-2xl font-black text-blue-900">
+                {followerCount}
+              </p>
             </div>
             <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100">
-              <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">New this Week</p>
-              <p className="text-2xl font-black text-emerald-900">+{followerTrendData.reduce((acc, d) => acc + d.value, 0)}</p>
+              <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">
+                New this Week
+              </p>
+              <p className="text-2xl font-black text-emerald-900">
+                +{followerTrendData.reduce((acc, d) => acc + d.value, 0)}
+              </p>
             </div>
             <div className="p-4 bg-orange-50/50 rounded-2xl border border-orange-100">
-              <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest mb-1">Engagement Rate</p>
+              <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest mb-1">
+                Engagement Rate
+              </p>
               <p className="text-2xl font-black text-orange-900">
-                {orders.length > 0 ? `${Number((reviews.length / orders.length) * 100).toFixed(1)}%` : '0%'}
+                {orders.length > 0
+                  ? `${Number((reviews.length / orders.length) * 100).toFixed(1)}%`
+                  : "0%"}
               </p>
             </div>
           </div>
         </motion.section>
 
-        <motion.section 
+        <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
@@ -6441,77 +8595,137 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
         >
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h2 className="text-2xl font-headline font-extrabold text-on-surface">Menu Item Performance</h2>
-              <p className="text-sm text-on-surface-variant">Detailed analytics for your offerings</p>
+              <h2 className="text-2xl font-headline font-extrabold text-on-surface">
+                Menu Item Performance
+              </h2>
+              <p className="text-sm text-on-surface-variant">
+                Detailed analytics for your offerings
+              </p>
             </div>
             <div className="flex gap-2">
               <div className="flex items-center gap-2 px-4 py-2 bg-surface-container-low rounded-xl border border-outline-variant/10">
                 <BarChart3 size={16} className="text-primary" />
-                <span className="text-xs font-bold">{menuItems.length} Total Items</span>
+                <span className="text-xs font-bold">
+                  {menuItems.length} Total Items
+                </span>
               </div>
             </div>
           </div>
 
           <div className="overflow-x-auto -mx-8 px-8">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full min-w-[600px] text-left border-collapse">
               <thead>
                 <tr className="border-b border-outline-variant/10">
-                  <th className="py-4 px-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Item</th>
-                  <th className="py-4 px-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Category</th>
-                  <th className="py-4 px-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Orders</th>
-                  <th className="py-4 px-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Revenue</th>
-                  <th className="py-4 px-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Trend (7d)</th>
-                  <th className="py-4 px-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Stock</th>
+                  <th className="py-4 px-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Item
+                  </th>
+                  <th className="py-4 px-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Category
+                  </th>
+                  <th className="py-4 px-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Orders
+                  </th>
+                  <th className="py-4 px-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Revenue
+                  </th>
+                  <th className="py-4 px-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Trend (7d)
+                  </th>
+                  <th className="py-4 px-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Stock
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {menuAnalytics.length > 0 ? menuAnalytics.map((item) => (
-                  <tr key={item.id} className="border-b border-outline-variant/5 hover:bg-surface-container-low/50 transition-colors group">
-                    <td className="py-4 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-surface-container flex items-center justify-center">
-                          {!isPlaceholderImage(item.image_url) ? (
-                            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <FoodPlaceholder size={16} />
-                          )}
+                {menuAnalytics.length > 0 ? (
+                  menuAnalytics.map((item) => (
+                    <tr
+                      key={item.id}
+                      className="border-b border-outline-variant/5 hover:bg-surface-container-low/50 transition-colors group"
+                    >
+                      <td className="py-4 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-surface-container flex items-center justify-center">
+                            {!isPlaceholderImage(item.image_url) ? (
+                              <img
+                                src={item.image_url}
+                                alt={item.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <FoodPlaceholder size={16} />
+                            )}
+                          </div>
+                          <span className="font-bold text-sm text-on-surface">
+                            {item.name}
+                          </span>
                         </div>
-                        <span className="font-bold text-sm text-on-surface">{item.name}</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <span className="px-2.5 py-1 bg-surface-container-high text-on-surface-variant rounded-full text-[10px] font-bold uppercase tracking-wider">
-                        {item.category}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 font-bold text-sm">{item.salesCount}</td>
-                    <td className="py-4 px-4 font-bold text-sm text-primary">R {item.totalRevenue.toLocaleString()}</td>
-                    <td className="py-4 px-4">
-                      <div className={cn(
-                        "flex items-center gap-1 text-xs font-bold",
-                        item.trend > 0 ? "text-primary" : item.trend < 0 ? "text-error" : "text-on-surface-variant/40"
-                      )}>
-                        {item.trend > 0 ? <ArrowUp size={12} /> : item.trend < 0 ? <ArrowDown size={12} /> : null}
-                        {Number(Math.abs(item.trend || 0)).toFixed(1)}%
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-surface-container rounded-full overflow-hidden min-w-[60px]">
-                          <div 
-                            className={cn("h-full rounded-full", (item.stock_quantity || 0) < 5 ? "bg-error" : "bg-primary")} 
-                            style={{ width: `${Math.min(100, ((item.stock_quantity || 0) / 50) * 100)}%` }}
-                          />
-                        </div>
-                        <span className={cn("text-[10px] font-bold", (item.stock_quantity || 0) < 5 ? "text-error" : "text-on-surface-variant")}>
-                          {item.stock_quantity || 0}
+                      </td>
+                      <td className="py-4 px-4">
+                        <span className="px-2.5 py-1 bg-surface-container-high text-on-surface-variant rounded-full text-[10px] font-bold uppercase tracking-wider">
+                          {item.category}
                         </span>
-                      </div>
-                    </td>
-                  </tr>
-                )) : (
+                      </td>
+                      <td className="py-4 px-4 font-bold text-sm">
+                        {item.salesCount}
+                      </td>
+                      <td className="py-4 px-4 font-bold text-sm text-primary">
+                        R {item.totalRevenue.toLocaleString()}
+                      </td>
+                      <td className="py-4 px-4">
+                        <div
+                          className={cn(
+                            "flex items-center gap-1 text-xs font-bold",
+                            item.trend > 0
+                              ? "text-primary"
+                              : item.trend < 0
+                                ? "text-error"
+                                : "text-on-surface-variant/40",
+                          )}
+                        >
+                          {item.trend > 0 ? (
+                            <ArrowUp size={12} />
+                          ) : item.trend < 0 ? (
+                            <ArrowDown size={12} />
+                          ) : null}
+                          {Number(Math.abs(item.trend || 0)).toFixed(1)}%
+                        </div>
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 bg-surface-container rounded-full overflow-hidden min-w-[60px]">
+                            <div
+                              className={cn(
+                                "h-full rounded-full",
+                                (item.stock_quantity || 0) < 5
+                                  ? "bg-error"
+                                  : "bg-primary",
+                              )}
+                              style={{
+                                width: `${Math.min(100, ((item.stock_quantity || 0) / 50) * 100)}%`,
+                              }}
+                            />
+                          </div>
+                          <span
+                            className={cn(
+                              "text-[10px] font-bold",
+                              (item.stock_quantity || 0) < 5
+                                ? "text-error"
+                                : "text-on-surface-variant",
+                            )}
+                          >
+                            {item.stock_quantity || 0}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-on-surface-variant italic text-sm">
+                    <td
+                      colSpan={6}
+                      className="py-12 text-center text-on-surface-variant italic text-sm"
+                    >
                       No menu items found.
                     </td>
                   </tr>
@@ -6522,7 +8736,7 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
         </motion.section>
 
         {/* Customer Feedback Section */}
-        <motion.section 
+        <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
@@ -6531,16 +8745,23 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
           <div className="flex justify-between items-center mb-8">
             <h2 className="text-xl font-bold flex items-center gap-2">
               Customer Feedback
-              <span className="bg-secondary-fixed text-on-secondary-fixed text-xs px-2.5 py-1 rounded-full">{reviews.length} Reviews</span>
+              <span className="bg-secondary-fixed text-on-secondary-fixed text-xs px-2.5 py-1 rounded-full">
+                {reviews.length} Reviews
+              </span>
             </h2>
             <div className="flex items-center gap-1 text-tertiary">
               <Star size={18} className="fill-current" />
               <span className="font-bold">
-                {reviews.length > 0 
-                  ? Number(reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1) 
-                  : '0.0'}
+                {reviews.length > 0
+                  ? Number(
+                      reviews.reduce((acc, r) => acc + r.rating, 0) /
+                        reviews.length,
+                    ).toFixed(1)
+                  : "0.0"}
               </span>
-              <span className="text-xs text-on-surface-variant font-medium">({reviews.length} total)</span>
+              <span className="text-xs text-on-surface-variant font-medium">
+                ({reviews.length} total)
+              </span>
             </div>
           </div>
 
@@ -6553,13 +8774,13 @@ const Insights = ({ orders, menuItems, loading, currentShop }: { orders: Order[]
 
 // --- Subscription Components ---
 
-const RiderManagement = ({ 
-  currentShop, 
-  orders, 
+const RiderManagement = ({
+  currentShop,
+  orders,
   onRequestRider,
-  user
-}: { 
-  currentShop: Shop; 
+  user,
+}: {
+  currentShop: Shop;
   orders: Order[];
   onRequestRider: (id: string, riderId?: string) => void;
   user: User | null;
@@ -6567,38 +8788,42 @@ const RiderManagement = ({
   const [connections, setConnections] = useState<RiderConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCode, setShowCode] = useState(false);
-  const [activeCode, setActiveCode] = useState<{code: string; expires: string} | null>(null);
+  const [activeCode, setActiveCode] = useState<{
+    code: string;
+    expires: string;
+  } | null>(null);
 
-  const [qrUrl, setQrUrl] = useState<string>('');
+  const [qrUrl, setQrUrl] = useState<string>("");
 
   useEffect(() => {
     if (activeCode) {
-      import('qrcode').then(QRCode => {
-        QRCode.toDataURL(activeCode.code, { 
+      import("qrcode").then((QRCode) => {
+        QRCode.toDataURL(activeCode.code, {
           margin: 0,
           scale: 10,
-          color: { dark: '#000000', light: '#ffffff' }
-        }).then(url => setQrUrl(url));
+          color: { dark: "#000000", light: "#ffffff" },
+        }).then((url) => setQrUrl(url));
       });
     } else {
-      setQrUrl('');
+      setQrUrl("");
     }
   }, [activeCode]);
 
-  const activeMissions = orders.filter(o => 
-    o.delivery_status && 
-    o.delivery_status !== 'delivered' && 
-    o.status !== 'cancelled'
+  const activeMissions = orders.filter(
+    (o) =>
+      o.delivery_status &&
+      o.delivery_status !== "delivered" &&
+      o.status !== "cancelled",
   );
 
   const fetchConnections = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
-      .from('rider_connections')
-      .select('*')
-      .eq('shop_id', currentShop.id)
-      .gt('expires_at', new Date().toISOString())
-      .order('created_at', { ascending: false });
+      .from("rider_connections")
+      .select("*")
+      .eq("shop_id", currentShop.id)
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false });
 
     if (!error && data) {
       setConnections(data as RiderConnection[]);
@@ -6615,30 +8840,31 @@ const RiderManagement = ({
   const generateCode = async () => {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    
-    const { error } = await supabase
-      .from('rider_connections')
-      .insert({
-        shop_id: currentShop.id,
-        connection_code: code,
-        expires_at: expiresAt,
-        status: 'active'
-      });
+
+    const { error } = await supabase.from("rider_connections").insert({
+      shop_id: currentShop.id,
+      connection_code: code,
+      expires_at: expiresAt,
+      status: "active",
+    });
 
     if (error) {
-      toast.error('Failed to generate code: ' + error.message);
+      toast.error("Failed to generate code: " + error.message);
     } else {
       setActiveCode({ code, expires: expiresAt });
       setShowCode(true);
       void fetchConnections();
-      toast.success('Pairing code generated! Valid for 24 hours.');
+      toast.success("Pairing code generated! Valid for 24 hours.");
     }
   };
 
   const deleteConnection = async (id: string) => {
-    const { error } = await supabase.from('rider_connections').delete().eq('id', id);
+    const { error } = await supabase
+      .from("rider_connections")
+      .delete()
+      .eq("id", id);
     if (!error) {
-      toast.success('Connection removed');
+      toast.success("Connection removed");
       void fetchConnections();
     }
   };
@@ -6650,33 +8876,35 @@ const RiderManagement = ({
     const testOrder = {
       shop_id: currentShop.id,
       user_id: user.id,
-      customer_name: 'Test Signal ' + Math.floor(Math.random() * 1000),
-      phone: '000 000 0000',
-      address: '77 Sector Street, Alpha Hub',
-      city: 'Sector City',
-      product_name: 'Debug Package',
+      customer_name: "Test Signal " + Math.floor(Math.random() * 1000),
+      phone: "000 000 0000",
+      address: "77 Sector Street, Alpha Hub",
+      city: "Tembisa",
+      product_name: "Debug Package",
       restaurant_name: currentShop.name,
       total_price: 25,
       price: 25,
-      status: 'accepted',
-      delivery_status: 'finding_rider',
-      order_type: 'delivery',
+      status: "accepted",
+      delivery_status: "finding_rider",
+      order_type: "delivery",
       delivery_fee: 10,
-      items: ['Debug Packet [ENC_V2]'],
-      created_at: new Date().toISOString()
+      items: ["Debug Packet [ENC_V2]"],
+      created_at: new Date().toISOString(),
     };
 
     setLoading(true);
-    const { error } = await supabase.from('orders').insert(testOrder);
+    const { error } = await supabase.from("orders").insert(testOrder);
     setLoading(false);
 
     if (error) {
-      toast.error('Signal fail: ' + error.message);
-      if (error.message.includes('permission denied')) {
-        toast.warning('RLS Policy Blocking: Please ensure public insert is allowed for testing.');
+      toast.error("Signal fail: " + error.message);
+      if (error.message.includes("permission denied")) {
+        toast.warning(
+          "RLS Policy Blocking: Please ensure public insert is allowed for testing.",
+        );
       }
     } else {
-      toast.success('Test mission broadcasted. Check Rider App!');
+      toast.success("Test mission broadcasted. Check Rider App!");
     }
   };
 
@@ -6685,12 +8913,18 @@ const RiderManagement = ({
       <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Rider Fleet</h2>
-            <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">v1.1</span>
+            <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
+              Rider Fleet
+            </h2>
+            <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">
+              v1.1
+            </span>
           </div>
-          <p className="text-sm text-on-surface-variant font-medium">Manage your delivery partners and track active pairings.</p>
+          <p className="text-sm text-on-surface-variant font-medium">
+            Manage your delivery partners and track active pairings.
+          </p>
         </div>
-        
+
         <div className="flex items-center gap-3">
           <button
             onClick={broadcastTestOrder}
@@ -6699,7 +8933,7 @@ const RiderManagement = ({
             <Zap size={20} />
             Auto-Broadcast Mission
           </button>
-          
+
           <button
             onClick={generateCode}
             className="flex items-center gap-2 px-6 py-3 bg-primary text-on-primary rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
@@ -6713,60 +8947,89 @@ const RiderManagement = ({
       {/* ACTIVE MISSIONS TRACKER */}
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1">
-          <h3 className="text-xs font-black text-on-surface-variant uppercase tracking-widest">Live Missions Track ({activeMissions.length})</h3>
+          <h3 className="text-xs font-black text-on-surface-variant uppercase tracking-widest">
+            Live Missions Track ({activeMissions.length})
+          </h3>
           <div className="flex items-center gap-2">
-             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-             <span className="text-[10px] font-bold text-green-600 uppercase tracking-tight">Real-time Sync</span>
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-[10px] font-bold text-green-600 uppercase tracking-tight">
+              Real-time Sync
+            </span>
           </div>
         </div>
 
         {activeMissions.length === 0 ? (
           <div className="bg-surface-container-low/30 rounded-3xl p-8 text-center border border-outline-variant/10">
-            <p className="text-sm text-on-surface-variant/40 font-medium italic">No active delivery missions at the moment.</p>
+            <p className="text-sm text-on-surface-variant/40 font-medium italic">
+              No active delivery missions at the moment.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3">
             {activeMissions.map((mission) => (
-              <div key={mission.id} className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/10 flex items-center justify-between group hover:border-primary/20 transition-all">
+              <div
+                key={mission.id}
+                className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/10 flex items-center justify-between group hover:border-primary/20 transition-all"
+              >
                 <div className="flex items-center gap-4">
-                  <div className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
-                    mission.delivery_status === 'finding_rider' ? 'bg-amber-100 text-amber-600 animate-pulse' : 
-                    mission.delivery_status === 'accepted' ? 'bg-blue-100 text-blue-600' :
-                    'bg-green-100 text-green-600'
-                  )}>
-                    {mission.delivery_status === 'finding_rider' ? <Zap size={18} /> : <Bike size={18} />}
+                  <div
+                    className={cn(
+                      "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+                      mission.delivery_status === "finding_rider"
+                        ? "bg-amber-100 text-amber-600 animate-pulse"
+                        : mission.delivery_status === "accepted"
+                          ? "bg-blue-100 text-blue-600"
+                          : "bg-green-100 text-green-600",
+                    )}
+                  >
+                    {mission.delivery_status === "finding_rider" ? (
+                      <Zap size={18} />
+                    ) : (
+                      <Bike size={18} />
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="font-bold text-sm text-on-surface">Order #{mission.id.toString().slice(-4)}</p>
-                      <span className={cn(
-                         "text-[10px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-full",
-                         mission.delivery_status === 'finding_rider' ? "bg-amber-100 text-amber-600" :
-                         mission.delivery_status === 'accepted' ? "bg-blue-100 text-blue-600" :
-                         "bg-green-600 text-white"
-                      )}>
-                        {mission.delivery_status?.replace('_', ' ')}
+                      <p className="font-bold text-sm text-on-surface">
+                        Order #{mission.id.toString().slice(-4)}
+                      </p>
+                      <span
+                        className={cn(
+                          "text-[10px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-full",
+                          mission.delivery_status === "finding_rider"
+                            ? "bg-amber-100 text-amber-600"
+                            : mission.delivery_status === "accepted"
+                              ? "bg-blue-100 text-blue-600"
+                              : "bg-green-600 text-white",
+                        )}
+                      >
+                        {mission.delivery_status?.replace("_", " ")}
                       </span>
                     </div>
-                    <p className="text-xs text-on-surface-variant font-medium mt-0.5 line-clamp-1">{mission.address}, {mission.city}</p>
+                    <p className="text-xs text-on-surface-variant font-medium mt-0.5 line-clamp-1">
+                      {mission.address}, {mission.city}
+                    </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-4">
-                   <div className="text-right hidden sm:block">
-                      <p className="text-xs font-bold text-on-surface">R {mission.total_price || mission.price}</p>
-                      <p className="text-[10px] text-on-surface-variant font-medium">Fee: R {mission.delivery_fee || '0.00'}</p>
-                   </div>
-                   {mission.delivery_status === 'finding_rider' && (
-                     <button 
-                       onClick={() => onRequestRider(mission.id)}
-                       className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                       title="Retry Dispatch"
-                     >
-                        <RefreshCw size={16} />
-                     </button>
-                   )}
+                  <div className="text-right hidden sm:block">
+                    <p className="text-xs font-bold text-on-surface">
+                      R {mission.total_price || mission.price}
+                    </p>
+                    <p className="text-[10px] text-on-surface-variant font-medium">
+                      Fee: R {mission.delivery_fee || "0.00"}
+                    </p>
+                  </div>
+                  {mission.delivery_status === "finding_rider" && (
+                    <button
+                      onClick={() => onRequestRider(mission.id)}
+                      className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                      title="Retry Dispatch"
+                    >
+                      <RefreshCw size={16} />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -6775,51 +9038,76 @@ const RiderManagement = ({
       </div>
 
       {showCode && activeCode && (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           className="bg-primary/5 border-2 border-primary/20 rounded-3xl p-8 text-center space-y-6 relative overflow-hidden"
         >
           <div className="absolute top-0 right-0 p-4">
-             <button onClick={() => setShowCode(false)} className="text-on-surface-variant/40 hover:text-on-surface transition-colors p-2">
-               <X size={24} />
-             </button>
+            <button
+              onClick={() => setShowCode(false)}
+              className="text-on-surface-variant/40 hover:text-on-surface transition-colors p-2"
+            >
+              <X size={24} />
+            </button>
           </div>
           <div className="space-y-2">
-            <p className="text-xs font-black text-primary uppercase tracking-[0.3em]">Share with Rider</p>
-            <h3 className="text-6xl font-headline font-black tracking-widest text-on-surface select-all">{activeCode.code}</h3>
-            <p className="text-xs text-on-surface-variant/60 font-medium">Expires in 24 hours</p>
+            <p className="text-xs font-black text-primary uppercase tracking-[0.3em]">
+              Share with Rider
+            </p>
+            <h3 className="text-6xl font-headline font-black tracking-widest text-on-surface select-all">
+              {activeCode.code}
+            </h3>
+            <p className="text-xs text-on-surface-variant/60 font-medium">
+              Expires in 24 hours
+            </p>
           </div>
           <div className="flex justify-center">
-             <div className="bg-white p-6 rounded-3xl shadow-2xl border border-outline-variant/10 group cursor-pointer active:scale-95 transition-transform">
-                {qrUrl ? (
-                  <img src={qrUrl} alt="Pairing QR" className="w-44 h-44" />
-                ) : (
-                  <QrCode size={180} className="text-black" />
-                )}
-             </div>
+            <div className="bg-white p-6 rounded-3xl shadow-2xl border border-outline-variant/10 group cursor-pointer active:scale-95 transition-transform">
+              {qrUrl ? (
+                <img src={qrUrl} alt="Pairing QR" className="w-44 h-44" />
+              ) : (
+                <QrCode size={180} className="text-black" />
+              )}
+            </div>
           </div>
           <div className="space-y-1">
-            <p className="text-sm font-bold text-on-surface">Ready to connect</p>
-            <p className="text-xs text-on-surface-variant italic">Riders scan this to connect instantly to {currentShop.name}</p>
+            <p className="text-sm font-bold text-on-surface">
+              Ready to connect
+            </p>
+            <p className="text-xs text-on-surface-variant italic">
+              Riders scan this to connect instantly to {currentShop.name}
+            </p>
           </div>
         </motion.div>
       )}
 
       <div className="space-y-4">
-        <h3 className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">Active Pairings ({connections.length})</h3>
-        
+        <h3 className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">
+          Active Pairings ({connections.length})
+        </h3>
+
         {loading && connections.length === 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[1,2].map(i => <div key={i} className="h-24 bg-surface-container-low rounded-2xl animate-pulse" />)}
+            {[1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-24 bg-surface-container-low rounded-2xl animate-pulse"
+              />
+            ))}
           </div>
         ) : connections.length === 0 ? (
           <div className="bg-surface-container-low rounded-[2rem] p-12 md:p-20 text-center border-2 border-dashed border-outline-variant/10">
             <div className="w-16 h-16 bg-surface-container-high rounded-full flex items-center justify-center mx-auto mb-4 text-on-surface-variant/20">
               <Bike size={32} />
             </div>
-            <p className="text-on-surface-variant font-bold text-lg leading-tight mb-1">No active rider connections</p>
-            <p className="text-sm text-on-surface-variant/60 max-w-xs mx-auto mb-6">Generate a pairing code to allow riders to join your delivery network.</p>
+            <p className="text-on-surface-variant font-bold text-lg leading-tight mb-1">
+              No active rider connections
+            </p>
+            <p className="text-sm text-on-surface-variant/60 max-w-xs mx-auto mb-6">
+              Generate a pairing code to allow riders to join your delivery
+              network.
+            </p>
             <button
               onClick={generateCode}
               className="flex items-center gap-2 px-8 py-4 bg-primary text-on-primary rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/20 mx-auto"
@@ -6830,25 +9118,39 @@ const RiderManagement = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {connections.map(conn => {
+            {connections.map((conn) => {
               const expirationTime = new Date(conn.expires_at).getTime();
               // eslint-disable-next-line react-hooks/purity
               const now = Date.now();
-              const hoursLeft = Math.max(0, Math.ceil((expirationTime - now) / (1000 * 60 * 60)));
+              const hoursLeft = Math.max(
+                0,
+                Math.ceil((expirationTime - now) / (1000 * 60 * 60)),
+              );
               return (
-                <div key={conn.id} className="bg-surface-container-low rounded-3xl p-5 border border-outline-variant/10 flex items-center justify-between group transition-all hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
+                <div
+                  key={conn.id}
+                  className="bg-surface-container-low rounded-3xl p-5 border border-outline-variant/10 flex items-center justify-between group transition-all hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5"
+                >
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-on-primary transition-all">
                       <Bike size={24} />
                     </div>
                     <div>
-                      <p className="font-bold text-on-surface">{conn.rider_name || 'Awaiting Rider...'}</p>
+                      <p className="font-bold text-on-surface">
+                        {conn.rider_name || "Awaiting Rider..."}
+                      </p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] font-mono font-bold bg-on-surface/5 text-on-surface-variant px-1.5 py-0.5 rounded-lg uppercase tracking-tight">{conn.connection_code}</span>
-                        <div className={cn(
-                          "flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter",
-                          hoursLeft < 2 ? "bg-error/10 text-error animate-pulse" : "bg-primary/10 text-primary"
-                        )}>
+                        <span className="text-[10px] font-mono font-bold bg-on-surface/5 text-on-surface-variant px-1.5 py-0.5 rounded-lg uppercase tracking-tight">
+                          {conn.connection_code}
+                        </span>
+                        <div
+                          className={cn(
+                            "flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter",
+                            hoursLeft < 2
+                              ? "bg-error/10 text-error animate-pulse"
+                              : "bg-primary/10 text-primary",
+                          )}
+                        >
                           <Clock size={10} />
                           {hoursLeft}H Left
                         </div>
@@ -6856,14 +9158,17 @@ const RiderManagement = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
-                    <button 
+                    <button
                       onClick={() => deleteConnection(conn.id)}
                       className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-xl transition-all"
                       title="Disconnect Rider"
                     >
                       <Trash2 size={18} />
                     </button>
-                    <ChevronRight size={18} className="text-on-surface-variant/20" />
+                    <ChevronRight
+                      size={18}
+                      className="text-on-surface-variant/20"
+                    />
                   </div>
                 </div>
               );
@@ -6881,24 +9186,36 @@ const RiderManagement = ({
 
 const isPlaceholderImage = (url: string | null | undefined) => {
   if (!url) return true;
-  return url.includes('picsum.photos') || url.includes('dicebear.com');
+  return url.includes("picsum.photos") || url.includes("dicebear.com");
 };
 
-const FoodPlaceholder = ({ size = 20, className = "" }: { size?: number, className?: string }) => (
-  <div 
-    className={cn("w-full h-full flex flex-col items-center justify-center relative overflow-hidden", className)}
-    style={{ background: 'linear-gradient(135deg, #ff9d42 0%, #f58220 100%)' }}
+const FoodPlaceholder = ({
+  size = 20,
+  className = "",
+}: {
+  size?: number;
+  className?: string;
+}) => (
+  <div
+    className={cn(
+      "w-full h-full flex flex-col items-center justify-center relative overflow-hidden",
+      className,
+    )}
+    style={{ background: "linear-gradient(135deg, #ff9d42 0%, #f58220 100%)" }}
   >
     {/* Glassmorphism accents */}
-    <div className="absolute top-0 right-0 w-full h-full bg-white/10" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 30%, 0 80%)' }} />
+    <div
+      className="absolute top-0 right-0 w-full h-full bg-white/10"
+      style={{ clipPath: "polygon(0 0, 100% 0, 100% 30%, 0 80%)" }}
+    />
     <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-black/5 rounded-full blur-xl" />
-    
+
     <div className="relative flex flex-col items-center justify-center gap-1">
       <div className="relative">
-        <UtensilsCrossed 
-          size={size} 
-          className="text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.2)]" 
-          strokeWidth={2} 
+        <UtensilsCrossed
+          size={size}
+          className="text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.2)]"
+          strokeWidth={2}
         />
         {/* Subtle sparkle for 3D effect */}
         <div className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-white rounded-full animate-pulse blur-[1px]" />
@@ -6913,31 +9230,34 @@ const FoodPlaceholder = ({ size = 20, className = "" }: { size?: number, classNa
 );
 
 export default function App() {
-  const [role, setRole] = useState<'merchant' | 'rider'>(() => (localStorage.getItem('user_role') as 'merchant' | 'rider') || 'merchant');
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [role, setRole] = useState<"merchant" | "rider">(
+    () =>
+      (localStorage.getItem("user_role") as "merchant" | "rider") || "merchant",
+  );
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [showHelp, setShowHelp] = useState(false);
-  
+
   useEffect(() => {
-    localStorage.setItem('user_role', role);
+    localStorage.setItem("user_role", role);
   }, [role]);
 
   const handleSwitchRole = () => {
-    const newRole = role === 'merchant' ? 'rider' : 'merchant';
+    const newRole = role === "merchant" ? "rider" : "merchant";
     setRole(newRole);
-    setActiveTab(newRole === 'merchant' ? 'dashboard' : 'feed');
+    setActiveTab(newRole === "merchant" ? "dashboard" : "feed");
     toast.success(`Switching to ${newRole.toUpperCase()} environment`);
   };
-  
+
   // Version Polling for Updates
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [lastCheckTime, setLastCheckTime] = useState<string>('');
+  const [lastCheckTime, setLastCheckTime] = useState<string>("");
   const currentBuildVersion = useRef(19); // Moving to v5.4 tracker
 
   useEffect(() => {
     const checkVersion = async () => {
       setLastCheckTime(new Date().toLocaleTimeString());
       try {
-        const response = await fetch('/version.json?t=' + Date.now());
+        const response = await fetch("/version.json?t=" + Date.now());
         if (response.ok) {
           const data = await response.json();
           if (data.version > currentBuildVersion.current) {
@@ -6959,29 +9279,33 @@ export default function App() {
   const [shops, setShops] = useState<Shop[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [user, setUser] = useState<User | null>(null);
-  const [authView, setAuthView] = useState<'signin' | 'signup'>('signin');
+  const [authView, setAuthView] = useState<"signin" | "signup">("signin");
   const [isVerifying, setIsVerifying] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [signupEmail, setSignupEmail] = useState('');
+  const [signupEmail, setSignupEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [soundAlerts, setSoundAlerts] = useState(() => {
-    return localStorage.getItem('soundAlerts') !== 'false';
+    return localStorage.getItem("soundAlerts") !== "false";
   });
   const [pushEnabled, setPushEnabled] = useState(() => {
-    return typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted';
+    return (
+      typeof window !== "undefined" &&
+      "Notification" in window &&
+      Notification.permission === "granted"
+    );
   });
   const prevPendingCount = useRef(0);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [kitchenMode, setKitchenMode] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
-    return localStorage.getItem('darkMode') === 'true';
+    return localStorage.getItem("darkMode") === "true";
   });
   const shopsRef = useRef<Shop[]>([]);
 
-  const currentShop = useMemo(() => 
-    shops.find(s => s.owner_id === user?.id),
-    [shops, user?.id]
+  const currentShop = useMemo(
+    () => shops.find((s) => s.owner_id === user?.id),
+    [shops, user?.id],
   );
 
   const trialInfo = useMemo(() => {
@@ -6993,30 +9317,33 @@ export default function App() {
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
     };
   }, []);
 
   // Cache data to localStorage
   useEffect(() => {
-    if (shops.length > 0) localStorage.setItem('le_shops', JSON.stringify(shops));
+    if (shops.length > 0)
+      localStorage.setItem("le_shops", JSON.stringify(shops));
   }, [shops]);
   useEffect(() => {
-    if (orders.length > 0) localStorage.setItem('le_orders', JSON.stringify(orders));
+    if (orders.length > 0)
+      localStorage.setItem("le_orders", JSON.stringify(orders));
   }, [orders]);
   useEffect(() => {
-    if (menuItems.length > 0) localStorage.setItem('le_menu', JSON.stringify(menuItems));
+    if (menuItems.length > 0)
+      localStorage.setItem("le_menu", JSON.stringify(menuItems));
   }, [menuItems]);
 
   // Load cached data on mount
   useEffect(() => {
-    const cachedShops = localStorage.getItem('le_shops');
-    const cachedOrders = localStorage.getItem('le_orders');
-    const cachedMenu = localStorage.getItem('le_menu');
+    const cachedShops = localStorage.getItem("le_shops");
+    const cachedOrders = localStorage.getItem("le_orders");
+    const cachedMenu = localStorage.getItem("le_menu");
     if (cachedShops) setShops(JSON.parse(cachedShops));
     if (cachedOrders) setOrders(JSON.parse(cachedOrders));
     if (cachedMenu) setMenuItems(JSON.parse(cachedMenu));
@@ -7028,16 +9355,16 @@ export default function App() {
 
   useEffect(() => {
     if (darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('darkMode', 'true');
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("darkMode", "true");
     } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('darkMode', 'false');
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("darkMode", "false");
     }
   }, [darkMode]);
 
   useEffect(() => {
-    localStorage.setItem('soundAlerts', soundAlerts.toString());
+    localStorage.setItem("soundAlerts", soundAlerts.toString());
   }, [soundAlerts]);
 
   useEffect(() => {
@@ -7047,13 +9374,21 @@ export default function App() {
         // Increased timeout to 15 seconds for slower networks
         const timeout = 15000;
         const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Session check timed out')), timeout)
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Session check timed out")),
+            timeout,
+          ),
         );
 
-        const result = await Promise.race([sessionPromise, timeoutPromise]) as { data: { session: { user: User } | null } };
-        const { data: { session } } = result;
-        
+        const result = (await Promise.race([
+          sessionPromise,
+          timeoutPromise,
+        ])) as { data: { session: { user: User } | null } };
+        const {
+          data: { session },
+        } = result;
+
         if (session?.user) {
           setUser(session.user);
           if (session.user.user_metadata?.dark_mode !== undefined) {
@@ -7062,7 +9397,10 @@ export default function App() {
         }
       } catch (err) {
         // Log as warning instead of error to reduce noise, as onAuthStateChange is a fallback
-        console.warn('Auth initialization status:', err instanceof Error ? err.message : err);
+        console.warn(
+          "Auth initialization status:",
+          err instanceof Error ? err.message : err,
+        );
       } finally {
         // Ensure we mark auth as ready so the app can render
         setIsAuthReady(true);
@@ -7073,7 +9411,9 @@ export default function App() {
     getSessionWithTimeout();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       setIsAuthReady(true);
@@ -7090,32 +9430,45 @@ export default function App() {
   useEffect(() => {
     const checkShopHours = async () => {
       if (!user || shops.length === 0) return;
-      
+
       const operatingHours = user.user_metadata?.operating_hours;
-      if (!operatingHours || !operatingHours.open || !operatingHours.close) return;
-      
+      if (!operatingHours || !operatingHours.open || !operatingHours.close)
+        return;
+
       const now = new Date();
-      const currentTime = format(now, 'HH:mm');
-      
+      const currentTime = format(now, "HH:mm");
+
       // Determine if shop should be open
-      const isOpen = currentTime >= operatingHours.open && currentTime <= operatingHours.close;
-      
+      const isOpen =
+        currentTime >= operatingHours.open &&
+        currentTime <= operatingHours.close;
+
       // Check each shop owned by the user
       for (const shop of shops) {
         if (shop.owner_id === user.id && shop.is_active !== isOpen) {
-          console.log(`Auto-toggling shop ${shop.name} to ${isOpen ? 'Open' : 'Closed'}`);
-          
+          console.log(
+            `Auto-toggling shop ${shop.name} to ${isOpen ? "Open" : "Closed"}`,
+          );
+
           const { error } = await supabase
-            .from('shops')
+            .from("shops")
             .update({ is_active: isOpen })
-            .eq('id', shop.id);
-            
+            .eq("id", shop.id);
+
           if (!error) {
-            setShops(prev => prev.map(s => s.id === shop.id ? { ...s, is_active: isOpen } : s));
-            toast.info(`Shop ${isOpen ? 'Opened' : 'Closed'} Automatically`, {
+            setShops((prev) =>
+              prev.map((s) =>
+                s.id === shop.id ? { ...s, is_active: isOpen } : s,
+              ),
+            );
+            toast.info(`Shop ${isOpen ? "Opened" : "Closed"} Automatically`, {
               description: `Based on your operating hours: ${operatingHours.open} - ${operatingHours.close}`,
-              icon: isOpen ? <Store className="text-emerald-500" /> : <PauseCircle className="text-primary" />,
-              duration: 5000
+              icon: isOpen ? (
+                <Store className="text-emerald-500" />
+              ) : (
+                <PauseCircle className="text-primary" />
+              ),
+              duration: 5000,
             });
           }
         }
@@ -7127,42 +9480,44 @@ export default function App() {
       void checkShopHours();
     }, 60000);
     void checkShopHours(); // Run once on mount or when shops/user change
-    
+
     return () => clearInterval(interval);
   }, [user, shops, user?.user_metadata?.operating_hours]);
 
   useEffect(() => {
-    localStorage.setItem('soundAlerts', soundAlerts.toString());
+    localStorage.setItem("soundAlerts", soundAlerts.toString());
   }, [soundAlerts]);
 
   const requestPushPermissions = async () => {
-    if (!('Notification' in window)) {
-      toast.error('This browser does not support push notifications.');
+    if (!("Notification" in window)) {
+      toast.error("This browser does not support push notifications.");
       return;
     }
     try {
       const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
+      if (permission === "granted") {
         setPushEnabled(true);
-        toast.success('Push notifications enabled!');
+        toast.success("Push notifications enabled!");
       } else {
         setPushEnabled(false);
-        toast.error('Notification permission denied.');
+        toast.error("Notification permission denied.");
       }
     } catch (error) {
-      console.error('Error requesting notification permission:', error);
+      console.error("Error requesting notification permission:", error);
     }
   };
 
   const playNotificationSound = (isRepeating = false) => {
     // Vibrate if supported
-    if ('vibrate' in navigator) {
+    if ("vibrate" in navigator) {
       navigator.vibrate([200, 100, 200, 100, 200]);
     }
 
-    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
+    const audio = new Audio(
+      "https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3",
+    );
     audio.volume = 1.0;
-    
+
     if (isRepeating) {
       audio.loop = true;
       // Stop repeating sound after 10 seconds or when user clicks something
@@ -7171,8 +9526,8 @@ export default function App() {
       }, 10000);
     }
 
-    audio.play().catch(e => {
-      console.log('Audio play blocked or failed:', e);
+    audio.play().catch((e) => {
+      console.log("Audio play blocked or failed:", e);
     });
 
     return audio;
@@ -7181,83 +9536,91 @@ export default function App() {
   // Sound alert logic for new orders
   useEffect(() => {
     if (!user) return;
-    const currentPendingCount = orders.filter(o => o.status === 'pending').length;
-    
+    const currentPendingCount = orders.filter(
+      (o) => o.status === "pending",
+    ).length;
+
     // Only trigger if count increased and sound is enabled
     if (soundAlerts && currentPendingCount > prevPendingCount.current) {
       const audio = playNotificationSound(true); // Enable repeating for new orders
-      
-      toast.success('NEW ORDER RECEIVED!', {
-        description: `CRITICAL: You have ${currentPendingCount} pending ${currentPendingCount === 1 ? 'order' : 'orders'}.`,
+
+      toast.success("NEW ORDER RECEIVED!", {
+        description: `CRITICAL: You have ${currentPendingCount} pending ${currentPendingCount === 1 ? "order" : "orders"}.`,
         duration: 15000,
         important: true,
         icon: <Bell className="text-primary animate-bounce" />,
         action: {
-          label: 'DISMISS ALERT',
+          label: "DISMISS ALERT",
           onClick: () => {
             audio.pause();
-            setActiveTab('orders');
-          }
+            setActiveTab("orders");
+          },
         },
-        onDismiss: () => audio.pause()
+        onDismiss: () => audio.pause(),
       });
     }
-    
+
     prevPendingCount.current = currentPendingCount;
   }, [orders, soundAlerts, user]);
 
   const fetchOrders = useCallback(async () => {
     if (!user) return;
-    
+
     // First, get the shops owned by this user
-    const { data: ownedShops, error: shopsError } = await fetchWithRetry(() => 
-      supabase
-        .from('shops')
-        .select('id')
-        .eq('owner_id', user.id)
+    const { data: ownedShops, error: shopsError } = await fetchWithRetry(() =>
+      supabase.from("shops").select("id").eq("owner_id", user.id),
     );
-    
+
     if (shopsError) {
-      console.error('Error fetching owned shops for orders:', shopsError);
-      if (shopsError.message === 'Failed to fetch') {
-        toast.error('Uplink failed. Refreshing connection...');
+      console.error("Error fetching owned shops for orders:", shopsError);
+      if (shopsError.message === "Failed to fetch") {
+        toast.error("Uplink failed. Refreshing connection...");
       }
       return;
     }
 
-    const ownedShopIds = ownedShops?.map(s => s.id) || [];
-    
+    const ownedShopIds = ownedShops?.map((s) => s.id) || [];
+
     if (ownedShopIds.length === 0) {
       setOrders([]);
       return;
     }
 
-    const { data, error } = await fetchWithRetry(() => 
+    const { data, error } = await fetchWithRetry(() =>
       supabase
-        .from('orders')
-        .select('*')
-        .in('shop_id', ownedShopIds)
-        .order('created_at', { ascending: false })
+        .from("orders")
+        .select("*")
+        .in("shop_id", ownedShopIds)
+        .order("created_at", { ascending: false }),
     );
-    
+
     if (error) {
-      console.error('Error fetching orders:', error);
-      if (error.message === 'Failed to fetch') {
-        toast.error('Network error: Could not connect to Supabase. Check your internet or ad-blocker.');
+      console.error("Error fetching orders:", error);
+      if (error.message === "Failed to fetch") {
+        toast.error(
+          "Network error: Could not connect to Supabase. Check your internet or ad-blocker.",
+        );
       } else {
         toast.error(`Error fetching orders: ${error.message}`);
       }
     } else if (data) {
       // Clean up orphaned rider requests (orders that are completed/cancelled but still 'finding_rider' OR older than timestamp but left stuck)
-      const stuckOrders = data.filter((o: Record<string, unknown>) => 
-        (o.status === 'completed' && o.delivery_status === 'finding_rider') ||
-        (o.delivery_status === 'none')
+      const stuckOrders = data.filter(
+        (o: Record<string, unknown>) =>
+          (o.status === "completed" && o.delivery_status === "finding_rider") ||
+          o.delivery_status === "none",
       );
-      
+
       if (stuckOrders.length > 0) {
-        console.log(`Cleaning up ${stuckOrders.length} stuck delivery statuses...`);
+        console.log(
+          `Cleaning up ${stuckOrders.length} stuck delivery statuses...`,
+        );
         stuckOrders.forEach((o: Record<string, unknown>) => {
-          supabase.from('orders').update({ delivery_status: null }).eq('id', o.id).then();
+          supabase
+            .from("orders")
+            .update({ delivery_status: null })
+            .eq("id", o.id)
+            .then();
           o.delivery_status = null;
         });
       }
@@ -7265,50 +9628,50 @@ export default function App() {
       // Map 'price' to 'total_price' if needed
       const mappedOrders = data.map((order: Record<string, unknown>) => ({
         ...order,
-        total_price: (order.total_price as number) ?? (order.price as number) ?? 0
+        total_price:
+          (order.total_price as number) ?? (order.price as number) ?? 0,
       })) as Order[];
-      console.log('Fetched orders:', mappedOrders);
+      console.log("Fetched orders:", mappedOrders);
       setOrders(mappedOrders);
     }
   }, [user]);
 
   const fetchAllMenuItems = useCallback(async () => {
     if (!user) return;
-    const { data: ownedShops } = await fetchWithRetry(() => 
-      supabase.from('shops').select('id').eq('owner_id', user.id)
+    const { data: ownedShops } = await fetchWithRetry(() =>
+      supabase.from("shops").select("id").eq("owner_id", user.id),
     );
-    const ownedShopIds = ownedShops?.map(s => s.id) || [];
+    const ownedShopIds = ownedShops?.map((s) => s.id) || [];
     if (ownedShopIds.length === 0) {
       setMenuItems([]);
       return;
     }
 
-    const { data, error } = await fetchWithRetry(() => 
-      supabase
-        .from('menu_items')
-        .select('*')
-        .in('shop_id', ownedShopIds)
+    const { data, error } = await fetchWithRetry(() =>
+      supabase.from("menu_items").select("*").in("shop_id", ownedShopIds),
     );
-    
+
     if (data) {
       setMenuItems(data);
     } else if (error) {
-      console.error('Fetch All Menu Items Error:', error);
+      console.error("Fetch All Menu Items Error:", error);
     }
   }, [user]);
 
   const fetchShops = useCallback(async () => {
-    const { data, error } = await fetchWithRetry(() => 
+    const { data, error } = await fetchWithRetry(() =>
       supabase
-        .from('shops')
-        .select('*')
-        .order('created_at', { ascending: false })
+        .from("shops")
+        .select("*")
+        .order("created_at", { ascending: false }),
     );
-    
+
     if (error) {
-      console.error('Error fetching shops:', error);
-      if (error.message === 'Failed to fetch') {
-        toast.error('Network error: Could not connect to Supabase. Check your internet or ad-blocker.');
+      console.error("Error fetching shops:", error);
+      if (error.message === "Failed to fetch") {
+        toast.error(
+          "Network error: Could not connect to Supabase. Check your internet or ad-blocker.",
+        );
       }
     } else if (data) {
       setShops(data);
@@ -7323,10 +9686,14 @@ export default function App() {
 
       // Real-time subscription for shops
       const shopsChannel = supabase
-        .channel('shops_changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'shops' }, () => {
-          void fetchShops();
-        })
+        .channel("shops_changes")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "shops" },
+          () => {
+            void fetchShops();
+          },
+        )
         .subscribe();
 
       return () => {
@@ -7338,266 +9705,339 @@ export default function App() {
   // Separate effect for order subscriptions to filter by shop_id
   useEffect(() => {
     if (user && shops.length > 0) {
-      const ownedShopIds = shops.filter(s => s.owner_id === user.id).map(s => s.id);
-      
+      const ownedShopIds = shops
+        .filter((s) => s.owner_id === user.id)
+        .map((s) => s.id);
+
       if (ownedShopIds.length === 0) return;
 
-      const channels = ownedShopIds.map(shopId => {
+      const channels = ownedShopIds.map((shopId) => {
         return supabase
           .channel(`orders_changes_${shopId}`)
-          .on('postgres_changes', { 
-            event: '*', 
-            schema: 'public', 
-            table: 'orders',
-            filter: `shop_id=eq.${shopId}`
-          }, () => {
-            void fetchOrders();
-          })
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "orders",
+              filter: `shop_id=eq.${shopId}`,
+            },
+            () => {
+              void fetchOrders();
+            },
+          )
           .subscribe();
       });
 
       return () => {
-        channels.forEach(channel => void supabase.removeChannel(channel));
+        channels.forEach((channel) => void supabase.removeChannel(channel));
       };
     }
   }, [user, shops, fetchOrders]);
 
   const deleteAllOrders = async () => {
     if (!user) return;
-    if (!window.confirm('Are you sure you want to delete ALL orders? This action cannot be undone.')) return;
-    
+    if (
+      !window.confirm(
+        "Are you sure you want to delete ALL orders? This action cannot be undone.",
+      )
+    )
+      return;
+
     // First, get the shops owned by this user
     const { data: ownedShops, error: shopsError } = await supabase
-      .from('shops')
-      .select('id')
-      .eq('owner_id', user.id);
-    
+      .from("shops")
+      .select("id")
+      .eq("owner_id", user.id);
+
     if (shopsError) {
-      console.error('Error fetching owned shops for deletion:', shopsError);
+      console.error("Error fetching owned shops for deletion:", shopsError);
       return;
     }
 
-    const ownedShopIds = ownedShops?.map(s => s.id) || [];
-    
+    const ownedShopIds = ownedShops?.map((s) => s.id) || [];
+
     if (ownedShopIds.length === 0) {
-      toast.info('No orders to delete.');
+      toast.info("No orders to delete.");
       return;
     }
 
     // Delete only orders belonging to these shops
     const { error } = await supabase
-      .from('orders')
+      .from("orders")
       .delete()
-      .in('shop_id', ownedShopIds);
-    
+      .in("shop_id", ownedShopIds);
+
     if (error) {
-      console.error('Delete All Orders Error:', error);
+      console.error("Delete All Orders Error:", error);
       toast.error(`Failed to delete orders: ${error.message}`);
     } else {
-      toast.success('All orders have been deleted.');
+      toast.success("All orders have been deleted.");
       fetchOrders();
     }
   };
 
-  const updateOrderStatus = async (id: string, status: OrderStatus, message?: string, estimatedTime?: string) => {
+  const updateOrderStatus = async (
+    id: string,
+    status: OrderStatus,
+    message?: string,
+    estimatedTime?: string,
+  ) => {
     // Optimistic Update
     const previousOrders = [...orders];
-    setOrders(prev => prev.map(o => {
-      if (o.id === id) {
-        const updated: Order = { ...o, status };
-        if (message) updated.acceptance_message = message;
-        if (status === 'preparing' && !o.accepted_at) updated.accepted_at = new Date().toISOString();
-        if (estimatedTime) updated.estimated_delivery_time = estimatedTime;
-        
-        // Optimistic Rider Broadcast
-        if ((status === 'preparing' || status === 'ready' || status === 'accepted') && (o.order_type === 'delivery' || !o.order_type) && !o.delivery_status) {
-          updated.delivery_status = 'finding_rider';
-          updated.order_type = 'delivery';
-          updated.delivery_fee = 10;
-          updated.status = 'accepted'; // Force 'accepted' for Rider App query compatibility
-          updated.restaurant_name = o.restaurant_name || currentShop.name;
-          updated.city = o.city || currentShop.city;
-          updated.price = o.price || o.total_price || 0;
-          updated.total_price = o.total_price || o.price || 0;
-          if (!o.items || o.items.length === 0) {
-            updated.items = [o.product_name || 'Delivery Order'];
-          }
-        }
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id === id) {
+          const updated: Order = { ...o, status };
+          if (message) updated.acceptance_message = message;
+          if (status === "preparing" && !o.accepted_at)
+            updated.accepted_at = new Date().toISOString();
+          if (estimatedTime) updated.estimated_delivery_time = estimatedTime;
 
-        if (status === 'completed' && o.delivery_status === 'finding_rider') {
-          updated.delivery_status = undefined; // Hide from live track locally
+          // Optimistic Rider Broadcast
+          if (
+            (status === "preparing" ||
+              status === "ready" ||
+              status === "accepted") &&
+            (o.order_type === "delivery" || !o.order_type) &&
+            !o.delivery_status
+          ) {
+            updated.delivery_status = "finding_rider";
+            updated.order_type = "delivery";
+            updated.delivery_fee = 10;
+            updated.status = "accepted"; // Force 'accepted' for Rider App query compatibility
+            updated.restaurant_name = o.restaurant_name || currentShop.name;
+            updated.city = "Tembisa"; // Locked to Tembisa for rollout
+            updated.price = o.price || o.total_price || 0;
+            updated.total_price = o.total_price || o.price || 0;
+            if (!o.items || o.items.length === 0) {
+              updated.items = [o.product_name || "Delivery Order"];
+            }
+          }
+
+          if (status === "completed" && o.delivery_status === "finding_rider") {
+            updated.delivery_status = undefined; // Hide from live track locally
+          }
+          return updated;
         }
-        return updated;
-      }
-      return o;
-    }));
-    
+        return o;
+      }),
+    );
+
     const updateData: Partial<Order> = { status };
     if (message) updateData.acceptance_message = message;
-    if (status === 'preparing' || status === 'ready' || status === 'accepted') {
-      const order = orders.find(o => o.id === id);
+    if (status === "preparing" || status === "ready" || status === "accepted") {
+      const order = orders.find((o) => o.id === id);
       if (order) {
-        if (!order.accepted_at && (status === 'preparing' || status === 'accepted')) {
+        if (
+          !order.accepted_at &&
+          (status === "preparing" || status === "accepted")
+        ) {
           updateData.accepted_at = new Date().toISOString();
         }
         // Auto-broadcast to rider network if it's a delivery order and not already assigned/finding
-        if ((order.order_type === 'delivery' || !order.order_type) && !order.delivery_status) {
-          updateData.delivery_status = 'finding_rider';
-          updateData.delivery_fee = 10; 
-          updateData.order_type = 'delivery'; 
-          updateData.status = 'accepted'; // Matches what works in Auto-Broadcast
-          updateData.restaurant_name = order.restaurant_name || currentShop?.name || 'Local Merchant';
-          updateData.city = order.city || currentShop?.city || 'Unknown City';
+        if (
+          (order.order_type === "delivery" || !order.order_type) &&
+          !order.delivery_status
+        ) {
+          updateData.delivery_status = "finding_rider";
+          updateData.delivery_fee = 10;
+          updateData.order_type = "delivery";
+          updateData.status = "accepted"; // Matches what works in Auto-Broadcast
+          updateData.restaurant_name =
+            order.restaurant_name || currentShop?.name || "Local Merchant";
+          updateData.city = "Tembisa"; // Locked to Tembisa for rollout
           updateData.shop_id = order.shop_id || currentShop?.id;
-          
-          if ((!order.items || order.items.length === 0) && order.product_name) {
+
+          if (
+            (!order.items || order.items.length === 0) &&
+            order.product_name
+          ) {
             updateData.items = [order.product_name];
           } else if (!order.items || order.items.length === 0) {
-            updateData.items = ['Food Delivery'];
+            updateData.items = ["Food Delivery"];
           }
-          
+
           updateData.price = order.price || order.total_price || 0;
           updateData.total_price = order.total_price || order.price || 0;
         }
       }
     }
-    if (status === 'completed') {
-      const order = orders.find(o => o.id === id);
-      if (order && order.delivery_status === 'finding_rider') {
+    if (status === "completed") {
+      const order = orders.find((o) => o.id === id);
+      if (order && order.delivery_status === "finding_rider") {
         updateData.delivery_status = null; // clear the rider status to remove from rider feed
       }
     }
     if (estimatedTime) updateData.estimated_delivery_time = estimatedTime;
-    
-    const { error } = await supabase.from('orders').update(updateData).eq('id', id);
-    
+
+    const { error } = await supabase
+      .from("orders")
+      .update(updateData)
+      .eq("id", id);
+
     if (error) {
-      console.error('Update Order Status Error:', error);
+      console.error("Update Order Status Error:", error);
       setOrders(previousOrders);
       toast.error(`Failed to update order status: ${error.message}`);
     } else {
       toast.success(`Order marked as ${status}`);
-      
+
       // Stock Decrement Logic: When an order is accepted (moved to 'preparing')
-      if (status === 'preparing') {
-        const order = orders.find(o => o.id === id);
+      if (status === "preparing") {
+        const order = orders.find((o) => o.id === id);
         if (order) {
-          const menuItem = menuItems.find(mi => mi.name === order.product_name && mi.shop_id === order.shop_id);
-          if (menuItem && menuItem.stock_quantity !== undefined && menuItem.stock_quantity > 0) {
+          const menuItem = menuItems.find(
+            (mi) =>
+              mi.name === order.product_name && mi.shop_id === order.shop_id,
+          );
+          if (
+            menuItem &&
+            menuItem.stock_quantity !== undefined &&
+            menuItem.stock_quantity > 0
+          ) {
             const newStock = menuItem.stock_quantity - 1;
             const { error: stockError } = await supabase
-              .from('menu_items')
+              .from("menu_items")
               .update({ stock_quantity: newStock })
-              .eq('id', menuItem.id);
-            
+              .eq("id", menuItem.id);
+
             if (stockError) {
-              console.error('Failed to decrement stock:', stockError);
+              console.error("Failed to decrement stock:", stockError);
             } else {
               // Update local state
-              setMenuItems(prev => prev.map(mi => mi.id === menuItem.id ? { ...mi, stock_quantity: newStock } : mi));
+              setMenuItems((prev) =>
+                prev.map((mi) =>
+                  mi.id === menuItem.id
+                    ? { ...mi, stock_quantity: newStock }
+                    : mi,
+                ),
+              );
               if (newStock < 5) {
-                toast.warning(`Low stock alert: ${menuItem.name} has only ${newStock} left!`, {
-                  description: 'Consider restocking soon.',
-                  icon: <AlertCircle className="text-error" size={18} />,
-                  duration: 5000
-                });
+                toast.warning(
+                  `Low stock alert: ${menuItem.name} has only ${newStock} left!`,
+                  {
+                    description: "Consider restocking soon.",
+                    icon: <AlertCircle className="text-error" size={18} />,
+                    duration: 5000,
+                  },
+                );
               }
             }
           }
         }
       }
-      
+
       // Notify about client update when picked up (completed)
-      if (status === 'completed') {
-        toast.info('Notification sent to client app', {
-          description: 'The customer has been notified that their order was picked up.',
+      if (status === "completed") {
+        toast.info("Notification sent to client app", {
+          description:
+            "The customer has been notified that their order was picked up.",
           icon: <Bell className="text-primary" size={18} />,
-          duration: 4000
+          duration: 4000,
         });
       }
-      
+
       // Notify about acceptance message
-      if (status === 'preparing' && message) {
-        toast.info('Acceptance message sent!', {
+      if (status === "preparing" && message) {
+        toast.info("Acceptance message sent!", {
           description: `"${message}" sent to the customer app.`,
           icon: <MessageSquare className="text-primary" size={18} />,
-          duration: 4000
+          duration: 4000,
         });
       }
-      
+
       fetchOrders();
     }
   };
 
   const unassignRider = async (id: string) => {
     const previousOrders = [...orders];
-    setOrders(prev => prev.map(o => o.id === id ? { 
-      ...o, 
-      delivery_status: 'finding_rider', 
-      rider_id: undefined
-    } : o));
-    
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === id
+          ? {
+              ...o,
+              delivery_status: "finding_rider",
+              rider_id: undefined,
+            }
+          : o,
+      ),
+    );
+
     // In Supabase, setting to null works, but be careful with typing if null is not allowed
-    const { error } = await supabase.from('orders').update({
-      delivery_status: 'finding_rider',
-      rider_id: null
-    }).eq('id', id);
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        delivery_status: "finding_rider",
+        rider_id: null,
+      })
+      .eq("id", id);
 
     if (error) {
       setOrders(previousOrders);
       toast.error(`Error unassigning rider: ${error.message}`);
     } else {
-      toast.success('Rider unassigned and mission rebroadcasted to fleet');
+      toast.success("Rider unassigned and mission rebroadcasted to fleet");
     }
   };
 
   const requestRider = async (id: string, targetRiderId?: string) => {
     const previousOrders = [...orders];
-    setOrders(prev => prev.map(o => o.id === id ? { 
-      ...o, 
-      status: 'accepted',
-      delivery_status: 'finding_rider', 
-      delivery_fee: 10,
-      rider_id: targetRiderId || o.rider_id,
-      order_type: 'delivery',
-      restaurant_name: o.restaurant_name || currentShop.name,
-      city: o.city || currentShop.city,
-      price: o.price || o.total_price || 0,
-      total_price: o.total_price || o.price || 0,
-    } : o));
-    
-    const currentOrder = orders.find(o => o.id === id);
-    const updateData: Record<string, unknown> = { 
-      status: 'accepted',
-      delivery_status: 'finding_rider', 
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === id
+          ? {
+              ...o,
+              status: "accepted",
+              delivery_status: "finding_rider",
+              delivery_fee: 10,
+              rider_id: targetRiderId || o.rider_id,
+              order_type: "delivery",
+              restaurant_name: o.restaurant_name || currentShop.name,
+              city: "Tembisa",
+              price: o.price || o.total_price || 0,
+              total_price: o.total_price || o.price || 0,
+            }
+          : o,
+      ),
+    );
+
+    const currentOrder = orders.find((o) => o.id === id);
+    const updateData: Record<string, unknown> = {
+      status: "accepted",
+      delivery_status: "finding_rider",
       delivery_fee: 10,
       price: currentOrder?.price || currentOrder?.total_price || 0,
       total_price: currentOrder?.total_price || currentOrder?.price || 0,
       restaurant_name: currentOrder?.restaurant_name || currentShop.name,
-      items: (currentOrder?.items && currentOrder.items.length > 0) 
-        ? currentOrder.items 
-        : (currentOrder?.product_name ? [currentOrder.product_name] : ['Food Delivery']),
-      order_type: 'delivery',
-      city: currentOrder?.city || currentShop.city,
-      shop_id: currentOrder?.shop_id || currentShop.id
+      items:
+        currentOrder?.items && currentOrder.items.length > 0
+          ? currentOrder.items
+          : currentOrder?.product_name
+            ? [currentOrder.product_name]
+            : ["Food Delivery"],
+      order_type: "delivery",
+      city: "Tembisa",
+      shop_id: currentOrder?.shop_id || currentShop.id,
     };
     if (targetRiderId) updateData.rider_id = targetRiderId;
-    
+
     // Clean undefined from updateData
     if (updateData.status === undefined) delete updateData.status;
 
     const { error } = await supabase
-      .from('orders')
+      .from("orders")
       .update(updateData)
-      .eq('id', id);
-      
+      .eq("id", id);
+
     if (error) {
-      console.error('Request Rider Error:', error);
+      console.error("Request Rider Error:", error);
       setOrders(previousOrders);
       toast.error(`Failed to request rider: ${error.message}`);
     } else {
-      toast.success('Rider requested! Searching for available cyclists...', {
-        icon: <Rocket className="text-primary" size={18} />
+      toast.success("Rider requested! Searching for available cyclists...", {
+        icon: <Rocket className="text-primary" size={18} />,
       });
     }
   };
@@ -7619,24 +10059,42 @@ export default function App() {
     return (
       <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-8 text-center bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-black">
         <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center mb-6 border border-red-500/20 animate-pulse">
-            <AlertCircle size={40} className="text-red-500" />
+          <AlertCircle size={40} className="text-red-500" />
         </div>
-        <h1 className="text-2xl font-black text-white mb-2 tracking-tight uppercase tracking-widest font-headline">Infrastructure Offline</h1>
+        <h1 className="text-2xl font-black text-white mb-2 tracking-tight uppercase tracking-widest font-headline">
+          Infrastructure Offline
+        </h1>
         <p className="text-zinc-400 max-w-sm mb-8 font-medium leading-relaxed font-body text-sm">
-          The Supabase Uplink is missing credentials. Please configure <span className="text-white font-mono bg-zinc-800 px-2 py-0.5 rounded">VITE_SUPABASE_URL</span> and <span className="text-white font-mono bg-zinc-800 px-2 py-0.5 rounded">VITE_SUPABASE_ANON_KEY</span> in your project secrets.
+          The Supabase Uplink is missing credentials. Please configure{" "}
+          <span className="text-white font-mono bg-zinc-800 px-2 py-0.5 rounded">
+            VITE_SUPABASE_URL
+          </span>{" "}
+          and{" "}
+          <span className="text-white font-mono bg-zinc-800 px-2 py-0.5 rounded">
+            VITE_SUPABASE_ANON_KEY
+          </span>{" "}
+          in your project secrets.
         </p>
         <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-2xl w-full max-w-md text-left">
-            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3 ml-1">Debugging Intel</p>
-            <div className="space-y-1 font-mono text-xs">
-                <div className="flex justify-between p-2 bg-black/30 rounded-lg">
-                    <span className="text-zinc-600">URL Status:</span>
-                    <span className={supabaseUrl ? "text-green-500" : "text-red-500"}>{supabaseUrl ? "DETECTED" : "MISSING"}</span>
-                </div>
-                <div className="flex justify-between p-2 bg-black/30 rounded-lg">
-                    <span className="text-zinc-600">Key Status:</span>
-                    <span className={supabaseAnonKey ? "text-green-500" : "text-red-500"}>{supabaseAnonKey ? "DETECTED" : "MISSING"}</span>
-                </div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3 ml-1">
+            Debugging Intel
+          </p>
+          <div className="space-y-1 font-mono text-xs">
+            <div className="flex justify-between p-2 bg-black/30 rounded-lg">
+              <span className="text-zinc-600">URL Status:</span>
+              <span className={supabaseUrl ? "text-green-500" : "text-red-500"}>
+                {supabaseUrl ? "DETECTED" : "MISSING"}
+              </span>
             </div>
+            <div className="flex justify-between p-2 bg-black/30 rounded-lg">
+              <span className="text-zinc-600">Key Status:</span>
+              <span
+                className={supabaseAnonKey ? "text-green-500" : "text-red-500"}
+              >
+                {supabaseAnonKey ? "DETECTED" : "MISSING"}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -7653,216 +10111,276 @@ export default function App() {
           operating_hours: data.operatingHours,
           marketing_preferences: data.marketing,
           dark_mode: data.darkMode,
-          avatar_url: data.avatarUrl
-        }
+          avatar_url: data.avatarUrl,
+        },
       });
 
       if (error) throw error;
-      
+
       if (data.darkMode !== undefined) {
         setDarkMode(data.darkMode);
       }
-      toast.success('Profile updated successfully!');
+      toast.success("Profile updated successfully!");
       setIsEditingProfile(false);
-      setAuthView('signin');
+      setAuthView("signin");
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update profile');
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update profile",
+      );
     }
   };
 
   if (isVerifying) {
     return (
-      <VerificationPending 
+      <VerificationPending
         email={signupEmail}
-        onBack={() => setIsVerifying(false)} 
+        onBack={() => setIsVerifying(false)}
         onVerified={() => {
           setIsVerifying(false);
           setIsEditingProfile(true);
         }}
         onSupport={() => {
-          window.location.href = 'mailto:support@localeats.com';
-        }} 
+          window.location.href = "mailto:support@localeats.com";
+        }}
       />
     );
   }
 
   if (isEditingProfile) {
     return (
-      <EditProfile 
+      <EditProfile
         onBack={() => setIsEditingProfile(false)}
         onSave={handleSaveProfile}
-        userId={user?.id || ''}
+        userId={user?.id || ""}
         initialData={{
-          fullName: user?.user_metadata?.full_name || '',
+          fullName: user?.user_metadata?.full_name || "",
           email: user?.email || signupEmail,
-          phone: user?.user_metadata?.phone || '',
-          location: user?.user_metadata?.location || '',
-          address: user?.user_metadata?.address || '',
-          avatarUrl: user?.user_metadata?.avatar_url || '',
-          operatingHours: user?.user_metadata?.operating_hours || { open: '08:00', close: '20:00' }
+          phone: user?.user_metadata?.phone || "",
+          location: user?.user_metadata?.location || "",
+          address: user?.user_metadata?.address || "",
+          avatarUrl: user?.user_metadata?.avatar_url || "",
+          operatingHours: user?.user_metadata?.operating_hours || {
+            open: "08:00",
+            close: "20:00",
+          },
         }}
       />
     );
   }
 
   if (!user) {
-    return authView === 'signin' ? (
-      <SignIn onSignUpClick={() => setAuthView('signup')} onSuccess={() => {}} />
+    return authView === "signin" ? (
+      <SignIn
+        onSignUpClick={() => setAuthView("signup")}
+        onSuccess={() => {}}
+      />
     ) : (
-      <SignUp 
-        onSignInClick={() => setAuthView('signin')} 
+      <SignUp
+        onSignInClick={() => setAuthView("signin")}
         onSuccess={(email) => {
           setSignupEmail(email);
           setIsVerifying(true);
-        }} 
+        }}
       />
     );
   }
 
   // BRANCH: Rider View
-  if (role === 'rider') {
+  if (role === "rider") {
     return <LockedRiderMode onSwitchRole={handleSwitchRole} />;
   }
 
-  const pendingOrdersCount = orders.filter(o => o.status === 'pending').length;
+  const pendingOrdersCount = orders.filter(
+    (o) => o.status === "pending",
+  ).length;
 
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'menu', label: 'Menu', icon: UtensilsCrossed },
-    { id: 'orders', label: 'Orders', icon: ReceiptText, badge: pendingOrdersCount > 0 ? pendingOrdersCount : null },
-    { id: 'riders', label: 'Riders', icon: Bike },
-    { id: 'marketing', label: 'Marketing', icon: Zap },
-    { id: 'coupons', label: 'Coupons', icon: Ticket },
-    { id: 'payments', label: 'Payments', icon: CreditCard },
-    { id: 'insights', label: 'Insights', icon: TrendingUp },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "menu", label: "Menu", icon: UtensilsCrossed },
+    {
+      id: "orders",
+      label: "Orders",
+      icon: ReceiptText,
+      badge: pendingOrdersCount > 0 ? pendingOrdersCount : null,
+    },
+    { id: "riders", label: "Riders", icon: Bike },
+    { id: "marketing", label: "Marketing", icon: Zap },
+    { id: "coupons", label: "Coupons", icon: Ticket },
+    { id: "payments", label: "Payments", icon: CreditCard },
+    { id: "insights", label: "Insights", icon: TrendingUp },
+    { id: "settings", label: "Settings", icon: Settings },
   ];
 
   return (
-    <div className={cn(
-      "min-h-screen bg-surface selection:bg-primary-fixed selection:text-on-primary-fixed transition-colors duration-300",
-      darkMode && "dark"
-    )}>
-      <Toaster position="top-center" richColors theme={darkMode ? 'dark' : 'light'} />
-      
+    <div
+      className={cn(
+        "min-h-screen bg-surface selection:bg-primary-fixed selection:text-on-primary-fixed transition-colors duration-300",
+        darkMode && "dark",
+      )}
+    >
+      <Toaster
+        position="top-center"
+        richColors
+        theme={darkMode ? "dark" : "light"}
+      />
+
       {isOffline && (
         <div className="fixed top-0 left-0 right-0 z-[100] bg-error text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2">
           <PauseCircle size={14} />
-          YOU ARE OFFLINE. Changes will be saved locally and synced when you reconnect.
+          YOU ARE OFFLINE. Changes will be saved locally and synced when you
+          reconnect.
         </div>
       )}
 
       {/* TopAppBar */}
       {!kitchenMode && (
         <header className="fixed top-0 w-full z-50 bg-white/70 dark:bg-surface-container-lowest/70 backdrop-blur-xl shadow-sm shadow-orange-900/5">
-        <div className="flex justify-between items-center px-4 md:px-6 h-16 max-w-7xl mx-auto">
-          <div className="flex items-center gap-2 md:gap-3 shrink-0">
-            <LocalEatsLogo width={160} height={42} />
-            <span className="text-[8px] font-bold text-primary/20 mt-4">v5.4</span>
-          </div>
-          
-          <nav className="hidden md:flex flex-1 items-center justify-center gap-4 lg:gap-8 overflow-x-auto scrollbar-hide px-4 whitespace-nowrap scroll-smooth mx-4">
-            {navItems.map(item => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={cn(
-                  "px-3 py-1 rounded-lg transition-colors font-medium text-sm flex items-center gap-2 relative",
-                  activeTab === item.id ? "text-primary font-bold" : "text-on-surface/60 hover:bg-surface-container-low dark:hover:bg-surface-container-high"
-                )}
-              >
-                {item.label}
-                {item.badge && (
-                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white animate-pulse">
-                    {item.badge}
-                  </span>
-                )}
-              </button>
-            ))}
-          </nav>
+          <div className="flex justify-between items-center px-4 md:px-6 h-16 max-w-7xl mx-auto">
+            <div className="flex items-center gap-2 md:gap-3 shrink-0">
+              <LocalEatsLogo width={160} height={42} />
+              <span className="text-[8px] font-bold text-primary/20 mt-4">
+                v5.4
+              </span>
+            </div>
 
-          <div className="flex items-center gap-1 md:gap-4 shrink-0">
-            {currentShop && (
+            <nav className="hidden md:flex flex-1 items-center justify-center gap-4 lg:gap-8 overflow-x-auto scrollbar-hide px-4 whitespace-nowrap scroll-smooth mx-4">
+              {navItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={cn(
+                    "px-3 py-1 rounded-lg transition-colors font-medium text-sm flex items-center gap-2 relative",
+                    activeTab === item.id
+                      ? "text-primary font-bold"
+                      : "text-on-surface/60 hover:bg-surface-container-low dark:hover:bg-surface-container-high",
+                  )}
+                >
+                  {item.label}
+                  {item.badge && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white animate-pulse">
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </nav>
+
+            <div className="flex items-center gap-1 md:gap-4 shrink-0">
+              {currentShop && (
+                <button
+                  onClick={async () => {
+                    const newStatus = !currentShop.is_active;
+                    const { error } = await supabase
+                      .from("shops")
+                      .update({ is_active: newStatus })
+                      .eq("id", currentShop.id);
+                    if (!error) {
+                      toast.success(
+                        `Shop is now ${newStatus ? "Open" : "Closed"}`,
+                      );
+                    } else {
+                      toast.error(`Failed to update status: ${error.message}`);
+                    }
+                  }}
+                  className={cn(
+                    "hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all border",
+                    currentShop.is_active
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800"
+                      : "bg-error/10 text-error border-error/20 hover:bg-error/20",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "w-2 h-2 rounded-full",
+                      currentShop.is_active
+                        ? "bg-emerald-500 animate-pulse"
+                        : "bg-error",
+                    )}
+                  />
+                  {currentShop.is_active ? "Accepting Orders" : "Paused"}
+                </button>
+              )}
               <button
-                onClick={async () => {
-                  const newStatus = !currentShop.is_active;
-                  const { error } = await supabase.from('shops').update({ is_active: newStatus }).eq('id', currentShop.id);
-                  if (!error) {
-                    toast.success(`Shop is now ${newStatus ? 'Open' : 'Closed'}`);
-                  } else {
-                    toast.error(`Failed to update status: ${error.message}`);
-                  }
+                onClick={() => {
+                  setSoundAlerts(!soundAlerts);
+                  if (!soundAlerts) playNotificationSound();
                 }}
                 className={cn(
-                  "hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all border",
-                  currentShop.is_active 
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800" 
-                    : "bg-error/10 text-error border-error/20 hover:bg-error/20"
+                  "p-2 transition-colors relative group",
+                  soundAlerts ? "text-primary" : "text-on-surface-variant/40",
                 )}
+                title={
+                  soundAlerts ? "Mute Order Alerts" : "Unmute Order Alerts"
+                }
               >
-                <div className={cn("w-2 h-2 rounded-full", currentShop.is_active ? "bg-emerald-500 animate-pulse" : "bg-error")} />
-                {currentShop.is_active ? 'Accepting Orders' : 'Paused'}
+                {soundAlerts ? (
+                  <Bell size={18} className="md:w-5 md:h-5" />
+                ) : (
+                  <BellOff size={18} className="md:w-5 md:h-5" />
+                )}
               </button>
-            )}
-            <button 
-              onClick={() => {
-                setSoundAlerts(!soundAlerts);
-                if (!soundAlerts) playNotificationSound();
-              }}
-              className={cn(
-                "p-2 transition-colors relative group",
-                soundAlerts ? "text-primary" : "text-on-surface-variant/40"
-              )}
-              title={soundAlerts ? "Mute Order Alerts" : "Unmute Order Alerts"}
-            >
-              {soundAlerts ? <Bell size={18} className="md:w-5 md:h-5" /> : <BellOff size={18} className="md:w-5 md:h-5" />}
-            </button>
-            <button 
-              onClick={() => setDarkMode(!darkMode)}
-              className="p-2 text-on-surface-variant hover:text-primary transition-colors"
-              title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-            >
-              {darkMode ? <Sun size={18} className="md:w-5 md:h-5" /> : <Moon size={18} className="md:w-5 md:h-5" />}
-            </button>
-            <button 
-              onClick={() => setIsEditingProfile(true)}
-              className="hidden sm:block p-2 text-on-surface-variant hover:text-primary transition-colors"
-              title="Edit Profile"
-            >
-              <UserIcon size={18} className="md:w-5 md:h-5" />
-            </button>
-            <button 
-              onClick={handleSignOut}
-              className="p-2 text-on-surface-variant hover:text-primary transition-colors"
-              title="Sign Out"
-            >
-              <LogOut size={18} className="md:w-5 md:h-5" />
-            </button>
-            <div className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center overflow-hidden border-2 border-primary/10 shadow-sm">
-              {user?.user_metadata?.avatar_url ? (
-                <img 
-                  alt="Profile" 
-                  className="w-full h-full object-cover" 
-                  src={user.user_metadata.avatar_url} 
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div 
-                  className="w-full h-full flex items-center justify-center bg-primary"
-                  style={{
-                    background: 'radial-gradient(circle at 30% 30%, #ff9d4d 0%, #f58220 100%)'
-                  }}
-                >
-                  <UserIcon size={20} className="text-white drop-shadow-sm" strokeWidth={2.5} />
-                </div>
-              )}
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className="p-2 text-on-surface-variant hover:text-primary transition-colors"
+                title={
+                  darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"
+                }
+              >
+                {darkMode ? (
+                  <Sun size={18} className="md:w-5 md:h-5" />
+                ) : (
+                  <Moon size={18} className="md:w-5 md:h-5" />
+                )}
+              </button>
+              <button
+                onClick={() => setIsEditingProfile(true)}
+                className="hidden sm:block p-2 text-on-surface-variant hover:text-primary transition-colors"
+                title="Edit Profile"
+              >
+                <UserIcon size={18} className="md:w-5 md:h-5" />
+              </button>
+              <button
+                onClick={handleSignOut}
+                className="p-2 text-on-surface-variant hover:text-primary transition-colors"
+                title="Sign Out"
+              >
+                <LogOut size={18} className="md:w-5 md:h-5" />
+              </button>
+              <div className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center overflow-hidden border-2 border-primary/10 shadow-sm">
+                {user?.user_metadata?.avatar_url ? (
+                  <img
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                    src={user.user_metadata.avatar_url}
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div
+                    className="w-full h-full flex items-center justify-center bg-primary"
+                    style={{
+                      background:
+                        "radial-gradient(circle at 30% 30%, #ff9d4d 0%, #f58220 100%)",
+                    }}
+                  >
+                    <UserIcon
+                      size={20}
+                      className="text-white drop-shadow-sm"
+                      strokeWidth={2.5}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
       )}
 
-      <main className={cn("px-4 md:px-6 max-w-7xl mx-auto", kitchenMode ? "pt-6 pb-6" : "pt-20 md:pt-24 pb-32")}>
+      <main
+        className={cn(
+          "px-4 md:px-6 max-w-7xl mx-auto",
+          kitchenMode ? "pt-6 pb-6" : "pt-20 md:pt-24 pb-32",
+        )}
+      >
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -7871,12 +10389,12 @@ export default function App() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
           >
-            {activeTab === 'dashboard' && (
-              <DashboardOverview 
-                orders={orders} 
-                loading={loading} 
-                shops={shops} 
-                user={user} 
+            {activeTab === "dashboard" && (
+              <DashboardOverview
+                orders={orders}
+                loading={loading}
+                shops={shops}
+                user={user}
                 onNavigate={setActiveTab}
                 onRefresh={() => {
                   fetchShops();
@@ -7889,23 +10407,23 @@ export default function App() {
                 currentShop={currentShop}
               />
             )}
-            {activeTab === 'menu' && (
-              <MenuManagement 
-                shops={shops} 
-                loading={loading} 
-                user={user} 
+            {activeTab === "menu" && (
+              <MenuManagement
+                shops={shops}
+                loading={loading}
+                user={user}
                 onRefreshMenu={() => {
                   fetchAllMenuItems();
                   fetchShops();
-                }} 
+                }}
               />
             )}
-            {activeTab === 'orders' && (
-              <OrdersManagement 
-                orders={orders} 
-                onUpdateStatus={updateOrderStatus} 
-                onDeleteAllOrders={deleteAllOrders} 
-                loading={loading} 
+            {activeTab === "orders" && (
+              <OrdersManagement
+                orders={orders}
+                onUpdateStatus={updateOrderStatus}
+                onDeleteAllOrders={deleteAllOrders}
+                loading={loading}
                 onRefresh={fetchOrders}
                 kitchenMode={kitchenMode}
                 setKitchenMode={setKitchenMode}
@@ -7915,49 +10433,77 @@ export default function App() {
                 onUnassignRider={unassignRider}
               />
             )}
-            {activeTab === 'marketing' && <Marketing currentShop={currentShop} />}
-            {activeTab === 'coupons' && <Coupons currentShop={currentShop} orders={orders} />}
-            {activeTab === 'insights' && <Insights orders={orders} menuItems={menuItems} loading={loading} currentShop={currentShop} />}
-            {activeTab === 'riders' && currentShop && (
-              <RiderManagement 
+            {activeTab === "marketing" && (
+              <Marketing currentShop={currentShop} />
+            )}
+            {activeTab === "coupons" && (
+              <Coupons currentShop={currentShop} orders={orders} />
+            )}
+            {activeTab === "insights" && (
+              <Insights
+                orders={orders}
+                menuItems={menuItems}
+                loading={loading}
+                currentShop={currentShop}
+              />
+            )}
+            {activeTab === "riders" && currentShop && (
+              <RiderManagement
                 currentShop={currentShop}
                 orders={orders}
                 onRequestRider={requestRider}
                 user={user}
               />
             )}
-            {activeTab === 'payments' && currentShop && <PaymentHistory shopId={currentShop.id} />}
-            {activeTab === 'settings' && (
+            {activeTab === "payments" && currentShop && (
+              <PaymentHistory shopId={currentShop.id} />
+            )}
+            {activeTab === "settings" && (
               <div className="max-w-2xl mx-auto space-y-8">
                 <header className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">Settings</h2>
-                    <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">v2.1</span>
+                    <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
+                      Settings
+                    </h2>
+                    <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">
+                      v2.1
+                    </span>
                   </div>
-                  <p className="text-sm text-on-surface-variant font-medium">Manage your account and storefront preferences.</p>
+                  <p className="text-sm text-on-surface-variant font-medium">
+                    Manage your account and storefront preferences.
+                  </p>
                 </header>
-                
+
                 <div className="space-y-4">
-                  <button 
-                    onClick={() => setActiveTab('storefront')}
-                    className="w-full flex items-center justify-between p-5 bg-primary/5 hover:bg-primary/10 rounded-2xl transition-all border border-primary/20 group shadow-sm shadow-primary/5"
+                  <button
+                    onClick={() => setActiveTab("storefront")}
+                    className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-0 p-5 bg-primary/5 hover:bg-primary/10 rounded-2xl transition-all border border-primary/20 group shadow-sm shadow-primary/5"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                      <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary group-hover:scale-110 transition-transform shrink-0">
                         <Store size={20} />
                       </div>
                       <div className="text-left">
-                        <p className="font-bold text-on-surface">Storefront Profile</p>
-                        <p className="text-xs text-on-surface-variant">Update your shop name, logo, and cover photo.</p>
+                        <p className="font-bold text-on-surface">
+                          Storefront Profile
+                        </p>
+                        <p className="text-xs text-on-surface-variant line-clamp-1 md:line-clamp-none">
+                          Update your shop name, logo, and cover photo.
+                        </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full">New Location</span>
-                      <ChevronRight size={18} className="text-on-surface-variant/40" />
+                    <div className="flex items-center gap-2 self-end md:self-auto">
+                      <span className="text-[10px] items-center font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap">
+                        New Location
+                      </span>
+                      <ChevronRight
+                        size={18}
+                        className="text-on-surface-variant/40"
+                      />
                     </div>
                   </button>
 
-                  <button 
+                  <button
                     onClick={() => setIsEditingProfile(true)}
                     className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
                   >
@@ -7966,15 +10512,27 @@ export default function App() {
                         <UserIcon size={20} />
                       </div>
                       <div className="text-left">
-                        <p className="font-bold text-on-surface">Edit Profile</p>
-                        <p className="text-xs text-on-surface-variant">Change your name, email, and photo.</p>
+                        <p className="font-bold text-on-surface">
+                          Edit Profile
+                        </p>
+                        <p className="text-xs text-on-surface-variant">
+                          Change your name, email, and photo.
+                        </p>
                       </div>
                     </div>
-                    <ChevronRight size={18} className="text-on-surface-variant/40" />
+                    <ChevronRight
+                      size={18}
+                      className="text-on-surface-variant/40"
+                    />
                   </button>
 
-                  <button 
-                    onClick={() => toast.info('Staff Accounts coming soon!', { description: 'You will be able to add staff members with limited access (e.g., cannot view revenue or delete menu items).' })}
+                  <button
+                    onClick={() =>
+                      toast.info("Staff Accounts coming soon!", {
+                        description:
+                          "You will be able to add staff members with limited access (e.g., cannot view revenue or delete menu items).",
+                      })
+                    }
                     className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
                   >
                     <div className="flex items-center gap-4">
@@ -7982,14 +10540,21 @@ export default function App() {
                         <Users size={20} />
                       </div>
                       <div className="text-left">
-                        <p className="font-bold text-on-surface">Staff Accounts</p>
-                        <p className="text-xs text-on-surface-variant">Manage roles and permissions for your team.</p>
+                        <p className="font-bold text-on-surface">
+                          Staff Accounts
+                        </p>
+                        <p className="text-xs text-on-surface-variant">
+                          Manage roles and permissions for your team.
+                        </p>
                       </div>
                     </div>
-                    <ChevronRight size={18} className="text-on-surface-variant/40" />
+                    <ChevronRight
+                      size={18}
+                      className="text-on-surface-variant/40"
+                    />
                   </button>
 
-                  <a 
+                  <a
                     href="https://rider.localeatssa.co.za/"
                     target="_blank"
                     rel="noopener noreferrer"
@@ -8000,13 +10565,20 @@ export default function App() {
                         <Bike size={24} />
                       </div>
                       <div className="text-left">
-                        <p className="font-bold text-on-surface">Rider Marketplace</p>
-                        <p className="text-xs text-on-surface-variant">Access the dedicated platform for deliveries and missions.</p>
+                        <p className="font-bold text-on-surface">
+                          Rider Marketplace
+                        </p>
+                        <p className="text-xs text-on-surface-variant">
+                          Access the dedicated platform for deliveries and
+                          missions.
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                       <span className="text-[10px] font-black uppercase text-blue-500/60 bg-blue-500/10 px-2 py-0.5 rounded-md">External</span>
-                       <ExternalLink size={18} className="text-blue-500" />
+                      <span className="text-[10px] font-black uppercase text-blue-500/60 bg-blue-500/10 px-2 py-0.5 rounded-md">
+                        External
+                      </span>
+                      <ExternalLink size={18} className="text-blue-500" />
                     </div>
                   </a>
 
@@ -8016,21 +10588,27 @@ export default function App() {
                         <Bell size={20} />
                       </div>
                       <div className="text-left">
-                        <p className="font-bold text-on-surface">Sound Alerts</p>
-                        <p className="text-xs text-on-surface-variant">Play a sound when new orders arrive.</p>
+                        <p className="font-bold text-on-surface">
+                          Sound Alerts
+                        </p>
+                        <p className="text-xs text-on-surface-variant">
+                          Play a sound when new orders arrive.
+                        </p>
                       </div>
                     </div>
-                    <button 
+                    <button
                       onClick={() => setSoundAlerts(!soundAlerts)}
                       className={cn(
                         "w-12 h-6 rounded-full transition-all relative",
-                        soundAlerts ? "bg-primary" : "bg-outline-variant"
+                        soundAlerts ? "bg-primary" : "bg-outline-variant",
                       )}
                     >
-                      <div className={cn(
-                        "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
-                        soundAlerts ? "left-7" : "left-1"
-                      )} />
+                      <div
+                        className={cn(
+                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
+                          soundAlerts ? "left-7" : "left-1",
+                        )}
+                      />
                     </button>
                   </div>
 
@@ -8040,27 +10618,35 @@ export default function App() {
                         <Bell size={20} />
                       </div>
                       <div className="text-left">
-                        <p className="font-bold text-on-surface">Push Notifications</p>
-                        <p className="text-xs text-on-surface-variant">Get browser alerts even when the app is closed.</p>
+                        <p className="font-bold text-on-surface">
+                          Push Notifications
+                        </p>
+                        <p className="text-xs text-on-surface-variant">
+                          Get browser alerts even when the app is closed.
+                        </p>
                       </div>
                     </div>
-                    <button 
+                    <button
                       onClick={() => {
                         if (!pushEnabled) {
                           requestPushPermissions();
                         } else {
-                          toast.info("To disable push notifications, please change your browser settings.");
+                          toast.info(
+                            "To disable push notifications, please change your browser settings.",
+                          );
                         }
                       }}
                       className={cn(
                         "w-12 h-6 rounded-full transition-all relative",
-                        pushEnabled ? "bg-primary" : "bg-outline-variant"
+                        pushEnabled ? "bg-primary" : "bg-outline-variant",
                       )}
                     >
-                      <div className={cn(
-                        "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
-                        pushEnabled ? "left-7" : "left-1"
-                      )} />
+                      <div
+                        className={cn(
+                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
+                          pushEnabled ? "left-7" : "left-1",
+                        )}
+                      />
                     </button>
                   </div>
 
@@ -8071,24 +10657,28 @@ export default function App() {
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Dark Mode</p>
-                        <p className="text-xs text-on-surface-variant">Toggle between light and dark themes.</p>
+                        <p className="text-xs text-on-surface-variant">
+                          Toggle between light and dark themes.
+                        </p>
                       </div>
                     </div>
-                    <button 
+                    <button
                       onClick={() => setDarkMode(!darkMode)}
                       className={cn(
                         "w-12 h-6 rounded-full transition-all relative",
-                        darkMode ? "bg-primary" : "bg-outline-variant"
+                        darkMode ? "bg-primary" : "bg-outline-variant",
                       )}
                     >
-                      <div className={cn(
-                        "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
-                        darkMode ? "left-7" : "left-1"
-                      )} />
+                      <div
+                        className={cn(
+                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
+                          darkMode ? "left-7" : "left-1",
+                        )}
+                      />
                     </button>
                   </div>
 
-                  <button 
+                  <button
                     onClick={handleSignOut}
                     className="w-full flex items-center justify-between p-5 bg-error/5 hover:bg-error/10 rounded-2xl transition-all border border-error/10 group"
                   >
@@ -8098,7 +10688,9 @@ export default function App() {
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-error">Sign Out</p>
-                        <p className="text-xs text-error/60">Logout from your account.</p>
+                        <p className="text-xs text-error/60">
+                          Logout from your account.
+                        </p>
                       </div>
                     </div>
                     <ChevronRight size={18} className="text-error/40" />
@@ -8106,19 +10698,19 @@ export default function App() {
                 </div>
               </div>
             )}
-            {activeTab === 'storefront' && (
+            {activeTab === "storefront" && (
               <div className="max-w-3xl mx-auto">
-                <button 
-                  onClick={() => setActiveTab('settings')}
+                <button
+                  onClick={() => setActiveTab("settings")}
                   className="mb-6 flex items-center gap-2 text-sm font-bold text-on-surface-variant hover:text-primary transition-colors"
                 >
                   <ChevronRight className="rotate-180" size={16} />
                   Back to Settings
                 </button>
                 {currentShop ? (
-                  <ShopProfile 
-                    shop={currentShop} 
-                    onRefresh={fetchShops} 
+                  <ShopProfile
+                    shop={currentShop}
+                    onRefresh={fetchShops}
                     user={user}
                   />
                 ) : (
@@ -8126,7 +10718,9 @@ export default function App() {
                     <div className="w-16 h-16 bg-surface-container-high rounded-full flex items-center justify-center">
                       <Store className="text-on-surface-variant" size={32} />
                     </div>
-                    <p className="text-on-surface-variant font-medium">Please create a shop first to edit your storefront.</p>
+                    <p className="text-on-surface-variant font-medium">
+                      Please create a shop first to edit your storefront.
+                    </p>
                   </div>
                 )}
               </div>
@@ -8141,7 +10735,10 @@ export default function App() {
         className="fixed bottom-24 md:bottom-8 right-6 z-[60] w-14 h-14 bg-primary text-on-primary rounded-full shadow-2xl shadow-primary/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all group"
         title="Help & Tips"
       >
-        <HelpCircle size={28} className="group-hover:rotate-12 transition-transform" />
+        <HelpCircle
+          size={28}
+          className="group-hover:rotate-12 transition-transform"
+        />
         <span className="absolute right-full mr-4 px-3 py-1.5 bg-surface-container-highest text-on-surface text-xs font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-xl border border-outline-variant/10">
           Need help?
         </span>
@@ -8169,11 +10766,15 @@ export default function App() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-primary">
                       <Sparkles size={20} />
-                      <span className="text-xs font-black uppercase tracking-widest">Guide</span>
+                      <span className="text-xs font-black uppercase tracking-widest">
+                        Guide
+                      </span>
                     </div>
-                    <h2 className="text-3xl font-headline font-black text-on-surface tracking-tight">How LocalEats Works</h2>
+                    <h2 className="text-3xl font-headline font-black text-on-surface tracking-tight">
+                      How LocalEats Works
+                    </h2>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setShowHelp(false)}
                     className="p-2 hover:bg-surface-container rounded-full transition-colors"
                   >
@@ -8183,50 +10784,62 @@ export default function App() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {[
-                    { 
-                      title: 'Dashboard', 
-                      desc: 'Your command center. Track total sales, order volume, and follower growth at a glance.',
+                    {
+                      title: "Dashboard",
+                      desc: "Your command center. Track total sales, order volume, and follower growth at a glance.",
                       icon: LayoutDashboard,
-                      color: 'text-blue-500 bg-blue-50'
+                      color: "text-blue-500 bg-blue-50",
                     },
-                    { 
-                      title: 'Menu Management', 
-                      desc: 'Add items, set prices, and upload mouth-watering photos. Toggle availability instantly.',
+                    {
+                      title: "Menu Management",
+                      desc: "Add items, set prices, and upload mouth-watering photos. Toggle availability instantly.",
                       icon: UtensilsCrossed,
-                      color: 'text-orange-500 bg-orange-50'
+                      color: "text-orange-500 bg-orange-50",
                     },
-                    { 
-                      title: 'Real-time Orders', 
-                      desc: 'Never miss a beat. Orders pop up instantly with sound alerts. Use Kitchen Mode for focus.',
+                    {
+                      title: "Real-time Orders",
+                      desc: "Never miss a beat. Orders pop up instantly with sound alerts. Use Kitchen Mode for focus.",
                       icon: ReceiptText,
-                      color: 'text-green-500 bg-green-50'
+                      color: "text-green-500 bg-green-50",
                     },
-                    { 
-                      title: 'Marketing & Coupons', 
-                      desc: 'Grow your reach. Create discount codes and use AI to craft perfect campaigns.',
+                    {
+                      title: "Marketing & Coupons",
+                      desc: "Grow your reach. Create discount codes and use AI to craft perfect campaigns.",
                       icon: Zap,
-                      color: 'text-purple-500 bg-purple-50'
+                      color: "text-purple-500 bg-purple-50",
                     },
-                    { 
-                      title: 'Insights', 
-                      desc: 'Understand your customers. View reviews and analyze performance trends.',
+                    {
+                      title: "Insights",
+                      desc: "Understand your customers. View reviews and analyze performance trends.",
                       icon: TrendingUp,
-                      color: 'text-indigo-500 bg-indigo-50'
+                      color: "text-indigo-500 bg-indigo-50",
                     },
-                    { 
-                      title: 'Storefront', 
-                      desc: 'Customize how customers see your shop. Update your bio, location, and social links.',
+                    {
+                      title: "Storefront",
+                      desc: "Customize how customers see your shop. Update your bio, location, and social links.",
                       icon: Store,
-                      color: 'text-pink-500 bg-pink-50'
-                    }
+                      color: "text-pink-500 bg-pink-50",
+                    },
                   ].map((tip, i) => (
-                    <div key={i} className="flex gap-4 p-4 rounded-2xl border border-outline-variant/5 hover:border-primary/20 transition-colors group">
-                      <div className={cn("w-12 h-12 shrink-0 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110", tip.color)}>
+                    <div
+                      key={i}
+                      className="flex gap-4 p-4 rounded-2xl border border-outline-variant/5 hover:border-primary/20 transition-colors group"
+                    >
+                      <div
+                        className={cn(
+                          "w-12 h-12 shrink-0 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110",
+                          tip.color,
+                        )}
+                      >
                         <tip.icon size={24} />
                       </div>
                       <div className="space-y-1">
-                        <h3 className="font-bold text-on-surface">{tip.title}</h3>
-                        <p className="text-sm text-on-surface-variant leading-relaxed">{tip.desc}</p>
+                        <h3 className="font-bold text-on-surface">
+                          {tip.title}
+                        </h3>
+                        <p className="text-sm text-on-surface-variant leading-relaxed">
+                          {tip.desc}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -8238,11 +10851,12 @@ export default function App() {
                     Pro Tip
                   </h4>
                   <p className="text-sm text-on-surface-variant">
-                    Enable <b>Sound Alerts</b> in Settings to ensure you hear every new order even when the tab is in the background.
+                    Enable <b>Sound Alerts</b> in Settings to ensure you hear
+                    every new order even when the tab is in the background.
                   </p>
                 </div>
 
-                <button 
+                <button
                   onClick={() => setShowHelp(false)}
                   className="w-full py-4 bg-primary text-on-primary font-black rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.99] active:scale-95 transition-all"
                 >
@@ -8258,17 +10872,27 @@ export default function App() {
       {!kitchenMode && (
         <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 bg-white/70 dark:bg-surface-container-lowest/70 backdrop-blur-xl rounded-t-2xl md:rounded-t-3xl border-t border-outline-variant/10 shadow-[0_-8px_24px_-4px_rgba(167,52,0,0.12)]">
           <div className="flex items-center gap-1 px-4 pb-6 pt-3 overflow-x-auto scrollbar-hide">
-            {navItems.map(item => (
+            {navItems.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
                 className={cn(
                   "flex flex-col items-center justify-center min-w-[72px] py-1.5 rounded-xl transition-all active:scale-90 duration-200 relative",
-                  activeTab === item.id ? "bg-orange-50 dark:bg-primary/10 text-primary" : "text-secondary hover:text-primary"
+                  activeTab === item.id
+                    ? "bg-orange-50 dark:bg-primary/10 text-primary"
+                    : "text-secondary hover:text-primary",
                 )}
               >
-                <item.icon size={20} className={cn("mb-1", activeTab === item.id && "fill-current")} />
-                <span className="font-inter text-[9px] uppercase tracking-wider font-bold whitespace-nowrap">{item.label}</span>
+                <item.icon
+                  size={20}
+                  className={cn(
+                    "mb-1",
+                    activeTab === item.id && "fill-current",
+                  )}
+                />
+                <span className="font-inter text-[9px] uppercase tracking-wider font-bold whitespace-nowrap">
+                  {item.label}
+                </span>
                 {item.badge && (
                   <span className="absolute top-1 right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[8px] text-white font-black">
                     {item.badge}
@@ -8291,24 +10915,29 @@ export default function App() {
             <button
               onClick={async () => {
                 try {
-                  if ('serviceWorker' in navigator) {
-                    const registrations = await navigator.serviceWorker.getRegistrations();
+                  if ("serviceWorker" in navigator) {
+                    const registrations =
+                      await navigator.serviceWorker.getRegistrations();
                     for (const registration of registrations) {
                       await registration.unregister();
                     }
                   }
                   // Clear all caches
-                  if ('caches' in window) {
+                  if ("caches" in window) {
                     const keys = await caches.keys();
                     for (const key of keys) {
                       await caches.delete(key);
                     }
                   }
                 } catch (e) {
-                  console.error('Force reload error:', e);
+                  console.error("Force reload error:", e);
                 }
                 // Force reload without cache
-                window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+                window.location.href =
+                  window.location.origin +
+                  window.location.pathname +
+                  "?v=" +
+                  Date.now();
               }}
               className="bg-[#FF5400] text-white px-5 py-3 rounded-full shadow-2xl shadow-orange-500/60 flex items-center gap-3 hover:scale-105 active:scale-95 border-2 border-white/20 transition-all font-body animate-pulse ring-4 ring-orange-500/20"
             >
@@ -8320,8 +10949,12 @@ export default function App() {
                 </span>
               </div>
               <div className="text-left">
-                <p className="text-[10px] font-black uppercase tracking-widest opacity-80 leading-none mb-0.5">New update (Checked {lastCheckTime})</p>
-                <p className="text-sm font-bold leading-none">Refresh to See Changes</p>
+                <p className="text-[10px] font-black uppercase tracking-widest opacity-80 leading-none mb-0.5">
+                  New update (Checked {lastCheckTime})
+                </p>
+                <p className="text-sm font-bold leading-none">
+                  Refresh to See Changes
+                </p>
               </div>
             </button>
           </motion.div>
@@ -8338,53 +10971,57 @@ const LockedRiderMode = ({ onSwitchRole }: { onSwitchRole: () => void }) => {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center p-8 text-center bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-black overflow-hidden relative">
       {/* Decorative Elements */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-20">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/20 blur-[120px] rounded-full animate-pulse" />
-          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-amber-500/10 blur-[120px] rounded-full" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/20 blur-[120px] rounded-full animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-amber-500/10 blur-[120px] rounded-full" />
       </div>
 
       <div className="relative z-10 max-w-md w-full">
         <div className="w-24 h-24 bg-blue-500/10 rounded-[2.5rem] flex items-center justify-center mb-8 mx-auto border border-blue-500/20 shadow-2xl shadow-blue-500/10 relative group">
-            <motion.div 
-              animate={{ rotate: [0, -10, 10, 0] }}
-              transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
-            >
-              <Bike size={48} className="text-blue-500" />
-            </motion.div>
-            <div className="absolute -top-2 -right-2 bg-zinc-950 p-1.5 rounded-full border border-zinc-800 shadow-xl">
-               <Lock size={16} className="text-zinc-500" />
-            </div>
+          <motion.div
+            animate={{ rotate: [0, -10, 10, 0] }}
+            transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+          >
+            <Bike size={48} className="text-blue-500" />
+          </motion.div>
+          <div className="absolute -top-2 -right-2 bg-zinc-950 p-1.5 rounded-full border border-zinc-800 shadow-xl">
+            <Lock size={16} className="text-zinc-500" />
+          </div>
         </div>
 
-        <h1 className="text-3xl font-black text-white mb-4 tracking-tight uppercase tracking-widest font-headline">Dedicated Uplink Active</h1>
-        
+        <h1 className="text-3xl font-black text-white mb-4 tracking-tight uppercase tracking-widest font-headline">
+          Dedicated Uplink Active
+        </h1>
+
         <p className="text-zinc-400 mb-10 font-medium leading-relaxed font-body">
-          Rider Mode is now locked on the Merchant Dashboard. Please use our dedicated Rider Platform for missions and deliveries.
+          Rider Mode is now locked on the Merchant Dashboard. Please use our
+          dedicated Rider Platform for missions and deliveries.
         </p>
 
         <div className="space-y-4 w-full">
-            <a 
-              href="https://rider.localeatssa.co.za/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="w-full flex items-center justify-center gap-3 py-6 bg-blue-600 text-white font-black rounded-3xl border border-blue-500/20 uppercase tracking-[0.2em] text-xs hover:bg-blue-500 transition-all shadow-xl shadow-blue-600/20 hover:scale-[1.02] active:scale-[0.98]"
-            >
-              <span>Launch Rider App</span>
-              <ExternalLink size={16} />
-            </a>
+          <a
+            href="https://rider.localeatssa.co.za/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-3 py-6 bg-blue-600 text-white font-black rounded-3xl border border-blue-500/20 uppercase tracking-[0.2em] text-xs hover:bg-blue-500 transition-all shadow-xl shadow-blue-600/20 hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <span>Launch Rider App</span>
+            <ExternalLink size={16} />
+          </a>
 
-            <button 
-              onClick={onSwitchRole}
-              className="w-full py-6 bg-zinc-900 text-zinc-400 font-black rounded-3xl border border-zinc-800 hover:border-zinc-700 uppercase tracking-[0.2em] text-xs hover:bg-zinc-800 transition-all"
-            >
-              Back to Merchant HUD
-            </button>
+          <button
+            onClick={onSwitchRole}
+            className="w-full py-6 bg-zinc-900 text-zinc-400 font-black rounded-3xl border border-zinc-800 hover:border-zinc-700 uppercase tracking-[0.2em] text-xs hover:bg-zinc-800 transition-all"
+          >
+            Back to Merchant HUD
+          </button>
         </div>
 
         <div className="mt-12 pt-8 border-t border-zinc-900/50">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-600">Protocol v4.2.0 Locked</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-600">
+            Protocol v4.2.0 Locked
+          </p>
         </div>
       </div>
     </div>
   );
 };
-
