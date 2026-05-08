@@ -70,8 +70,8 @@ import {
   Image as ImageIcon,
   HelpCircle,
   QrCode,
-  Lock,
   ExternalLink,
+  Info,
 } from "lucide-react";
 import {
   BarChart,
@@ -89,10 +89,226 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import { createClient, User } from "@supabase/supabase-js";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  useMap,
+  useMapEvents,
+} from "react-leaflet";
+import L from "leaflet";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import imageCompression from "browser-image-compression";
 import { LocalEatsLogo } from "./components/LocalEatsLogo";
+// Fix Leaflet marker icons
+// @ts-expect-error - Leaflet Default Icon prototype doesn't have _getIconUrl type
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+  iconUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  shadowUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+});
+
+const DEFAULT_MENU_IMAGE = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=800";
+const DEFAULT_SHOP_LOGO = "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&q=80&w=800";
+
+const calculateDistance = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+) => {
+  const R = 6371; // km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+const LeafletMap = ({
+  center,
+  zoom = 13,
+  onLocationSelect,
+}: {
+  center: { lat: number; lng: number };
+  zoom?: number;
+  onLocationSelect?: (lat: number, lng: number) => void;
+}) => {
+  const MapEvents = () => {
+    useMapEvents({
+      click(e) {
+        if (onLocationSelect) {
+          onLocationSelect(e.latlng.lat, e.latlng.lng);
+        }
+      },
+    });
+    return null;
+  };
+
+  const ChangeView = ({ coords }: { coords: { lat: number; lng: number } }) => {
+    const map = useMap();
+    useEffect(() => {
+      map.setView([coords.lat, coords.lng], zoom);
+    }, [coords, map, zoom]);
+    return null;
+  };
+
+  return (
+    <div className="w-full h-full min-h-[200px] rounded-xl overflow-hidden shadow-inner border border-outline-variant/10 relative z-0">
+      <MapContainer
+        center={[center.lat, center.lng]}
+        zoom={zoom}
+        style={{ height: "100%", width: "100%" }}
+        scrollWheelZoom={true}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <Marker
+          position={[center.lat, center.lng]}
+          draggable={true}
+          eventHandlers={{
+            dragend: (e) => {
+              const marker = e.target;
+              const position = marker.getLatLng();
+              if (onLocationSelect) {
+                onLocationSelect(position.lat, position.lng);
+              }
+            },
+          }}
+        />
+        <MapEvents />
+        <ChangeView coords={center} />
+      </MapContainer>
+    </div>
+  );
+};
+
+interface OSMPrediction {
+  lat: string;
+  lon: string;
+  display_name: string;
+  address: {
+    city?: string;
+    town?: string;
+    village?: string;
+    suburb?: string;
+  };
+}
+
+const AddressAutocomplete = ({
+  value,
+  onChange,
+  onSelect,
+  placeholder = "Search address...",
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  onSelect: (address: string, city: string, lat: number, lng: number) => void;
+  placeholder?: string;
+}) => {
+  const [predictions, setPredictions] = useState<OSMPrediction[]>([]);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(async () => {
+      if (!value || value.length < 3) {
+        setPredictions([]);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
+            value,
+          )}&format=json&addressdetails=1&limit=5&countrycodes=za`,
+          {
+            headers: {
+              "Accept-Language": "en",
+              "User-Agent": "LocalEats-App",
+            },
+          },
+        );
+        const data = await response.json();
+        setPredictions((data as OSMPrediction[]) || []);
+      } catch (error) {
+        console.error("OSM Nominatim Error:", error);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [value]);
+
+  const handleSelect = (prediction: OSMPrediction) => {
+    const lat = parseFloat(prediction.lat);
+    const lon = parseFloat(prediction.lon);
+    const city =
+      prediction.address.city ||
+      prediction.address.town ||
+      prediction.address.village ||
+      prediction.address.suburb ||
+      "Unknown";
+    const address = prediction.display_name;
+
+    onChange(address);
+    setPredictions([]);
+    onSelect(address, city, lat, lon);
+  };
+
+  return (
+    <div className="relative w-full">
+      <div className="relative">
+        <MapPin
+          className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/40"
+          size={18}
+        />
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full h-14 bg-surface-container-low border border-outline-variant/10 rounded-2xl pl-12 pr-4 focus:ring-2 focus:ring-primary/40 transition-all outline-none text-base"
+        />
+      </div>
+
+      <AnimatePresence>
+        {predictions.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="absolute z-50 w-full mt-2 bg-white dark:bg-zinc-900 border border-outline-variant/20 rounded-2xl shadow-2xl overflow-hidden"
+          >
+            {predictions.map((p, idx) => (
+              <button
+                key={`${p.place_id}-${idx}`}
+                onClick={() => handleSelect(p)}
+                className="w-full text-left p-4 hover:bg-primary/5 transition-colors border-b border-outline-variant/5 last:border-none group"
+              >
+                <p className="text-sm font-bold text-on-surface group-hover:text-primary transition-colors line-clamp-1">
+                  {p.display_name.split(",")[0]}
+                </p>
+                <p className="text-[10px] text-on-surface-variant line-clamp-1">
+                  {p.display_name}
+                </p>
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 export type OrderStatus =
   | "pending"
@@ -121,6 +337,8 @@ export interface Shop {
   instagram?: string;
   facebook?: string;
   whatsapp?: string;
+  lat?: number;
+  lng?: number;
   subscription_status?: "trial" | "active" | "past_due" | "expired";
   trial_start_date?: string;
   last_payment_date?: string;
@@ -161,6 +379,7 @@ export interface Order {
   acceptance_message?: string;
   is_returning?: boolean;
   accepted_at?: string;
+  completed_at?: string;
   estimated_delivery_time?: string;
   total_price?: number;
   items?: (string | { name: string; price: number; quantity: number })[];
@@ -178,6 +397,19 @@ export interface Order {
   order_type?: "delivery" | "collection";
 }
 
+export interface RiderProfile {
+  id: string;
+  name?: string | null;
+  full_name?: string | null;
+  phone?: string | null;
+  is_online: boolean;
+  status: string;
+  vehicle_type?: string;
+  rating?: number;
+  total_deliveries?: number;
+  total_earnings?: number;
+}
+
 export interface RiderConnection {
   id: string;
   shop_id: number;
@@ -185,8 +417,10 @@ export interface RiderConnection {
   rider_name: string | null;
   connection_code: string;
   expires_at: string;
-  status: "active" | "expired";
+  status: "active" | "expired" | "offline";
+  is_online: boolean;
   created_at: string;
+  rating?: number;
 }
 
 export interface Payment {
@@ -204,6 +438,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // The official dashboard URL for LocalEats South Africa
 const DASHBOARD_URL = "https://dashboard.localeatssa.co.za";
+const FLAT_DELIVERY_FEE = 5;
 
 /**
  * 🛠 RIDER APP COORDINATION CHECKLIST (For Developer Reference)
@@ -594,15 +829,27 @@ interface SignUpProps {
 
 const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isValidSouthAfricanPhone = (p: string) => {
+    const cleaned = p.replace(/[\s-]/g, "");
+    return /^(?:\+27|0)[0-9]{9}$/.test(cleaned);
+  };
+
   const handleSignUp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setLoading(true);
     setError(null);
+
+    if (!isValidSouthAfricanPhone(phone)) {
+      setError("Please enter a valid South African phone number (e.g., +27 82 123 4567 or 082 123 4567).");
+      setLoading(false);
+      return;
+    }
 
     try {
       const { data, error: _error } = await supabase.auth.signUp({
@@ -611,6 +858,7 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
         options: {
           data: {
             full_name: name,
+            phone: phone,
           },
           emailRedirectTo: getRedirectUrl(),
         },
@@ -686,6 +934,24 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  className="block text-sm font-semibold text-on-surface ml-1"
+                  htmlFor="phone"
+                >
+                  Phone Number
+                </label>
+                <input
+                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50"
+                  id="phone"
+                  placeholder="+27 82 123 4567"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   required
                 />
               </div>
@@ -1138,6 +1404,8 @@ interface ProfileData {
   phone: string;
   location: string;
   address: string;
+  lat?: number;
+  lng?: number;
   operatingHours: { open: string; close: string };
   marketing?: boolean;
   darkMode?: boolean;
@@ -1163,6 +1431,8 @@ const EditProfile: React.FC<EditProfileProps> = ({
     phone: initialData?.phone || "",
     location: initialData?.location || "",
     address: initialData?.address || "",
+    lat: initialData?.lat || -25.9964,
+    lng: initialData?.lng || 28.2268,
     avatarUrl: initialData?.avatarUrl || "",
   });
 
@@ -1221,6 +1491,8 @@ const EditProfile: React.FC<EditProfileProps> = ({
               ...prev,
               location: newLocation || prev.location,
               address: newAddress || prev.address,
+              lat: latitude,
+              lng: longitude,
             }));
             toast.success("Location updated successfully!");
           } else {
@@ -1310,6 +1582,11 @@ const EditProfile: React.FC<EditProfileProps> = ({
   });
 
   const handleSave = () => {
+    const cleaned = formData.phone.replace(/[\s-]/g, "");
+    if (!/^(?:\+27|0)[0-9]{9}$/.test(cleaned)) {
+      toast.error("Please enter a valid South African phone number (e.g., +27 82 123 4567 or 082 123 4567).");
+      return;
+    }
     onSave({ ...formData, ...preferences, operatingHours });
   };
 
@@ -1481,13 +1758,31 @@ const EditProfile: React.FC<EditProfileProps> = ({
             </div>
           </div>
 
-          <div className="w-full h-32 rounded-xl overflow-hidden relative flex items-center justify-center">
-            <img
-              alt="Map"
-              className="absolute inset-0 w-full h-full object-cover grayscale opacity-60 pointer-events-none"
-              src="https://picsum.photos/seed/map/1200/800"
+          <div className="w-full h-48 rounded-xl overflow-hidden relative border border-outline-variant/20">
+            <LeafletMap
+              center={{ lat: formData.lat || -25.9964, lng: formData.lng || 28.2268 }}
+              zoom={15}
+              onLocationSelect={(lat, lng) => {
+                setFormData(prev => ({ ...prev, lat, lng }));
+                // Reverse geocode when pin moves manually
+                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+                  .then(r => r.json())
+                  .then(data => {
+                    if (data && data.address) {
+                       const city = data.address.city || data.address.town || data.address.village || data.address.suburb || "";
+                       const road = data.address.road || "";
+                       const houseNumber = data.address.house_number || "";
+                       const newLocation = [city, data.address.state].filter(Boolean).join(", ");
+                       const newAddress = [houseNumber, road].filter(Boolean).join(" ");
+                       setFormData(prev => ({ 
+                         ...prev, 
+                         location: newLocation || prev.location ,
+                         address: newAddress || prev.address
+                       }));
+                    }
+                  });
+              }}
             />
-            <div className="absolute inset-0 bg-primary/5 pointer-events-none"></div>
             <button
               type="button"
               onClick={(e) => {
@@ -1495,11 +1790,11 @@ const EditProfile: React.FC<EditProfileProps> = ({
                 e.stopPropagation();
                 setShowMapPinConfirm(true);
               }}
-              className="relative z-30 bg-surface-container-lowest/90 backdrop-blur-md px-6 py-3 rounded-full shadow-md hover:scale-105 hover:bg-surface-container-lowest transition-all cursor-pointer flex items-center gap-2"
+              className="absolute bottom-4 right-4 z-30 bg-surface-container-lowest/90 backdrop-blur-md px-4 py-2 rounded-full shadow-md hover:scale-105 hover:bg-surface-container-lowest transition-all cursor-pointer flex items-center gap-2 border border-outline-variant/20"
             >
-              <MapPin size={16} className="text-primary" />
-              <span className="text-sm font-bold text-primary">
-                UPDATE MAP PIN
+              <MapPin size={14} className="text-primary" />
+              <span className="text-[10px] font-bold text-primary">
+                AUTO-LOCATE
               </span>
             </button>
           </div>
@@ -3602,19 +3897,11 @@ const MenuManagement = ({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div
-                className="w-full h-full flex items-center justify-center"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #ff9d42 0%, #f58220 100%)",
-                }}
-              >
-                <Store
-                  size={32}
-                  className="text-white drop-shadow-sm"
-                  strokeWidth={1.5}
-                />
-              </div>
+              <img
+                src={DEFAULT_SHOP_LOGO}
+                className="w-full h-full object-cover opacity-90"
+                alt="Default Shop Logo"
+              />
             )}
           </div>
           <div>
@@ -4251,17 +4538,9 @@ const ShopProfile = ({
     facebook: shop.facebook || "",
     whatsapp: shop.whatsapp || "",
     logo_url: shop.logo_url || "",
+    lat: shop.lat || -25.9964,
+    lng: shop.lng || 28.2268,
   });
-
-  const [debouncedLocation, setDebouncedLocation] = useState(formData.location);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedLocation(formData.location);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [formData.location]);
-
   const handleUpdateLocation = () => {
     setIsLocating(true);
     if (!navigator.geolocation) {
@@ -4312,6 +4591,8 @@ const ShopProfile = ({
             setFormData((prev) => ({
               ...prev,
               location: newLocation || prev.location,
+              lat: latitude,
+              lng: longitude,
             }));
             toast.success("Location updated successfully!");
           } else {
@@ -4530,44 +4811,57 @@ const ShopProfile = ({
                   placeholder="Enter your shop address..."
                 />
               </div>
-              {formData.location && (
-                <div className="mt-4 rounded-2xl overflow-hidden border border-outline-variant/10 h-48 md:h-64 bg-surface-container-low relative group">
-                  <iframe
-                    width="100%"
-                    height="100%"
-                    frameBorder="0"
-                    style={{ border: 0 }}
-                    src={`https://www.google.com/maps/embed/v1/place?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""}&q=${encodeURIComponent(debouncedLocation)}`}
-                    allowFullScreen
-                    className={cn(
-                      !import.meta.env.VITE_GOOGLE_MAPS_API_KEY && "hidden",
-                    )}
-                  ></iframe>
-                  {!import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3">
-                      <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                        <MapPin className="text-primary" size={24} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-on-surface">
-                          Map Preview
-                        </p>
-                        <p className="text-[10px] text-on-surface-variant">
-                          Enter a valid address to see it on the map.
-                        </p>
-                      </div>
-                      <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formData.location)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-4 py-2 bg-surface-container-high text-primary rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-primary/10 transition-colors"
-                      >
-                        View on Google Maps
-                      </a>
-                    </div>
-                  )}
-                </div>
-              )}
+              <div className="mt-4 rounded-2xl overflow-hidden border border-outline-variant/10 h-48 md:h-64 bg-surface-container-low relative group z-0">
+                <LeafletMap
+                  center={{ lat: formData.lat || -25.9964, lng: formData.lng || 28.2268 }}
+                  zoom={15}
+                  onLocationSelect={(lat, lng) => {
+                    setFormData((prev) => ({ ...prev, lat, lng }));
+                    fetch(
+                      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+                    )
+                      .then((r) => r.json())
+                      .then((data) => {
+                        if (data && data.address) {
+                          const city =
+                            data.address.city ||
+                            data.address.town ||
+                            data.address.village ||
+                            data.address.suburb ||
+                            "";
+                          const road = data.address.road || "";
+                          const houseNumber = data.address.house_number || "";
+                          const newLocation = [
+                            houseNumber,
+                            road,
+                            city,
+                            data.address.state,
+                          ]
+                            .filter(Boolean)
+                            .join(", ");
+                          setFormData((prev) => ({
+                            ...prev,
+                            location: newLocation || prev.location,
+                          }));
+                        }
+                      });
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowMapPinConfirm(true);
+                  }}
+                  className="absolute bottom-4 right-4 z-[40] bg-surface-container-lowest/90 backdrop-blur-md px-4 py-2 rounded-full shadow-md hover:scale-105 hover:bg-surface-container-lowest transition-all cursor-pointer flex items-center gap-2 border border-outline-variant/20"
+                >
+                  <MapPin size={14} className="text-primary" />
+                  <span className="text-[10px] font-bold text-primary">
+                    AUTO-LOCATE
+                  </span>
+                </button>
+              </div>
             </div>
           </section>
 
@@ -4665,15 +4959,11 @@ const ShopProfile = ({
                       alt="Logo"
                     />
                   ) : (
-                    <div
-                      className="w-full h-full flex items-center justify-center"
-                      style={{
-                        background:
-                          "linear-gradient(135deg, #ff9d42 0%, #f58220 100%)",
-                      }}
-                    >
-                      <Store size={20} className="text-white" strokeWidth={2} />
-                    </div>
+                    <img
+                      src={DEFAULT_SHOP_LOGO}
+                      className="w-full h-full object-cover opacity-80"
+                      alt="Default Logo"
+                    />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -5115,6 +5405,9 @@ const OrdersManagement = ({
   soundAlerts,
   setSoundAlerts,
   onRequestRider,
+  onUnassignRider,
+  onTabChange,
+  sendRiderNudge,
   currentShop,
 }: {
   orders: Order[];
@@ -5128,6 +5421,8 @@ const OrdersManagement = ({
   setSoundAlerts: (val: boolean) => void;
   onRequestRider: (id: string, riderId?: string) => void;
   onUnassignRider: (id: string) => void;
+  onTabChange: (tab: string) => void;
+  sendRiderNudge: (riderId: string, message: string) => Promise<void>;
   currentShop: Shop | undefined;
 }) => {
   const [viewMode, setViewMode] = useState<"active" | "history">("active");
@@ -5136,6 +5431,7 @@ const OrdersManagement = ({
   const [phoneSearch, setPhoneSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [acceptingOrderId, setAcceptingOrderId] = useState<string | null>(null);
+  const [preparingOrderId, setPreparingOrderId] = useState<string | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [readyOrderId, setReadyOrderId] = useState<string | null>(null);
   const [chatOrderId, setChatOrderId] = useState<string | null>(null);
@@ -5147,11 +5443,35 @@ const OrdersManagement = ({
       const fetchRiders = async () => {
         const { data } = await supabase
           .from("rider_connections")
-          .select("*")
+          .select(`
+            *,
+            rider_profiles:rider_id (
+              is_online,
+              full_name,
+              status,
+              vehicle_type,
+              rating
+            )
+          `)
           .eq("shop_id", currentShop.id)
-          .gt("expires_at", new Date().toISOString())
           .not("rider_id", "is", null);
-        if (data) setConnectedRiders(data as RiderConnection[]);
+
+        if (data) {
+          const now = new Date();
+          const processed = (data as (RiderConnection & { rider_profiles: RiderProfile | null })[]).map((item) => {
+            const conn = item as RiderConnection;
+            const profile = item.rider_profiles;
+            return {
+              ...conn,
+              is_online: profile?.is_online || false,
+              rider_name: profile?.full_name || conn.rider_name,
+              status: profile?.status || (new Date(conn.expires_at) < now ? "expired" : conn.status),
+              vehicle_type: profile?.vehicle_type || "Road",
+              rating: profile?.rating || 5.0,
+            };
+          });
+          setConnectedRiders(processed);
+        }
       };
       void fetchRiders();
       const sub = supabase
@@ -5237,6 +5557,7 @@ const OrdersManagement = ({
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [ordersPaused, setOrdersPaused] = useState(false);
   const [filterStatus, setFilterStatus] = useState<OrderStatus | "All">("All");
+  const [orderTypeFilter, setOrderTypeFilter] = useState<"All" | "delivery" | "collection">("All");
   const [sortField, setSortField] = useState<
     "id" | "total_price" | "created_at"
   >("created_at");
@@ -5259,16 +5580,19 @@ const OrdersManagement = ({
       o.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
     const matchesPhone = !phoneSearch || o.phone?.includes(phoneSearch);
     const matchesFilter = filterStatus === "All" || o.status === filterStatus;
+    const matchesOrderType = orderTypeFilter === "All" || o.order_type === orderTypeFilter;
 
     let matchesDate = true;
+    const dateToCheck = (viewMode === "history" && o.completed_at) ? o.completed_at : o.created_at;
+    
     if (startDate) {
       matchesDate =
-        matchesDate && new Date(o.created_at) >= new Date(startDate);
+        matchesDate && new Date(dateToCheck) >= new Date(startDate);
     }
     if (endDate) {
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999);
-      matchesDate = matchesDate && new Date(o.created_at) <= end;
+      matchesDate = matchesDate && new Date(dateToCheck) <= end;
     }
 
     return (
@@ -5276,6 +5600,7 @@ const OrdersManagement = ({
       matchesCustomer &&
       matchesPhone &&
       matchesFilter &&
+      matchesOrderType &&
       matchesDate
     );
   });
@@ -5368,6 +5693,31 @@ const OrdersManagement = ({
     "completed",
     "cancelled",
   ];
+
+  const handleRiderAction = (rider: RiderConnection, orderId: string) => {
+    const isExpired = new Date(rider.expires_at) < new Date();
+
+    if (isExpired) {
+      toast.error(
+        "Connection Expired. Please generate a new Link Code to re-pair.",
+        {
+          duration: 5000,
+          position: "top-center",
+        },
+      );
+      // Redirect logic
+      onTabChange("riders");
+      return;
+    }
+
+    if (!rider.is_online) {
+      // Show "Wake to Tip" button UI or similar
+      // Handled in the UI loop
+      return;
+    }
+
+    onRequestRider(orderId, rider.rider_id!);
+  };
 
   if (loading) {
     return (
@@ -5510,34 +5860,76 @@ const OrdersManagement = ({
                 ))}
               </div>
 
-              <div className="flex items-center gap-2 bg-surface-container-low p-1 rounded-full border border-outline-variant/20">
-                <span className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-widest ml-3">
-                  Dates:
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
+                  Order Type:
                 </span>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1"
-                />
-                <span className="text-on-surface-variant/40">to</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1 mr-2"
-                />
-                {(startDate || endDate) && (
+                {(["All", "delivery", "collection"] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setOrderTypeFilter(type)}
+                    className={cn(
+                      "px-4 py-1.5 rounded-full text-xs font-bold transition-all border-2",
+                      orderTypeFilter === type
+                        ? "bg-primary/10 text-primary border-primary"
+                        : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
+                    )}
+                  >
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </button>
+                ))}
+                {(filterStatus !== "All" || orderTypeFilter !== "All" || startDate || endDate || searchTerm || customerSearch || phoneSearch) && (
                   <button
                     onClick={() => {
+                      setFilterStatus("All");
+                      setOrderTypeFilter("All");
                       setStartDate("");
                       setEndDate("");
+                      setSearchTerm("");
+                      setCustomerSearch("");
+                      setPhoneSearch("");
                     }}
-                    className="p-1 hover:bg-surface-container-high rounded-full text-error transition-colors mr-1"
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black text-white bg-error shadow-lg shadow-error/20 hover:scale-105 active:scale-95 transition-all"
                   >
-                    <X size={14} />
+                    <RefreshCw size={12} />
+                    RESET
                   </button>
                 )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
+                  Order History Filter:
+                </span>
+                <div className="flex items-center gap-2 bg-surface-container-low p-1 rounded-full border border-outline-variant/20">
+                  <span className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-widest ml-3">
+                    Completed:
+                  </span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1"
+                  />
+                  <span className="text-on-surface-variant/40">to</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1 mr-2"
+                  />
+                  {(startDate || endDate) && (
+                    <button
+                      onClick={() => {
+                        setStartDate("");
+                        setEndDate("");
+                      }}
+                      className="p-1 hover:bg-surface-container-high rounded-full text-error transition-colors mr-1"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -5773,24 +6165,39 @@ const OrdersManagement = ({
                         </div>
                         <h4
                           className={cn(
-                            "font-headline font-semibold text-on-surface",
+                            "font-headline font-semibold text-on-surface flex items-center gap-2",
                             kitchenMode ? "text-2xl" : "text-lg",
                           )}
                         >
                           {order.customer_name ||
                             `Customer #${order.user_id.slice(0, 5)}`}
+                          {order.delivery_status === "picked_up" && (
+                             <motion.span 
+                               initial={{ opacity: 0 }}
+                               animate={{ opacity: 1 }}
+                               className="bg-primary/10 text-primary text-[9px] font-black px-2 py-1 rounded-lg uppercase tracking-widest animate-pulse"
+                             >
+                               Out for Delivery
+                             </motion.span>
+                          )}
                         </h4>
                         <div className="flex flex-col gap-1 mt-2">
-                          <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-                            <Phone size={12} />
+                          <div className="flex items-center gap-2 text-xs text-on-surface-variant font-medium">
+                            <Phone size={12} className="text-primary/60" />
                             <span>{order.phone || "No phone"}</span>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-                            <MapPin size={12} />
-                            <span className="line-clamp-1">
+                            <MapPin size={12} className="text-primary/60" />
+                            <span className="line-clamp-1 italic">
                               {order.address}, {order.city}
                             </span>
                           </div>
+                          {order.estimated_delivery_time && (
+                            <div className="flex items-center gap-2 text-xs text-amber-600 font-bold mt-1 bg-amber-50 px-2 py-1 rounded-lg w-fit">
+                              <Timer size={12} />
+                              <span>ETA: {order.estimated_delivery_time}</span>
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-1 mt-3 text-[10px] font-bold text-primary/60 uppercase tracking-wider">
                           {expandedOrderId === order.id
@@ -6149,6 +6556,69 @@ const OrdersManagement = ({
                                 </div>
                               </div>
 
+                              {order.delivery_status && (
+                                <div className="mt-4 space-y-2" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                                      Update Delivery Status
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-2 text-xs">
+                                    {["finding_rider", "picked_up", "delivered"].map(status => (
+                                      <button
+                                        key={status}
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          const { error } = await supabase.from("orders").update({ delivery_status: status }).eq("id", order.id);
+                                          if(error) toast.error("Status update failed");
+                                          else toast.success(`Delivery status: ${status.replace("_", " ")}`);
+                                        }}
+                                        className={cn(
+                                          "px-3 py-1.5 rounded-lg font-bold border transition-colors flex-1 capitalize",
+                                          order.delivery_status === status ? "bg-primary text-white border-primary shadow-sm shadow-primary/20" : "bg-surface-container hover:bg-surface-container-high border-outline-variant/10 text-on-surface-variant"
+                                        )}
+                                      >
+                                        {status.replace("_", " ")}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  
+                                  {order.delivery_status === "picked_up" && (
+                                    <div className="w-full h-32 bg-stone-100 dark:bg-stone-900 rounded-xl overflow-hidden relative border border-outline-variant/10 mt-4 flex items-center justify-center">
+                                       <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] mix-blend-overlay"></div>
+                                       
+                                       {/* Mock Map Route */}
+                                       <div className="absolute top-1/2 left-1/4 right-1/4 h-1 border-t-2 border-dashed border-primary/40 -translate-y-1/2"></div>
+                                       
+                                       <div className="absolute left-1/4 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-full p-1 shadow-md z-10">
+                                         <Store size={14} className="text-secondary" />
+                                       </div>
+                                       <div className="absolute right-1/4 top-1/2 translate-x-1/2 -translate-y-1/2 bg-white rounded-full p-1 shadow-md z-10">
+                                          <MapPin size={14} className="text-primary" />
+                                       </div>
+                                       
+                                       {/* Moving Rider */}
+                                       <motion.div 
+                                         animate={{ x: ["0%", "100%", "0%"] }}
+                                         transition={{ repeat: Infinity, duration: 15, ease: "linear" }}
+                                         className="absolute left-1/4 right-1/4 top-1/2 -translate-y-1/2 z-20 flex items-center justify-start pointer-events-none"
+                                       >
+                                         <div className="relative -ml-4 -mt-6">
+                                            <div className="bg-primary text-white rounded-full p-2 shadow-lg drop-shadow-md border-2 border-white">
+                                              <Bike size={16} />
+                                            </div>
+                                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                                               <span className="text-[9px] font-black uppercase text-primary tracking-widest bg-white/95 px-2 py-0.5 rounded shadow-sm border border-primary/10">
+                                                 Live ETA: 3 min
+                                               </span>
+                                            </div>
+                                         </div>
+                                       </motion.div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
                               {!order.delivery_status &&
                                 order.status !== "completed" &&
                                 order.order_type !== "collection" && (
@@ -6170,39 +6640,102 @@ const OrdersManagement = ({
                                           </button>
                                         </div>
                                         <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1">
-                                          {connectedRiders.map((rider) => (
-                                            <button
-                                              key={rider.id}
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                onRequestRider(
-                                                  order.id,
-                                                  rider.rider_id!,
-                                                );
-                                                setShowRiderPicker(null);
-                                              }}
-                                              className="flex items-center justify-between p-3 bg-surface-container-high hover:bg-primary/10 rounded-xl transition-all border border-outline-variant/10 group text-left"
-                                            >
-                                              <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                                                  <Bike size={16} />
+                                          {connectedRiders.map((rider) => {
+                                            const isExpired =
+                                              new Date(rider.expires_at) <
+                                              new Date();
+                                            const isOffline =
+                                              !rider.is_online && !isExpired;
+
+                                            return (
+                                              <div
+                                                key={rider.id}
+                                                className={cn(
+                                                  "flex items-center justify-between p-3 bg-surface-container-high rounded-xl transition-all border border-outline-variant/10 group text-left",
+                                                  isExpired &&
+                                                    "opacity-50 grayscale",
+                                                  !isExpired &&
+                                                    "hover:bg-primary/10",
+                                                )}
+                                              >
+                                                <div className="flex items-center gap-3">
+                                                  <div
+                                                    className={cn(
+                                                      "w-8 h-8 rounded-lg flex items-center justify-center",
+                                                      isExpired
+                                                        ? "bg-on-surface/5 text-on-surface-variant"
+                                                        : "bg-primary/10 text-primary",
+                                                    )}
+                                                  >
+                                                    <Bike size={16} />
+                                                  </div>
+                                                  <div>
+                                                    <p className="text-xs font-bold text-on-surface flex items-center gap-2">
+                                                      {rider.rider_name ||
+                                                        "Quick Rider"}
+                                                      {isOffline && (
+                                                        <span className="text-[8px] px-1.5 py-0.5 bg-on-surface/10 text-on-surface-variant rounded-full">
+                                                          OFFLINE
+                                                        </span>
+                                                      )}
+                                                    </p>
+                                                    <p className="text-[9px] text-on-surface-variant/60 font-mono">
+                                                      {isExpired
+                                                        ? "EXPIRED"
+                                                        : rider.connection_code}
+                                                    </p>
+                                                  </div>
                                                 </div>
-                                                <div>
-                                                  <p className="text-xs font-bold text-on-surface">
-                                                    {rider.rider_name ||
-                                                      "Quick Rider"}
-                                                  </p>
-                                                  <p className="text-[9px] text-on-surface-variant/60 font-mono">
-                                                    {rider.connection_code}
-                                                  </p>
+
+                                                <div className="flex items-center gap-2">
+                                                  {isExpired ? (
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleRiderAction(
+                                                          rider,
+                                                          order.id,
+                                                        );
+                                                      }}
+                                                      className="px-2 py-1 bg-error/10 text-error text-[9px] font-black rounded-lg uppercase hover:bg-error/20"
+                                                    >
+                                                      Repair
+                                                    </button>
+                                                  ) : isOffline ? (
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        sendRiderNudge(
+                                                          rider.rider_id!,
+                                                          "Urgent order available - Tip boost active!",
+                                                        );
+                                                      }}
+                                                      className="flex items-center gap-1 px-2 py-1 bg-amber-500 text-white text-[9px] font-black rounded-lg uppercase hover:scale-105 transition-transform"
+                                                    >
+                                                      <Zap size={10} />
+                                                      Wake to Tip
+                                                    </button>
+                                                  ) : (
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onRequestRider(
+                                                          order.id,
+                                                          rider.rider_id!,
+                                                        );
+                                                        setShowRiderPicker(
+                                                          null,
+                                                        );
+                                                      }}
+                                                      className="p-2 text-primary hover:bg-primary/20 rounded-lg transition-all"
+                                                    >
+                                                      <ArrowRight size={14} />
+                                                    </button>
+                                                  )}
                                                 </div>
                                               </div>
-                                              <ArrowRight
-                                                size={14}
-                                                className="text-primary opacity-0 group-hover:opacity-100 transition-all"
-                                              />
-                                            </button>
-                                          ))}
+                                            );
+                                          })}
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
@@ -6361,19 +6894,56 @@ const OrdersManagement = ({
                                   </button>
                                 )}
                               {order.status === "accepted" && (
-                                <button
-                                  onClick={() =>
-                                    onUpdateStatus(order.id, "preparing")
-                                  }
-                                  className={cn(
-                                    "w-full bg-primary text-white font-bold rounded-full shadow-md hover:bg-primary-container transition-colors mb-2",
-                                    kitchenMode
-                                      ? "py-5 text-lg"
-                                      : "py-3 text-sm",
-                                  )}
-                                >
-                                  Start Preparing
-                                </button>
+                                preparingOrderId === order.id ? (
+                                  <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="space-y-2 mb-2 p-3 bg-primary/5 rounded-xl border border-primary/10"
+                                  >
+                                    <div className="flex flex-col gap-1">
+                                      <label className="text-[10px] font-bold text-on-surface-variant uppercase ml-1">
+                                        Update Est. Delivery Time
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={estimatedTime}
+                                        onChange={(e) => setEstimatedTime(e.target.value)}
+                                        className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none"
+                                        placeholder="e.g. 25 mins"
+                                        autoFocus
+                                      />
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() => {
+                                          onUpdateStatus(order.id, "preparing", undefined, estimatedTime);
+                                          setPreparingOrderId(null);
+                                        }}
+                                        className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-lg"
+                                      >
+                                        Set Time & Start
+                                      </button>
+                                      <button
+                                        onClick={() => setPreparingOrderId(null)}
+                                        className="px-4 py-2 bg-surface-container-high text-on-surface-variant text-xs font-bold rounded-lg"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </motion.div>
+                                ) : (
+                                  <button
+                                    onClick={() => setPreparingOrderId(order.id)}
+                                    className={cn(
+                                      "w-full bg-primary text-white font-bold rounded-full shadow-md hover:bg-primary-container transition-colors mb-2",
+                                      kitchenMode
+                                        ? "py-5 text-lg"
+                                        : "py-3 text-sm",
+                                    )}
+                                  >
+                                    Start Preparing
+                                  </button>
+                                )
                               )}
                               {readyOrderId === order.id ? (
                                 <motion.div
@@ -6448,6 +7018,26 @@ const OrdersManagement = ({
                             </button>
                           )}
                           <div className="flex gap-2">
+                            {order.rider_id && order.status !== "completed" && (
+                              <button
+                                onClick={() => {
+                                  const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
+                                  sendRiderNudge(
+                                    order.rider_id!,
+                                    nudgeMessage
+                                  );
+                                  toast.success("Rider nudged successfully!");
+                                }}
+                                className={cn(
+                                  "bg-amber-100 text-amber-700 rounded-full hover:bg-amber-200 transition-all font-bold flex flex-1 items-center justify-center gap-2",
+                                  kitchenMode ? "p-5 text-lg" : "p-3 text-sm"
+                                )}
+                                title="Nudge Rider"
+                              >
+                                <Zap size={kitchenMode ? 24 : 18} />
+                                {kitchenMode ? "Nudge Rider" : (order.delivery_status === 'picked_up' ? "Ping Rider" : "Nudge")}
+                              </button>
+                            )}
                             <button
                               onClick={() =>
                                 setChatOrderId(
@@ -8778,11 +9368,13 @@ const RiderManagement = ({
   currentShop,
   orders,
   onRequestRider,
+  sendRiderNudge,
   user,
 }: {
   currentShop: Shop;
   orders: Order[];
   onRequestRider: (id: string, riderId?: string) => void;
+  sendRiderNudge: (riderId: string, message: string) => Promise<void>;
   user: User | null;
 }) => {
   const [connections, setConnections] = useState<RiderConnection[]>([]);
@@ -8820,13 +9412,33 @@ const RiderManagement = ({
     setLoading(true);
     const { data, error } = await supabase
       .from("rider_connections")
-      .select("*")
+      .select(`
+        *,
+        rider_profiles:rider_id (
+          is_online,
+          full_name,
+          status,
+          vehicle_type,
+          rating
+        )
+      `)
       .eq("shop_id", currentShop.id)
-      .gt("expires_at", new Date().toISOString())
       .order("created_at", { ascending: false });
 
     if (!error && data) {
-      setConnections(data as RiderConnection[]);
+      const processed = (data as (RiderConnection & { rider_profiles: RiderProfile | null })[]).map((item) => {
+        const conn = item as RiderConnection;
+        const profile = item.rider_profiles;
+        return {
+          ...conn,
+          is_online: profile?.is_online || false,
+          rider_name: profile?.full_name || conn.rider_name,
+          status: profile?.status || (new Date(conn.expires_at) < new Date() ? "expired" : conn.status),
+          vehicle_type: profile?.vehicle_type || "Road",
+          rating: profile?.rating || 5.0,
+        };
+      });
+      setConnections(processed);
     }
     setLoading(false);
   }, [currentShop.id]);
@@ -8887,7 +9499,7 @@ const RiderManagement = ({
       status: "accepted",
       delivery_status: "finding_rider",
       order_type: "delivery",
-      delivery_fee: 10,
+      delivery_fee: FLAT_DELIVERY_FEE,
       items: ["Debug Packet [ENC_V2]"],
       created_at: new Date().toISOString(),
     };
@@ -9120,44 +9732,107 @@ const RiderManagement = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {connections.map((conn) => {
               const expirationTime = new Date(conn.expires_at).getTime();
-              // eslint-disable-next-line react-hooks/purity
               const now = Date.now();
+              const isExpired = expirationTime < now;
               const hoursLeft = Math.max(
                 0,
                 Math.ceil((expirationTime - now) / (1000 * 60 * 60)),
               );
+
               return (
                 <div
                   key={conn.id}
-                  className="bg-surface-container-low rounded-3xl p-5 border border-outline-variant/10 flex items-center justify-between group transition-all hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5"
+                  className={cn(
+                    "bg-surface-container-low rounded-3xl p-5 border border-outline-variant/10 flex items-center justify-between group transition-all",
+                    isExpired
+                      ? "opacity-60 bg-error-container/5 border-error/10"
+                      : "hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5",
+                  )}
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-on-primary transition-all">
+                    <div
+                      className={cn(
+                        "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
+                        isExpired
+                          ? "bg-error/10 text-error"
+                          : "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-on-primary",
+                      )}
+                    >
                       <Bike size={24} />
                     </div>
                     <div>
-                      <p className="font-bold text-on-surface">
-                        {conn.rider_name || "Awaiting Rider..."}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-on-surface">
+                          {conn.rider_name || "Awaiting Rider..."}
+                        </p>
+                        {conn.rider_id && (
+                          <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 rounded-full text-amber-600 border border-amber-100">
+                             <Star size={10} className="fill-current" />
+                             <span className="text-[10px] font-bold">{conn.rating?.toFixed(1) || '5.0'}</span>
+                          </div>
+                        )}
+                        {!isExpired && conn.rider_id && (
+                          <div
+                            className={cn(
+                              "w-2 h-2 rounded-full",
+                              conn.is_online ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-zinc-300",
+                            )}
+                            title={conn.is_online ? "Online" : "Offline"}
+                          />
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] font-mono font-bold bg-on-surface/5 text-on-surface-variant px-1.5 py-0.5 rounded-lg uppercase tracking-tight">
-                          {conn.connection_code}
+                        <span className={cn(
+                          "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-lg uppercase tracking-tight",
+                          conn.is_online ? "bg-green-50 text-green-700" : "bg-on-surface/5 text-on-surface-variant"
+                        )}>
+                          {conn.is_online ? "Online" : conn.connection_code}
                         </span>
-                        <div
-                          className={cn(
-                            "flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter",
-                            hoursLeft < 2
-                              ? "bg-error/10 text-error animate-pulse"
-                              : "bg-primary/10 text-primary",
-                          )}
-                        >
-                          <Clock size={10} />
-                          {hoursLeft}H Left
-                        </div>
+                        {isExpired ? (
+                          <span className="text-[10px] font-black text-error uppercase tracking-tighter bg-error/10 px-2 py-0.5 rounded-full">
+                            EXPIRED
+                          </span>
+                        ) : (
+                          <div
+                            className={cn(
+                              "flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter",
+                              hoursLeft < 2
+                                ? "bg-error/10 text-error animate-pulse"
+                                : "bg-primary/10 text-primary",
+                            )}
+                          >
+                            <Clock size={10} />
+                            {hoursLeft}H Left
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                  <div className="flex items-center gap-2">
+                    {isExpired ? (
+                      <button
+                        onClick={generateCode}
+                        className="px-4 py-2 bg-error text-white text-[10px] font-black rounded-xl uppercase hover:scale-105 transition-transform shadow-lg shadow-error/20"
+                      >
+                        Re-pair
+                      </button>
+                    ) : (
+                      !conn.is_online &&
+                      conn.rider_id && (
+                        <button
+                          onClick={() => {
+                            sendRiderNudge(
+                              conn.rider_id!,
+                              "Dispatcher is nudging you to go online!",
+                            );
+                          }}
+                          className="flex items-center gap-1 px-3 py-2 bg-amber-500 text-white text-[10px] font-black rounded-xl uppercase hover:scale-105 transition-transform shadow-lg shadow-amber-500/20"
+                        >
+                          <Zap size={12} />
+                          Wake
+                        </button>
+                      )
+                    )}
                     <button
                       onClick={() => deleteConnection(conn.id)}
                       className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-xl transition-all"
@@ -9165,10 +9840,6 @@ const RiderManagement = ({
                     >
                       <Trash2 size={18} />
                     </button>
-                    <ChevronRight
-                      size={18}
-                      className="text-on-surface-variant/20"
-                    />
                   </div>
                 </div>
               );
@@ -9198,10 +9869,12 @@ const FoodPlaceholder = ({
 }) => (
   <div
     className={cn(
-      "w-full h-full flex flex-col items-center justify-center relative overflow-hidden",
+      "w-full h-full flex flex-col items-center justify-center relative overflow-hidden bg-cover bg-center",
       className,
     )}
-    style={{ background: "linear-gradient(135deg, #ff9d42 0%, #f58220 100%)" }}
+    style={{ 
+      backgroundImage: `linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.2)), url(${DEFAULT_MENU_IMAGE})` 
+    }}
   >
     {/* Glassmorphism accents */}
     <div
@@ -9230,10 +9903,16 @@ const FoodPlaceholder = ({
 );
 
 export default function App() {
-  const [role, setRole] = useState<"merchant" | "rider">(
+  const [role, setRole] = useState<"merchant" | "rider" | "customer">(
     () =>
-      (localStorage.getItem("user_role") as "merchant" | "rider") || "merchant",
+      (localStorage.getItem("user_role") as
+        | "merchant"
+        | "rider"
+        | "customer") || "merchant",
   );
+  const [cart, setCart] = useState<
+    { item: MenuItem; quantity: number; variant?: string }[]
+  >([]);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [showHelp, setShowHelp] = useState(false);
 
@@ -9242,9 +9921,15 @@ export default function App() {
   }, [role]);
 
   const handleSwitchRole = () => {
-    const newRole = role === "merchant" ? "rider" : "merchant";
+    let newRole: "merchant" | "rider" | "customer" = "merchant";
+    if (role === "merchant") newRole = "customer";
+    else if (role === "customer") newRole = "rider";
+    else newRole = "merchant";
+
     setRole(newRole);
-    setActiveTab(newRole === "merchant" ? "dashboard" : "feed");
+    if (newRole === "merchant") setActiveTab("dashboard");
+    else if (newRole === "customer") setActiveTab("explore");
+    else setActiveTab("feed");
     toast.success(`Switching to ${newRole.toUpperCase()} environment`);
   };
 
@@ -9792,6 +10477,8 @@ export default function App() {
           if (message) updated.acceptance_message = message;
           if (status === "preparing" && !o.accepted_at)
             updated.accepted_at = new Date().toISOString();
+          if (status === "completed" && !o.completed_at)
+            updated.completed_at = new Date().toISOString();
           if (estimatedTime) updated.estimated_delivery_time = estimatedTime;
 
           // Optimistic Rider Broadcast
@@ -9804,7 +10491,7 @@ export default function App() {
           ) {
             updated.delivery_status = "finding_rider";
             updated.order_type = "delivery";
-            updated.delivery_fee = 10;
+            updated.delivery_fee = FLAT_DELIVERY_FEE;
             updated.status = "accepted"; // Force 'accepted' for Rider App query compatibility
             updated.restaurant_name = o.restaurant_name || currentShop.name;
             updated.city = "Tembisa"; // Locked to Tembisa for rollout
@@ -9826,6 +10513,7 @@ export default function App() {
 
     const updateData: Partial<Order> = { status };
     if (message) updateData.acceptance_message = message;
+    if (estimatedTime) updateData.estimated_delivery_time = estimatedTime;
     if (status === "preparing" || status === "ready" || status === "accepted") {
       const order = orders.find((o) => o.id === id);
       if (order) {
@@ -9835,13 +10523,16 @@ export default function App() {
         ) {
           updateData.accepted_at = new Date().toISOString();
         }
+        if (status === "completed" && !order.completed_at) {
+          updateData.completed_at = new Date().toISOString();
+        }
         // Auto-broadcast to rider network if it's a delivery order and not already assigned/finding
         if (
           (order.order_type === "delivery" || !order.order_type) &&
           !order.delivery_status
         ) {
           updateData.delivery_status = "finding_rider";
-          updateData.delivery_fee = 10;
+          updateData.delivery_fee = FLAT_DELIVERY_FEE;
           updateData.order_type = "delivery";
           updateData.status = "accepted"; // Matches what works in Auto-Broadcast
           updateData.restaurant_name =
@@ -9982,6 +10673,26 @@ export default function App() {
     }
   };
 
+  const sendRiderNudge = async (riderId: string, message: string) => {
+    toast.info("Sending nudge to rider...", {
+      icon: <MessageSquare size={16} />,
+    });
+
+    const { error } = await supabase.rpc("nudge_rider", {
+      rider_id: riderId,
+      message,
+    });
+
+    if (error) {
+      console.error("Nudge error:", error);
+      toast.error(
+        "Failed to nudge rider. Connection issue.",
+      );
+    } else {
+      toast.success("Nudge sent via secure gateway!");
+    }
+  };
+
   const requestRider = async (id: string, targetRiderId?: string) => {
     const previousOrders = [...orders];
     setOrders((prev) =>
@@ -9991,7 +10702,7 @@ export default function App() {
               ...o,
               status: "accepted",
               delivery_status: "finding_rider",
-              delivery_fee: 10,
+              delivery_fee: FLAT_DELIVERY_FEE,
               rider_id: targetRiderId || o.rider_id,
               order_type: "delivery",
               restaurant_name: o.restaurant_name || currentShop.name,
@@ -10007,7 +10718,7 @@ export default function App() {
     const updateData: Record<string, unknown> = {
       status: "accepted",
       delivery_status: "finding_rider",
-      delivery_fee: 10,
+      delivery_fee: FLAT_DELIVERY_FEE,
       price: currentOrder?.price || currentOrder?.total_price || 0,
       total_price: currentOrder?.total_price || currentOrder?.price || 0,
       restaurant_name: currentOrder?.restaurant_name || currentShop.name,
@@ -10088,9 +10799,7 @@ export default function App() {
             </div>
             <div className="flex justify-between p-2 bg-black/30 rounded-lg">
               <span className="text-zinc-600">Key Status:</span>
-              <span
-                className={supabaseAnonKey ? "text-green-500" : "text-red-500"}
-              >
+              <span className={supabaseAnonKey ? "text-green-500" : "text-red-500"}>
                 {supabaseAnonKey ? "DETECTED" : "MISSING"}
               </span>
             </div>
@@ -10190,6 +10899,20 @@ export default function App() {
     return <LockedRiderMode onSwitchRole={handleSwitchRole} />;
   }
 
+  // BRANCH: Customer View
+  if (role === "customer") {
+    return (
+      <CustomerView
+        shops={shops}
+        menuItems={menuItems}
+        cart={cart}
+        setCart={setCart}
+        onSwitchRole={handleSwitchRole}
+        user={user}
+      />
+    );
+  }
+
   const pendingOrdersCount = orders.filter(
     (o) => o.status === "pending",
   ).length;
@@ -10218,23 +10941,23 @@ export default function App() {
         darkMode && "dark",
       )}
     >
-      <Toaster
-        position="top-center"
-        richColors
-        theme={darkMode ? "dark" : "light"}
-      />
+        <Toaster
+          position="top-center"
+          richColors
+          theme={darkMode ? "dark" : "light"}
+        />
 
-      {isOffline && (
-        <div className="fixed top-0 left-0 right-0 z-[100] bg-error text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2">
-          <PauseCircle size={14} />
-          YOU ARE OFFLINE. Changes will be saved locally and synced when you
-          reconnect.
-        </div>
-      )}
+        {isOffline && (
+          <div className="fixed top-0 left-0 right-0 z-[100] bg-error text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2">
+            <PauseCircle size={14} />
+            YOU ARE OFFLINE. Changes will be saved locally and synced when you
+            reconnect.
+          </div>
+        )}
 
-      {/* TopAppBar */}
-      {!kitchenMode && (
-        <header className="fixed top-0 w-full z-50 bg-white/70 dark:bg-surface-container-lowest/70 backdrop-blur-xl shadow-sm shadow-orange-900/5">
+        {/* TopAppBar */}
+        {!kitchenMode && (
+          <header className="fixed top-0 w-full z-50 bg-white/70 dark:bg-surface-container-lowest/70 backdrop-blur-xl shadow-sm shadow-orange-900/5">
           <div className="flex justify-between items-center px-4 md:px-6 h-16 max-w-7xl mx-auto">
             <div className="flex items-center gap-2 md:gap-3 shrink-0">
               <LocalEatsLogo width={160} height={42} />
@@ -10431,6 +11154,9 @@ export default function App() {
                 setSoundAlerts={setSoundAlerts}
                 onRequestRider={requestRider}
                 onUnassignRider={unassignRider}
+                onTabChange={setActiveTab}
+                sendRiderNudge={sendRiderNudge}
+                currentShop={currentShop}
               />
             )}
             {activeTab === "marketing" && (
@@ -10452,6 +11178,7 @@ export default function App() {
                 currentShop={currentShop}
                 orders={orders}
                 onRequestRider={requestRider}
+                sendRiderNudge={sendRiderNudge}
                 user={user}
               />
             )}
@@ -10964,61 +11691,627 @@ export default function App() {
   );
 }
 
-// --- Rider Role Gate ---
+// --- Customer Experience Components ---
 
-const LockedRiderMode = ({ onSwitchRole }: { onSwitchRole: () => void }) => {
+const CustomerView = ({
+  menuItems,
+  cart,
+  setCart,
+  onSwitchRole,
+  user,
+}: {
+  shops: Shop[];
+  menuItems: MenuItem[];
+  cart: { item: MenuItem; quantity: number }[];
+  setCart: React.Dispatch<
+    React.SetStateAction<{ item: MenuItem; quantity: number }[]>
+  >;
+  onSwitchRole: () => void;
+  user: User | null;
+}) => {
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const addToCart = (item: MenuItem) => {
+    setCart((prev) => {
+      const existing = prev.find((i) => i.item.id === item.id);
+      if (existing) {
+        return prev.map((i) =>
+          i.item.id === item.id ? { ...i, quantity: i.quantity + 1 } : i,
+        );
+      }
+      return [...prev, { item, quantity: 1 }];
+    });
+    toast.success(`${item.name} added to cart!`);
+  };
+
+  const subtotal = cart.reduce(
+    (acc, curr) => acc + curr.item.price * curr.quantity,
+    0,
+  );
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center p-8 text-center bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-black overflow-hidden relative">
-      {/* Decorative Elements */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-20">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/20 blur-[120px] rounded-full animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-amber-500/10 blur-[120px] rounded-full" />
-      </div>
+    <div className="min-h-screen bg-surface font-body text-on-surface pb-32">
+      <header className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-xl border-b border-outline-variant/10">
+        <div className="flex justify-between items-center px-6 h-16 max-w-7xl mx-auto w-full">
+          <div className="flex items-center gap-2">
+            <LocalEatsLogo width={120} height={32} />
+            <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">
+              Beta
+            </span>
+          </div>
 
-      <div className="relative z-10 max-w-md w-full">
-        <div className="w-24 h-24 bg-blue-500/10 rounded-[2.5rem] flex items-center justify-center mb-8 mx-auto border border-blue-500/20 shadow-2xl shadow-blue-500/10 relative group">
-          <motion.div
-            animate={{ rotate: [0, -10, 10, 0] }}
-            transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
-          >
-            <Bike size={48} className="text-blue-500" />
-          </motion.div>
-          <div className="absolute -top-2 -right-2 bg-zinc-950 p-1.5 rounded-full border border-zinc-800 shadow-xl">
-            <Lock size={16} className="text-zinc-500" />
+          <div className="flex items-center gap-4">
+            <button
+              onClick={onSwitchRole}
+              className="text-xs font-bold text-on-surface-variant hover:text-primary transition-colors"
+            >
+              Merchant Mode
+            </button>
+            <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center">
+              <UserIcon size={20} className="text-on-surface-variant" />
+            </div>
           </div>
         </div>
+      </header>
 
-        <h1 className="text-3xl font-black text-white mb-4 tracking-tight uppercase tracking-widest font-headline">
-          Dedicated Uplink Active
-        </h1>
+      <main className="pt-24 px-6 max-w-7xl mx-auto">
+        <section className="mb-10">
+          <h1 className="text-3xl font-headline font-black tracking-tight mb-2">
+            Hungry?
+          </h1>
+          <p className="text-on-surface-variant mb-6">
+            R5 Flat-Rate Delivery on all orders.
+          </p>
 
-        <p className="text-zinc-400 mb-10 font-medium leading-relaxed font-body">
-          Rider Mode is now locked on the Merchant Dashboard. Please use our
-          dedicated Rider Platform for missions and deliveries.
-        </p>
+          <div className="relative group">
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
+              size={20}
+            />
+            <input
+              type="text"
+              placeholder="Search for kotas, burgers, or shops..."
+              className="w-full h-14 bg-surface-container-low border-none rounded-2xl pl-12 pr-4 focus:ring-2 focus:ring-primary/40 transition-all outline-none text-base"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </section>
 
-        <div className="space-y-4 w-full">
-          <a
-            href="https://rider.localeatssa.co.za/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full flex items-center justify-center gap-3 py-6 bg-blue-600 text-white font-black rounded-3xl border border-blue-500/20 uppercase tracking-[0.2em] text-xs hover:bg-blue-500 transition-all shadow-xl shadow-blue-600/20 hover:scale-[1.02] active:scale-[0.98]"
+        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {menuItems
+            .filter((item) =>
+              item.name.toLowerCase().includes(searchQuery.toLowerCase()),
+            )
+            .map((item) => (
+              <motion.div
+                key={item.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-surface-container-lowest rounded-[2rem] overflow-hidden border border-outline-variant/10 shadow-sm hover:shadow-xl transition-all group"
+              >
+                <div className="h-48 relative overflow-hidden bg-surface-container">
+                  <img
+                    src={item.image_url || DEFAULT_MENU_IMAGE}
+                    alt={item.name}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                  />
+                  {isPlaceholderImage(item.image_url) && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none">
+                      <UtensilsCrossed size={48} className="text-white/30" />
+                    </div>
+                  )}
+                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm">
+                    <span className="text-sm font-black text-primary">
+                      R {item.price.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-6 space-y-4">
+                  <div>
+                    <h3 className="text-xl font-bold mb-1">{item.name}</h3>
+                    <p className="text-xs text-on-surface-variant line-clamp-2">
+                      {item.description || "Fresh and hot from the kitchen."}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => addToCart(item)}
+                    className="w-full h-12 bg-surface-container-low hover:bg-primary hover:text-white transition-all rounded-xl font-bold flex items-center justify-center gap-2 group"
+                  >
+                    <Plus size={18} />
+                    <span>Add to Order</span>
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+        </section>
+      </main>
+
+      <AnimatePresence>
+        {cart.length > 0 && !showCheckout && (
+          <motion.div
+            initial={{ y: 100 }}
+            animate={{ y: 0 }}
+            exit={{ y: 100 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] w-[calc(100%-48px)] max-w-lg"
           >
-            <span>Launch Rider App</span>
-            <ExternalLink size={16} />
-          </a>
+            <button
+              onClick={() => setShowCheckout(true)}
+              className="w-full h-16 bg-primary text-on-primary rounded-full shadow-2xl flex items-center justify-between px-8 hover:scale-[1.02] active:scale-[0.98] transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <div className="bg-on-primary/20 w-8 h-8 rounded-full flex items-center justify-center text-xs font-black">
+                  {cart.length}
+                </div>
+                <span className="font-bold">View Order</span>
+              </div>
+              <span className="font-black text-xl">R {subtotal.toFixed(2)}</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
+      <AnimatePresence>
+        {showCheckout && (
+          <CustomerCheckout
+            cart={cart}
+            subtotal={subtotal}
+            onClose={() => setShowCheckout(false)}
+            user={user}
+            onOrderPlaced={() => {
+              setCart([]);
+              setShowCheckout(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const CustomerCheckout = ({
+  cart,
+  subtotal,
+  onClose,
+  user,
+  onOrderPlaced,
+}: {
+  cart: { item: MenuItem; quantity: number }[];
+  subtotal: number;
+  onClose: () => void;
+  user: User | null;
+  onOrderPlaced: () => void;
+}) => {
+  const [loading, setLoading] = useState(false);
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("Tembisa");
+  const [phone, setPhone] = useState(user?.user_metadata?.phone || "");
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
+    null,
+  );
+  const [shopCoords, setShopCoords] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+
+  const total = subtotal + FLAT_DELIVERY_FEE;
+
+  useEffect(() => {
+    const fetchShopCoords = async () => {
+      if (!cart[0]) return;
+      const { data, error } = await supabase
+        .from("shops")
+        .select("lat, lng")
+        .eq("id", cart[0].item.shop_id)
+        .single();
+
+      if (data && !error) {
+        setShopCoords({ lat: data.lat || -25.9964, lng: data.lng || 28.2268 }); // Default Tembisa center if null
+      }
+    };
+    void fetchShopCoords();
+  }, [cart]);
+
+  const distance = useMemo(() => {
+    if (coords && shopCoords) {
+      return calculateDistance(
+        coords.lat,
+        coords.lng,
+        shopCoords.lat,
+        shopCoords.lng,
+      );
+    }
+    return null;
+  }, [coords, shopCoords]);
+
+  const handlePlaceOrder = async () => {
+    if (!user) {
+      toast.error("Please sign in to place an order");
+      return;
+    }
+
+    if (!address || !coords) {
+      toast.error("Please select a valid delivery address");
+      return;
+    }
+
+    const cleanedPhone = phone.replace(/[\s-]/g, "");
+    if (!/^(?:\+27|0)[0-9]{9}$/.test(cleanedPhone)) {
+      toast.error("Please enter a valid South African phone number (e.g., +27 82 123 4567 or 082 123 4567).");
+      return;
+    }
+
+    if (distance && distance > 10) {
+      toast.error("Delivery distance exceeded", {
+        description: "Your location is too far for the R5 Flat Rate fee.",
+      });
+      return;
+    }
+
+    setLoading(true);
+    const orderData = {
+      user_id: user.id,
+      shop_id: cart[0].item.shop_id,
+      customer_name: user.email?.split("@")[0] || "Guest",
+      product_name:
+        cart.length === 1 ? cart[0].item.name : `${cart.length} items`,
+      items: cart.map((i) => ({
+        name: i.item.name,
+        price: i.item.price,
+        quantity: i.quantity,
+      })),
+      total_price: total,
+      price: total,
+      delivery_fee: FLAT_DELIVERY_FEE,
+      status: "pending",
+      order_type: "delivery",
+      created_at: new Date().toISOString(),
+      address: address,
+      phone: phone,
+      city: city,
+      lat: coords.lat,
+      lng: coords.lng,
+    };
+
+    const { error } = await supabase.from("orders").insert(orderData);
+
+    if (error) {
+      toast.error("Order failed: " + error.message);
+    } else {
+      toast.success("Order placed successfully!", {
+        description: "Your R5.00 delivery mission has been broadcasted.",
+      });
+      onOrderPlaced();
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+      />
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        className="relative w-full max-w-xl bg-surface-container-lowest rounded-t-[32px] md:rounded-[32px] shadow-2xl overflow-hidden border border-outline-variant/10"
+      >
+        <div className="p-8 space-y-8 max-h-[90vh] overflow-y-auto scrollbar-hide">
+          <header className="flex justify-between items-center">
+            <h2 className="text-2xl font-headline font-black tracking-tight">
+              Checkout
+            </h2>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-surface-container rounded-full"
+            >
+              <X size={24} />
+            </button>
+          </header>
+
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-widest text-primary">
+                Delivery Details
+              </h3>
+              <AddressAutocomplete
+                value={address}
+                onChange={setAddress}
+                placeholder="Type your street address in Tembisa..."
+                onSelect={(formatted, cityName, lat, lng) => {
+                  setAddress(formatted);
+                  setCity(cityName);
+                  setCoords({ lat, lng });
+                }}
+              />
+
+              {coords && (
+                <div className="w-full h-40 rounded-2xl overflow-hidden border border-outline-variant/10 shadow-inner z-0">
+                  <LeafletMap
+                    center={coords}
+                    zoom={15}
+                    onLocationSelect={(lat, lng) => {
+                      setCoords({ lat, lng });
+                      // Reverse geocode when pin moves
+                      fetch(
+                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+                      )
+                        .then((r) => r.json())
+                        .then((data) => {
+                          if (data && data.display_name) {
+                            setAddress(data.display_name);
+                          }
+                        });
+                    }}
+                  />
+                </div>
+              )}
+
+              <div className="relative">
+                <Phone
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
+                  size={18}
+                />
+                <input
+                  type="tel"
+                  placeholder="Contact number for Rider"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full h-14 bg-surface-container-low border border-outline-variant/10 rounded-2xl pl-12 pr-4 focus:ring-2 focus:ring-primary/40 transition-all outline-none text-base"
+                />
+              </div>
+
+              {distance !== null && (
+                <div
+                  className={cn(
+                    "p-4 rounded-2xl flex items-center justify-between border",
+                    distance > 10
+                      ? "bg-error/5 border-error/20 text-error"
+                      : "bg-green-500/5 border-green-500/20 text-green-600",
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <Bike size={18} />
+                    <span className="text-xs font-bold uppercase tracking-widest">
+                      Distance to Store
+                    </span>
+                  </div>
+                  <span className="font-black">
+                    {distance.toFixed(1)} km
+                    {distance > 10 && " (Too Far)"}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-xs font-black uppercase tracking-widest text-on-surface-variant">
+                Order Items
+              </h3>
+              <div className="space-y-2">
+                {cart.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between p-3 rounded-2xl bg-surface-container-low/50 border border-outline-variant/5"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-surface-container overflow-hidden">
+                        <img
+                          src={item.item.image_url || DEFAULT_MENU_IMAGE}
+                          alt={item.item.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <span className="text-sm font-bold">
+                        {item.quantity}x {item.item.name}
+                      </span>
+                    </div>
+                    <span className="font-black text-sm">
+                      R {(item.item.price * item.quantity).toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4 border-t border-outline-variant/20 pt-8">
+              <div className="flex justify-between items-center text-on-surface-variant font-medium">
+                <span>Subtotal</span>
+                <span>R {subtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center text-primary font-bold">
+                <div className="flex items-center gap-2">
+                  <span>Delivery Fee</span>
+                  <span className="text-[10px] bg-primary/10 px-2 py-0.5 rounded-full uppercase tracking-widest flex items-center gap-1">
+                    <Sparkles size={10} /> Deal
+                  </span>
+                </div>
+                <span>R {FLAT_DELIVERY_FEE.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center text-2xl font-black pt-4 border-t border-outline-variant/10">
+                <span>Total</span>
+                <span className="text-primary">R {total.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={handlePlaceOrder}
+              disabled={loading || (distance !== null && distance > 10)}
+              className="w-full h-16 bg-primary text-on-primary font-black rounded-2xl shadow-xl shadow-primary/20 hover:scale-[0.99] active:scale-95 transition-all text-lg disabled:opacity-50"
+            >
+              {loading ? "Processing..." : "Confirm & Pay"}
+            </button>
+
+            <p className="text-[10px] text-center text-on-surface-variant/60 font-medium italic">
+              * LocalEats R5 delivery valid within a 10km radius of the
+              merchant.
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+const LockedRiderMode = ({ onSwitchRole }: { onSwitchRole: () => void }) => {
+  const [riderProfile, setRiderProfile] = useState<RiderProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchRiderProfileData = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("rider_profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error fetching rider profile:", error);
+      } else if (data) {
+        setRiderProfile(data as RiderProfile);
+      } else {
+        // Create profile if not exists
+        const { data: newProfile, error: createError } = await supabase
+          .from("rider_profiles")
+          .insert({ id: user.id, is_online: false, status: "offline" })
+          .select()
+          .single();
+        if (!createError) setRiderProfile(newProfile as RiderProfile);
+      }
+      setLoading(false);
+    };
+    void fetchRiderProfileData();
+  }, []);
+
+  const toggleOnline = async () => {
+    if (!riderProfile) return;
+    const newStatus = !riderProfile.is_online;
+    
+    // Optimistic update
+    setRiderProfile((prev) => prev ? ({ ...prev, is_online: newStatus }) : null);
+
+    const { error } = await supabase
+      .from("rider_profiles")
+      .update({ is_online: newStatus, status: newStatus ? "online" : "offline" })
+      .eq("id", riderProfile.id);
+
+    if (error) {
+      toast.error("Failed to update status");
+      setRiderProfile((prev) => prev ? ({ ...prev, is_online: !newStatus }) : null);
+    } else {
+      toast.success(newStatus ? "You are now ONLINE" : "You are now OFFLINE");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-white">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col p-6 font-body">
+      {/* Header */}
+      <header className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight text-white uppercase font-headline">
+            Rider HUD
+          </h1>
+          <div className="flex items-center gap-2">
+            <div
+              className={cn(
+                "w-2 h-2 rounded-full",
+                riderProfile?.is_online ? "bg-green-500 animate-pulse" : "bg-zinc-600",
+              )}
+            />
+            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+              {riderProfile?.is_online ? "Ready for Missions" : "Off Duty"}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
           <button
             onClick={onSwitchRole}
-            className="w-full py-6 bg-zinc-900 text-zinc-400 font-black rounded-3xl border border-zinc-800 hover:border-zinc-700 uppercase tracking-[0.2em] text-xs hover:bg-zinc-800 transition-all"
+            className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition-colors"
           >
-            Back to Merchant HUD
+            <Store size={20} />
           </button>
+          <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center font-bold">
+            {riderProfile?.name?.[0] || <UserIcon size={20} />}
+          </div>
         </div>
+      </header>
 
-        <div className="mt-12 pt-8 border-t border-zinc-900/50">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-600">
-            Protocol v4.2.0 Locked
+      {/* Main Status Card */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 mb-8 relative overflow-hidden">
+        <div className="relative z-10 space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-black uppercase tracking-widest text-zinc-400">
+              Shift Status
+            </h2>
+            <button
+              onClick={toggleOnline}
+              className={cn(
+                "px-6 py-2 rounded-full font-black text-xs transition-all uppercase tracking-widest border-2 cursor-pointer",
+                riderProfile?.is_online
+                  ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
+                  : "bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-700",
+              )}
+            >
+              {riderProfile?.is_online ? "Go Offline" : "Go Online"}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50">
+              <span className="text-[10px] font-bold text-zinc-600 uppercase block mb-1">
+                Earning (Session)
+              </span>
+              <p className="text-xl font-black text-white">R 0.00</p>
+            </div>
+            <div className="bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50">
+              <span className="text-[10px] font-bold text-zinc-600 uppercase block mb-1">
+                Completed
+              </span>
+              <p className="text-xl font-black text-white">0</p>
+            </div>
+          </div>
+        </div>
+        {/* Decor */}
+        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 blur-[80px] rounded-full -mr-16 -mt-16" />
+      </div>
+
+      {/* Local Orders Feed Hook */}
+      <div className="space-y-4">
+        <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1">
+          Peripheral Missions
+        </h3>
+        <div className="bg-zinc-900/30 border-2 border-dashed border-zinc-800 rounded-3xl p-12 text-center text-zinc-500 italic text-sm">
+          Searching for nearby broadcast signals...
+        </div>
+      </div>
+
+      {/* Footer Instructions */}
+      <div className="mt-auto pt-8 border-t border-zinc-900">
+        <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-500">
+            <Info size={20} />
+          </div>
+          <p className="text-[10px] text-blue-400 font-medium leading-relaxed">
+            PRO TIP: Stay online in Tembisa Sector 4 to receive High-Priority
+            R5.00 missions from LocalEats Merchants.
           </p>
         </div>
       </div>
