@@ -19,6 +19,7 @@ export interface RiderProfile {
   full_name: string;
   phone: string;
   is_online: boolean;
+  status?: 'online' | 'offline' | 'paused' | 'busy';
   vehicle_type: UserVehicle;
   verification_status: 'verified' | 'pending' | 'rejected';
   rating: number;
@@ -38,6 +39,8 @@ export interface DeliveryOrder {
   shop_id: string | number;
   address: string;
   city: string;
+  latitude?: number;
+  longitude?: number;
   total_price: number;
   delivery_fee: number;
   delivery_status: DeliveryStatus;

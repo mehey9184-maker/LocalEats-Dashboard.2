@@ -4,6 +4,7 @@ import 'leaflet-routing-machine';
 import 'leaflet/dist/leaflet.css';
 import { Navigation } from 'lucide-react';
 import { DeliveryOrder } from '../types';
+import { toast } from 'sonner';
 
 // Fix for default marker icons in Leaflet
 // @ts-expect-error - Leaflet icon internals
@@ -51,6 +52,7 @@ export default function AppMapBackground({ riderCoords, missions, activeMission 
         mapInstanceRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Update center smoothly on riderCoords change if not active
@@ -123,6 +125,7 @@ export default function AppMapBackground({ riderCoords, missions, activeMission 
       
       control.on('routingerror', (e: LeafletEvent & { error?: { message: string } }) => {
         console.warn("Routing Engine Error:", e.error?.message || "Failed to fetch route");
+        toast.error("Live route unavailable. Using direct path.", { id: 'osrm-fallback' });
         const fallbackLine = L.polyline([
           riderCoords,
           [Number(activeMission.latitude), Number(activeMission.longitude)]

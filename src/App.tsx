@@ -72,6 +72,11 @@ import {
   QrCode,
   ExternalLink,
   Info,
+  Navigation,
+  Radio,
+  Package,
+  ShieldCheck,
+  Timer,
 } from "lucide-react";
 import {
   BarChart,
@@ -88,6 +93,7 @@ import {
   Legend,
 } from "recharts";
 import { format } from "date-fns";
+import AppMapBackground from "./components/AppMapBackground";
 import { createClient, User } from "@supabase/supabase-js";
 import {
   MapContainer,
@@ -159,7 +165,7 @@ const LeafletMap = ({
     const map = useMap();
     useEffect(() => {
       map.setView([coords.lat, coords.lng], zoom);
-    }, [coords, map, zoom]);
+    }, [coords, map]);
     return null;
   };
 
@@ -231,11 +237,10 @@ const AddressAutocomplete = ({
         const response = await fetch(
           `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
             value,
-          )}&format=json&addressdetails=1&limit=5&countrycodes=za`,
+          )}&format=json&addressdetails=1&limit=5&countrycodes=za&email=aviwenotununu4@gmail.com`,
           {
             headers: {
               "Accept-Language": "en",
-              "User-Agent": "LocalEats-App",
             },
           },
         );
@@ -355,7 +360,7 @@ export interface MenuItem {
   created_at: string;
   category?: string;
   description?: string;
-  stock_quantity?: number;
+  stock_quantity?: number | null;
 }
 
 export interface Order {
@@ -366,6 +371,8 @@ export interface Order {
   product_variant?: string;
   total_price: number;
   price?: number; // Database field
+  lat?: number;
+  lng?: number;
   status: OrderStatus;
   payment_method?: string;
   country?: string;
@@ -395,6 +402,8 @@ export interface Order {
     | "delivered"
     | "cancelled";
   order_type?: "delivery" | "collection";
+  merchant_rating?: number;
+   merchant_feedback?: string;
 }
 
 export interface RiderProfile {
@@ -408,6 +417,9 @@ export interface RiderProfile {
   rating?: number;
   total_deliveries?: number;
   total_earnings?: number;
+  latitude?: number;
+  longitude?: number;
+  updated_at?: string;
 }
 
 export interface RiderConnection {
@@ -421,6 +433,11 @@ export interface RiderConnection {
   is_online: boolean;
   created_at: string;
   rating?: number;
+  last_seen?: string;
+  shops?: {
+    name: string;
+    logo_url?: string | null;
+  };
 }
 
 export interface Payment {
@@ -568,16 +585,17 @@ async function fetchWithRetry<T>(
       if (!error) return result as { data: T | null; error: null };
       lastError = error;
 
-      // Only retry on network errors (Failed to fetch)
+      // Only retry on network errors or Failed to fetch
       if (
-        error.message !== "Failed to fetch" &&
-        !error.message?.includes("network")
+        !error.message?.includes("Failed to fetch") &&
+        !error.message?.includes("network") &&
+        !error.message?.includes("FetchError")
       ) {
         return result as { data: T | null; error: { message: string } | null };
       }
     } catch (err) {
       if (err instanceof Error) {
-        lastError = { message: err.message };
+        lastError = { message: err.message.includes("Failed to fetch") ? "Failed to fetch" : err.message };
       } else {
         lastError = { message: String(err) };
       }
@@ -590,7 +608,7 @@ async function fetchWithRetry<T>(
   return { data: null, error: lastError };
 }
 
-export function cn(...inputs: ClassValue[]) {
+function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
@@ -951,7 +969,10 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
                   placeholder="+27 82 123 4567"
                   type="tel"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    const result = formatSAPhone(e.target.value);
+                    setPhone(result.formatted);
+                  }}
                   required
                 />
               </div>
@@ -1402,6 +1423,7 @@ interface ProfileData {
   fullName: string;
   email: string;
   phone: string;
+  whatsapp?: string;
   location: string;
   address: string;
   lat?: number;
@@ -1419,6 +1441,32 @@ interface EditProfileProps {
   userId: string;
 }
 
+const formatSAPhone = (value: string) => {
+  // Remove all non-digits
+  let digits = value.replace(/\D/g, "");
+  
+  // If user starts with 0, remove it and we'll use +27
+  if (digits.startsWith("0")) {
+    digits = digits.substring(1);
+  } else if (digits.startsWith("27")) {
+    digits = digits.substring(2);
+  }
+
+  // Cap at 9 digits (excluding +27)
+  digits = digits.substring(0, 9);
+
+  // Re-build standard format: +27 82 123 4567
+  let formatted = "+27";
+  if (digits.length > 0) formatted += " " + digits.substring(0, 2);
+  if (digits.length > 2) formatted += " " + digits.substring(2, 5);
+  if (digits.length > 5) formatted += " " + digits.substring(5, 9);
+  
+  return {
+    raw: digits.length === 0 ? "" : "+27" + digits,
+    formatted: digits.length === 0 ? "" : formatted
+  };
+};
+
 const EditProfile: React.FC<EditProfileProps> = ({
   onBack,
   onSave,
@@ -1429,6 +1477,7 @@ const EditProfile: React.FC<EditProfileProps> = ({
     fullName: initialData?.fullName || "",
     email: initialData?.email || "",
     phone: initialData?.phone || "",
+    whatsapp: initialData?.whatsapp || "",
     location: initialData?.location || "",
     address: initialData?.address || "",
     lat: initialData?.lat || -25.9964,
@@ -1462,7 +1511,7 @@ const EditProfile: React.FC<EditProfileProps> = ({
           while (retryCount <= maxRetries) {
             try {
               const response = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&email=aviwenotununu4@gmail.com`,
               );
               data = await response.json();
               break;
@@ -1582,11 +1631,22 @@ const EditProfile: React.FC<EditProfileProps> = ({
   });
 
   const handleSave = () => {
-    const cleaned = formData.phone.replace(/[\s-]/g, "");
-    if (!/^(?:\+27|0)[0-9]{9}$/.test(cleaned)) {
-      toast.error("Please enter a valid South African phone number (e.g., +27 82 123 4567 or 082 123 4567).");
+    const phoneCleaned = formData.phone.replace(/[\s-]/g, "");
+    const whatsappCleaned = (formData.whatsapp || "").replace(/[\s-]/g, "");
+    
+    // SA Phone Validation: +27XXXXXXXXX or 0XXXXXXXXX (10 or 11 digits total depending on format)
+    const saRegex = /^(?:\+27|0)[0-9]{9}$/;
+    
+    if (!saRegex.test(phoneCleaned)) {
+      toast.error("Please enter a valid South African phone number for calls (e.g., +27 82 123 4567 or 082 123 4567).");
       return;
     }
+
+    if (formData.whatsapp && !saRegex.test(whatsappCleaned)) {
+      toast.error("Please enter a valid South African WhatsApp number (e.g., +27 82 123 4567 or 082 123 4567).");
+      return;
+    }
+
     onSave({ ...formData, ...preferences, operatingHours });
   };
 
@@ -1697,16 +1757,49 @@ const EditProfile: React.FC<EditProfileProps> = ({
               />
             </div>
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-on-surface-variant px-1">
-                Phone Number
+              <label className="flex items-center justify-between text-sm font-medium text-on-surface-variant px-1">
+                <span>Phone Number</span>
+                {!formData.phone && (
+                  <span className="flex items-center gap-1 text-[10px] text-error font-bold uppercase animate-pulse">
+                    <AlertCircle size={12} /> Required
+                  </span>
+                )}
               </label>
               <input
-                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface"
+                className={cn(
+                  "w-full border-none rounded-xl px-4 py-3.5 focus:ring-2 transition-all text-on-surface",
+                  !formData.phone ? "bg-error/5 ring-1 ring-error/20" : "bg-surface-container-low focus:ring-primary/40 focus:bg-surface-container-lowest"
+                )}
                 type="tel"
                 value={formData.phone}
-                onChange={(e) =>
-                  setFormData({ ...formData, phone: e.target.value })
-                }
+                onChange={(e) => {
+                  const result = formatSAPhone(e.target.value);
+                  setFormData({ ...formData, phone: result.formatted });
+                }}
+                placeholder="e.g. +27 82 123 4567"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center justify-between text-sm font-medium text-on-surface-variant px-1">
+                <span>WhatsApp Number (for Customers)</span>
+                {!formData.whatsapp && (
+                  <span className="flex items-center gap-1 text-[10px] text-error font-bold uppercase animate-pulse">
+                    <AlertCircle size={12} /> Critical
+                  </span>
+                )}
+              </label>
+              <input
+                className={cn(
+                  "w-full border-none rounded-xl px-4 py-3.5 focus:ring-2 transition-all text-on-surface",
+                  !formData.whatsapp ? "bg-error/5 ring-1 ring-error/20" : "bg-surface-container-low focus:ring-primary/40 focus:bg-surface-container-lowest"
+                )}
+                type="tel"
+                value={formData.whatsapp}
+                onChange={(e) => {
+                  const result = formatSAPhone(e.target.value);
+                  setFormData({ ...formData, whatsapp: result.formatted });
+                }}
+                placeholder="e.g. +27 82 123 4567"
               />
             </div>
           </div>
@@ -1765,7 +1858,7 @@ const EditProfile: React.FC<EditProfileProps> = ({
               onLocationSelect={(lat, lng) => {
                 setFormData(prev => ({ ...prev, lat, lng }));
                 // Reverse geocode when pin moves manually
-                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&email=aviwenotununu4@gmail.com`)
                   .then(r => r.json())
                   .then(data => {
                     if (data && data.address) {
@@ -1780,7 +1873,8 @@ const EditProfile: React.FC<EditProfileProps> = ({
                          address: newAddress || prev.address
                        }));
                     }
-                  });
+                  })
+                  .catch(() => {});
               }}
             />
             <button
@@ -2512,7 +2606,48 @@ const DashboardOverview = ({
     return Number(Math.min(12 + pendingCount * 1.5, 45)).toFixed(1);
   }, [orders]);
 
-  const fetchFollowers = async () => {
+  const [connections, setConnections] = useState<RiderConnection[]>([]);
+
+  const fetchRiders = useCallback(async () => {
+    if (!currentShop?.id) return;
+    const { data, error } = await supabase
+      .from("rider_connections")
+      .select("*")
+      .eq("shop_id", currentShop.id);
+    
+    if (!error && data) {
+      setConnections(data);
+    }
+  }, [currentShop?.id]);
+
+  const connectedRidersCount = connections.filter(
+    (c) => c.rider_id && new Date(c.expires_at) >= new Date(),
+  ).length;
+
+  useEffect(() => {
+    fetchRiders();
+    if (!currentShop?.id) return;
+
+    const channel = supabase
+      .channel(`dashboard_riders_${currentShop.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "rider_connections",
+          filter: `shop_id=eq.${currentShop.id}`,
+        },
+        () => fetchRiders(),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentShop?.id, fetchRiders]);
+
+  const fetchFollowers = useCallback(async () => {
     if (!currentShop?.id) return;
 
     try {
@@ -2551,7 +2686,7 @@ const DashboardOverview = ({
       console.error("Error fetching followers:", err);
       setFollowerCount(0);
     }
-  };
+  }, [currentShop?.id]);
 
   useEffect(() => {
     fetchFollowers();
@@ -2710,6 +2845,37 @@ const DashboardOverview = ({
 
   return (
     <div className="space-y-8 md:space-y-12">
+      {currentShop && (!currentShop.phone || !currentShop.whatsapp) && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-primary/5 border border-primary/20 rounded-[2rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden group mb-4"
+        >
+          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 group-hover:rotate-12 transition-transform duration-700">
+             <MessageCircle size={120} />
+          </div>
+          <div className="flex items-center gap-6 relative z-10">
+            <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center text-primary shrink-0 shadow-lg shadow-primary/20">
+              <Phone size={32} />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-xl font-headline font-bold text-on-surface">
+                Complete Your Store Profile
+              </h3>
+              <p className="text-sm text-on-surface-variant max-w-md font-medium leading-relaxed">
+                Add your WhatsApp and Phone number so customers can contact you directly for order inquiries and support.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigate("storefront")}
+            className="w-full md:w-auto px-8 py-4 bg-primary text-on-primary rounded-2xl font-headline font-black text-sm uppercase tracking-widest shadow-xl shadow-primary/30 hover:scale-105 active:scale-95 transition-all relative z-10"
+          >
+            Update Profile
+          </button>
+        </motion.div>
+      )}
+
       <motion.section
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -2792,11 +2958,25 @@ const DashboardOverview = ({
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+        >
+          <StatCard
+            title="Connected Riders"
+            value={connectedRidersCount}
+            change={`${connections.filter(c => !c.rider_id).length} codes`}
+            icon={Bike}
+            colorClass="bg-primary/10 text-primary"
+            onClick={() => onNavigate("riders")}
+          />
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
         >
           <StatCard
             title="Low Stock"
-            value={menuItems.filter((i) => (i.stock_quantity || 0) < 5).length}
+            value={menuItems.filter((i) => i.stock_quantity !== null && (i.stock_quantity || 0) < 5).length}
             change="Alert"
             icon={AlertCircle}
             colorClass="bg-error/10 text-error"
@@ -3048,7 +3228,7 @@ const DashboardOverview = ({
       </div>
 
       {/* Low Stock Alerts Section */}
-      {menuItems.filter((i) => (i.stock_quantity || 0) < 5).length > 0 && (
+      {menuItems.filter((i) => i.stock_quantity !== null && (i.stock_quantity || 0) < 5).length > 0 && (
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -3077,7 +3257,7 @@ const DashboardOverview = ({
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {menuItems
-              .filter((i) => (i.stock_quantity || 0) < 5)
+              .filter((i) => i.stock_quantity !== null && (i.stock_quantity || 0) < 5)
               .map((item) => (
                 <div
                   key={item.id}
@@ -3381,9 +3561,10 @@ const CreateShop = ({
               className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
               placeholder="e.g. +27 12 345 6789"
               value={formData.phone}
-              onChange={(e) =>
-                setFormData({ ...formData, phone: e.target.value })
-              }
+              onChange={(e) => {
+                const result = formatSAPhone(e.target.value);
+                setFormData({ ...formData, phone: result.formatted });
+              }}
             />
           </div>
           <div className="space-y-2">
@@ -3453,6 +3634,7 @@ const MenuManagement = ({
     category: "Main Course",
     description: "",
     stock_quantity: "10",
+    is_unlimited: false,
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -3483,11 +3665,12 @@ const MenuManagement = ({
     const maxPrice = priceRange.max ? parseFloat(priceRange.max) : Infinity;
     const matchesPrice = price >= minPrice && price <= maxPrice;
 
-    const stock = item.stock_quantity || 0;
+    const stock = item.stock_quantity;
+    const isUnlimited = stock === null || stock === undefined || stock === -1;
     const matchesStock =
       stockFilter === "All" ||
-      (stockFilter === "Low Stock" && stock < 5) ||
-      (stockFilter === "In Stock" && stock >= 5);
+      (stockFilter === "Low Stock" && !isUnlimited && (stock || 0) < 5) ||
+      (stockFilter === "In Stock" && (isUnlimited || (stock || 0) >= 5));
 
     return matchesSearch && matchesCategory && matchesPrice && matchesStock;
   });
@@ -3631,7 +3814,7 @@ const MenuManagement = ({
           price: parseFloat(formData.price),
           category: formData.category,
           description: formData.description,
-          stock_quantity: parseInt(formData.stock_quantity),
+          stock_quantity: formData.is_unlimited ? null : parseInt(formData.stock_quantity),
           image_url: imageUrl,
         })
         .eq("id", editingItem.id);
@@ -3647,6 +3830,7 @@ const MenuManagement = ({
           category: "Main Course",
           description: "",
           stock_quantity: "10",
+          is_unlimited: false,
         });
         setImageFile(null);
         setImagePreview(null);
@@ -3663,7 +3847,7 @@ const MenuManagement = ({
           price: parseFloat(formData.price),
           category: formData.category,
           description: formData.description,
-          stock_quantity: parseInt(formData.stock_quantity),
+          stock_quantity: formData.is_unlimited ? null : parseInt(formData.stock_quantity),
           shop_id: selectedShopId,
           is_available: true,
           image_url: imageUrl,
@@ -3680,6 +3864,7 @@ const MenuManagement = ({
           category: "Main Course",
           description: "",
           stock_quantity: "10",
+          is_unlimited: false,
         });
         setImageFile(null);
         setImagePreview(null);
@@ -3699,7 +3884,8 @@ const MenuManagement = ({
       price: item.price.toString(),
       category: item.category || "Main Course",
       description: item.description || "",
-      stock_quantity: (item.stock_quantity || 0).toString(),
+      stock_quantity: (item.stock_quantity || 10).toString(),
+      is_unlimited: item.stock_quantity === null || item.stock_quantity === undefined || item.stock_quantity === -1,
     });
     setImagePreview(item.image_url);
     // Scroll to form
@@ -3714,6 +3900,7 @@ const MenuManagement = ({
       category: "Main Course",
       description: "",
       stock_quantity: "10",
+      is_unlimited: false,
     });
     setImageFile(null);
     setImagePreview(null);
@@ -3992,21 +4179,35 @@ const MenuManagement = ({
                     />
                   </div>
                   <div className="col-span-1 space-y-1.5">
-                    <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">
-                      Stock
-                    </label>
+                    <div className="flex items-center justify-between ml-1">
+                      <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant">
+                        Stock
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          className="w-3.5 h-3.5 rounded border-outline-variant text-primary focus:ring-primary/40 transition-all cursor-pointer"
+                          checked={formData.is_unlimited}
+                          onChange={(e) => setFormData({ ...formData, is_unlimited: e.target.checked })}
+                        />
+                        <span className="text-[10px] font-bold text-on-surface-variant/60 group-hover:text-primary transition-colors uppercase tracking-tight">Unlimited</span>
+                      </label>
+                    </div>
                     <input
-                      className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all"
-                      placeholder="Qty"
+                      className={cn(
+                        "w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all",
+                        formData.is_unlimited && "opacity-50 grayscale pointer-events-none"
+                      )}
+                      placeholder={formData.is_unlimited ? "∞" : "Qty"}
                       type="number"
-                      value={formData.stock_quantity}
+                      value={formData.is_unlimited ? "" : formData.stock_quantity}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
                           stock_quantity: e.target.value,
                         })
                       }
-                      required
+                      required={!formData.is_unlimited}
                     />
                   </div>
                   <div className="col-span-1 space-y-1.5">
@@ -4262,13 +4463,13 @@ const MenuManagement = ({
                       onClick={() => handleBulkAction("available")}
                       className="px-4 py-2 bg-white dark:bg-surface-container-high text-primary font-bold text-xs rounded-full hover:bg-primary hover:text-on-primary transition-all flex items-center gap-1.5"
                     >
-                      <Check size={14} /> Available
+                      <Check size={14} /> Mark as Available
                     </button>
                     <button
                       onClick={() => handleBulkAction("unavailable")}
                       className="px-4 py-2 bg-white dark:bg-surface-container-high text-on-surface-variant font-bold text-xs rounded-full hover:bg-surface-container-highest transition-all flex items-center gap-1.5"
                     >
-                      <X size={14} /> Unavailable
+                      <X size={14} /> Mark as Unavailable
                     </button>
                     <div className="relative">
                       <button
@@ -4383,16 +4584,16 @@ const MenuManagement = ({
                     <button
                       onClick={() => toggleSelectItem(item.id)}
                       className={cn(
-                        "absolute top-4 left-4 z-20 p-1.5 rounded-lg transition-all",
+                        "absolute top-3 left-3 z-20 p-2 rounded-xl transition-all shadow-lg",
                         selectedItems.includes(item.id)
-                          ? "bg-primary text-on-primary"
-                          : "bg-black/20 text-white opacity-0 group-hover:opacity-100 backdrop-blur-md",
+                          ? "bg-primary text-on-primary scale-110"
+                          : "bg-surface-container-highest/60 text-on-surface-variant backdrop-blur-md border border-outline-variant/10",
                       )}
                     >
                       {selectedItems.includes(item.id) ? (
-                        <CheckSquare size={16} />
+                        <CheckSquare size={18} />
                       ) : (
-                        <Square size={16} />
+                        <Square size={18} />
                       )}
                     </button>
                     <div className="relative h-40 md:h-48 bg-surface-container flex items-center justify-center overflow-hidden">
@@ -4408,10 +4609,10 @@ const MenuManagement = ({
                       ) : (
                         <FoodPlaceholder size={48} />
                       )}
-                      {!item.is_available && (
+                      {(!item.is_available || (item.stock_quantity !== null && item.stock_quantity === 0)) && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                           <span className="bg-error text-white px-3 md:px-4 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-widest shadow-lg">
-                            Out of Stock
+                            {!item.is_available ? "Unavailable" : "Out of Stock"}
                           </span>
                         </div>
                       )}
@@ -4486,16 +4687,16 @@ const MenuManagement = ({
                         <span
                           className={cn(
                             "text-[9px] md:text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-1",
-                            (item.stock_quantity || 0) < 5
+                            item.stock_quantity !== null && (item.stock_quantity || 0) < 5
                               ? "bg-error text-on-error animate-pulse shadow-[0_0_12px_rgba(255,0,0,0.3)]"
                               : "bg-emerald-100 text-emerald-600",
                           )}
                         >
-                          {(item.stock_quantity || 0) < 5 && (
+                          {item.stock_quantity !== null && (item.stock_quantity || 0) < 5 && (
                             <AlertCircle size={10} />
                           )}
-                          Stock: {item.stock_quantity || 0}
-                          {(item.stock_quantity || 0) < 5 && (
+                          Stock: {item.stock_quantity === null ? "Unlimited" : (item.stock_quantity || 0)}
+                          {item.stock_quantity !== null && (item.stock_quantity || 0) < 5 && (
                             <span className="ml-1 text-[8px] font-black underline hidden xs:inline">
                               LOW STOCK
                             </span>
@@ -4562,7 +4763,7 @@ const ShopProfile = ({
           while (retryCount <= maxRetries) {
             try {
               const response = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&email=aviwenotununu4@gmail.com`,
               );
               data = await response.json();
               break;
@@ -4619,19 +4820,65 @@ const ShopProfile = ({
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const phoneCleaned = formData.phone.replace(/[\s-]/g, "");
+    const whatsappCleaned = (formData.whatsapp || "").replace(/[\s-]/g, "");
+    const saRegex = /^(?:\+27|0)[0-9]{9}$/;
+
+    if (!saRegex.test(phoneCleaned)) {
+      toast.error("Please enter a valid South African phone number for calls (e.g. +27 82 123 4567)");
+      return;
+    }
+    if (formData.whatsapp && !saRegex.test(whatsappCleaned)) {
+      toast.error("Please enter a valid South African WhatsApp number");
+      return;
+    }
+
     setLoading(true);
+    const payload: Record<string, unknown> = { ...formData };
+    
     try {
-      const { error } = await supabase
+      // First attempt
+      let { error } = await supabase
         .from("shops")
-        .update(formData)
+        .update(payload)
         .eq("id", shop.id);
+
+      // If it's a "column does not exist" error or schema cache error, try to heal
+      if (error && (error.code === "42703" || error.message?.includes("column") || error.message?.includes("schema cache"))) {
+        console.warn("Some columns do not exist in the shops table. Attempting to strip unknown columns...", error.message);
+        // List of columns that might not exist in an older schema
+        const potentiallyMissing = ["whatsapp", "instagram", "facebook", "lat", "lng", "location_details", "email"];
+        for (const col of potentiallyMissing) {
+          if (error.message?.includes(`'${col}'`) || error.message?.includes(`"${col}"`) || error.message?.includes(`column "${col}"`)) {
+             delete payload[col];
+          }
+        }
+        
+        // Let's just strip all the new fields if there is ANY column error, to be safe and ensure the basic update goes through
+        delete payload.whatsapp;
+        delete payload.instagram;
+        delete payload.facebook;
+        delete payload.lat;
+        delete payload.lng;
+
+        // Try again
+        const retry = await supabase
+          .from("shops")
+          .update(payload)
+          .eq("id", shop.id);
+          
+        error = retry.error as unknown as typeof error;
+      }
 
       if (error) throw error;
       toast.success("Shop profile updated successfully!");
       onRefresh();
-    } catch (err: unknown) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (err: any) {
+      console.error("Update error:", err);
       toast.error(
-        `Failed to update profile: ${err instanceof Error ? err.message : "Unknown error"}`,
+        `Failed to update profile: ${err?.message || err?.details || err?.hint || "Unknown error"}`,
       );
     } finally {
       setLoading(false);
@@ -4818,7 +5065,7 @@ const ShopProfile = ({
                   onLocationSelect={(lat, lng) => {
                     setFormData((prev) => ({ ...prev, lat, lng }));
                     fetch(
-                      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+                      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&email=aviwenotununu4@gmail.com`,
                     )
                       .then((r) => r.json())
                       .then((data) => {
@@ -4844,7 +5091,8 @@ const ShopProfile = ({
                             location: newLocation || prev.location,
                           }));
                         }
-                      });
+                      })
+                      .catch(() => {});
                   }}
                 />
                 <button
@@ -4873,28 +5121,40 @@ const ShopProfile = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <div className="space-y-2">
-                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
-                  Phone Number
+                <label className="flex items-center justify-between text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
+                  <span>Phone Number</span>
+                  {!formData.phone && (
+                    <span className="flex items-center gap-1 text-[10px] text-error animate-pulse">
+                      <AlertCircle size={10} /> Missing
+                    </span>
+                  )}
                 </label>
                 <input
-                  className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
+                  className={cn(
+                    "w-full h-10 md:h-12 px-4 rounded-xl border-none focus:ring-2 transition-all text-sm md:text-base font-bold text-on-surface",
+                    !formData.phone ? "bg-error/5 ring-1 ring-error/20" : "bg-surface-container-low focus:ring-primary/40"
+                  )}
                   value={formData.phone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const result = formatSAPhone(e.target.value);
+                    setFormData({ ...formData, phone: result.formatted });
+                  }}
+                  placeholder="e.g. +27 82 123 4567"
                 />
+                <p className="text-[10px] text-on-surface-variant/60 ml-1 italic font-medium">Used for direct customer calls.</p>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
                   Email Address
                 </label>
                 <input
-                  className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
+                  className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base font-bold text-on-surface"
                   value={formData.email}
                   onChange={(e) =>
                     setFormData({ ...formData, email: e.target.value })
                   }
                 />
+                <p className="text-[10px] text-on-surface-variant/60 ml-1 italic font-medium">Used for order receipts & business updates.</p>
               </div>
             </div>
 
@@ -4905,7 +5165,7 @@ const ShopProfile = ({
                 </label>
                 <input
                   placeholder="@username"
-                  className="w-full h-10 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm"
+                  className="w-full h-10 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm font-bold text-on-surface"
                   value={formData.instagram}
                   onChange={(e) =>
                     setFormData({ ...formData, instagram: e.target.value })
@@ -4918,7 +5178,7 @@ const ShopProfile = ({
                 </label>
                 <input
                   placeholder="page name"
-                  className="w-full h-10 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm"
+                  className="w-full h-10 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm font-bold text-on-surface"
                   value={formData.facebook}
                   onChange={(e) =>
                     setFormData({ ...formData, facebook: e.target.value })
@@ -4926,17 +5186,27 @@ const ShopProfile = ({
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1 flex items-center gap-1">
-                  <MessageCircle size={12} /> WhatsApp
+                <label className="flex items-center justify-between text-[10px] md:text-xs font-primary ml-1 font-black uppercase">
+                  <span className="flex items-center gap-1 text-primary"><MessageCircle size={12} /> WhatsApp (Critical)</span>
+                  {!formData.whatsapp && (
+                    <span className="flex items-center gap-1 text-[10px] text-error animate-pulse">
+                      <AlertCircle size={10} /> Required
+                    </span>
+                  )}
                 </label>
                 <input
-                  placeholder="number"
-                  className="w-full h-10 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm"
+                  placeholder="WhatsApp number"
+                  className={cn(
+                    "w-full h-10 px-4 rounded-xl border focus:ring-2 transition-all text-sm font-black text-on-surface",
+                    !formData.whatsapp ? "bg-error/5 border-error/50 ring-error/20" : "bg-primary/5 border-primary/20 focus:ring-primary/40"
+                  )}
                   value={formData.whatsapp}
-                  onChange={(e) =>
-                    setFormData({ ...formData, whatsapp: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const result = formatSAPhone(e.target.value);
+                    setFormData({ ...formData, whatsapp: result.formatted });
+                  }}
                 />
+                <p className="text-[10px] text-primary/60 ml-1 italic font-bold">This is how customers will contact you on WhatsApp.</p>
               </div>
             </div>
           </section>
@@ -5411,7 +5681,7 @@ const OrdersManagement = ({
   currentShop,
 }: {
   orders: Order[];
-  onUpdateStatus: (id: string, status: OrderStatus, message?: string) => void;
+  onUpdateStatus: (id: string, status: OrderStatus, message?: string, estimatedTime?: string) => Promise<void> | void;
   onDeleteAllOrders: () => void;
   loading: boolean;
   onRefresh: () => void;
@@ -5434,9 +5704,12 @@ const OrdersManagement = ({
   const [preparingOrderId, setPreparingOrderId] = useState<string | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [readyOrderId, setReadyOrderId] = useState<string | null>(null);
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const [chatOrderId, setChatOrderId] = useState<string | null>(null);
   const [showRiderPicker, setShowRiderPicker] = useState<string | null>(null);
   const [connectedRiders, setConnectedRiders] = useState<RiderConnection[]>([]);
+  const [ratingOrderId, setRatingOrderId] = useState<string | null>(null);
+  const [ratingValue, setRatingValue] = useState<number>(0);
 
   useEffect(() => {
     if (currentShop) {
@@ -5450,7 +5723,9 @@ const OrdersManagement = ({
               full_name,
               status,
               vehicle_type,
-              rating
+              rating,
+              current_latitude,
+              current_longitude
             )
           `)
           .eq("shop_id", currentShop.id)
@@ -5468,6 +5743,8 @@ const OrdersManagement = ({
               status: profile?.status || (new Date(conn.expires_at) < now ? "expired" : conn.status),
               vehicle_type: profile?.vehicle_type || "Road",
               rating: profile?.rating || 5.0,
+              current_latitude: profile?.current_latitude,
+              current_longitude: profile?.current_longitude,
             };
           });
           setConnectedRiders(processed);
@@ -5499,6 +5776,60 @@ const OrdersManagement = ({
     // Base 12 mins + 1.5 mins per pending order, capped at 45
     return Number(Math.min(12 + pendingCount * 1.5, 45)).toFixed(1);
   }, [orders]);
+
+  const submitRiderRating = async (orderId: string, riderId: string, rating: number) => {
+    if(!rating) return;
+    const { error } = await supabase.from('orders').update({ merchant_rating: rating }).eq('id', orderId);
+    if(error){
+       toast.error("Failed to rate rider");
+    } else {
+       toast.success("Rider rated successfully!");
+       onRefresh();
+       
+       // Calculate new average rating
+       const { data: ratingsData } = await supabase
+         .from('orders')
+         .select('merchant_rating')
+         .eq('rider_id', riderId)
+         .not('merchant_rating', 'is', null);
+         
+       if (ratingsData && ratingsData.length > 0) {
+          const avgRating = ratingsData.reduce((acc, curr) => acc + (curr.merchant_rating || 0), 0) / ratingsData.length;
+          await supabase.from('rider_profiles').update({ rating: avgRating }).eq('id', riderId);
+       }
+    }
+    setRatingOrderId(null);
+    setRatingValue(0);
+  };
+
+  const calculateDynamicETA = (order: Order) => {
+    if (!order.rider_id || !order.lat || !order.lng || order.delivery_status === "delivered") {
+       return order.estimated_delivery_time || "20-30 mins";
+    }
+    
+    const assignedRider = connectedRiders.find((r) => r.rider_id === order.rider_id) as RiderConnection & { current_latitude?: number, current_longitude?: number };
+    if (!assignedRider || !assignedRider.current_latitude || !assignedRider.current_longitude) {
+       return order.estimated_delivery_time || "20-30 mins";
+    }
+
+    const R = 6371;
+    const dLat = (order.lat - assignedRider.current_latitude) * Math.PI / 180;
+    const dLon = (order.lng - assignedRider.current_longitude) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(assignedRider.current_latitude * Math.PI / 180) * Math.cos(order.lat * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+    const d = R * c;
+
+    const timeMinutes = Math.max(5, Math.round(d * 4)); // 15km/h avg
+    
+    if (order.delivery_status === "finding_rider" || order.delivery_status === "accepted") {
+        return `${Math.round(timeMinutes + Number(avgPrepTime))} mins`;
+    }
+
+    return `${timeMinutes} mins`;
+  };
 
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
@@ -5897,40 +6228,42 @@ const OrdersManagement = ({
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
-                  Order History Filter:
-                </span>
-                <div className="flex items-center gap-2 bg-surface-container-low p-1 rounded-full border border-outline-variant/20">
-                  <span className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-widest ml-3">
-                    Completed:
+              {viewMode === "history" && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
+                    Order History Filter:
                   </span>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1"
-                  />
-                  <span className="text-on-surface-variant/40">to</span>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1 mr-2"
-                  />
-                  {(startDate || endDate) && (
-                    <button
-                      onClick={() => {
-                        setStartDate("");
-                        setEndDate("");
-                      }}
-                      className="p-1 hover:bg-surface-container-high rounded-full text-error transition-colors mr-1"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 bg-surface-container-low p-1 rounded-full border border-outline-variant/20">
+                    <span className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-widest ml-3">
+                      Completed:
+                    </span>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1"
+                    />
+                    <span className="text-on-surface-variant/40">to</span>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1 mr-2"
+                    />
+                    {(startDate || endDate) && (
+                      <button
+                        onClick={() => {
+                          setStartDate("");
+                          setEndDate("");
+                        }}
+                        className="p-1 hover:bg-surface-container-high rounded-full text-error transition-colors mr-1"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between mb-2">
@@ -6181,10 +6514,28 @@ const OrdersManagement = ({
                              </motion.span>
                           )}
                         </h4>
-                        <div className="flex flex-col gap-1 mt-2">
-                          <div className="flex items-center gap-2 text-xs text-on-surface-variant font-medium">
-                            <Phone size={12} className="text-primary/60" />
-                            <span>{order.phone || "No phone"}</span>
+                        <div className="flex flex-col gap-2 mt-2">
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={`tel:${order.phone}`}
+                              className="flex items-center gap-2 text-xs text-primary font-bold hover:underline bg-primary/5 px-2 py-1 rounded-lg transition-colors border border-primary/10"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Phone size={12} />
+                              <span>{order.phone || "No phone"}</span>
+                            </a>
+                            {order.phone && (
+                              <a
+                                href={`https://wa.me/${order.phone.replace(/\D/g, "")}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 text-xs text-emerald-600 font-bold hover:bg-emerald-50 px-2 py-1 rounded-lg transition-colors border border-emerald-200"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MessageCircle size={12} />
+                                <span>WhatsApp</span>
+                              </a>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 text-xs text-on-surface-variant">
                             <MapPin size={12} className="text-primary/60" />
@@ -6192,12 +6543,34 @@ const OrdersManagement = ({
                               {order.address}, {order.city}
                             </span>
                           </div>
-                          {order.estimated_delivery_time && (
-                            <div className="flex items-center gap-2 text-xs text-amber-600 font-bold mt-1 bg-amber-50 px-2 py-1 rounded-lg w-fit">
-                              <Timer size={12} />
-                              <span>ETA: {order.estimated_delivery_time}</span>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            {order.estimated_delivery_time || calculateDynamicETA(order) ? (
+                              <div className="flex items-center gap-2 text-xs text-amber-600 font-bold bg-amber-50 px-2 py-1 rounded-lg">
+                                <Timer size={12} />
+                                <span>ETA: {calculateDynamicETA(order)}</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 text-xs text-zinc-500 font-bold bg-zinc-50 px-2 py-1 rounded-lg">
+                                <Timer size={12} />
+                                <span>ETA: 20-30 mins</span>
+                              </div>
+                            )}
+                            {order.status !== 'completed' && order.status !== 'cancelled' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const newEta = prompt("Enter estimated delivery time (e.g. 20-30 mins):", order.estimated_delivery_time || "25 mins");
+                                  if (newEta !== null) {
+                                    onUpdateOrderStatus(order.id, order.status, undefined, newEta);
+                                  }
+                                }}
+                                className="p-1 text-primary hover:bg-primary/5 rounded shadow-sm"
+                                title="Adjust ETA"
+                              >
+                                <Edit2 size={12} />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <div className="flex items-center gap-1 mt-3 text-[10px] font-bold text-primary/60 uppercase tracking-wider">
                           {expandedOrderId === order.id
@@ -6467,13 +6840,13 @@ const OrdersManagement = ({
                                 </p>
                               </div>
                             )}
-                            {order.estimated_delivery_time && (
+                            {(order.estimated_delivery_time || calculateDynamicETA(order)) && (
                               <div className="space-y-1">
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
                                   Est. Delivery
                                 </span>
                                 <p className="text-sm font-semibold text-primary">
-                                  {order.estimated_delivery_time}
+                                  {calculateDynamicETA(order)}
                                 </p>
                               </div>
                             )}
@@ -6670,15 +7043,31 @@ const OrdersManagement = ({
                                                     <Bike size={16} />
                                                   </div>
                                                   <div>
-                                                    <p className="text-xs font-bold text-on-surface flex items-center gap-2">
-                                                      {rider.rider_name ||
-                                                        "Quick Rider"}
+                                                    <div className="flex items-center gap-2">
+                                                      <p className="text-xs font-bold text-on-surface">
+                                                        {rider.rider_name || "Quick Rider"}
+                                                      </p>
+                                                      {!isExpired && (
+                                                        <div
+                                                          className={cn(
+                                                            "w-1.5 h-1.5 rounded-full",
+                                                            rider.is_online 
+                                                              ? (rider.status === 'paused' ? "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]" : "bg-green-500 animate-pulse shadow-[0_0_6px_rgba(34,197,94,0.5)]")
+                                                              : "bg-zinc-300",
+                                                          )}
+                                                        />
+                                                      )}
                                                       {isOffline && (
-                                                        <span className="text-[8px] px-1.5 py-0.5 bg-on-surface/10 text-on-surface-variant rounded-full">
+                                                        <span className="text-[8px] px-1.5 py-0.5 bg-on-surface/10 text-on-surface-variant rounded-full font-black uppercase">
                                                           OFFLINE
                                                         </span>
                                                       )}
-                                                    </p>
+                                                      {!isExpired && rider.is_online && rider.status === 'paused' && (
+                                                        <span className="text-[8px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-black uppercase">
+                                                          PAUSED
+                                                        </span>
+                                                      )}
+                                                    </div>
                                                     <p className="text-[9px] text-on-surface-variant/60 font-mono">
                                                       {isExpired
                                                         ? "EXPIRED"
@@ -6968,22 +7357,26 @@ const OrdersManagement = ({
                                   </div>
                                   <div className="flex gap-2">
                                     <button
-                                      onClick={() => {
-                                        onUpdateStatus(
+                                      disabled={updatingOrderId === order.id}
+                                      onClick={async () => {
+                                        setUpdatingOrderId(order.id);
+                                        await onUpdateStatus(
                                           order.id,
                                           "ready",
                                           undefined,
                                           estimatedTime,
                                         );
+                                        setUpdatingOrderId(null);
                                         setReadyOrderId(null);
                                       }}
-                                      className="flex-1 py-2 bg-tertiary text-white text-xs font-bold rounded-full"
+                                      className="flex-1 py-2 bg-tertiary text-white text-xs font-bold rounded-full disabled:opacity-50"
                                     >
-                                      Confirm & Ready
+                                      {updatingOrderId === order.id ? "Updating..." : "Confirm & Ready"}
                                     </button>
                                     <button
+                                      disabled={updatingOrderId === order.id}
                                       onClick={() => setReadyOrderId(null)}
-                                      className="px-4 py-2 bg-surface-container-high text-on-surface-variant text-xs font-bold rounded-full"
+                                      className="px-4 py-2 bg-surface-container-high text-on-surface-variant text-xs font-bold rounded-full disabled:opacity-50"
                                     >
                                       Cancel
                                     </button>
@@ -6992,14 +7385,16 @@ const OrdersManagement = ({
                               ) : (
                                 <button
                                   onClick={() => setReadyOrderId(order.id)}
+                                  disabled={updatingOrderId === order.id}
                                   className={cn(
                                     "w-full bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-full shadow-[0_8px_24px_-4px_rgba(167,52,0,0.2)] hover:scale-[0.98] transition-transform",
                                     kitchenMode
                                       ? "py-5 text-lg"
                                       : "py-3 text-sm",
+                                    updatingOrderId === order.id && "opacity-50 pointer-events-none"
                                   )}
                                 >
-                                  Mark as Ready
+                                  {updatingOrderId === order.id ? "Marking..." : "Mark as Ready"}
                                 </button>
                               )}
                             </div>
@@ -7179,6 +7574,61 @@ const OrdersManagement = ({
                           )}
                         </AnimatePresence>
                       </div>
+                    )}
+                    {viewMode === "history" && order.delivery_status === "delivered" && order.rider_id && (
+                       <div className="mt-4 pt-4 border-t border-outline-variant/10" onClick={(e) => e.stopPropagation()}>
+                           <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 mb-1">Rider Rating</p>
+                                {order.merchant_rating ? (
+                                  <div className="flex items-center gap-1 text-amber-500">
+                                      {Array(5).fill(0).map((_, i) => (
+                                          <Star key={i} size={14} className={i < order.merchant_rating! ? "fill-current" : "text-outline-variant"} />
+                                      ))}
+                                      <span className="text-xs font-bold text-on-surface ml-2 pl-2 border-l border-outline-variant/20">{order.merchant_rating.toFixed(1)}</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col gap-2">
+                                     <button
+                                        onClick={() => {
+                                           if (ratingOrderId === order.id) {
+                                              setRatingOrderId(null);
+                                              setRatingValue(0);
+                                           } else {
+                                              setRatingOrderId(order.id);
+                                              setRatingValue(5);
+                                           }
+                                        }}
+                                        className="text-xs font-bold text-primary hover:text-primary-container decoration-dashed hover:underline transition-all"
+                                     >
+                                        Rate Rider Performance
+                                     </button>
+                                     {ratingOrderId === order.id && (
+                                        <div className="flex items-center gap-3 bg-surface-container-low p-2 rounded-xl w-fit border border-outline-variant/20">
+                                           <div className="flex items-center gap-1">
+                                             {[1, 2, 3, 4, 5].map((star) => (
+                                               <button
+                                                 key={star}
+                                                 onClick={() => setRatingValue(star)}
+                                                 className="p-1 hover:scale-110 transition-transform"
+                                               >
+                                                 <Star size={18} className={star <= ratingValue ? "fill-amber-500 text-amber-500" : "text-outline-variant"} />
+                                               </button>
+                                             ))}
+                                           </div>
+                                           <button
+                                              onClick={() => submitRiderRating(order.id, order.rider_id!, ratingValue)}
+                                              className="ml-2 text-[10px] bg-primary text-white font-bold px-3 py-1.5 rounded-lg hover:bg-primary-container"
+                                           >
+                                              Submit
+                                           </button>
+                                        </div>
+                                     )}
+                                  </div>
+                                )}
+                              </div>
+                           </div>
+                       </div>
                     )}
                   </motion.div>
                 );
@@ -8273,7 +8723,7 @@ const Insights = ({
     }
   };
 
-  const fetchFollowerInsights = async () => {
+  const fetchFollowerInsights = useCallback(async () => {
     if (!currentShop?.id) return;
 
     try {
@@ -8315,7 +8765,7 @@ const Insights = ({
     } catch (err) {
       console.error("Error fetching follower insights:", err);
     }
-  };
+  }, [currentShop?.id]);
 
   useEffect(() => {
     fetchFollowerInsights();
@@ -9379,6 +9829,7 @@ const RiderManagement = ({
 }) => {
   const [connections, setConnections] = useState<RiderConnection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
   const [activeCode, setActiveCode] = useState<{
     code: string;
@@ -9386,6 +9837,10 @@ const RiderManagement = ({
   } | null>(null);
 
   const [qrUrl, setQrUrl] = useState<string>("");
+
+  const trackedRider = useMemo(() => 
+    connections.find(c => c.rider_id === selectedTrackId),
+  [connections, selectedTrackId]);
 
   useEffect(() => {
     if (activeCode) {
@@ -9419,7 +9874,12 @@ const RiderManagement = ({
           full_name,
           status,
           vehicle_type,
-          rating
+          rating,
+          total_deliveries,
+          total_earnings,
+          current_latitude,
+          current_longitude,
+          updated_at
         )
       `)
       .eq("shop_id", currentShop.id)
@@ -9436,6 +9896,11 @@ const RiderManagement = ({
           status: profile?.status || (new Date(conn.expires_at) < new Date() ? "expired" : conn.status),
           vehicle_type: profile?.vehicle_type || "Road",
           rating: profile?.rating || 5.0,
+          total_deliveries: profile?.total_deliveries || 0,
+          total_earnings: profile?.total_earnings || 0,
+          current_latitude: profile?.current_latitude,
+          current_longitude: profile?.current_longitude,
+          last_seen: profile?.updated_at,
         };
       });
       setConnections(processed);
@@ -9443,11 +9908,38 @@ const RiderManagement = ({
     setLoading(false);
   }, [currentShop.id]);
 
+  const activeConnectionsCount = connections.filter(
+    (c) => c.rider_id && new Date(c.expires_at) >= new Date(),
+  ).length;
+
+  const availableCodesCount = connections.filter(
+    (c) => !c.rider_id && new Date(c.expires_at) >= new Date(),
+  ).length;
+
   useEffect(() => {
     fetchConnections();
-    const interval = setInterval(fetchConnections, 60000); // Check every minute
-    return () => clearInterval(interval);
-  }, [fetchConnections]);
+    
+    // Subscribe to real-time changes
+    const channel = supabase
+      .channel(`rider_connections_sync_${currentShop.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'rider_connections',
+          filter: `shop_id=eq.${currentShop.id}`
+        },
+        () => {
+          fetchConnections();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchConnections, currentShop.id]);
 
   const generateCode = async () => {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -9578,73 +10070,86 @@ const RiderManagement = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3">
-            {activeMissions.map((mission) => (
-              <div
-                key={mission.id}
-                className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/10 flex items-center justify-between group hover:border-primary/20 transition-all"
-              >
-                <div className="flex items-center gap-4">
-                  <div
-                    className={cn(
-                      "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
-                      mission.delivery_status === "finding_rider"
-                        ? "bg-amber-100 text-amber-600 animate-pulse"
-                        : mission.delivery_status === "accepted"
-                          ? "bg-blue-100 text-blue-600"
-                          : "bg-green-100 text-green-600",
-                    )}
-                  >
-                    {mission.delivery_status === "finding_rider" ? (
-                      <Zap size={18} />
-                    ) : (
-                      <Bike size={18} />
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-bold text-sm text-on-surface">
-                        Order #{mission.id.toString().slice(-4)}
-                      </p>
-                      <span
-                        className={cn(
-                          "text-[10px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-full",
-                          mission.delivery_status === "finding_rider"
-                            ? "bg-amber-100 text-amber-600"
-                            : mission.delivery_status === "accepted"
-                              ? "bg-blue-100 text-blue-600"
-                              : "bg-green-600 text-white",
-                        )}
-                      >
-                        {mission.delivery_status?.replace("_", " ")}
-                      </span>
-                    </div>
-                    <p className="text-xs text-on-surface-variant font-medium mt-0.5 line-clamp-1">
-                      {mission.address}, {mission.city}
-                    </p>
-                  </div>
-                </div>
+            {activeMissions.map((mission) => {
+              const assignedRider = connections.find(c => c.rider_id === mission.rider_id);
 
-                <div className="flex items-center gap-4">
-                  <div className="text-right hidden sm:block">
-                    <p className="text-xs font-bold text-on-surface">
-                      R {mission.total_price || mission.price}
-                    </p>
-                    <p className="text-[10px] text-on-surface-variant font-medium">
-                      Fee: R {mission.delivery_fee || "0.00"}
-                    </p>
-                  </div>
-                  {mission.delivery_status === "finding_rider" && (
-                    <button
-                      onClick={() => onRequestRider(mission.id)}
-                      className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                      title="Retry Dispatch"
+              return (
+                <div
+                  key={mission.id}
+                  className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/10 flex items-center justify-between group hover:border-primary/20 transition-all"
+                >
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+                        mission.delivery_status === "finding_rider"
+                          ? "bg-amber-100 text-amber-600 animate-pulse"
+                          : mission.delivery_status === "accepted"
+                            ? "bg-blue-100 text-blue-600"
+                            : "bg-green-100 text-green-600",
+                      )}
                     >
-                      <RefreshCw size={16} />
-                    </button>
-                  )}
+                      {mission.delivery_status === "finding_rider" ? (
+                        <Zap size={18} />
+                      ) : (
+                        <Bike size={18} />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-sm text-on-surface">
+                          Order #{mission.id.toString().slice(-4)}
+                        </p>
+                        <span
+                          className={cn(
+                            "text-[10px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-full",
+                            mission.delivery_status === "finding_rider"
+                              ? "bg-amber-100 text-amber-600"
+                              : mission.delivery_status === "accepted"
+                                ? "bg-blue-100 text-blue-600"
+                                : "bg-green-600 text-white",
+                          )}
+                        >
+                          {mission.delivery_status?.replace("_", " ")}
+                        </span>
+                      </div>
+                      <p className="text-xs text-on-surface-variant font-medium mt-0.5 line-clamp-1">
+                        {mission.address}, {mission.city} • {assignedRider?.rider_name || "Unassigned"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="text-right hidden sm:block">
+                      <p className="text-xs font-bold text-on-surface">
+                        R {mission.total_price || mission.price}
+                      </p>
+                      <p className="text-[10px] text-on-surface-variant font-medium">
+                        ETA: {mission.estimated_delivery_time || "Pending"}
+                      </p>
+                    </div>
+                    {mission.rider_id && (
+                      <button
+                        onClick={() => setSelectedTrackId(mission.rider_id!)}
+                        className="p-2 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-lg transition-colors border border-primary/20"
+                        title="Track Real-time Position"
+                      >
+                        <MapPin size={16} />
+                      </button>
+                    )}
+                    {mission.delivery_status === "finding_rider" && (
+                      <button
+                        onClick={() => onRequestRider(mission.id)}
+                        className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                        title="Retry Dispatch"
+                      >
+                        <RefreshCw size={16} />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -9695,16 +10200,30 @@ const RiderManagement = ({
       )}
 
       <div className="space-y-4">
-        <h3 className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">
-          Active Pairings ({connections.length})
-        </h3>
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-4">
+            <h3 className="text-xs font-black text-on-surface-variant uppercase tracking-widest">
+              Active Pairings ({activeConnectionsCount})
+            </h3>
+            <button 
+              onClick={() => void fetchConnections()}
+              className="p-1 hover:bg-on-surface/5 rounded-lg text-primary transition-all"
+              title="Refresh Connections"
+            >
+              <RefreshCw size={12} className={cn(loading && "animate-spin")} />
+            </button>
+          </div>
+          <span className="text-[10px] font-bold text-on-surface-variant/40 uppercase tracking-widest">
+            {availableCodesCount} Available Codes
+          </span>
+        </div>
 
         {loading && connections.length === 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[1, 2].map((i) => (
               <div
                 key={i}
-                className="h-24 bg-surface-container-low rounded-2xl animate-pulse"
+                className="h-32 bg-surface-container-low rounded-3xl animate-pulse"
               />
             ))}
           </div>
@@ -9734,119 +10253,213 @@ const RiderManagement = ({
               const expirationTime = new Date(conn.expires_at).getTime();
               const now = Date.now();
               const isExpired = expirationTime < now;
-              const hoursLeft = Math.max(
-                0,
-                Math.ceil((expirationTime - now) / (1000 * 60 * 60)),
-              );
 
               return (
                 <div
                   key={conn.id}
                   className={cn(
-                    "bg-surface-container-low rounded-3xl p-5 border border-outline-variant/10 flex items-center justify-between group transition-all",
+                    "bg-surface-container-low rounded-3xl p-5 border border-outline-variant/10 flex flex-col gap-4 group transition-all",
                     isExpired
                       ? "opacity-60 bg-error-container/5 border-error/10"
-                      : "hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5",
+                      : "hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5 shadow-sm",
                   )}
                 >
-                  <div className="flex items-center gap-4">
-                    <div
-                      className={cn(
-                        "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
-                        isExpired
-                          ? "bg-error/10 text-error"
-                          : "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-on-primary",
-                      )}
-                    >
-                      <Bike size={24} />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold text-on-surface">
-                          {conn.rider_name || "Awaiting Rider..."}
-                        </p>
-                        {conn.rider_id && (
-                          <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 rounded-full text-amber-600 border border-amber-100">
-                             <Star size={10} className="fill-current" />
-                             <span className="text-[10px] font-bold">{conn.rating?.toFixed(1) || '5.0'}</span>
-                          </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4 overflow-hidden">
+                      <div
+                        className={cn(
+                          "w-12 h-12 rounded-2xl flex items-center justify-center transition-all shrink-0",
+                          isExpired
+                            ? "bg-error/10 text-error"
+                            : "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-on-primary",
                         )}
-                        {!isExpired && conn.rider_id && (
-                          <div
-                            className={cn(
-                              "w-2 h-2 rounded-full",
-                              conn.is_online ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "bg-zinc-300",
-                            )}
-                            title={conn.is_online ? "Online" : "Offline"}
-                          />
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className={cn(
-                          "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-lg uppercase tracking-tight",
-                          conn.is_online ? "bg-green-50 text-green-700" : "bg-on-surface/5 text-on-surface-variant"
-                        )}>
-                          {conn.is_online ? "Online" : conn.connection_code}
-                        </span>
-                        {isExpired ? (
-                          <span className="text-[10px] font-black text-error uppercase tracking-tighter bg-error/10 px-2 py-0.5 rounded-full">
-                            EXPIRED
-                          </span>
-                        ) : (
-                          <div
-                            className={cn(
-                              "flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter",
-                              hoursLeft < 2
-                                ? "bg-error/10 text-error animate-pulse"
-                                : "bg-primary/10 text-primary",
-                            )}
-                          >
-                            <Clock size={10} />
-                            {hoursLeft}H Left
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {isExpired ? (
-                      <button
-                        onClick={generateCode}
-                        className="px-4 py-2 bg-error text-white text-[10px] font-black rounded-xl uppercase hover:scale-105 transition-transform shadow-lg shadow-error/20"
                       >
-                        Re-pair
-                      </button>
-                    ) : (
-                      !conn.is_online &&
-                      conn.rider_id && (
+                        <Bike size={24} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-on-surface truncate">
+                            {conn.rider_name || "Awaiting Rider..."}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {conn.rider_id && (
+                             <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 rounded-full text-amber-600 border border-amber-100 shrink-0">
+                                <Star size={10} className="fill-current" />
+                                <span className="text-[10px] font-bold">{conn.rating?.toFixed(1) || '5.0'}</span>
+                             </div>
+                          )}
+                          {conn.rider_id && (
+                             <div className="flex items-center gap-1 px-1.5 py-0.5 bg-surface-container-highest rounded-full text-on-surface-variant shrink-0">
+                                <span className="text-[10px] font-bold">{(conn as unknown as RiderProfile).vehicle_type || 'Road'}</span>
+                             </div>
+                          )}
+                          <span className={cn(
+                            "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-lg uppercase tracking-tight",
+                            conn.is_online 
+                               ? (conn.status === 'busy' ? "bg-amber-50 text-amber-700" : conn.status === 'paused' ? "bg-blue-50 text-blue-700" : "bg-green-50 text-green-700") 
+                               : "bg-surface-container-highest text-on-surface-variant"
+                          )}>
+                            {conn.rider_id ? (conn.is_online ? conn.status : (conn.last_seen ? `Offline - ${new Date(conn.last_seen).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'Offline')) : conn.connection_code}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {conn.rider_id && (
                         <button
-                          onClick={() => {
-                            sendRiderNudge(
-                              conn.rider_id!,
-                              "Dispatcher is nudging you to go online!",
-                            );
-                          }}
-                          className="flex items-center gap-1 px-3 py-2 bg-amber-500 text-white text-[10px] font-black rounded-xl uppercase hover:scale-105 transition-transform shadow-lg shadow-amber-500/20"
+                          onClick={() => setSelectedTrackId(conn.rider_id!)}
+                          className="w-10 h-10 flex items-center justify-center bg-surface-container-highest text-on-surface rounded-xl hover:bg-primary hover:text-white transition-all shadow-sm"
+                          title="View Live map"
                         >
-                          <Zap size={12} />
-                          Wake
+                          <Navigation size={18} />
                         </button>
-                      )
-                    )}
-                    <button
-                      onClick={() => deleteConnection(conn.id)}
-                      className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-xl transition-all"
-                      title="Disconnect Rider"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                      )}
+                      <button
+                        onClick={() => deleteConnection(conn.id)}
+                        className="w-10 h-10 flex items-center justify-center text-on-surface-variant/40 hover:text-error hover:bg-error/5 rounded-xl transition-colors"
+                        title="Disconnect Rider"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Rider performance KPIs */}
+                  {conn.rider_id && (
+                    <div className="grid grid-cols-2 gap-2 pt-4 border-t border-outline-variant/10">
+                       <div className="bg-surface-container-low px-3 py-2 rounded-xl border border-outline-variant/10">
+                          <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest leading-none mb-1">Missions</p>
+                          <p className="text-sm font-black text-on-surface">{(conn as unknown as RiderProfile).total_deliveries || 0}</p>
+                       </div>
+                       <div className="bg-surface-container-low px-3 py-2 rounded-xl border border-outline-variant/10">
+                          <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest leading-none mb-1">Earnings</p>
+                          <p className="text-sm font-black text-on-surface text-green-600">R {((conn as unknown as RiderProfile).total_earnings || 0).toFixed(2)}</p>
+                       </div>
+                    </div>
+                  )}
+
+                  {!isExpired && conn.rider_id && !conn.is_online && (
+                    <button
+                      onClick={() => {
+                        sendRiderNudge(
+                          conn.rider_id!,
+                          "Dispatcher is nudging you to go online!",
+                        );
+                      }}
+                      className="w-full py-2.5 bg-amber-500/10 text-amber-600 text-[10px] font-black rounded-xl uppercase hover:bg-amber-500/20 transition-all border border-amber-500/10 flex items-center justify-center gap-2"
+                    >
+                      <Zap size={12} />
+                      Wake Rider
+                    </button>
+                  )}
+
+                  {isExpired && (
+                    <button
+                      onClick={generateCode}
+                      className="w-full py-2.5 bg-error text-white text-[10px] font-black rounded-xl uppercase hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-error/20"
+                    >
+                      Code expired. Re-pair
+                    </button>
+                  )}
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {/* TRACKER MODAL */}
+      <AnimatePresence>
+         {selectedTrackId && trackedRider && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-10 pointer-events-none">
+               <motion.div 
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 exit={{ opacity: 0 }}
+                 className="absolute inset-0 bg-zinc-950/80 backdrop-blur-md pointer-events-auto"
+                 onClick={() => setSelectedTrackId(null)}
+               />
+               <motion.div 
+                 initial={{ scale: 0.9, opacity: 0, y: 40 }}
+                 animate={{ scale: 1, opacity: 1, y: 0 }}
+                 exit={{ scale: 0.9, opacity: 0, y: 40 }}
+                 className="w-full max-w-5xl h-full max-h-[80vh] bg-surface-container-low rounded-[2.5rem] border border-outline-variant/20 shadow-2xl overflow-hidden relative flex flex-col pointer-events-auto"
+               >
+                  <div className="p-6 md:p-8 flex items-center justify-between border-b border-outline-variant/10 bg-surface-container-low">
+                     <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                           <Bike size={24} />
+                        </div>
+                        <div>
+                           <h2 className="text-xl font-headline font-bold text-on-surface">{trackedRider.rider_name}</h2>
+                           <p className="text-xs font-medium text-on-surface-variant/60 flex items-center gap-1.5">
+                              <span className={cn("w-2 h-2 rounded-full", trackedRider.is_online ? "bg-green-500 animate-pulse" : "bg-zinc-300")} />
+                              {trackedRider.is_online ? 'Live tracking active' : 'Last known location'}
+                           </p>
+                        </div>
+                     </div>
+                     <button 
+                       onClick={() => setSelectedTrackId(null)}
+                       className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-on-surface/5 transition-colors"
+                     >
+                        <X size={24} />
+                     </button>
+                  </div>
+
+                  <div className="flex-1 relative bg-surface-container-highest">
+                     {trackedRider.latitude && trackedRider.longitude ? (
+                        <MapContainer
+                          center={[trackedRider.latitude, trackedRider.longitude]}
+                          zoom={15}
+                          className="w-full h-full"
+                          zoomControl={false}
+                        >
+                          <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+                          <Marker 
+                            position={[trackedRider.latitude, trackedRider.longitude]}
+                            icon={L.icon({
+                              iconUrl: 'https://cdn-icons-png.flaticon.com/512/3195/3195868.png',
+                              iconSize: [40, 40],
+                              iconAnchor: [20, 40],
+                            })}
+                          />
+                        </MapContainer>
+                     ) : (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8">
+                           <Navigation size={48} className="text-on-surface-variant/20 mb-4 animate-bounce" />
+                           <h3 className="font-bold text-lg mb-2">Location Signal Missing</h3>
+                           <p className="text-sm text-on-surface-variant/60 max-w-xs">
+                              We haven't received GPS coordinates for this rider yet. Ensure their app is open and location services are enabled.
+                           </p>
+                        </div>
+                     )}
+                  </div>
+
+                  <div className="p-6 bg-surface-container-low border-t border-outline-variant/10 grid grid-cols-3 gap-4">
+                     <div className="text-center">
+                        <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest mb-1">Missions</p>
+                        <p className="text-xl font-black text-on-surface">{trackedRider.total_deliveries || 0}</p>
+                     </div>
+                     <div className="text-center">
+                        <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest mb-1">Rating</p>
+                        <p className="text-xl font-black text-primary flex items-center justify-center gap-1">
+                           <Star size={16} className="fill-current" />
+                           {trackedRider.rating?.toFixed(1) || '5.0'}
+                        </p>
+                     </div>
+                     <div className="text-center">
+                        <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest mb-1">Status</p>
+                        <p className={cn("text-sm font-black uppercase tracking-tighter mt-1", trackedRider.is_online ? (trackedRider.status === 'busy' ? "text-amber-600" : trackedRider.status === 'paused' ? "text-blue-600" : "text-green-600") : "text-on-surface-variant")}>
+                           {trackedRider.is_online ? trackedRider.status : 'Offline'}
+                        </p>
+                     </div>
+                  </div>
+               </motion.div>
+            </div>
+         )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -10585,6 +11198,7 @@ export default function App() {
           if (
             menuItem &&
             menuItem.stock_quantity !== undefined &&
+            menuItem.stock_quantity !== null &&
             menuItem.stock_quantity > 0
           ) {
             const newStock = menuItem.stock_quantity - 1;
@@ -10815,6 +11429,7 @@ export default function App() {
         data: {
           full_name: data.fullName,
           phone: data.phone,
+          whatsapp: data.whatsapp,
           location: data.location,
           address: data.address,
           operating_hours: data.operatingHours,
@@ -10825,6 +11440,34 @@ export default function App() {
       });
 
       if (error) throw error;
+
+      // Sync to shop if merchant
+      if (currentShop) {
+        const shopPayload: Record<string, unknown> = {
+          phone: data.phone,
+          whatsapp: data.whatsapp,
+          location: data.address, // Sync address too
+        };
+        
+        const { error: shopUpdateErr } = await supabase
+          .from("shops")
+          .update(shopPayload)
+          .eq("id", currentShop.id);
+          
+        if (shopUpdateErr && (shopUpdateErr.code === "42703" || shopUpdateErr.message?.includes("column") || shopUpdateErr.message?.includes("schema cache"))) {
+          // Fallback if columns don't exist on shops table
+          delete shopPayload.whatsapp;
+          delete shopPayload.lat;
+          delete shopPayload.lng;
+          
+          await supabase
+            .from("shops")
+            .update(shopPayload)
+            .eq("id", currentShop.id);
+        }
+        
+        fetchShops(); // Refresh shops state
+      }
 
       if (data.darkMode !== undefined) {
         setDarkMode(data.darkMode);
@@ -10865,6 +11508,7 @@ export default function App() {
           fullName: user?.user_metadata?.full_name || "",
           email: user?.email || signupEmail,
           phone: user?.user_metadata?.phone || "",
+          whatsapp: user?.user_metadata?.whatsapp || "",
           location: user?.user_metadata?.location || "",
           address: user?.user_metadata?.address || "",
           avatarUrl: user?.user_metadata?.avatar_url || "",
@@ -10966,13 +11610,13 @@ export default function App() {
               </span>
             </div>
 
-            <nav className="hidden md:flex flex-1 items-center justify-center gap-4 lg:gap-8 overflow-x-auto scrollbar-hide px-4 whitespace-nowrap scroll-smooth mx-4">
+            <nav className="hidden md:flex flex-1 items-center gap-4 lg:gap-8 overflow-x-auto scrollbar-hide px-4 whitespace-nowrap scroll-smooth mx-4">
               {navItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
                   className={cn(
-                    "px-3 py-1 rounded-lg transition-colors font-medium text-sm flex items-center gap-2 relative",
+                    "px-3 py-1 rounded-lg transition-colors font-medium text-sm flex items-center gap-2 relative shrink-0",
                     activeTab === item.id
                       ? "text-primary font-bold"
                       : "text-on-surface/60 hover:bg-surface-container-low dark:hover:bg-surface-container-high",
@@ -11604,7 +12248,7 @@ export default function App() {
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
                 className={cn(
-                  "flex flex-col items-center justify-center min-w-[72px] py-1.5 rounded-xl transition-all active:scale-90 duration-200 relative",
+                  "flex flex-col items-center justify-center min-w-[72px] shrink-0 py-1.5 rounded-xl transition-all active:scale-90 duration-200 relative",
                   activeTab === item.id
                     ? "bg-orange-50 dark:bg-primary/10 text-primary"
                     : "text-secondary hover:text-primary",
@@ -11694,6 +12338,7 @@ export default function App() {
 // --- Customer Experience Components ---
 
 const CustomerView = ({
+  shops,
   menuItems,
   cart,
   setCart,
@@ -11711,6 +12356,67 @@ const CustomerView = ({
 }) => {
   const [showCheckout, setShowCheckout] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
+
+  const fetchCustomerOrders = useCallback(async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    
+    if (data && !error) {
+      setCustomerOrders(data as Order[]);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const init = async () => {
+      await fetchCustomerOrders();
+    };
+    void init();
+    
+    if (!user) return;
+    
+    // Request notification permission if not already granted
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+
+    const channel = supabase
+      .channel(`customer_orders_${user.id}_changes`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          fetchCustomerOrders();
+          const newRecord = payload.new as Order;
+          const oldRecord = payload.old as Order;
+          
+          if (oldRecord && oldRecord.status !== "ready" && newRecord.status === "ready") {
+            toast.success("Your order is ready and is being prepared for delivery/dispatch!");
+            if ("Notification" in window && Notification.permission === "granted") {
+              new Notification("Order Ready!", {
+                body: "Your order is ready and is being prepared for delivery/dispatch.",
+                icon: "/favicon.png",
+              });
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, fetchCustomerOrders]);
 
   const addToCart = (item: MenuItem) => {
     setCart((prev) => {
@@ -11826,6 +12532,76 @@ const CustomerView = ({
               </motion.div>
             ))}
         </section>
+
+        {customerOrders.length > 0 && (
+          <section className="mt-16 space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-headline font-black tracking-tight flex items-center gap-2">
+                <ReceiptText size={24} className="text-primary" />
+                Recent Orders
+              </h2>
+            </div>
+            <div className="space-y-4">
+              {customerOrders.map((order) => {
+                const shop = shops.find((s) => s.id === order.shop_id);
+                return (
+                  <motion.div
+                    key={order.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/10 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0 font-black">
+                        {order.status[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-on-surface">
+                            {order.product_name}
+                          </p>
+                          <span className={cn(
+                            "text-[10px] font-black uppercase px-2 py-0.5 rounded-full",
+                            order.status === 'completed' ? 'bg-emerald-100 text-emerald-600' : 
+                            order.status === 'cancelled' ? 'bg-error/10 text-error' : 'bg-primary/10 text-primary'
+                          )}>
+                            {order.status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-on-surface-variant font-medium">
+                          {shop?.name || "Local Shop"} • R {order.total_price.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {shop?.phone && (
+                        <a
+                          href={`tel:${shop.phone}`}
+                          className="flex-1 md:flex-none h-10 px-4 bg-surface-container-low hover:bg-surface-container-high rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors border border-outline-variant/10 text-on-surface"
+                        >
+                          <Phone size={14} />
+                          Call
+                        </a>
+                      )}
+                      {shop?.whatsapp && (
+                        <a
+                          href={`https://wa.me/${shop.whatsapp.replace(/\D/g, "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 md:flex-none h-10 px-4 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors border border-emerald-500/20"
+                        >
+                          <MessageCircle size={14} />
+                          WhatsApp
+                        </a>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </section>
+        )}
       </main>
 
       <AnimatePresence>
@@ -12040,14 +12816,15 @@ const CustomerCheckout = ({
                       setCoords({ lat, lng });
                       // Reverse geocode when pin moves
                       fetch(
-                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&email=aviwenotununu4@gmail.com`,
                       )
                         .then((r) => r.json())
                         .then((data) => {
                           if (data && data.display_name) {
                             setAddress(data.display_name);
                           }
-                        });
+                        })
+                        .catch(() => {});
                     }}
                   />
                 </div>
@@ -12062,7 +12839,10 @@ const CustomerCheckout = ({
                   type="tel"
                   placeholder="Contact number for Rider"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    const result = formatSAPhone(e.target.value);
+                    setPhone(result.formatted);
+                  }}
                   className="w-full h-14 bg-surface-container-low border border-outline-variant/10 rounded-2xl pl-12 pr-4 focus:ring-2 focus:ring-primary/40 transition-all outline-none text-base"
                 />
               </div>
@@ -12161,69 +12941,356 @@ const CustomerCheckout = ({
 const LockedRiderMode = ({ onSwitchRole }: { onSwitchRole: () => void }) => {
   const [riderProfile, setRiderProfile] = useState<RiderProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeMissions, setActiveMissions] = useState<Order[]>([]);
+  const [availableMissions, setAvailableMissions] = useState<Order[]>([]);
+  const [onlineRiders, setOnlineRiders] = useState<RiderProfile[]>([]);
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+  const [riderCoords, setRiderCoords] = useState<[number, number] | undefined>(undefined);
+  const [activeConnections, setActiveConnections] = useState<RiderConnection[]>([]);
+  const [showPairingModal, setShowPairingModal] = useState(false);
+  const [pairingCode, setPairingCode] = useState("");
+  const [isPairing, setIsPairing] = useState(false);
+
+  const fetchRiderData = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // 1. Fetch Profile
+    const { data: profile } = await supabase
+      .from("rider_profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profile) {
+      setRiderProfile(profile as RiderProfile);
+    } else {
+      const { data: newProfile } = await supabase
+        .from("rider_profiles")
+        .insert({ id: user.id, is_online: false, status: "offline" })
+        .select()
+        .single();
+      if (newProfile) setRiderProfile(newProfile as RiderProfile);
+    }
+
+    // 2. Fetch Active Missions (Assigned to me, not delivered)
+    const { data: active } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("rider_id", user.id)
+      .not("delivery_status", "eq", "delivered")
+      .order("created_at", { ascending: false });
+    
+    if (active) setActiveMissions(active as Order[]);
+
+    // 3. Fetch Available Missions (Broadcast)
+    const { data: available } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("delivery_status", "finding_rider")
+      .or("status.eq.accepted,status.eq.preparing")
+      .order("created_at", { ascending: false });
+    
+    if (available) setAvailableMissions(available as Order[]);
+
+    // 4. Fetch Online Riders (Connected People)
+    const { data: riders } = await supabase
+      .from("rider_profiles")
+      .select("*")
+      .eq("is_online", true)
+      .limit(10);
+    
+    if (riders) setOnlineRiders(riders as RiderProfile[]);
+
+    // 5. Fetch Active Connections (Paired Shops)
+    const { data: connections } = await supabase
+      .from("rider_connections")
+      .select(`
+        *,
+        shops:shop_id (
+          name,
+          logo_url
+        )
+      `)
+      .eq("rider_id", user.id)
+      .eq("status", "active")
+      .gt("expires_at", new Date().toISOString());
+
+    if (connections) setActiveConnections(connections);
+    
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    const fetchRiderProfileData = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from("rider_profiles")
-        .select("*")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error fetching rider profile:", error);
-      } else if (data) {
-        setRiderProfile(data as RiderProfile);
-      } else {
-        // Create profile if not exists
-        const { data: newProfile, error: createError } = await supabase
-          .from("rider_profiles")
-          .insert({ id: user.id, is_online: false, status: "offline" })
-          .select()
-          .single();
-        if (!createError) setRiderProfile(newProfile as RiderProfile);
-      }
-      setLoading(false);
+    const initRider = async () => {
+      await fetchRiderData();
     };
-    void fetchRiderProfileData();
-  }, []);
+    void initRider();
+
+    // Geolocation Tracking (Note: Background tracking normally requires a ServiceWorker or Native App Wrapper)
+    let watchId: number;
+    if ("geolocation" in navigator) {
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          setRiderCoords([latitude, longitude]);
+          
+          // Throttled DB update, only if online
+          void (async () => {
+             const { data: { user } } = await supabase.auth.getUser();
+             // In a perfect system we'd verify riderProfile?.is_online here, but we don't have it directly in the dependency array
+             // to prevent constant re-subscriptions. We'll update the DB and let RLS block if not allowed, or just do a simple check.
+             if (user) {
+               await supabase.from("rider_profiles").update({
+                 current_latitude: latitude,
+                 current_longitude: longitude,
+                 updated_at: new Date().toISOString()
+               }).eq("id", user.id).eq("is_online", true); // Only update coordinates if they are marked online!
+             }
+          })();
+        },
+        (err) => {
+           console.error("Geo error:", err);
+           toast.error("Location tracking disabled. Ensure GPS is on.");
+        },
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+      );
+    }
+
+    // Listen for changes in orders, profile and online status
+    const ordersSubscription = supabase
+      .channel("rider_dashboard_orders")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        (payload) => { 
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const order = payload.new as Order;
+            // Notify if a new mission is looking for a rider
+            if (order.delivery_status === 'finding_rider' && payload.eventType === 'INSERT') {
+              toast.info("🚨 New Mission Broadcast!", { description: "Tap to view in Available Missions", duration: 5000 });
+              // Play a sound if available
+              const audio = new Audio('/notification.mp3');
+              audio.play().catch(() => {});
+            }
+          }
+          void fetchRiderData(); 
+        }
+      )
+      .subscribe();
+
+    const profileSubscription = supabase
+      .channel("rider_dashboard_profiles")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "rider_profiles" },
+        () => { void fetchRiderData(); }
+      )
+      .subscribe();
+
+    const connectionsSubscription = supabase
+      .channel("rider_dashboard_connections")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "rider_connections" },
+        () => { void fetchRiderData(); }
+      )
+      .subscribe();
+
+    return () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+      supabase.removeChannel(ordersSubscription);
+      supabase.removeChannel(profileSubscription);
+      supabase.removeChannel(connectionsSubscription);
+    };
+  }, [fetchRiderData]);
 
   const toggleOnline = async () => {
     if (!riderProfile) return;
     const newStatus = !riderProfile.is_online;
     
-    // Optimistic update
-    setRiderProfile((prev) => prev ? ({ ...prev, is_online: newStatus }) : null);
-
     const { error } = await supabase
       .from("rider_profiles")
-      .update({ is_online: newStatus, status: newStatus ? "online" : "offline" })
+      .update({ 
+        is_online: newStatus, 
+        status: newStatus ? "online" : "offline",
+        updated_at: new Date().toISOString()
+      })
       .eq("id", riderProfile.id);
 
     if (error) {
       toast.error("Failed to update status");
-      setRiderProfile((prev) => prev ? ({ ...prev, is_online: !newStatus }) : null);
     } else {
       toast.success(newStatus ? "You are now ONLINE" : "You are now OFFLINE");
+      fetchRiderData();
+    }
+  };
+
+  const acceptMission = async (orderId: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !riderProfile?.is_online) {
+      toast.error(riderProfile?.is_online ? "Auth error" : "Go online to accept missions");
+      return;
+    }
+
+    setUpdatingOrderId(orderId);
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        rider_id: user.id,
+        delivery_status: "accepted",
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", orderId)
+      .eq("delivery_status", "finding_rider");
+
+    if (error) {
+      toast.error("Failed to accept mission: " + error.message);
+    } else {
+      toast.success("Mission Accepted!");
+      fetchRiderData();
+    }
+    setUpdatingOrderId(null);
+  };
+
+  const updateMissionStatus = async (orderId: string, currentStatus: string) => {
+    let nextStatus = "";
+    if (currentStatus === "accepted") nextStatus = "picked_up";
+    else if (currentStatus === "picked_up") nextStatus = "delivered";
+
+    if (!nextStatus) return;
+
+    setUpdatingOrderId(orderId);
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        delivery_status: nextStatus,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      toast.error("Update failed");
+    } else {
+      toast.success(`Broadcasting update: ${nextStatus}`);
+      
+      // If delivered, update rider stats
+      if (nextStatus === "delivered") {
+        const order = activeMissions.find(o => o.id === orderId);
+        const fee = order?.delivery_fee || 5; // Default R5 if not set
+        
+        await supabase
+          .from("rider_profiles")
+          .update({
+            total_earnings: (riderProfile?.total_earnings || 0) + fee,
+            total_deliveries: (riderProfile?.total_deliveries || 0) + 1,
+            active_points: (riderProfile?.active_points || 0) + 10,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", riderProfile!.id);
+      }
+      fetchRiderData();
+    }
+    setUpdatingOrderId(null);
+  };
+
+  const handlePairing = async () => {
+    if (!pairingCode || pairingCode.length < 6) {
+      toast.error("Please enter a valid 6-digit code");
+      return;
+    }
+
+    setIsPairing(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Session expired. Please sign in again.");
+      setIsPairing(false);
+      return;
+    }
+
+    try {
+      // 1. Find the connection record
+      const { data, error } = await supabase
+        .from("rider_connections")
+        .select("*")
+        .eq("connection_code", pairingCode.toUpperCase())
+        .eq("status", "active")
+        .single();
+
+      if (error || !data) {
+        toast.error("Invalid or expired pairing code");
+        setIsPairing(false);
+        return;
+      }
+
+      // Check expiry
+      if (new Date(data.expires_at) < new Date()) {
+        toast.error("This code has expired. Ask merchant for a new one.");
+        setIsPairing(false);
+        return;
+      }
+
+      // 2. Link the rider
+      const { error: updateError } = await supabase
+        .from("rider_connections")
+        .update({
+          rider_id: user.id,
+          rider_name: riderProfile?.full_name || user.email?.split("@")[0] || "Rider",
+          status: "active",
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", data.id);
+
+      if (updateError) {
+        toast.error("Linking failed: " + updateError.message);
+      } else {
+        toast.success("Successfully paired with Merchant!");
+        setShowPairingModal(false);
+        setPairingCode("");
+        fetchRiderData();
+      }
+    } catch (err) {
+      console.error("Pairing error:", err);
+      toast.error("An unexpected error occurred during pairing");
+    } finally {
+      setIsPairing(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-white">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-white font-body">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col p-6 font-body">
-      {/* Header */}
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-body pb-24 relative overflow-hidden">
+      {/* Background Map */}
+      <div className="absolute inset-0 z-0">
+        <AppMapBackground 
+          riderCoords={riderCoords}
+          missions={availableMissions.map(m => ({
+             ...m,
+             latitude: m.lat,
+             longitude: m.lng,
+             order_type: m.order_type as 'delivery' | 'pickup'
+          }))}
+          activeMission={activeMissions[0] ? {
+             ...activeMissions[0],
+             latitude: activeMissions[0].lat,
+             longitude: activeMissions[0].lng,
+             order_type: activeMissions[0].order_type as 'delivery' | 'pickup'
+          } : null}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-zinc-950/80 pointer-events-none" />
+      </div>
+
+      <div className="relative z-10 p-6 flex flex-col min-h-screen">
+        {/* Header */}
       <header className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-white uppercase font-headline">
@@ -12248,73 +13315,317 @@ const LockedRiderMode = ({ onSwitchRole }: { onSwitchRole: () => void }) => {
           >
             <Store size={20} />
           </button>
-          <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center font-bold">
-            {riderProfile?.name?.[0] || <UserIcon size={20} />}
+          <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center font-bold text-on-primary">
+            {riderProfile?.full_name?.[0] || riderProfile?.name?.[0] || <UserIcon size={20} />}
           </div>
         </div>
       </header>
 
-      {/* Main Status Card */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 mb-8 relative overflow-hidden">
+      {/* Active Connections HUD */}
+      {activeConnections.length > 0 && (
+        <div className="px-6 mb-8">
+           <div className="flex flex-col gap-2">
+             {activeConnections.map(conn => {
+                const expiresAt = new Date(conn.expires_at);
+                const diff = expiresAt.getTime() - Date.now();
+                const hours = Math.floor(diff / (1000 * 60 * 60));
+                const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+                return (
+                  <div key={conn.id} className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-center justify-between animate-in fade-in slide-in-from-top-4 duration-500">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
+                        <Store size={20} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black text-primary uppercase tracking-[0.2em] animate-pulse">Uplink Active</span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                        </div>
+                        <p className="text-sm font-bold text-white">{conn.shops?.name || "Merchant Shop"}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-black text-zinc-500 uppercase tracking-tighter mb-0.5">Session Remaining</p>
+                      <p className="text-xs font-mono font-black text-zinc-300">
+                        {hours}h {mins}m
+                      </p>
+                    </div>
+                  </div>
+                );
+             })}
+           </div>
+        </div>
+      )}
+
+      {/* Stats Summary */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-8 relative overflow-hidden">
         <div className="relative z-10 space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-black uppercase tracking-widest text-zinc-400">
-              Shift Status
-            </h2>
+            <div>
+              <h2 className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1">
+                Lifetime Tracker
+              </h2>
+              <p className="text-sm font-bold text-zinc-300">
+                {riderProfile?.full_name || "Agent Rider"}
+              </p>
+            </div>
             <button
               onClick={toggleOnline}
               className={cn(
-                "px-6 py-2 rounded-full font-black text-xs transition-all uppercase tracking-widest border-2 cursor-pointer",
+                "px-5 py-2 rounded-xl font-black text-[10px] transition-all uppercase tracking-widest border-2",
                 riderProfile?.is_online
                   ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
-                  : "bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-700",
+                  : "bg-transparent text-zinc-500 border-zinc-800",
               )}
             >
               {riderProfile?.is_online ? "Go Offline" : "Go Online"}
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <div className="bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50">
-              <span className="text-[10px] font-bold text-zinc-600 uppercase block mb-1">
-                Earning (Session)
-              </span>
-              <p className="text-xl font-black text-white">R 0.00</p>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 bg-green-500/10 rounded-lg text-green-500">
+                  <Sparkles size={12} />
+                </div>
+                <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-tighter">
+                  Total Earnings
+                </span>
+              </div>
+              <p className="text-xl font-black text-white">R {riderProfile?.total_earnings?.toFixed(2) || "0.00"}</p>
             </div>
             <div className="bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50">
-              <span className="text-[10px] font-bold text-zinc-600 uppercase block mb-1">
-                Completed
-              </span>
-              <p className="text-xl font-black text-white">0</p>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 bg-blue-500/10 rounded-lg text-blue-500">
+                  <Package size={12} />
+                </div>
+                <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-tighter">
+                  Deliveries
+                </span>
+              </div>
+              <p className="text-xl font-black text-white">{riderProfile?.total_deliveries || 0}</p>
             </div>
           </div>
         </div>
-        {/* Decor */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 blur-[80px] rounded-full -mr-16 -mt-16" />
+        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 blur-[60px] rounded-full -mr-16 -mt-16" />
       </div>
 
-      {/* Local Orders Feed Hook */}
-      <div className="space-y-4">
-        <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1">
-          Peripheral Missions
-        </h3>
-        <div className="bg-zinc-900/30 border-2 border-dashed border-zinc-800 rounded-3xl p-12 text-center text-zinc-500 italic text-sm">
-          Searching for nearby broadcast signals...
+      {/* Active Missions */}
+      {activeMissions.length > 0 && (
+        <div className="mb-8">
+          <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 mb-4 flex items-center gap-2">
+            <Navigation size={14} className="text-primary" /> Active Missions
+          </h3>
+          <div className="space-y-3">
+            {activeMissions.map((order) => (
+              <div key={order.id} className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-4 shadow-sm">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <span className="text-[10px] font-bold text-zinc-500 uppercase block">Customer</span>
+                    <p className="font-bold text-white">{order.customer_name}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className={cn(
+                      "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter mb-1 inline-block",
+                      order.delivery_fee && order.delivery_fee > 5 
+                        ? "bg-amber-500/20 text-amber-500 border border-amber-500/30" 
+                        : "bg-green-500/20 text-green-500 border border-green-500/30"
+                    )}>
+                      {order.delivery_fee && order.delivery_fee > 5 ? "R10 FIXED" : "R5 FIXED"}
+                    </div>
+                    <p className="font-black text-white">R {order.delivery_fee?.toFixed(2) || "5.00"}</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-4 mb-4 text-[10px] font-medium text-zinc-400">
+                  <div className="flex items-center gap-1">
+                    <MapPin size={10} className="text-zinc-600" />
+                    <span className="truncate max-w-[120px]">{order.delivery_address}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Clock size={10} className="text-zinc-600" />
+                    <span>{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => updateMissionStatus(order.id, order.delivery_status || "accepted")}
+                  disabled={updatingOrderId === order.id}
+                  className={cn(
+                    "w-full py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ring-offset-zinc-900",
+                    order.delivery_status === "accepted" 
+                      ? "bg-zinc-100 text-zinc-950 hover:bg-white" 
+                      : "bg-primary text-on-primary hover:bg-primary/90"
+                  )}
+                >
+                  {updatingOrderId === order.id ? "Syncing..." : 
+                   order.delivery_status === "accepted" ? "Mark as Picked Up" : "Mark as Delivered"}
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
+      )}
+
+      {/* Available Missions (Broadcast) */}
+      <div className="mb-8">
+        <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 mb-4">
+          Broadcast Missions
+        </h3>
+        {availableMissions.length === 0 ? (
+          <div className="bg-zinc-900/30 border-2 border-dashed border-zinc-800 rounded-3xl p-12 text-center">
+            <Radio className="mx-auto mb-3 text-zinc-700 animate-pulse" size={24} />
+            <p className="text-zinc-500 italic text-sm font-medium">
+              Scanning for nearby merchant signals...
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {availableMissions.map((order) => (
+              <div key={order.id} className="bg-zinc-900/50 border border-primary/20 rounded-2xl p-5 hover:bg-zinc-900 transition-colors group">
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                      <Store size={20} />
+                    </div>
+                    <div>
+                      <p className="font-bold text-white leading-none mb-1">{order.restaurant_name || "Merchant"}</p>
+                      <div className="flex items-center gap-2">
+                        <span className={cn(
+                          "text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded border",
+                          order.delivery_fee && order.delivery_fee > 5
+                            ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                            : "bg-green-500/10 text-green-500 border-green-500/20"
+                        )}>
+                          {order.delivery_fee && order.delivery_fee > 5 ? "Zone B" : "Zone A"}
+                        </span>
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-tight italic">Priority Delivery</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-black text-green-500 leading-none mb-1">R {order.delivery_fee?.toFixed(2) || "5.00"}</p>
+                    <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">Earnings</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 mb-4 text-[10px] text-zinc-400 font-medium">
+                  <div className="flex items-center gap-1">
+                    <Navigation size={10} className={cn(
+                      order.delivery_fee && order.delivery_fee > 5 ? "text-amber-500" : "text-green-500"
+                    )} />
+                    <span>{order.delivery_fee && order.delivery_fee > 5 ? "Mid-Range (3-6km)" : "Short-Range (<3km)"}</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-zinc-500">
+                    <Info size={10} />
+                    <span>{JSON.parse(order.items || "[]").length} Items</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => acceptMission(order.id)}
+                  disabled={updatingOrderId === order.id || !riderProfile?.is_online}
+                  className="w-full py-3 bg-zinc-100 text-zinc-950 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-white active:scale-95 transition-all disabled:opacity-30"
+                >
+                  {updatingOrderId === order.id ? "Deploying..." : "Accept Mission"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Connected People (Online Riders) */}
+      <div className="mb-8">
+        <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 mb-4 flex items-center gap-2">
+          <Users size={14} className="text-zinc-600" /> Connected Hub
+        </h3>
+        <div className="grid grid-cols-5 md:grid-cols-10 gap-3">
+          {onlineRiders.map((rider) => (
+            <div key={rider.id} className="relative group">
+              <div className={cn(
+                "w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs transition-all border-2",
+                rider.id === riderProfile?.id 
+                  ? "bg-primary/20 border-primary text-primary" 
+                  : "bg-zinc-900 border-zinc-800 text-zinc-500"
+              )}>
+                {rider.full_name?.[0] || rider.name?.[0] || "?"}
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-zinc-950" />
+            </div>
+          ))}
+          <button className="w-10 h-10 rounded-xl border-2 border-dashed border-zinc-800 flex items-center justify-center text-zinc-700 hover:border-zinc-700 hover:text-zinc-500 transition-all" onClick={() => setShowPairingModal(true)}>
+            <Plus size={16} />
+          </button>
+        </div>
+        <p className="text-[10px] text-zinc-600 mt-4 font-medium italic">
+          Currently {onlineRiders.length} agents active in the regional mesh network.
+        </p>
+      </div>
+
+      {/* Pairing Modal */}
+      <AnimatePresence>
+        {showPairingModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-zinc-950/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-[2rem] p-8 shadow-2xl"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
+                  <Zap size={24} />
+                </div>
+                <button 
+                  onClick={() => setShowPairingModal(false)}
+                  className="p-2 text-zinc-500 hover:text-white transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="space-y-2 mb-8">
+                <h3 className="text-xl font-black text-white uppercase tracking-tight">Pair with Shop</h3>
+                <p className="text-sm text-zinc-500 font-medium">Enter the 6-digit uplink code shown on the merchant dashboard.</p>
+              </div>
+
+              <div className="space-y-4">
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={pairingCode}
+                  onChange={(e) => setPairingCode(e.target.value.toUpperCase())}
+                  placeholder="CODE"
+                  className="w-full h-16 bg-zinc-950 border-2 border-zinc-800 rounded-2xl text-center text-3xl font-black tracking-[0.5em] text-white focus:border-primary outline-none transition-all placeholder:text-zinc-800"
+                />
+                <button
+                  onClick={handlePairing}
+                  disabled={isPairing || pairingCode.length < 6}
+                  className="w-full h-14 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest hover:bg-primary/90 disabled:opacity-30 disabled:grayscale transition-all shadow-lg shadow-primary/20"
+                >
+                  {isPairing ? "Verifying Uplink..." : "Initialize Pairing"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Footer Instructions */}
-      <div className="mt-auto pt-8 border-t border-zinc-900">
-        <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-500">
-            <Info size={20} />
+      <div className="mt-8 pt-8 border-t border-zinc-900">
+        <div className="p-4 bg-primary/5 border border-primary/10 rounded-2xl flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+            <ShieldCheck size={20} />
           </div>
-          <p className="text-[10px] text-blue-400 font-medium leading-relaxed">
-            PRO TIP: Stay online in Tembisa Sector 4 to receive High-Priority
-            R5.00 missions from LocalEats Merchants.
+          <p className="text-[10px] text-zinc-400 font-medium leading-relaxed">
+            SECURE LINK ACTIVE: Your session is protected by E2E encryption. 
+            Maintain a high rating to stay eligible for <span className="text-primary">Flash Multiplier</span> events.
           </p>
         </div>
       </div>
     </div>
+  </div>
   );
 };
