@@ -77,6 +77,7 @@ import {
   Package,
   ShieldCheck,
   Timer,
+  Loader2,
 } from "lucide-react";
 import {
   BarChart,
@@ -94,6 +95,7 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import AppMapBackground from "./components/AppMapBackground";
+import { SavingOverlay } from "./components/ui/SavingOverlay";
 import { createClient, User } from "@supabase/supabase-js";
 import {
   MapContainer,
@@ -427,6 +429,7 @@ export interface RiderConnection {
   shop_id: number;
   rider_id: string | null;
   rider_name: string | null;
+  rider_phone?: string | null;
   connection_code: string;
   expires_at: string;
   status: "active" | "expired" | "offline";
@@ -1439,6 +1442,8 @@ interface EditProfileProps {
   onSave: (data: ProfileData) => void;
   initialData: ProfileData;
   userId: string;
+  isSaving?: boolean;
+  isSuccess?: boolean;
 }
 
 const formatSAPhone = (value: string) => {
@@ -1472,6 +1477,8 @@ const EditProfile: React.FC<EditProfileProps> = ({
   onSave,
   initialData,
   userId,
+  isSaving = false,
+  isSuccess = false,
 }) => {
   const [formData, setFormData] = useState({
     fullName: initialData?.fullName || "",
@@ -1817,36 +1824,15 @@ const EditProfile: React.FC<EditProfileProps> = ({
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-on-surface-variant px-1">
-                City / Region
+                Search & Set Location
               </label>
-              <div className="relative">
-                <MapPin
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-primary"
-                  size={20}
-                />
-                <input
-                  className="w-full bg-surface-container-low border-none rounded-xl pl-12 pr-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface"
-                  type="text"
-                  value={formData.location}
-                  onChange={(e) =>
-                    setFormData({ ...formData, location: e.target.value })
-                  }
-                  placeholder="e.g. Soweto, Johannesburg"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-on-surface-variant px-1">
-                Street Address
-              </label>
-              <input
-                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface"
-                type="text"
-                value={formData.address}
-                onChange={(e) =>
-                  setFormData({ ...formData, address: e.target.value })
-                }
-                placeholder="e.g. 123 Vilakazi St"
+              <AddressAutocomplete
+                onSelect={(lat, lng, address, location) => {
+                  setFormData(prev => ({ ...prev, lat, lng, address, location }));
+                  toast.success("Location pinpointed!");
+                }}
+                initialValue={formData.address || formData.location}
+                placeholder="Search for your street or area..."
               />
             </div>
           </div>
@@ -2003,10 +1989,32 @@ const EditProfile: React.FC<EditProfileProps> = ({
         <div className="pt-6 pb-12">
           <button
             onClick={handleSave}
-            className="w-full bg-gradient-to-br from-primary to-primary-container text-on-primary font-headline font-extrabold text-lg py-5 rounded-full shadow-lg shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+            disabled={isSaving || isSuccess}
+            className={cn(
+              "w-full text-on-primary font-headline font-extrabold text-lg py-5 rounded-full shadow-lg transition-all flex items-center justify-center gap-3",
+              isSuccess 
+                ? "bg-emerald-500 shadow-emerald-500/20 active:scale-[0.98]"
+                : isSaving 
+                  ? "bg-surface-container-highest cursor-not-allowed text-on-surface-variant shadow-none" 
+                  : "bg-gradient-to-br from-primary to-primary-container shadow-primary/20 active:scale-[0.98]"
+            )}
           >
-            <span>Save Changes</span>
-            <CheckCircle2 size={24} />
+            {isSuccess ? (
+              <>
+                <span>Saved Successfully!</span>
+                <Check size={24} strokeWidth={3} />
+              </>
+            ) : isSaving ? (
+              <>
+                <span>Saving Changes...</span>
+                <Loader2 className="animate-spin" size={24} />
+              </>
+            ) : (
+              <>
+                <span>Save Changes</span>
+                <CheckCircle2 size={24} />
+              </>
+            )}
           </button>
           <p className="text-center mt-6 text-on-surface-variant text-sm font-medium">
             Last updated: Oct 24, 2023
@@ -2073,43 +2081,58 @@ const EditProfile: React.FC<EditProfileProps> = ({
 
 // --- Components ---
 
-const StatCard = ({
+const StatCard = React.memo(({
   title,
   value,
   change,
   icon: Icon,
   colorClass,
+  onClick,
 }: {
   title: string;
   value: string | number;
-  change?: string;
+  change?: string | null;
   icon: React.ElementType;
   colorClass: string;
+  onClick?: () => void;
 }) => (
-  <div className="bg-surface-container-lowest p-4 md:p-8 rounded-xl shadow-sm border border-outline-variant/10 group hover:shadow-md transition-all duration-300">
-    <div className="flex justify-between items-start mb-2 md:mb-4">
-      <div className={cn("p-2 md:p-3 rounded-2xl", colorClass)}>
+  <div 
+    onClick={onClick}
+    className={cn(
+      "bg-surface-container-lowest p-4 md:p-8 rounded-[2rem] shadow-sm border border-outline-variant/10 group hover:shadow-xl hover:shadow-primary/5 hover:-translate-y-1 transition-all duration-500 relative overflow-hidden",
+      onClick && "cursor-pointer active:scale-95"
+    )}
+  >
+    <div className="absolute -right-4 -bottom-4 p-8 opacity-[0.03] group-hover:opacity-[0.08] group-hover:scale-125 transition-all duration-700 blur-[2px]">
+      <Icon size={120} />
+    </div>
+    <div className="flex justify-between items-start mb-4 md:mb-6 relative z-10">
+      <div className={cn("p-2 md:p-3.5 rounded-2xl shadow-inner", colorClass)}>
         <Icon size={20} className="md:w-6 md:h-6" />
       </div>
-      <span
-        className={cn(
-          "text-[10px] font-bold px-2 py-0.5 md:py-1 rounded-full",
-          change?.startsWith("+")
-            ? "text-emerald-600 bg-emerald-50"
-            : "text-primary bg-primary-fixed",
-        )}
-      >
-        {change}
-      </span>
+      {change && (
+        <span
+          className={cn(
+            "text-[9px] md:text-[10px] font-black px-2 py-0.5 md:py-1 rounded-full uppercase tracking-widest",
+            change?.startsWith("+")
+              ? "text-emerald-600 bg-emerald-50"
+              : "text-primary bg-primary-fixed",
+          )}
+        >
+          {change}
+        </span>
+      )}
     </div>
-    <p className="text-on-surface-variant text-[10px] md:text-sm font-semibold uppercase tracking-wider mb-1">
-      {title}
-    </p>
-    <p className="text-xl md:text-3xl font-headline font-bold text-on-surface">
-      {value}
-    </p>
+    <div className="relative z-10">
+      <p className="text-on-surface-variant/60 text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em] mb-1">
+        {title}
+      </p>
+      <p className="text-xl md:text-3xl font-headline font-black text-on-surface tracking-tighter">
+        {value}
+      </p>
+    </div>
   </div>
-);
+));
 
 // --- Components ---
 
@@ -2132,21 +2155,65 @@ const OnboardingChecklist = ({
     user?.user_metadata?.operating_hours?.open &&
     user?.user_metadata?.operating_hours?.close;
 
+  const tasks = [
+    { key: "shop", completed: hasShop, label: "Create Shop" },
+    { key: "hours", completed: hasOperatingHours, label: "Set Hours" },
+    { key: "menu", completed: hasMenu, label: "Add Menu Items" },
+  ];
+  const completedCount = tasks.filter((t) => t.completed).length;
+  const progressPercent = Math.round((completedCount / tasks.length) * 100);
+
   if (hasShop && hasOperatingHours && hasMenu) return null;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-primary/5 border border-primary/20 rounded-2xl md:rounded-3xl p-4 md:p-8 mb-8 md:mb-12"
+      className="bg-primary/5 border border-primary/20 rounded-2xl md:rounded-3xl p-4 md:p-8 mb-8 md:mb-12 relative overflow-hidden"
     >
-      <div className="flex items-center gap-3 mb-4 md:mb-6">
-        <div className="p-1.5 md:p-2 bg-primary/10 rounded-lg">
-          <Rocket className="text-primary w-5 h-5 md:w-6 md:h-6" />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 md:mb-8">
+        <div className="flex items-center gap-3">
+          <div className="p-1.5 md:p-2 bg-primary/10 rounded-lg shrink-0">
+            <Rocket className="text-primary w-5 h-5 md:w-6 md:h-6" />
+          </div>
+          <div>
+            <h2 className="text-lg md:text-2xl font-headline font-bold text-on-surface tracking-tight leading-tight">
+              Ready to Launch?
+            </h2>
+            <p className="text-xs md:text-sm text-on-surface-variant font-medium">
+              Complete these steps to start accepting orders from thirsty customers.
+            </p>
+          </div>
         </div>
-        <h2 className="text-xl md:text-2xl font-headline font-bold text-on-surface tracking-tight">
-          Getting Started
-        </h2>
+        
+        <div className="flex items-center gap-4 bg-white/40 dark:bg-black/20 px-3 py-2 rounded-2xl md:px-4 md:py-3 border border-primary/10">
+          <div className="relative w-10 h-10 md:w-12 md:h-12 shrink-0">
+            <svg className="w-full h-full rotate-[-90deg]">
+              <circle
+                cx="50%" cy="50%" r="40%"
+                className="stroke-primary/10 fill-none"
+                strokeWidth="4"
+              />
+              <motion.circle
+                cx="50%" cy="50%" r="40%"
+                className="stroke-primary fill-none"
+                strokeWidth="4"
+                strokeLinecap="round"
+                strokeDasharray="100 100"
+                initial={{ strokeDashoffset: 100 }}
+                animate={{ strokeDashoffset: 100 - progressPercent }}
+                transition={{ duration: 1, ease: "easeOut" }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-[10px] md:text-xs font-black text-primary">{progressPercent}%</span>
+            </div>
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-primary/60">Progress</p>
+            <p className="text-sm font-bold text-on-surface">{completedCount}/{tasks.length} Steps Done</p>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
@@ -2534,7 +2601,7 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
   );
 };
 
-const DashboardOverview = ({
+const DashboardOverview = React.memo(({
   orders,
   loading,
   shops,
@@ -2746,6 +2813,13 @@ const DashboardOverview = ({
     return lastDays.map((d) => ({ name: d.dayName, value: d.count }));
   }, [orders, timeframe]);
 
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good Morning";
+    if (hour < 18) return "Good Afternoon";
+    return "Good Evening";
+  }, []);
+
   const exportWeeklyCSV = () => {
     if (weeklyOrders.length === 0) {
       toast.error("No orders this week to export");
@@ -2821,27 +2895,48 @@ const DashboardOverview = ({
 
   if (loading) {
     return (
-      <div className="space-y-12">
-        <section>
-          <Skeleton className="h-12 w-64 mb-2" />
-          <Skeleton className="h-4 w-48" />
+      <div className="space-y-12 animate-pulse">
+        <section className="space-y-4">
+          <div className="flex justify-between items-start">
+            <div className="space-y-2">
+              <Skeleton className="h-10 w-64 md:w-80 rounded-xl" />
+              <Skeleton className="h-4 w-48 md:w-64" />
+            </div>
+            <div className="flex gap-2">
+              <Skeleton className="h-10 w-10 md:w-24 rounded-xl" />
+              <Skeleton className="h-10 w-10 md:w-24 rounded-xl" />
+              <Skeleton className="h-10 w-10 rounded-xl" />
+            </div>
+          </div>
         </section>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-40 rounded-xl" />
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-32 rounded-[2rem]" />
           ))}
         </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <Skeleton className="lg:col-span-8 h-80 rounded-xl" />
+          <div className="lg:col-span-8 space-y-6">
+            <Skeleton className="h-96 rounded-[2.5rem]" />
+          </div>
           <div className="lg:col-span-4 space-y-4">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-24 rounded-xl" />
+            <Skeleton className="h-12 w-48 mb-4" />
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex items-center gap-4">
+                <Skeleton className="w-12 h-12 rounded-full shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
+              </div>
             ))}
           </div>
         </div>
       </div>
     );
   }
+
 
   return (
     <div className="space-y-8 md:space-y-12">
@@ -2883,7 +2978,7 @@ const DashboardOverview = ({
         <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div className="space-y-1">
             <h1 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
-              Good morning, Chef!
+              {greeting}, Chef!
             </h1>
             <p className="text-sm text-on-surface-variant font-medium">
               Here is what's happening in your kitchen today.
@@ -2933,6 +3028,7 @@ const DashboardOverview = ({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
+          className="contents"
         >
           <StatCard
             title="Weekly Sales"
@@ -2945,7 +3041,8 @@ const DashboardOverview = ({
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.15 }}
+          className="contents"
         >
           <StatCard
             title="Weekly Orders"
@@ -2958,7 +3055,8 @@ const DashboardOverview = ({
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
+          transition={{ delay: 0.2 }}
+          className="contents"
         >
           <StatCard
             title="Connected Riders"
@@ -2972,7 +3070,8 @@ const DashboardOverview = ({
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
+          transition={{ delay: 0.25 }}
+          className="contents"
         >
           <StatCard
             title="Low Stock"
@@ -2980,12 +3079,14 @@ const DashboardOverview = ({
             change="Alert"
             icon={AlertCircle}
             colorClass="bg-error/10 text-error"
+            onClick={() => onNavigate("menu")}
           />
         </motion.div>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
+          transition={{ delay: 0.3 }}
+          className="contents"
         >
           <StatCard
             title="Followers"
@@ -3122,7 +3223,7 @@ const DashboardOverview = ({
                     {trendData.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
-                        fill={index === 4 ? "#a73400" : "#a734004d"}
+                        fill={index === trendData.length - 1 ? "#f58220" : "#f582204d"}
                       />
                     ))}
                   </Bar>
@@ -3135,26 +3236,28 @@ const DashboardOverview = ({
                   <Tooltip
                     cursor={{ fill: "transparent" }}
                     contentStyle={{
-                      borderRadius: "8px",
+                      borderRadius: "16px",
                       border: "none",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                      boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
+                      backgroundColor: darkMode ? "#1c1c1c" : "#ffffff",
                     }}
                   />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="text-center">
-                <div className="p-4 bg-surface-container-high rounded-full inline-block mb-4">
-                  <TrendingUp
-                    className="text-on-surface-variant opacity-20"
-                    size={48}
-                  />
+              <div className="text-center py-8">
+                <div className="relative w-32 h-32 mx-auto mb-6">
+                  <div className="absolute inset-0 bg-primary/5 rounded-full animate-pulse" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <TrendingUp
+                      className="text-primary/20"
+                      size={56}
+                    />
+                  </div>
                 </div>
-                <p className="text-on-surface-variant font-medium">
-                  No order history yet
-                </p>
-                <p className="text-xs text-on-surface-variant opacity-60">
-                  Complete your first order to see trends
+                <h3 className="text-lg font-bold text-on-surface mb-2">Grow Your Business</h3>
+                <p className="text-xs text-on-surface-variant max-w-xs mx-auto opacity-70">
+                  We'll start tracking your sales trends automatically as soon as your first orders arrive.
                 </p>
               </div>
             )}
@@ -3318,20 +3421,25 @@ const DashboardOverview = ({
             </button>
           </div>
           <div className="space-y-6">
-            {orders.slice(0, 5).map((order) => (
-              <div
+            {orders.slice(0, 5).map((order, i) => (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
                 key={order.id}
-                className="flex items-center justify-between group"
+                className="flex items-center justify-between group p-3 hover:bg-surface-container-high rounded-2xl transition-colors cursor-pointer"
+                onClick={() => onNavigate("orders")}
               >
                 <div className="flex items-center gap-4">
                   <div
                     className={cn(
-                      "w-10 h-10 rounded-full flex items-center justify-center",
+                      "w-11 h-11 rounded-full flex items-center justify-center border-2 border-transparent group-hover:border-primary/10 transition-all shadow-sm",
                       order.status === "completed"
-                        ? "bg-emerald-100 text-emerald-600"
+                        ? "bg-emerald-100/50 text-emerald-600 shadow-emerald-500/5"
                         : order.status === "pending"
                           ? "bg-primary/10 text-primary"
-                          : "bg-blue-100 text-blue-600",
+                          : "bg-blue-100/50 text-blue-600 shadow-blue-500/5",
                     )}
                   >
                     {order.status === "completed" ? (
@@ -3341,29 +3449,46 @@ const DashboardOverview = ({
                     )}
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-on-surface">
-                      Order <span className="text-primary">#{order.id}</span>{" "}
-                      {order.status === "completed" ? "completed" : "received"}
+                    <p className="text-sm font-bold text-on-surface leading-snug">
+                      Order <span className="text-primary font-mono tracking-tighter">#{order.id.toString().slice(-4)}</span>{" "}
+                      {order.status === "completed" ? "Completed" : order.status === "cancelled" ? "Cancelled" : "Received"}
                     </p>
-                    <p className="text-xs text-on-surface-variant">
+                    <p className="text-[10px] md:text-xs text-on-surface-variant/80 font-medium mt-0.5">
                       {order.product_name} •{" "}
                       {format(new Date(order.created_at), "h:mm a")}
                     </p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-on-surface">
+                  <p className="text-sm font-black text-on-surface">
                     R {Number(order.total_price || 0).toFixed(2)}
                   </p>
-                  <p className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-widest">
-                    {order.status}
+                  <div className={cn(
+                    "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full mt-1",
+                    order.status === "completed" ? "bg-emerald-500/10" : "bg-primary/10"
+                  )}>
+                    <div className={cn("w-1 h-1 rounded-full", order.status === "completed" ? "bg-emerald-500" : "bg-primary")} />
+                    <span className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest leading-none">
+                      {order.status}
+                    </span>
+                  </div>
+                </div>
+                </motion.div>
+              ))}
+            {orders.length === 0 && (
+              <div className="py-20 text-center space-y-6">
+                <div className="relative w-24 h-24 mx-auto">
+                   <div className="absolute inset-0 bg-primary/5 rounded-full animate-pulse-slow font-mono" />
+                   <div className="absolute inset-0 flex items-center justify-center opacity-20">
+                     <ReceiptText size={48} />
+                   </div>
+                </div>
+                <div className="max-w-xs mx-auto">
+                  <h3 className="font-bold text-on-surface">Awaiting Your First Order</h3>
+                  <p className="text-xs text-on-surface-variant mt-2 opacity-70">
+                    Your shop activity will appear here in real-time as customers place their orders.
                   </p>
                 </div>
-              </div>
-            ))}
-            {orders.length === 0 && (
-              <div className="py-12 text-center text-on-surface-variant italic">
-                No recent activity to show.
               </div>
             )}
           </div>
@@ -3422,23 +3547,26 @@ const DashboardOverview = ({
       </div>
     </div>
   );
-};
+});
 
 const CreateShop = ({
   user,
   onShopCreated,
+  setIsSaving,
+  setIsSaveSuccess,
 }: {
   user: User | null;
   onShopCreated: () => void;
+  setIsSaving: (val: boolean) => void;
+  setIsSaveSuccess: (val: boolean) => void;
 }) => {
-  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    location: "",
+    location: user?.user_metadata?.address || "",
     category: "Restaurant",
-    phone: "",
-    email: "",
+    phone: user?.user_metadata?.phone || "",
+    email: user?.email || "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -3447,7 +3575,8 @@ const CreateShop = ({
       toast.error("You must be logged in to create a shop.");
       return;
     }
-    setLoading(true);
+    setIsSaving(true);
+    setIsSaveSuccess(false);
     try {
       const { error } = await supabase.from("shops").insert({
         ...formData,
@@ -3456,14 +3585,21 @@ const CreateShop = ({
       });
 
       if (error) throw error;
-      toast.success("Shop created successfully!");
-      onShopCreated();
+      
+      setIsSaving(false);
+      setIsSaveSuccess(true);
+      
+      setTimeout(() => {
+        setIsSaveSuccess(false);
+        toast.success("Shop created successfully!");
+        onShopCreated();
+      }, 1500);
     } catch (err: unknown) {
+      setIsSaving(false);
+      setIsSaveSuccess(false);
       toast.error(
         `Failed to create shop: ${err instanceof Error ? err.message : "Unknown error"}`,
       );
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -3600,11 +3736,15 @@ const MenuManagement = ({
   loading,
   user,
   onRefreshMenu,
+  setIsSaving,
+  setIsSaveSuccess,
 }: {
   shops: Shop[];
   loading: boolean;
   user: User | null;
   onRefreshMenu?: () => void;
+  setIsSaving: (val: boolean) => void;
+  setIsSaveSuccess: (val: boolean) => void;
 }) => {
   const userOwnedShops = useMemo(
     () => shops.filter((s) => s.owner_id === user?.id),
@@ -3653,7 +3793,7 @@ const MenuManagement = ({
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
-  const filteredItems = items.filter((item) => {
+  const filteredItems = useMemo(() => items.filter((item) => {
     const matchesSearch =
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.description?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -3673,7 +3813,7 @@ const MenuManagement = ({
       (stockFilter === "In Stock" && (isUnlimited || (stock || 0) >= 5));
 
     return matchesSearch && matchesCategory && matchesPrice && matchesStock;
-  });
+  }), [items, searchTerm, filterCategory, priceRange, stockFilter]);
 
   const categories = [
     "All",
@@ -3734,18 +3874,30 @@ const MenuManagement = ({
   }, [selectedShopId, fetchMenu]);
 
   const toggleAvailability = async (item: MenuItem) => {
+    // Optimistic Update
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id === item.id ? { ...i, is_available: !item.is_available } : i,
+      ),
+    );
+
     const { error } = await supabase
       .from("menu_items")
       .update({ is_available: !item.is_available })
       .eq("id", item.id);
 
     if (error) {
+      // Rollback
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === item.id ? { ...i, is_available: item.is_available } : i,
+        ),
+      );
       toast.error(`Failed to update availability: ${error.message}`);
     } else {
       toast.success(
         `${item.name} is now ${!item.is_available ? "available" : "unavailable"}`,
       );
-      fetchMenu();
     }
   };
 
@@ -3771,6 +3923,8 @@ const MenuManagement = ({
     e.preventDefault();
     if (!selectedShopId) return;
 
+    setIsSaving(true);
+    setIsSaveSuccess(false);
     setUploading(true);
     let imageUrl = imagePreview; // Use the current preview state as the base
 
@@ -3822,21 +3976,28 @@ const MenuManagement = ({
       setUploading(false);
 
       if (!error) {
-        toast.success("Menu item updated successfully");
-        setEditingItem(null);
-        setFormData({
-          name: "",
-          price: "",
-          category: "Main Course",
-          description: "",
-          stock_quantity: "10",
-          is_unlimited: false,
-        });
-        setImageFile(null);
-        setImagePreview(null);
-        fetchMenu();
-        onRefreshMenu?.();
+        setIsSaving(false);
+        setIsSaveSuccess(true);
+        setTimeout(() => {
+          setIsSaveSuccess(false);
+          toast.success("Menu item updated successfully");
+          setEditingItem(null);
+          setFormData({
+            name: "",
+            price: "",
+            category: "Main Course",
+            description: "",
+            stock_quantity: "10",
+            is_unlimited: false,
+          });
+          setImageFile(null);
+          setImagePreview(null);
+          fetchMenu();
+          onRefreshMenu?.();
+        }, 1500);
       } else {
+        setIsSaving(false);
+        setIsSaveSuccess(false);
         console.error("Supabase Update Error:", error);
         toast.error(`Failed to update menu item: ${error.message}`);
       }
@@ -3857,20 +4018,28 @@ const MenuManagement = ({
       setUploading(false);
 
       if (!error) {
-        toast.success("Menu item added successfully");
-        setFormData({
-          name: "",
-          price: "",
-          category: "Main Course",
-          description: "",
-          stock_quantity: "10",
-          is_unlimited: false,
-        });
-        setImageFile(null);
-        setImagePreview(null);
-        fetchMenu();
-        onRefreshMenu?.();
+        setIsSaving(false);
+        setIsSaveSuccess(true);
+        
+        setTimeout(() => {
+          setIsSaveSuccess(false);
+          toast.success("Menu item added successfully");
+          setFormData({
+            name: "",
+            price: "",
+            category: "Main Course",
+            description: "",
+            stock_quantity: "10",
+            is_unlimited: false,
+          });
+          setImageFile(null);
+          setImagePreview(null);
+          fetchMenu();
+          onRefreshMenu?.();
+        }, 1500);
       } else {
+        setIsSaving(false);
+        setIsSaveSuccess(false);
         console.error("Supabase Insert Error:", error);
         toast.error(`Failed to add menu item: ${error.message}`);
       }
@@ -3993,6 +4162,28 @@ const MenuManagement = ({
 
     if (!window.confirm(confirmMessage)) return;
 
+    // Snapshot for rollback
+    const previousItems = [...items];
+
+    // Optimistic Update
+    if (action === "delete") {
+      setItems((prev) => prev.filter((item) => !selectedItems.includes(item.id)));
+    } else if (action === "category" && value) {
+      setItems((prev) =>
+        prev.map((item) =>
+          selectedItems.includes(item.id) ? { ...item, category: value } : item
+        )
+      );
+    } else {
+      setItems((prev) =>
+        prev.map((item) =>
+          selectedItems.includes(item.id)
+            ? { ...item, is_available: action === "available" }
+            : item
+        )
+      );
+    }
+
     try {
       if (action === "delete") {
         const { error } = await supabase
@@ -4019,6 +4210,8 @@ const MenuManagement = ({
       setSelectedItems([]);
       fetchMenu();
     } catch (error: unknown) {
+      // Rollback
+      setItems(previousItems);
       toast.error(
         `Bulk action failed: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
@@ -4108,7 +4301,12 @@ const MenuManagement = ({
       </motion.section>
 
       {userOwnedShops.length === 0 ? (
-        <CreateShop user={user} onShopCreated={onRefreshMenu || (() => {})} />
+        <CreateShop 
+          user={user} 
+          onShopCreated={onRefreshMenu || (() => {})} 
+          setIsSaving={setIsSaving}
+          setIsSaveSuccess={setIsSaveSuccess}
+        />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <motion.section
@@ -4554,19 +4752,34 @@ const MenuManagement = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
               {filteredItems.length === 0 ? (
-                <div className="col-span-full py-12 md:py-20 text-center bg-surface-container-low rounded-2xl md:rounded-[2rem] border-2 border-dashed border-outline-variant/20">
-                  <p className="text-on-surface-variant font-medium text-sm md:text-base">
-                    No items found matching your criteria.
+                <div className="col-span-full py-20 md:py-32 flex flex-col items-center justify-center bg-surface-container-low rounded-2xl md:rounded-[2rem] border-2 border-dashed border-outline-variant/20 px-6">
+                  <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6">
+                    <UtensilsCrossed size={36} className="text-primary/30" />
+                  </div>
+                  <h3 className="text-xl font-bold text-on-surface mb-2">No menu items found</h3>
+                  <p className="text-sm text-on-surface-variant max-w-xs mx-auto mb-8">
+                    {searchTerm || filterCategory !== "All" 
+                      ? "Try adjusting your search or filters to find what you're looking for." 
+                      : "Your menu is currently empty. Start adding items to showcase your delicious food!"}
                   </p>
-                  <button
-                    onClick={() => {
-                      setSearchTerm("");
-                      setFilterCategory("All");
-                    }}
-                    className="mt-4 text-primary font-bold underline text-sm md:text-base"
-                  >
-                    Clear all filters
-                  </button>
+                  {(searchTerm || filterCategory !== "All") ? (
+                    <button
+                      onClick={() => {
+                        setSearchTerm("");
+                        setFilterCategory("All");
+                      }}
+                      className="px-6 py-2 bg-primary text-on-primary rounded-full text-sm font-bold shadow-lg shadow-primary/20 hover:scale-105 transition-all"
+                    >
+                      Clear all filters
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleAdd}
+                      className="px-6 py-2 bg-primary text-on-primary rounded-full text-sm font-bold shadow-lg shadow-primary/20 hover:scale-105 transition-all"
+                    >
+                      Add Your First Item
+                    </button>
+                  )}
                 </div>
               ) : (
                 filteredItems.map((item, i) => (
@@ -4719,12 +4932,19 @@ const ShopProfile = ({
   shop,
   onRefresh,
   user,
+  setIsSaving,
+  setIsSaveSuccess,
+  onFinished,
 }: {
   shop: Shop;
   onRefresh: () => void;
   user: User | null;
+  setIsSaving: (val: boolean) => void;
+  setIsSaveSuccess: (val: boolean) => void;
+  isSaving?: boolean;
+  isSuccess?: boolean;
+  onFinished?: () => void;
 }) => {
-  const [loading, setLoading] = useState(false);
   const [uploadingType, setUploadingType] = useState<"logo" | null>(null);
   const [showMapPinConfirm, setShowMapPinConfirm] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -4834,7 +5054,8 @@ const ShopProfile = ({
       return;
     }
 
-    setLoading(true);
+    setIsSaving(true);
+    setIsSaveSuccess(false);
     const payload: Record<string, unknown> = { ...formData };
     
     try {
@@ -4872,16 +5093,45 @@ const ShopProfile = ({
       }
 
       if (error) throw error;
-      toast.success("Shop profile updated successfully!");
-      onRefresh();
+
+      // Sync back to user metadata so phone numbers are consistent throughout the app
+      if (user && (formData.phone || formData.whatsapp)) {
+        await supabase.auth.updateUser({
+          data: {
+            phone: formData.phone,
+            whatsapp: formData.whatsapp,
+            location: formData.location,
+            address: formData.location, // In Shops table we often use 'location' as the full address
+          }
+        });
+
+        // Also sync to rider profile if it exists
+        await supabase
+          .from("rider_profiles")
+          .update({
+            phone: formData.phone,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", user.id);
+      }
+
+      setIsSaving(false);
+      setIsSaveSuccess(true);
+      
+      setTimeout(() => {
+        setIsSaveSuccess(false);
+        toast.success("Shop profile updated successfully!");
+        onRefresh();
+        if (onFinished) onFinished();
+      }, 1500);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
+      setIsSaving(false);
+      setIsSaveSuccess(false);
       console.error("Update error:", err);
       toast.error(
         `Failed to update profile: ${err?.message || err?.details || err?.hint || "Unknown error"}`,
       );
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -5328,15 +5578,32 @@ const ShopProfile = ({
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full py-3 md:py-4 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <RefreshCw className="animate-spin" size={18} />
-            ) : (
-              <CheckCircle2 size={18} />
+            disabled={isSaving || isSuccess}
+            className={cn(
+              "w-full py-3 md:py-4 text-on-primary font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2",
+              isSuccess
+                ? "bg-emerald-500 shadow-emerald-500/20 hover:scale-[0.98] active:scale-95"
+                : isSaving 
+                  ? "bg-surface-container-highest cursor-not-allowed text-on-surface-variant shadow-none" 
+                  : "bg-primary shadow-primary/20 hover:scale-[0.98] active:scale-95"
             )}
-            Save Changes
+          >
+            {isSuccess ? (
+              <>
+                <Check size={18} strokeWidth={3} />
+                Saved Successfully!
+              </>
+            ) : isSaving ? (
+              <>
+                <Loader2 className="animate-spin" size={18} />
+                Saving Changes...
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={18} />
+                Save Changes
+              </>
+            )}
           </button>
         </div>
       </form>
@@ -5569,10 +5836,13 @@ const ReviewsList = ({
   return (
     <div className="space-y-4">
       {reviews.length === 0 ? (
-        <div className="text-center py-12 bg-surface-container-low rounded-3xl border-2 border-dashed border-outline-variant/20">
-          <Star className="mx-auto text-on-surface-variant/20 mb-4" size={48} />
-          <p className="text-on-surface-variant font-medium">
-            No reviews yet. They will appear here when customers rate your shop.
+        <div className="text-center py-20 bg-surface-container-low rounded-3xl border-2 border-dashed border-outline-variant/20 px-8">
+          <div className="w-20 h-20 bg-surface-container-highest rounded-full flex items-center justify-center mx-auto mb-6 text-on-surface-variant/20">
+            <Star size={48} />
+          </div>
+          <h3 className="text-lg font-bold text-on-surface mb-2">No Reviews Yet</h3>
+          <p className="text-sm text-on-surface-variant max-w-xs mx-auto opacity-70">
+            Reviews from your customers will appear here. They help you build trust and improve your service!
           </p>
         </div>
       ) : (
@@ -5721,6 +5991,7 @@ const OrdersManagement = ({
             rider_profiles:rider_id (
               is_online,
               full_name,
+              phone,
               status,
               vehicle_type,
               rating,
@@ -5740,6 +6011,7 @@ const OrdersManagement = ({
               ...conn,
               is_online: profile?.is_online || false,
               rider_name: profile?.full_name || conn.rider_name,
+              rider_phone: profile?.phone || conn.rider_phone,
               status: profile?.status || (new Date(conn.expires_at) < now ? "expired" : conn.status),
               vehicle_type: profile?.vehicle_type || "Road",
               rating: profile?.rating || 5.0,
@@ -5894,60 +6166,74 @@ const OrdersManagement = ({
   >("created_at");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
-  const activeOrders = orders.filter(
-    (o) => o.status !== "completed" && o.status !== "cancelled",
-  );
-  const historyOrders = orders.filter(
-    (o) => o.status === "completed" || o.status === "cancelled",
-  );
-  const baseOrders = viewMode === "active" ? activeOrders : historyOrders;
-
-  const filteredOrders = baseOrders.filter((o) => {
-    const matchesSearch =
-      o.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      o.id.toString().includes(searchTerm);
-    const matchesCustomer =
-      !customerSearch ||
-      o.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
-    const matchesPhone = !phoneSearch || o.phone?.includes(phoneSearch);
-    const matchesFilter = filterStatus === "All" || o.status === filterStatus;
-    const matchesOrderType = orderTypeFilter === "All" || o.order_type === orderTypeFilter;
-
-    let matchesDate = true;
-    const dateToCheck = (viewMode === "history" && o.completed_at) ? o.completed_at : o.created_at;
-    
-    if (startDate) {
-      matchesDate =
-        matchesDate && new Date(dateToCheck) >= new Date(startDate);
-    }
-    if (endDate) {
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      matchesDate = matchesDate && new Date(dateToCheck) <= end;
-    }
-
-    return (
-      matchesSearch &&
-      matchesCustomer &&
-      matchesPhone &&
-      matchesFilter &&
-      matchesOrderType &&
-      matchesDate
+  const displayedOrders = useMemo(() => {
+    const activeOrders = orders.filter(
+      (o) => o.status !== "completed" && o.status !== "cancelled",
     );
-  });
+    const historyOrders = orders.filter(
+      (o) => o.status === "completed" || o.status === "cancelled",
+    );
+    const baseOrders = viewMode === "active" ? activeOrders : historyOrders;
 
-  const displayedOrders = [...filteredOrders].sort((a, b) => {
-    let comparison = 0;
-    if (sortField === "id") {
-      comparison = a.id.localeCompare(b.id);
-    } else if (sortField === "total_price") {
-      comparison = Number(a.total_price) - Number(b.total_price);
-    } else if (sortField === "created_at") {
-      comparison =
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    }
-    return sortDirection === "asc" ? comparison : -comparison;
-  });
+    const filtered = baseOrders.filter((o) => {
+      const matchesSearch =
+        o.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        o.id.toString().includes(searchTerm);
+      const matchesCustomer =
+        !customerSearch ||
+        o.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
+      const matchesPhone = !phoneSearch || o.phone?.includes(phoneSearch);
+      const matchesFilter = filterStatus === "All" || o.status === filterStatus;
+      const matchesOrderType = orderTypeFilter === "All" || o.order_type === orderTypeFilter;
+
+      let matchesDate = true;
+      const dateToCheck = (viewMode === "history" && o.completed_at) ? o.completed_at : o.created_at;
+      
+      if (startDate) {
+        matchesDate =
+          matchesDate && new Date(dateToCheck) >= new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        matchesDate = matchesDate && new Date(dateToCheck) <= end;
+      }
+
+      return (
+        matchesSearch &&
+        matchesCustomer &&
+        matchesPhone &&
+        matchesFilter &&
+        matchesOrderType &&
+        matchesDate
+      );
+    });
+
+    return filtered.sort((a, b) => {
+      let comparison = 0;
+      if (sortField === "id") {
+        comparison = a.id.localeCompare(b.id);
+      } else if (sortField === "total_price") {
+        comparison = Number(a.total_price) - Number(b.total_price);
+      } else if (sortField === "created_at") {
+        comparison =
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+  }, [
+    orders,
+    viewMode,
+    searchTerm,
+    customerSearch,
+    phoneSearch,
+    filterStatus,
+    orderTypeFilter,
+    startDate,
+    endDate,
+    sortField,
+    sortDirection,
+  ]);
 
   const handleSort = (field: "id" | "total_price" | "created_at") => {
     if (sortField === field) {
@@ -6425,7 +6711,7 @@ const OrdersManagement = ({
                   : "grid-cols-1 md:grid-cols-2",
               )}
             >
-              {displayedOrders.map((order) => {
+              {displayedOrders.map((order, i) => {
                 const orderCount = customerOrderCounts[order.user_id] || 0;
                 const isReturning = orderCount > 1;
 
@@ -6440,8 +6726,14 @@ const OrdersManagement = ({
                 return (
                   <motion.div
                     layout
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    transition={{ 
+                      type: "spring", 
+                      stiffness: 260, 
+                      damping: 20,
+                      delay: Math.min(i * 0.05, 0.5) 
+                    }}
                     key={order.id}
                     className={cn(
                       "group rounded-xl p-6 shadow-sm border transition-all duration-300 cursor-pointer",
@@ -9872,6 +10164,7 @@ const RiderManagement = ({
         rider_profiles:rider_id (
           is_online,
           full_name,
+          phone,
           status,
           vehicle_type,
           rating,
@@ -9893,6 +10186,7 @@ const RiderManagement = ({
           ...conn,
           is_online: profile?.is_online || false,
           rider_name: profile?.full_name || conn.rider_name,
+          rider_phone: profile?.phone || conn.rider_phone,
           status: profile?.status || (new Date(conn.expires_at) < new Date() ? "expired" : conn.status),
           vehicle_type: profile?.vehicle_type || "Road",
           rating: profile?.rating || 5.0,
@@ -10580,6 +10874,8 @@ export default function App() {
   const [authView, setAuthView] = useState<"signin" | "signup">("signin");
   const [isVerifying, setIsVerifying] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaveSuccess, setIsSaveSuccess] = useState(false);
   const [signupEmail, setSignupEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -11424,6 +11720,8 @@ export default function App() {
   }
 
   const handleSaveProfile = async (data: ProfileData) => {
+    setIsSaving(true);
+    setIsSaveSuccess(false);
     try {
       const { error } = await supabase.auth.updateUser({
         data: {
@@ -11440,6 +11738,18 @@ export default function App() {
       });
 
       if (error) throw error;
+
+      // Sync to rider profile if they have one
+      if (user) {
+        await supabase
+          .from("rider_profiles")
+          .update({
+             full_name: data.fullName,
+             phone: data.phone,
+             updated_at: new Date().toISOString()
+          })
+          .eq("id", user.id);
+      }
 
       // Sync to shop if merchant
       if (currentShop) {
@@ -11472,10 +11782,22 @@ export default function App() {
       if (data.darkMode !== undefined) {
         setDarkMode(data.darkMode);
       }
-      toast.success("Profile updated successfully!");
-      setIsEditingProfile(false);
-      setAuthView("signin");
+      void fetchRiderData();
+      
+      // Show success state
+      setIsSaving(false);
+      setIsSaveSuccess(true);
+      
+      // Close after delay
+      setTimeout(() => {
+        setIsSaveSuccess(false);
+        setIsEditingProfile(false);
+        toast.success("Profile updated successfully!");
+      }, 1500);
+      
     } catch (error: unknown) {
+      setIsSaving(false);
+      setIsSaveSuccess(false);
       toast.error(
         error instanceof Error ? error.message : "Failed to update profile",
       );
@@ -11500,24 +11822,29 @@ export default function App() {
 
   if (isEditingProfile) {
     return (
-      <EditProfile
-        onBack={() => setIsEditingProfile(false)}
-        onSave={handleSaveProfile}
-        userId={user?.id || ""}
-        initialData={{
-          fullName: user?.user_metadata?.full_name || "",
-          email: user?.email || signupEmail,
-          phone: user?.user_metadata?.phone || "",
-          whatsapp: user?.user_metadata?.whatsapp || "",
-          location: user?.user_metadata?.location || "",
-          address: user?.user_metadata?.address || "",
-          avatarUrl: user?.user_metadata?.avatar_url || "",
-          operatingHours: user?.user_metadata?.operating_hours || {
-            open: "08:00",
-            close: "20:00",
-          },
-        }}
-      />
+      <>
+        <EditProfile
+          onBack={() => setIsEditingProfile(false)}
+          onSave={handleSaveProfile}
+          userId={user?.id || ""}
+          isSaving={isSaving}
+          isSuccess={isSaveSuccess}
+          initialData={{
+            fullName: user?.user_metadata?.full_name || "",
+            email: user?.email || signupEmail,
+            phone: user?.user_metadata?.phone || "",
+            whatsapp: user?.user_metadata?.whatsapp || "",
+            location: user?.user_metadata?.location || "",
+            address: user?.user_metadata?.address || "",
+            avatarUrl: user?.user_metadata?.avatar_url || "",
+            operatingHours: user?.user_metadata?.operating_hours || {
+              open: "08:00",
+              close: "20:00",
+            },
+          }}
+        />
+        <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
+      </>
     );
   }
 
@@ -11540,20 +11867,32 @@ export default function App() {
 
   // BRANCH: Rider View
   if (role === "rider") {
-    return <LockedRiderMode onSwitchRole={handleSwitchRole} />;
+    return (
+      <>
+        <LockedRiderMode 
+          onSwitchRole={handleSwitchRole} 
+          setIsSaving={setIsSaving}
+          setIsSaveSuccess={setIsSaveSuccess}
+        />
+        <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
+      </>
+    );
   }
 
   // BRANCH: Customer View
   if (role === "customer") {
     return (
-      <CustomerView
-        shops={shops}
-        menuItems={menuItems}
-        cart={cart}
-        setCart={setCart}
-        onSwitchRole={handleSwitchRole}
-        user={user}
-      />
+      <>
+        <CustomerView
+          shops={shops}
+          menuItems={menuItems}
+          cart={cart}
+          setCart={setCart}
+          onSwitchRole={handleSwitchRole}
+          user={user}
+        />
+        <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
+      </>
     );
   }
 
@@ -11585,11 +11924,13 @@ export default function App() {
         darkMode && "dark",
       )}
     >
+        {/* Existing Toaster */}
         <Toaster
           position="top-center"
           richColors
           theme={darkMode ? "dark" : "light"}
         />
+        <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
 
         {isOffline && (
           <div className="fixed top-0 left-0 right-0 z-[100] bg-error text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2">
@@ -11636,24 +11977,40 @@ export default function App() {
               {currentShop && (
                 <button
                   onClick={async () => {
+                    if (!currentShop) return;
                     const newStatus = !currentShop.is_active;
+                    
+                    // Optimistic update
+                    setShops((prev) =>
+                      prev.map((s) =>
+                        s.id === currentShop.id ? { ...s, is_active: newStatus } : s,
+                      ),
+                    );
+                    
                     const { error } = await supabase
                       .from("shops")
                       .update({ is_active: newStatus })
                       .eq("id", currentShop.id);
+                      
                     if (!error) {
                       toast.success(
                         `Shop is now ${newStatus ? "Open" : "Closed"}`,
                       );
                     } else {
+                      // Rollback on error
+                      setShops((prev) =>
+                        prev.map((s) =>
+                          s.id === currentShop.id ? { ...s, is_active: !newStatus } : s,
+                        ),
+                      );
                       toast.error(`Failed to update status: ${error.message}`);
                     }
                   }}
                   className={cn(
-                    "hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all border",
+                    "flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs font-bold transition-all border",
                     currentShop.is_active
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800"
-                      : "bg-error/10 text-error border-error/20 hover:bg-error/20",
+                      : "bg-error/10 text-error border-error/20 hover:bg-error/20 shadow-lg shadow-error/10",
                   )}
                 >
                   <div
@@ -11664,7 +12021,12 @@ export default function App() {
                         : "bg-error",
                     )}
                   />
-                  {currentShop.is_active ? "Accepting Orders" : "Paused"}
+                  <span className="hidden xs:inline">
+                    {currentShop.is_active ? "Open" : "Closed"}
+                  </span>
+                  <span className="hidden sm:inline ml-1 opacity-70">
+                    {currentShop.is_active ? "• Accepting Orders" : "• Paused"}
+                  </span>
                 </button>
               )}
               <button
@@ -11701,7 +12063,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setIsEditingProfile(true)}
-                className="hidden sm:block p-2 text-on-surface-variant hover:text-primary transition-colors"
+                className="p-2 text-on-surface-variant hover:text-primary transition-colors"
                 title="Edit Profile"
               >
                 <UserIcon size={18} className="md:w-5 md:h-5" />
@@ -11751,10 +12113,14 @@ export default function App() {
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
+            initial={{ opacity: 0, y: 15, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -15, scale: 0.98 }}
+            transition={{ 
+              type: "spring",
+              stiffness: 300,
+              damping: 30
+            }}
           >
             {activeTab === "dashboard" && (
               <DashboardOverview
@@ -11783,6 +12149,8 @@ export default function App() {
                   fetchAllMenuItems();
                   fetchShops();
                 }}
+                setIsSaving={setIsSaving}
+                setIsSaveSuccess={setIsSaveSuccess}
               />
             )}
             {activeTab === "orders" && (
@@ -12083,6 +12451,11 @@ export default function App() {
                     shop={currentShop}
                     onRefresh={fetchShops}
                     user={user}
+                    setIsSaving={setIsSaving}
+                    setIsSaveSuccess={setIsSaveSuccess}
+                    isSaving={isSaving}
+                    isSuccess={isSaveSuccess}
+                    onFinished={() => setActiveTab("dashboard")}
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
@@ -12241,36 +12614,49 @@ export default function App() {
 
       {/* BottomNavBar */}
       {!kitchenMode && (
-        <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 bg-white/70 dark:bg-surface-container-lowest/70 backdrop-blur-xl rounded-t-2xl md:rounded-t-3xl border-t border-outline-variant/10 shadow-[0_-8px_24px_-4px_rgba(167,52,0,0.12)]">
-          <div className="flex items-center gap-1 px-4 pb-6 pt-3 overflow-x-auto scrollbar-hide">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={cn(
-                  "flex flex-col items-center justify-center min-w-[72px] shrink-0 py-1.5 rounded-xl transition-all active:scale-90 duration-200 relative",
-                  activeTab === item.id
-                    ? "bg-orange-50 dark:bg-primary/10 text-primary"
-                    : "text-secondary hover:text-primary",
-                )}
-              >
-                <item.icon
-                  size={20}
+        <nav className="md:hidden fixed bottom-0 left-0 w-full z-[100] bg-white/80 dark:bg-surface-container-lowest/80 backdrop-blur-2xl rounded-t-3xl border-t border-outline-variant/10 shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
+          <div className="flex items-center justify-between gap-1 px-3 pb-8 pt-4 overflow-x-auto scrollbar-hide">
+            {navItems.map((item) => {
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
                   className={cn(
-                    "mb-1",
-                    activeTab === item.id && "fill-current",
+                    "flex flex-col items-center justify-center min-w-[70px] shrink-0 py-2 rounded-2xl transition-all duration-300 relative group",
+                    isActive
+                      ? "bg-primary text-white shadow-xl shadow-primary/20 scale-105"
+                      : "text-on-surface-variant/60 hover:text-primary",
                   )}
-                />
-                <span className="font-inter text-[9px] uppercase tracking-wider font-bold whitespace-nowrap">
-                  {item.label}
-                </span>
-                {item.badge && (
-                  <span className="absolute top-1 right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[8px] text-white font-black">
-                    {item.badge}
+                >
+                  <div className={cn(
+                    "relative",
+                    isActive ? "scale-110" : "group-active:scale-95 transition-transform"
+                  )}>
+                    <item.icon
+                      size={20}
+                      className={cn(
+                        isActive ? "stroke-[2.5px]" : "stroke-[1.5px]",
+                      )}
+                    />
+                    {item.badge && (
+                      <span className={cn(
+                        "absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-black border-2 border-white dark:border-zinc-950",
+                        isActive ? "bg-white text-primary" : "bg-primary text-white"
+                      )}>
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
+                  <span className={cn(
+                    "text-[8px] uppercase tracking-widest font-black mt-1.5",
+                    isActive ? "text-white" : "text-inherit"
+                  )}>
+                    {item.label === "Dashboard" ? "Home" : item.label}
                   </span>
-                )}
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </nav>
       )}
@@ -12331,6 +12717,7 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
     </div>
   );
 }
@@ -12639,6 +13026,8 @@ const CustomerView = ({
               setCart([]);
               setShowCheckout(false);
             }}
+            setIsSaving={setIsSaving}
+            setIsSaveSuccess={setIsSaveSuccess}
           />
         )}
       </AnimatePresence>
@@ -12652,14 +13041,17 @@ const CustomerCheckout = ({
   onClose,
   user,
   onOrderPlaced,
+  setIsSaving,
+  setIsSaveSuccess,
 }: {
   cart: { item: MenuItem; quantity: number }[];
   subtotal: number;
   onClose: () => void;
   user: User | null;
   onOrderPlaced: () => void;
+  setIsSaving: (val: boolean) => void;
+  setIsSaveSuccess: (val: boolean) => void;
 }) => {
-  const [loading, setLoading] = useState(false);
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("Tembisa");
   const [phone, setPhone] = useState(user?.user_metadata?.phone || "");
@@ -12725,7 +13117,8 @@ const CustomerCheckout = ({
       return;
     }
 
-    setLoading(true);
+    setIsSaving(true);
+    setIsSaveSuccess(false);
     const orderData = {
       user_id: user.id,
       shop_id: cart[0].item.shop_id,
@@ -12753,14 +13146,21 @@ const CustomerCheckout = ({
     const { error } = await supabase.from("orders").insert(orderData);
 
     if (error) {
+      setIsSaving(false);
+      setIsSaveSuccess(false);
       toast.error("Order failed: " + error.message);
     } else {
-      toast.success("Order placed successfully!", {
-        description: "Your R5.00 delivery mission has been broadcasted.",
-      });
-      onOrderPlaced();
+      setIsSaving(false);
+      setIsSaveSuccess(true);
+      
+      setTimeout(() => {
+        setIsSaveSuccess(false);
+        toast.success("Order placed successfully!", {
+          description: "Your R5.00 delivery mission has been broadcasted.",
+        });
+        onOrderPlaced();
+      }, 1500);
     }
-    setLoading(false);
   };
 
   return (
@@ -12938,13 +13338,20 @@ const CustomerCheckout = ({
     </div>
   );
 };
-const LockedRiderMode = ({ onSwitchRole }: { onSwitchRole: () => void }) => {
+const LockedRiderMode = ({ 
+  onSwitchRole,
+  setIsSaving,
+  setIsSaveSuccess,
+}: { 
+  onSwitchRole: () => void;
+  setIsSaving: (val: boolean) => void;
+  setIsSaveSuccess: (val: boolean) => void;
+}) => {
   const [riderProfile, setRiderProfile] = useState<RiderProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeMissions, setActiveMissions] = useState<Order[]>([]);
   const [availableMissions, setAvailableMissions] = useState<Order[]>([]);
   const [onlineRiders, setOnlineRiders] = useState<RiderProfile[]>([]);
-  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const [riderCoords, setRiderCoords] = useState<[number, number] | undefined>(undefined);
   const [activeConnections, setActiveConnections] = useState<RiderConnection[]>([]);
   const [showPairingModal, setShowPairingModal] = useState(false);
@@ -12969,7 +13376,13 @@ const LockedRiderMode = ({ onSwitchRole }: { onSwitchRole: () => void }) => {
     } else {
       const { data: newProfile } = await supabase
         .from("rider_profiles")
-        .insert({ id: user.id, is_online: false, status: "offline" })
+        .insert({ 
+           id: user.id, 
+           is_online: false, 
+           status: "offline",
+           phone: user.user_metadata?.phone || "",
+           full_name: user.user_metadata?.full_name || ""
+        })
         .select()
         .single();
       if (newProfile) setRiderProfile(newProfile as RiderProfile);
@@ -13135,7 +13548,8 @@ const LockedRiderMode = ({ onSwitchRole }: { onSwitchRole: () => void }) => {
       return;
     }
 
-    setUpdatingOrderId(orderId);
+    setIsSaving(true);
+    setIsSaveSuccess(false);
     const { error } = await supabase
       .from("orders")
       .update({
@@ -13147,12 +13561,18 @@ const LockedRiderMode = ({ onSwitchRole }: { onSwitchRole: () => void }) => {
       .eq("delivery_status", "finding_rider");
 
     if (error) {
+      setIsSaving(false);
+      setIsSaveSuccess(false);
       toast.error("Failed to accept mission: " + error.message);
     } else {
-      toast.success("Mission Accepted!");
-      fetchRiderData();
+      setIsSaving(false);
+      setIsSaveSuccess(true);
+      setTimeout(() => {
+        setIsSaveSuccess(false);
+        toast.success("Mission Accepted!");
+        fetchRiderData();
+      }, 1500);
     }
-    setUpdatingOrderId(null);
   };
 
   const updateMissionStatus = async (orderId: string, currentStatus: string) => {
@@ -13162,7 +13582,8 @@ const LockedRiderMode = ({ onSwitchRole }: { onSwitchRole: () => void }) => {
 
     if (!nextStatus) return;
 
-    setUpdatingOrderId(orderId);
+    setIsSaving(true);
+    setIsSaveSuccess(false);
     const { error } = await supabase
       .from("orders")
       .update({
@@ -13172,28 +13593,35 @@ const LockedRiderMode = ({ onSwitchRole }: { onSwitchRole: () => void }) => {
       .eq("id", orderId);
 
     if (error) {
+      setIsSaving(false);
+      setIsSaveSuccess(false);
       toast.error("Update failed");
     } else {
-      toast.success(`Broadcasting update: ${nextStatus}`);
+      setIsSaving(false);
+      setIsSaveSuccess(true);
       
-      // If delivered, update rider stats
-      if (nextStatus === "delivered") {
-        const order = activeMissions.find(o => o.id === orderId);
-        const fee = order?.delivery_fee || 5; // Default R5 if not set
+      setTimeout(async () => {
+        setIsSaveSuccess(false);
+        toast.success(`Broadcasting update: ${nextStatus}`);
         
-        await supabase
-          .from("rider_profiles")
-          .update({
-            total_earnings: (riderProfile?.total_earnings || 0) + fee,
-            total_deliveries: (riderProfile?.total_deliveries || 0) + 1,
-            active_points: (riderProfile?.active_points || 0) + 10,
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", riderProfile!.id);
-      }
-      fetchRiderData();
+        // If delivered, update rider stats
+        if (nextStatus === "delivered") {
+          const order = activeMissions.find(o => o.id === orderId);
+          const fee = order?.delivery_fee || 5; // Default R5 if not set
+          
+          await supabase
+            .from("rider_profiles")
+            .update({
+              total_earnings: (riderProfile?.total_earnings || 0) + fee,
+              total_deliveries: (riderProfile?.total_deliveries || 0) + 1,
+              active_points: (riderProfile?.active_points || 0) + 10,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", riderProfile!.id);
+        }
+        fetchRiderData();
+      }, 1500);
     }
-    setUpdatingOrderId(null);
   };
 
   const handlePairing = async () => {
