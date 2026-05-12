@@ -8,6 +8,7 @@ export interface Shop {
   logo_url?: string | null;
   description?: string;
   location?: string;
+  city?: string;
   category?: string;
   owner_id: string | null;
   rating?: number;
@@ -27,6 +28,7 @@ export interface RiderProfile {
   total_deliveries: number;
   active_points: number;
   photo_url?: string;
+  city?: string;
   current_latitude?: number;
   current_longitude?: number;
   updated_at: string;

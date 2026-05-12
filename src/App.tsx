@@ -227,6 +227,7 @@ const AddressAutocomplete = ({
   placeholder?: string;
 }) => {
   const [predictions, setPredictions] = useState<OSMPrediction[]>([]);
+  const [isLocating, setIsLocating] = useState(false);
 
   useEffect(() => {
     const timeoutId = setTimeout(async () => {
@@ -236,9 +237,10 @@ const AddressAutocomplete = ({
       }
 
       try {
+        const query = `${value} Tembisa Midrand South Africa`;
         const response = await fetch(
           `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
-            value,
+            query,
           )}&format=json&addressdetails=1&limit=5&countrycodes=za&email=aviwenotununu4@gmail.com`,
           {
             headers: {
@@ -255,6 +257,42 @@ const AddressAutocomplete = ({
 
     return () => clearTimeout(timeoutId);
   }, [value]);
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation not supported");
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        console.log(`Captured GPS: ${latitude}, ${longitude} (Precision: ${accuracy}m)`);
+        
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1`,
+          );
+          const data = await res.json();
+          const cityName = getSupportedCity(data.display_name || "");
+          onSelect(data.display_name || "Current GPS Location", cityName, latitude, longitude);
+          onChange(data.display_name || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+          toast.success("High-precision GPS captured!");
+        } catch {
+          onSelect("GPS Location", "Tembisa", latitude, longitude);
+          onChange(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+        } finally {
+          setIsLocating(false);
+        }
+      },
+      () => {
+        toast.error("Low precision or GPS denied. Please search manually.");
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  };
 
   const handleSelect = (prediction: OSMPrediction) => {
     const lat = parseFloat(prediction.lat);
@@ -284,8 +322,16 @@ const AddressAutocomplete = ({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full h-14 bg-surface-container-low border border-outline-variant/10 rounded-2xl pl-12 pr-4 focus:ring-2 focus:ring-primary/40 transition-all outline-none text-base"
+          className="w-full h-14 bg-surface-container-low border border-outline-variant/10 rounded-2xl pl-12 pr-14 focus:ring-2 focus:ring-primary/40 transition-all outline-none text-base"
         />
+        <button
+          onClick={useCurrentLocation}
+          className="absolute right-4 top-1/2 -translate-y-1/2 p-2 hover:bg-primary/10 rounded-xl text-primary transition-all active:scale-95"
+          title="Use current GPS"
+          disabled={isLocating}
+        >
+          <Navigation size={20} className={isLocating ? "animate-pulse" : ""} />
+        </button>
       </div>
 
       <AnimatePresence>
@@ -459,6 +505,23 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 // The official dashboard URL for LocalEats South Africa
 const DASHBOARD_URL = "https://dashboard.localeatssa.co.za";
 const FLAT_DELIVERY_FEE = 5;
+
+const CITY_CENTERS = {
+  "Tembisa": { lat: -25.9964, lng: 28.2268 },
+  "Kaalfontein": { lat: -25.9912, lng: 28.2031 }, // Refined
+  "Ivory Park": { lat: -26.0025, lng: 28.1889 }   // Refined
+};
+
+const getSupportedCity = (cityName: string): string => {
+  const normalized = cityName.toLowerCase();
+  
+  // High-precision matching for specific sub-areas
+  if (normalized.includes("kaalfontein") || normalized.includes("eboni")) return "Kaalfontein";
+  if (normalized.includes("ivory park") || normalized.includes("kopanong") || normalized.includes("midrand")) return "Ivory Park";
+  if (normalized.includes("tembisa") || normalized.includes("kempton park")) return "Tembisa";
+  
+  return "Tembisa"; // Default regional hub
+};
 
 /**
  * 🛠 RIDER APP COORDINATION CHECKLIST (For Developer Reference)
@@ -1428,6 +1491,7 @@ interface ProfileData {
   phone: string;
   whatsapp?: string;
   location: string;
+  city?: string;
   address: string;
   lat?: number;
   lng?: number;
@@ -1486,6 +1550,7 @@ const EditProfile: React.FC<EditProfileProps> = ({
     phone: initialData?.phone || "",
     whatsapp: initialData?.whatsapp || "",
     location: initialData?.location || "",
+    city: initialData?.city || "Tembisa",
     address: initialData?.address || "",
     lat: initialData?.lat || -25.9964,
     lng: initialData?.lng || 28.2268,
@@ -1650,7 +1715,7 @@ const EditProfile: React.FC<EditProfileProps> = ({
     }
 
     if (formData.whatsapp && !saRegex.test(whatsappCleaned)) {
-      toast.error("Please enter a valid South African WhatsApp number (e.g., +27 82 123 4567 or 082 123 4567).");
+      toast.error("Please enter a valid WhatsApp number (like 082 123 4567).");
       return;
     }
 
@@ -1824,14 +1889,31 @@ const EditProfile: React.FC<EditProfileProps> = ({
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-on-surface-variant px-1">
+                Primary Operating City
+              </label>
+              <select
+                className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface font-bold"
+                value={formData.city}
+                onChange={(e) =>
+                  setFormData({ ...formData, city: e.target.value })
+                }
+              >
+                <option value="Tembisa">Tembisa</option>
+                <option value="Kaalfontein">Kaalfontein</option>
+                <option value="Ivory Park">Ivory Park</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-on-surface-variant px-1">
                 Search & Set Location
               </label>
               <AddressAutocomplete
-                onSelect={(lat, lng, address, location) => {
-                  setFormData(prev => ({ ...prev, lat, lng, address, location }));
+                value={formData.address || formData.location}
+                onChange={(val) => setFormData(prev => ({ ...prev, address: val, location: val }))}
+                onSelect={(address, city, lat, lng) => {
+                  setFormData(prev => ({ ...prev, lat, lng, address, location: address, city }));
                   toast.success("Location pinpointed!");
                 }}
-                initialValue={formData.address || formData.location}
                 placeholder="Search for your street or area..."
               />
             </div>
@@ -2612,6 +2694,7 @@ const DashboardOverview = React.memo(({
   menuItems,
   trialInfo,
   currentShop,
+  darkMode,
 }: {
   orders: Order[];
   loading: boolean;
@@ -2623,6 +2706,7 @@ const DashboardOverview = React.memo(({
   menuItems: MenuItem[];
   trialInfo: { daysRemaining: number; isExpired: boolean } | null;
   currentShop: Shop | undefined;
+  darkMode: boolean;
 }) => {
   const [followerCount, setFollowerCount] = useState<number | string>("--");
   const [followerTrend, setFollowerTrend] = useState<string>("0");
@@ -2822,7 +2906,7 @@ const DashboardOverview = React.memo(({
 
   const exportWeeklyCSV = () => {
     if (weeklyOrders.length === 0) {
-      toast.error("No orders this week to export");
+      toast.error("No orders this week to export. Check back later!");
       return;
     }
 
@@ -2865,7 +2949,7 @@ const DashboardOverview = React.memo(({
       phone: "000 000 0000",
       email: "debug@example.com",
       address: currentShop.address || "123 Default St",
-      city: "Tembisa",
+      city: currentShop.location ? getSupportedCity(currentShop.location) : "Tembisa",
       product_name: "Test Burger (Debug)",
       restaurant_name: currentShop.name,
       total_price: 55,
@@ -2882,7 +2966,7 @@ const DashboardOverview = React.memo(({
       .select()
       .single();
     if (error) {
-      toast.error("Failed to generate test order: " + error.message);
+      toast.error("We couldn't create a test order right now. Please try again.");
     } else {
       toast.success("Test order generated! Go to Orders to accept it.", {
         description:
@@ -3564,6 +3648,9 @@ const CreateShop = ({
     name: "",
     description: "",
     location: user?.user_metadata?.address || "",
+    city: "Tembisa",
+    lat: -25.9964,
+    lng: 28.2268,
     category: "Restaurant",
     phone: user?.user_metadata?.phone || "",
     email: user?.email || "",
@@ -3572,7 +3659,7 @@ const CreateShop = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
-      toast.error("You must be logged in to create a shop.");
+      toast.error("Please sign in to create a shop.");
       return;
     }
     setIsSaving(true);
@@ -3625,17 +3712,19 @@ const CreateShop = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <label className="block text-sm font-semibold text-on-surface ml-1">
-              Shop Name
+              Primary Location (City)
             </label>
-            <input
-              required
-              className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
-              placeholder="e.g. Mama's Kitchen"
-              value={formData.name}
+            <select
+              className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all font-bold text-on-surface"
+              value={formData.city}
               onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
+                setFormData({ ...formData, city: e.target.value })
               }
-            />
+            >
+              <option value="Tembisa">Tembisa</option>
+              <option value="Kaalfontein">Kaalfontein</option>
+              <option value="Ivory Park">Ivory Park</option>
+            </select>
           </div>
           <div className="space-y-2">
             <label className="block text-sm font-semibold text-on-surface ml-1">
@@ -3659,6 +3748,21 @@ const CreateShop = ({
 
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-on-surface ml-1">
+            Shop Name
+          </label>
+          <input
+            required
+            className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
+            placeholder="e.g. Mama's Kitchen"
+            value={formData.name}
+            onChange={(e) =>
+              setFormData({ ...formData, name: e.target.value })
+            }
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-on-surface ml-1">
             Description
           </label>
           <textarea
@@ -3674,16 +3778,15 @@ const CreateShop = ({
 
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-on-surface ml-1">
-            Location
+            Exact Location (Search or use GPS)
           </label>
-          <input
-            required
-            className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all"
-            placeholder="e.g. Soweto, Johannesburg"
+          <AddressAutocomplete
             value={formData.location}
-            onChange={(e) =>
-              setFormData({ ...formData, location: e.target.value })
-            }
+            onChange={(val) => setFormData({ ...formData, location: val })}
+            onSelect={(address, city, lat, lng) => {
+              setFormData({ ...formData, location: address, city, lat, lng });
+            }}
+            placeholder="Search your street address or use pinpoint..."
           />
         </div>
 
@@ -3720,11 +3823,11 @@ const CreateShop = ({
         </div>
 
         <button
-          disabled={loading}
+          disabled={isSaving}
           className="w-full h-14 bg-gradient-to-br from-primary to-primary-container text-on-primary font-bold text-lg rounded-full shadow-lg hover:scale-[0.98] active:scale-95 transition-all disabled:opacity-50 mt-4"
           type="submit"
         >
-          {loading ? "Creating..." : "Launch Shop"}
+          {isSaving ? "Creating..." : "Launch Shop"}
         </button>
       </form>
     </motion.div>
@@ -3873,6 +3976,21 @@ const MenuManagement = ({
     }
   }, [selectedShopId, fetchMenu]);
 
+  const handleAdd = () => {
+    setEditingItem(null);
+    setFormData({
+      name: "",
+      price: "",
+      category: "Main Course",
+      description: "",
+      stock_quantity: "10",
+      is_unlimited: false,
+    });
+    setImageFile(null);
+    setImagePreview(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   const toggleAvailability = async (item: MenuItem) => {
     // Optimistic Update
     setItems((prev) =>
@@ -3893,7 +4011,7 @@ const MenuManagement = ({
           i.id === item.id ? { ...i, is_available: item.is_available } : i,
         ),
       );
-      toast.error(`Failed to update availability: ${error.message}`);
+      toast.error("We couldn't update the item's availability. Please try again.");
     } else {
       toast.success(
         `${item.name} is now ${!item.is_available ? "available" : "unavailable"}`,
@@ -3915,7 +4033,7 @@ const MenuManagement = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     if (!user) {
-      toast.error("Not authenticated");
+      toast.error("Please sign in to continue.");
       setUploading(false);
       return;
     }
@@ -3999,7 +4117,7 @@ const MenuManagement = ({
         setIsSaving(false);
         setIsSaveSuccess(false);
         console.error("Supabase Update Error:", error);
-        toast.error(`Failed to update menu item: ${error.message}`);
+        toast.error("We couldn't update the menu item. Please try again.");
       }
     } else {
       const { error } = await supabase.from("menu_items").insert([
@@ -4041,7 +4159,7 @@ const MenuManagement = ({
         setIsSaving(false);
         setIsSaveSuccess(false);
         console.error("Supabase Insert Error:", error);
-        toast.error(`Failed to add menu item: ${error.message}`);
+        toast.error("We couldn't add the menu item. Please try again.");
       }
     }
   };
@@ -4077,7 +4195,7 @@ const MenuManagement = ({
 
   const generateAIImage = async () => {
     if (!formData.name) {
-      toast.error("Please enter a name for the menu item first");
+      toast.error("Please give your item a name before saving.");
       return;
     }
 
@@ -4239,7 +4357,7 @@ const MenuManagement = ({
       fetchMenu();
       onRefreshMenu?.();
     } else {
-      toast.error("Failed to delete item");
+      toast.error("We couldn't delete the item. Please try again.");
     }
   };
 
@@ -4952,6 +5070,7 @@ const ShopProfile = ({
     name: shop.name || "",
     description: shop.description || "",
     location: shop.location || "",
+    city: shop.city || getSupportedCity(shop.location || "Tembisa"),
     category: shop.category || "Restaurant",
     phone: shop.phone || "",
     email: shop.email || "",
@@ -5046,11 +5165,11 @@ const ShopProfile = ({
     const saRegex = /^(?:\+27|0)[0-9]{9}$/;
 
     if (!saRegex.test(phoneCleaned)) {
-      toast.error("Please enter a valid South African phone number for calls (e.g. +27 82 123 4567)");
+      toast.error("Please enter a valid phone number (like 082 123 4567)");
       return;
     }
     if (formData.whatsapp && !saRegex.test(whatsappCleaned)) {
-      toast.error("Please enter a valid South African WhatsApp number");
+      toast.error("Please enter a valid WhatsApp number (like 082 123 4567)");
       return;
     }
 
@@ -5237,16 +5356,35 @@ const ShopProfile = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
+                  Primary Location (City)
+                </label>
+                <select
+                  className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base font-bold text-on-surface"
+                  value={formData.city}
+                  onChange={(e) =>
+                    setFormData({ ...formData, city: e.target.value })
+                  }
+                >
+                  <option value="Tembisa">Tembisa</option>
+                  <option value="Kaalfontein">Kaalfontein</option>
+                  <option value="Ivory Park">Ivory Park</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
                   Shop Name
                 </label>
                 <input
-                  className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
+                  className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base font-bold text-on-surface"
                   value={formData.name}
                   onChange={(e) =>
                     setFormData({ ...formData, name: e.target.value })
                   }
                 />
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
                   Category
@@ -5264,6 +5402,14 @@ const ShopProfile = ({
                   <option>Street Food</option>
                   <option>Home Kitchen</option>
                 </select>
+              </div>
+              <div className="space-y-2 opacity-50 grayscale pointer-events-none">
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
+                  Unique Shop ID
+                </label>
+                <div className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low flex items-center text-xs font-mono">
+                  #LE-SHP-{shop.id}
+                </div>
               </div>
             </div>
 
@@ -10277,7 +10423,7 @@ const RiderManagement = ({
       customer_name: "Test Signal " + Math.floor(Math.random() * 1000),
       phone: "000 000 0000",
       address: "77 Sector Street, Alpha Hub",
-      city: "Tembisa",
+      city: currentShop.location ? getSupportedCity(currentShop.location) : "Tembisa",
       product_name: "Debug Package",
       restaurant_name: currentShop.name,
       total_price: 25,
@@ -10809,7 +10955,54 @@ const FoodPlaceholder = ({
   </div>
 );
 
-export default function App() {
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-red-50 text-red-900 p-4">
+          <h1 className="text-2xl font-bold mb-4">Something went wrong.</h1>
+          <p className="mb-4 text-center max-w-md">
+            {this.state.error?.message || "An unexpected error occurred."}
+          </p>
+          <button
+            className="px-4 py-2 bg-red-600 text-white rounded shadow"
+            onClick={() => window.location.reload()}
+          >
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+export default function AppWrapper() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+}
+
+function App() {
   const [role, setRole] = useState<"merchant" | "rider" | "customer">(
     () =>
       (localStorage.getItem("user_role") as
@@ -11364,7 +11557,7 @@ export default function App() {
 
     if (error) {
       console.error("Delete All Orders Error:", error);
-      toast.error(`Failed to delete orders: ${error.message}`);
+      toast.error("We couldn't delete these orders right now. Please try again.");
     } else {
       toast.success("All orders have been deleted.");
       fetchOrders();
@@ -11403,7 +11596,7 @@ export default function App() {
             updated.delivery_fee = FLAT_DELIVERY_FEE;
             updated.status = "accepted"; // Force 'accepted' for Rider App query compatibility
             updated.restaurant_name = o.restaurant_name || currentShop.name;
-            updated.city = "Tembisa"; // Locked to Tembisa for rollout
+            updated.city = o.city || "Tembisa"; // Use order's city
             updated.price = o.price || o.total_price || 0;
             updated.total_price = o.total_price || o.price || 0;
             if (!o.items || o.items.length === 0) {
@@ -11446,7 +11639,7 @@ export default function App() {
           updateData.status = "accepted"; // Matches what works in Auto-Broadcast
           updateData.restaurant_name =
             order.restaurant_name || currentShop?.name || "Local Merchant";
-          updateData.city = "Tembisa"; // Locked to Tembisa for rollout
+          updateData.city = order.city || "Tembisa"; // Use order's city
           updateData.shop_id = order.shop_id || currentShop?.id;
 
           if (
@@ -11479,7 +11672,7 @@ export default function App() {
     if (error) {
       console.error("Update Order Status Error:", error);
       setOrders(previousOrders);
-      toast.error(`Failed to update order status: ${error.message}`);
+      toast.error("We couldn't update the order status. Please try again later.");
     } else {
       toast.success(`Order marked as ${status}`);
 
@@ -11616,7 +11809,7 @@ export default function App() {
               rider_id: targetRiderId || o.rider_id,
               order_type: "delivery",
               restaurant_name: o.restaurant_name || currentShop.name,
-              city: "Tembisa",
+              city: o.city || "Tembisa",
               price: o.price || o.total_price || 0,
               total_price: o.total_price || o.price || 0,
             }
@@ -11639,7 +11832,7 @@ export default function App() {
             ? [currentOrder.product_name]
             : ["Food Delivery"],
       order_type: "delivery",
-      city: "Tembisa",
+      city: currentOrder?.city || "Tembisa",
       shop_id: currentOrder?.shop_id || currentShop.id,
     };
     if (targetRiderId) updateData.rider_id = targetRiderId;
@@ -11655,7 +11848,7 @@ export default function App() {
     if (error) {
       console.error("Request Rider Error:", error);
       setOrders(previousOrders);
-      toast.error(`Failed to request rider: ${error.message}`);
+      toast.error("We couldn't request a rider right now. Please try again.");
     } else {
       toast.success("Rider requested! Searching for available cyclists...", {
         icon: <Rocket className="text-primary" size={18} />,
@@ -11729,6 +11922,7 @@ export default function App() {
           phone: data.phone,
           whatsapp: data.whatsapp,
           location: data.location,
+          city: data.city,
           address: data.address,
           operating_hours: data.operatingHours,
           marketing_preferences: data.marketing,
@@ -11746,6 +11940,7 @@ export default function App() {
           .update({
              full_name: data.fullName,
              phone: data.phone,
+             city: data.city,
              updated_at: new Date().toISOString()
           })
           .eq("id", user.id);
@@ -11757,6 +11952,7 @@ export default function App() {
           phone: data.phone,
           whatsapp: data.whatsapp,
           location: data.address, // Sync address too
+          city: data.city,
         };
         
         const { error: shopUpdateErr } = await supabase
@@ -12138,6 +12334,7 @@ export default function App() {
                 menuItems={menuItems}
                 trialInfo={trialInfo}
                 currentShop={currentShop}
+                darkMode={darkMode}
               />
             )}
             {activeTab === "menu" && (
@@ -13070,12 +13267,17 @@ const CustomerCheckout = ({
       if (!cart[0]) return;
       const { data, error } = await supabase
         .from("shops")
-        .select("lat, lng")
+        .select("lat, lng, location")
         .eq("id", cart[0].item.shop_id)
         .single();
 
       if (data && !error) {
-        setShopCoords({ lat: data.lat || -25.9964, lng: data.lng || 28.2268 }); // Default Tembisa center if null
+        const shopCity = data.location ? getSupportedCity(data.location) : "Tembisa";
+        const center = CITY_CENTERS[shopCity as keyof typeof CITY_CENTERS] || CITY_CENTERS["Tembisa"];
+        setShopCoords({ lat: data.lat || center.lat, lng: data.lng || center.lng });
+        if (data.location) {
+          setCity(getSupportedCity(data.location));
+        }
       }
     };
     void fetchShopCoords();
@@ -13148,7 +13350,7 @@ const CustomerCheckout = ({
     if (error) {
       setIsSaving(false);
       setIsSaveSuccess(false);
-      toast.error("Order failed: " + error.message);
+      toast.error("We couldn't process your order right now. Please try again later.");
     } else {
       setIsSaving(false);
       setIsSaveSuccess(true);
@@ -13199,10 +13401,10 @@ const CustomerCheckout = ({
               <AddressAutocomplete
                 value={address}
                 onChange={setAddress}
-                placeholder="Type your street address in Tembisa..."
+                placeholder="Type your street address (Tembisa, Kaalfontein, Ivory Park)..."
                 onSelect={(formatted, cityName, lat, lng) => {
                   setAddress(formatted);
-                  setCity(cityName);
+                  setCity(getSupportedCity(cityName));
                   setCoords({ lat, lng });
                 }}
               />
@@ -13442,12 +13644,28 @@ const LockedRiderMode = ({
     };
     void initRider();
 
-    // Geolocation Tracking (Note: Background tracking normally requires a ServiceWorker or Native App Wrapper)
+    // Geolocation Tracking
     let watchId: number;
     if ("geolocation" in navigator) {
       watchId = navigator.geolocation.watchPosition(
         (pos) => {
           const { latitude, longitude } = pos.coords;
+          
+          // Accuracy Check: If coordinates are in Cape Town (lat < -30) or way out of GP (lat > -25)
+          // we should warn the user, as the service is currently GP-only (Midrand/Tembisa).
+          const isWayOff = latitude < -30 || latitude > -25 || longitude < 27 || longitude > 29;
+          
+          if (isWayOff) {
+             console.warn("Detected location is outside service area:", latitude, longitude);
+             // We'll show a toast if they are online and detected way outside
+             if (riderProfile?.is_online) {
+                toast.warning("Inaccurate Location Detected", {
+                   description: "Your device reports you are very far. Tap 'Recalibrate' to fix.",
+                   id: 'geo-warning'
+                });
+             }
+          }
+
           setRiderCoords([latitude, longitude]);
           
           // Throttled DB update, only if online
@@ -13518,7 +13736,16 @@ const LockedRiderMode = ({
       supabase.removeChannel(profileSubscription);
       supabase.removeChannel(connectionsSubscription);
     };
-  }, [fetchRiderData]);
+  }, [fetchRiderData, riderProfile?.is_online]);
+
+  const recalibrateGPS = () => {
+     const city = riderProfile?.city || "Tembisa";
+     const center = CITY_CENTERS[city as keyof typeof CITY_CENTERS] || CITY_CENTERS["Tembisa"];
+     setRiderCoords([center.lat, center.lng]);
+     toast.success("Location Calibrated", {
+       description: `Mocked to ${city} center for accuracy.`
+     });
+  };
 
   const toggleOnline = async () => {
     if (!riderProfile) return;
@@ -13736,7 +13963,15 @@ const LockedRiderMode = ({
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
+            <button
+               onClick={recalibrateGPS}
+               className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-primary hover:bg-zinc-800 transition-all flex items-center gap-2 group"
+               title="Calibrate Location"
+            >
+               <MapPin size={20} className="group-active:scale-125 transition-transform" />
+               <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Calibrate</span>
+            </button>
           <button
             onClick={onSwitchRole}
             className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition-colors"
@@ -13863,6 +14098,21 @@ const LockedRiderMode = ({
                       {order.delivery_fee && order.delivery_fee > 5 ? "R10 FIXED" : "R5 FIXED"}
                     </div>
                     <p className="font-black text-white">R {order.delivery_fee?.toFixed(2) || "5.00"}</p>
+                    <button
+                      onClick={() => {
+                        const lat = order.lat || order.latitude;
+                        const lng = order.lng || order.longitude;
+                        if (lat && lng) {
+                          window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, "_blank");
+                        } else {
+                          toast.error("Coordinates missing for this mission");
+                        }
+                      }}
+                      className="mt-2 flex items-center gap-1 text-[10px] font-bold text-primary hover:underline ml-auto"
+                    >
+                      <Navigation size={10} />
+                      Navigate
+                    </button>
                   </div>
                 </div>
                 

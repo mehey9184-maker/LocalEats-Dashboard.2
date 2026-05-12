@@ -1,0 +1,281 @@
+1502-    if (!navigator.geolocation) {
+1503:      toast.error("Geolocation is not supported by your browser");
+1504-      setIsLocating(false);
+--
+1554-          } else {
+1555:            toast.error("Could not determine address from coordinates.");
+1556-          }
+1557-        } catch {
+1558:          toast.error("Failed to get address details.");
+1559-        } finally {
+--
+1565-        console.error("Geolocation error:", error);
+1566:        toast.error(
+1567-          `Location access failed: ${error.message || "Please check permissions"}`,
+--
+1621-      console.error("Upload Error:", error);
+1622:      toast.error(
+1623-        "Failed to upload photo. Please ensure a storage bucket exists.",
+--
+1647-    if (!saRegex.test(phoneCleaned)) {
+1648:      toast.error("Please enter a valid South African phone number for calls (e.g., +27 82 123 4567 or 082 123 4567).");
+1649-      return;
+--
+1652-    if (formData.whatsapp && !saRegex.test(whatsappCleaned)) {
+1653:      toast.error("Please enter a valid South African WhatsApp number (e.g., +27 82 123 4567 or 082 123 4567).");
+1654-      return;
+--
+2364-        console.error("Error fetching payments:", error);
+2365:        toast.error("Failed to load payment history");
+2366-      } finally {
+--
+2824-    if (weeklyOrders.length === 0) {
+2825:      toast.error("No orders this week to export");
+2826-      return;
+--
+2884-    if (error) {
+2885:      toast.error("Failed to generate test order: " + error.message);
+2886-    } else {
+--
+3574-    if (!user) {
+3575:      toast.error("You must be logged in to create a shop.");
+3576-      return;
+--
+3599-      setIsSaveSuccess(false);
+3600:      toast.error(
+3601-        `Failed to create shop: ${err instanceof Error ? err.message : "Unknown error"}`,
+--
+3895-      );
+3896:      toast.error(`Failed to update availability: ${error.message}`);
+3897-    } else {
+--
+3917-    if (!user) {
+3918:      toast.error("Not authenticated");
+3919-      setUploading(false);
+--
+3948-        console.error("Upload Error:", uploadError);
+3949:        toast.error(
+3950-          'Failed to upload image. Please ensure "menu-images" bucket exists in Supabase and is set to Public.',
+--
+4001-        console.error("Supabase Update Error:", error);
+4002:        toast.error(`Failed to update menu item: ${error.message}`);
+4003-      }
+--
+4043-        console.error("Supabase Insert Error:", error);
+4044:        toast.error(`Failed to add menu item: ${error.message}`);
+4045-      }
+--
+4079-    if (!formData.name) {
+4080:      toast.error("Please enter a name for the menu item first");
+4081-      return;
+--
+4141-      console.error("AI Image Generation Error:", error);
+4142:      toast.error(
+4143-        `AI Generation failed: ${error instanceof Error ? error.message : "Please try again."}`,
+--
+4214-      setItems(previousItems);
+4215:      toast.error(
+4216-        `Bulk action failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+--
+4241-    } else {
+4242:      toast.error("Failed to delete item");
+4243-    }
+--
+4967-    if (!navigator.geolocation) {
+4968:      toast.error("Geolocation is not supported by your browser");
+4969-      setIsLocating(false);
+--
+5019-          } else {
+5020:            toast.error("Could not determine address from coordinates.");
+5021-          }
+5022-        } catch {
+5023:          toast.error("Failed to get address details.");
+5024-        } finally {
+--
+5030-        console.error("Geolocation error:", error);
+5031:        toast.error(
+5032-          `Location access failed: ${error.message || "Please check permissions"}`,
+--
+5048-    if (!saRegex.test(phoneCleaned)) {
+5049:      toast.error("Please enter a valid South African phone number for calls (e.g. +27 82 123 4567)");
+5050-      return;
+--
+5052-    if (formData.whatsapp && !saRegex.test(whatsappCleaned)) {
+5053:      toast.error("Please enter a valid South African WhatsApp number");
+5054-      return;
+--
+5131-      console.error("Update error:", err);
+5132:      toast.error(
+5133-        `Failed to update profile: ${err?.message || err?.details || err?.hint || "Unknown error"}`,
+--
+5142-    if (!user) {
+5143:      toast.error("Not authenticated");
+5144-      return;
+--
+5186-    } catch (err: unknown) {
+5187:      toast.error(
+5188-        `Upload failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+--
+5508-                    } catch {
+5509:                      toast.error("Failed to follow shop. (Test)");
+5510-                    }
+--
+5739-    const { error } = await supabase.from("chat_messages").insert(message);
+5740:    if (error) toast.error("Failed to send message");
+5741-    else setNewMessage("");
+--
+6055-    if(error){
+6056:       toast.error("Failed to rate rider");
+6057-    } else {
+--
+6317-    if (isExpired) {
+6318:      toast.error(
+6319-        "Connection Expired. Please generate a new Link Code to re-pair.",
+--
+7237-                                          const { error } = await supabase.from("orders").update({ delivery_status: status }).eq("id", order.id);
+7238:                                          if(error) toast.error("Status update failed");
+7239-                                          else toast.success(`Delivery status: ${status.replace("_", " ")}`);
+--
+7814-                                } else {
+7815:                                  toast.error(
+7816-                                    "Pop-up blocked. Please allow pop-ups to print receipts.",
+--
+8356-                console.error(err);
+8357:                toast.error("Failed to generate flyer.");
+8358-              }
+--
+8581-    if (error) {
+8582:      toast.error("Failed to create coupon");
+8583-    } else {
+--
+9008-    if (error) {
+9009:      toast.error("Failed to save response");
+9010-    } else {
+--
+9155-    if (orders.length === 0) {
+9156:      toast.error("No orders to export");
+9157-      return;
+--
+10249-    if (error) {
+10250:      toast.error("Failed to generate code: " + error.message);
+10251-    } else {
+--
+10297-    if (error) {
+10298:      toast.error("Signal fail: " + error.message);
+10299-      if (error.message.includes("permission denied")) {
+--
+11086-    if (!("Notification" in window)) {
+11087:      toast.error("This browser does not support push notifications.");
+11088-      return;
+--
+11096-        setPushEnabled(false);
+11097:        toast.error("Notification permission denied.");
+11098-      }
+--
+11170-      if (shopsError.message === "Failed to fetch") {
+11171:        toast.error("Uplink failed. Refreshing connection...");
+11172-      }
+--
+11193-      if (error.message === "Failed to fetch") {
+11194:        toast.error(
+11195-          "Network error: Could not connect to Supabase. Check your internet or ad-blocker.",
+--
+11197-      } else {
+11198:        toast.error(`Error fetching orders: ${error.message}`);
+11199-      }
+--
+11265-      if (error.message === "Failed to fetch") {
+11266:        toast.error(
+11267-          "Network error: Could not connect to Supabase. Check your internet or ad-blocker.",
+--
+11366-      console.error("Delete All Orders Error:", error);
+11367:      toast.error(`Failed to delete orders: ${error.message}`);
+11368-    } else {
+--
+11481-      setOrders(previousOrders);
+11482:      toast.error(`Failed to update order status: ${error.message}`);
+11483-    } else {
+--
+11579-      setOrders(previousOrders);
+11580:      toast.error(`Error unassigning rider: ${error.message}`);
+11581-    } else {
+--
+11597-      console.error("Nudge error:", error);
+11598:      toast.error(
+11599-        "Failed to nudge rider. Connection issue.",
+--
+11657-      setOrders(previousOrders);
+11658:      toast.error(`Failed to request rider: ${error.message}`);
+11659-    } else {
+--
+11800-      setIsSaveSuccess(false);
+11801:      toast.error(
+11802-        error instanceof Error ? error.message : "Failed to update profile",
+--
+12005-                      );
+12006:                      toast.error(`Failed to update status: ${error.message}`);
+12007-                    }
+--
+13097-    if (!user) {
+13098:      toast.error("Please sign in to place an order");
+13099-      return;
+--
+13102-    if (!address || !coords) {
+13103:      toast.error("Please select a valid delivery address");
+13104-      return;
+--
+13108-    if (!/^(?:\+27|0)[0-9]{9}$/.test(cleanedPhone)) {
+13109:      toast.error("Please enter a valid South African phone number (e.g., +27 82 123 4567 or 082 123 4567).");
+13110-      return;
+--
+13113-    if (distance && distance > 10) {
+13114:      toast.error("Delivery distance exceeded", {
+13115-        description: "Your location is too far for the R5 Flat Rate fee.",
+--
+13150-      setIsSaveSuccess(false);
+13151:      toast.error("Order failed: " + error.message);
+13152-    } else {
+--
+13468-           console.error("Geo error:", err);
+13469:           toast.error("Location tracking disabled. Ensure GPS is on.");
+13470-        },
+--
+13536-    if (error) {
+13537:      toast.error("Failed to update status");
+13538-    } else {
+--
+13546-    if (!user || !riderProfile?.is_online) {
+13547:      toast.error(riderProfile?.is_online ? "Auth error" : "Go online to accept missions");
+13548-      return;
+--
+13565-      setIsSaveSuccess(false);
+13566:      toast.error("Failed to accept mission: " + error.message);
+13567-    } else {
+--
+13597-      setIsSaveSuccess(false);
+13598:      toast.error("Update failed");
+13599-    } else {
+--
+13628-    if (!pairingCode || pairingCode.length < 6) {
+13629:      toast.error("Please enter a valid 6-digit code");
+13630-      return;
+--
+13635-    if (!user) {
+13636:      toast.error("Session expired. Please sign in again.");
+13637-      setIsPairing(false);
+--
+13650-      if (error || !data) {
+13651:        toast.error("Invalid or expired pairing code");
+13652-        setIsPairing(false);
+--
+13657-      if (new Date(data.expires_at) < new Date()) {
+13658:        toast.error("This code has expired. Ask merchant for a new one.");
+13659-        setIsPairing(false);
+--
+13674-      if (updateError) {
+13675:        toast.error("Linking failed: " + updateError.message);
+13676-      } else {
+--
+13683-      console.error("Pairing error:", err);
+13684:      toast.error("An unexpected error occurred during pairing");
+13685-    } finally {
