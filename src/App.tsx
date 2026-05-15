@@ -78,6 +78,9 @@ import {
   ShieldCheck,
   Timer,
   Loader2,
+  Truck,
+  Wallet,
+  Heart,
 } from "lucide-react";
 import {
   BarChart,
@@ -3159,7 +3162,7 @@ const DashboardOverview = React.memo(({
         >
           <StatCard
             title="Low Stock"
-            value={menuItems.filter((i) => i.stock_quantity !== null && (i.stock_quantity || 0) < 5).length}
+            value={menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length}
             change="Alert"
             icon={AlertCircle}
             colorClass="bg-error/10 text-error"
@@ -3415,7 +3418,7 @@ const DashboardOverview = React.memo(({
       </div>
 
       {/* Low Stock Alerts Section */}
-      {menuItems.filter((i) => i.stock_quantity !== null && (i.stock_quantity || 0) < 5).length > 0 && (
+      {menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length > 0 && (
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -3444,7 +3447,7 @@ const DashboardOverview = React.memo(({
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {menuItems
-              .filter((i) => i.stock_quantity !== null && (i.stock_quantity || 0) < 5)
+              .filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5)
               .map((item) => (
                 <div
                   key={item.id}
@@ -4940,7 +4943,7 @@ const MenuManagement = ({
                       ) : (
                         <FoodPlaceholder size={48} />
                       )}
-                      {(!item.is_available || (item.stock_quantity !== null && item.stock_quantity === 0)) && (
+                      {(!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0)) && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                           <span className="bg-error text-white px-3 md:px-4 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-widest shadow-lg">
                             {!item.is_available ? "Unavailable" : "Out of Stock"}
@@ -5018,7 +5021,7 @@ const MenuManagement = ({
                         <span
                           className={cn(
                             "text-[9px] md:text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-1",
-                            item.stock_quantity !== null && (item.stock_quantity || 0) < 5
+                            item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && (item.stock_quantity || 0) < 5
                               ? "bg-error text-on-error animate-pulse shadow-[0_0_12px_rgba(255,0,0,0.3)]"
                               : "bg-emerald-100 text-emerald-600",
                           )}
@@ -5026,8 +5029,8 @@ const MenuManagement = ({
                           {item.stock_quantity !== null && (item.stock_quantity || 0) < 5 && (
                             <AlertCircle size={10} />
                           )}
-                          Stock: {item.stock_quantity === null ? "Unlimited" : (item.stock_quantity || 0)}
-                          {item.stock_quantity !== null && (item.stock_quantity || 0) < 5 && (
+                          Stock: {(item.stock_quantity === null || item.stock_quantity === undefined || item.stock_quantity === -1) ? "Unlimited" : (item.stock_quantity || 0)}
+                          {item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && (item.stock_quantity || 0) < 5 && (
                             <span className="ml-1 text-[8px] font-black underline hidden xs:inline">
                               LOW STOCK
                             </span>
@@ -6975,11 +6978,18 @@ const OrdersManagement = ({
                               </a>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-                            <MapPin size={12} className="text-primary/60" />
-                            <span className="line-clamp-1 italic">
-                              {order.address}, {order.city}
-                            </span>
+                          <div className="flex flex-col gap-1 text-xs text-on-surface-variant">
+                            <div className="flex items-center gap-2">
+                              <MapPin size={12} className="text-primary/60" />
+                              <span className="italic font-medium">
+                                {order.address}, {order.city}
+                              </span>
+                            </div>
+                            {order.lat && order.lng && (
+                              <div className="ml-5 text-[9px] text-primary/60 font-mono">
+                                {order.lat.toFixed(5)}, {order.lng.toFixed(5)}
+                              </div>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 mt-1">
                             {order.estimated_delivery_time || calculateDynamicETA(order) ? (
@@ -7257,13 +7267,32 @@ const OrdersManagement = ({
                               </p>
                             </div>
                             <div className="space-y-1 sm:col-span-2">
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                                Delivery Address
-                              </span>
-                              <p className="text-sm font-semibold text-on-surface">
-                                {order.address}, {order.city}
-                                {order.country ? `, ${order.country}` : ""}
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                                  Delivery Address
+                                </span>
+                                {order.lat && order.lng && (
+                                  <a
+                                    href={`https://www.google.com/maps/search/?api=1&query=${order.lat},${order.lng}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1"
+                                  >
+                                    <MapPin size={10} /> Open Map
+                                  </a>
+                                )}
+                              </div>
+                              <p className="text-sm font-semibold text-on-surface leading-snug">
+                                {order.address}
                               </p>
+                              <p className="text-xs text-on-surface-variant font-medium">
+                                {order.city}{order.country ? `, ${order.country}` : ""}
+                              </p>
+                              {order.lat && order.lng && (
+                                <p className="text-[10px] font-mono text-primary/70 mt-1 select-all bg-primary/5 p-1 rounded inline-block">
+                                  GPS: {order.lat.toFixed(6)}, {order.lng.toFixed(6)}
+                                </p>
+                              )}
                             </div>
                             {order.accepted_at && (
                               <div className="space-y-1">
@@ -7949,7 +7978,8 @@ const OrdersManagement = ({
                                       </div>
                                       <div class="footer">
                                         <p>Customer: ${order.customer_name}</p>
-                                        <p>Address: ${order.address}</p>
+                                        <p>Address: ${order.address}, ${order.city} ${order.country ? ', ' + order.country : ''}</p>
+                                        ${order.lat && order.lng ? `<p style="font-size: 8px; color: #666;">GPS: ${order.lat}, ${order.lng}</p>` : ''}
                                         <p>Thank you for your order!</p>
                                       </div>
                                       <script>window.print(); window.close();</script>
@@ -11425,25 +11455,32 @@ function App() {
 
   const fetchAllMenuItems = useCallback(async () => {
     if (!user) return;
-    const { data: ownedShops } = await fetchWithRetry(() =>
-      supabase.from("shops").select("id").eq("owner_id", user.id),
-    );
-    const ownedShopIds = ownedShops?.map((s) => s.id) || [];
-    if (ownedShopIds.length === 0) {
-      setMenuItems([]);
-      return;
+
+    let query = supabase.from("menu_items").select("*");
+
+    if (role === "merchant") {
+      const { data: ownedShops } = await fetchWithRetry(() =>
+        supabase.from("shops").select("id").eq("owner_id", user.id),
+      );
+      const ownedShopIds = ownedShops?.map((s) => s.id) || [];
+      if (ownedShopIds.length === 0) {
+        setMenuItems([]);
+        return;
+      }
+      query = query.in("shop_id", ownedShopIds);
+    } else {
+      // If customer, fetch all items from all shops to populate the marketplace
+      // In a real app, we might paginate or filter by location, but for now we fetch all
     }
 
-    const { data, error } = await fetchWithRetry(() =>
-      supabase.from("menu_items").select("*").in("shop_id", ownedShopIds),
-    );
+    const { data, error } = await fetchWithRetry(() => query);
 
     if (data) {
       setMenuItems(data);
     } else if (error) {
       console.error("Fetch All Menu Items Error:", error);
     }
-  }, [user]);
+  }, [user, role]);
 
   const fetchShops = useCallback(async () => {
     const { data, error } = await fetchWithRetry(() =>
@@ -11688,6 +11725,8 @@ function App() {
             menuItem &&
             menuItem.stock_quantity !== undefined &&
             menuItem.stock_quantity !== null &&
+            menuItem.stock_quantity !== undefined &&
+            menuItem.stock_quantity !== -1 &&
             menuItem.stock_quantity > 0
           ) {
             const newStock = menuItem.stock_quantity - 1;
@@ -12761,6 +12800,54 @@ function App() {
                       icon: Store,
                       color: "text-pink-500 bg-pink-50",
                     },
+                    {
+                      title: "Delivery & Logistics",
+                      desc: "Set your delivery radius, monitor rider progress on the live map, and manage dispatching.",
+                      icon: Truck,
+                      color: "text-cyan-500 bg-cyan-50",
+                    },
+                    {
+                      title: "Earnings & Payouts",
+                      desc: "Monitor your revenue in real-time and manage your weekly payout schedule securely.",
+                      icon: Wallet,
+                      color: "text-emerald-500 bg-emerald-50",
+                    },
+                    {
+                      title: "Customer Engagement",
+                      desc: "Respond to reviews, track repeat customers, and build loyalty with tailored rewards.",
+                      icon: Heart,
+                      color: "text-rose-500 bg-rose-50",
+                    },
+                    {
+                      title: "Rider Network",
+                      desc: "Access a fleet of on-demand riders. Real-time GPS tracking ensures your food reaches customers hot and fresh.",
+                      icon: Users,
+                      color: "text-blue-600 bg-blue-50",
+                    },
+                    {
+                      title: "QR Verification",
+                      desc: "The gold standard for security. QR codes ensure the right order goes to the right person every single time.",
+                      icon: QrCode,
+                      color: "text-amber-600 bg-amber-50",
+                    },
+                    {
+                      title: "Growth Support",
+                      desc: "Get help when you need it. Our automated tools and community forum are here to help you grow your business.",
+                      icon: MessageSquare,
+                      color: "text-teal-600 bg-teal-50",
+                    },
+                    {
+                      title: "Marketplace Tips",
+                      desc: "Optimize your menu for search, use high-quality photos, and respond to feedback to improve your rankings.",
+                      icon: Sparkles,
+                      color: "text-amber-500 bg-amber-50",
+                    },
+                    {
+                      title: "Community Forum",
+                      desc: "Connect with other vendors, share success stories, and get advice from the LocalEats community.",
+                      icon: MessageCircle,
+                      color: "text-indigo-600 bg-indigo-50",
+                    },
                   ].map((tip, i) => (
                     <div
                       key={i}
@@ -12794,6 +12881,16 @@ function App() {
                   <p className="text-sm text-on-surface-variant">
                     Enable <b>Sound Alerts</b> in Settings to ensure you hear
                     every new order even when the tab is in the background.
+                  </p>
+                </div>
+
+                <div className="bg-emerald-500/5 rounded-2xl p-6 border border-emerald-500/10 space-y-3">
+                  <h4 className="font-bold text-emerald-600 flex items-center gap-2">
+                    <ShieldCheck size={18} />
+                    Safety & Trust
+                  </h4>
+                  <p className="text-sm text-on-surface-variant">
+                    All transactions are encrypted and secured. We use multi-factor verification for payouts and location data is only shared with active delivery participants.
                   </p>
                 </div>
 
@@ -13085,11 +13182,21 @@ const CustomerView = ({
                   <img
                     src={item.image_url || DEFAULT_MENU_IMAGE}
                     alt={item.name}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                    className={cn(
+                      "w-full h-full object-cover group-hover:scale-110 transition-transform duration-500",
+                      (!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0)) && "grayscale opacity-50"
+                    )}
                   />
                   {isPlaceholderImage(item.image_url) && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none">
                       <UtensilsCrossed size={48} className="text-white/30" />
+                    </div>
+                  )}
+                  {(!item.is_available || (item.stock_quantity !== null && item.stock_quantity === 0)) && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+                      <span className="bg-error text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl">
+                        {!item.is_available ? "Unavailable" : "Out of Stock"}
+                      </span>
                     </div>
                   )}
                   <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm">
@@ -13107,10 +13214,20 @@ const CustomerView = ({
                   </div>
                   <button
                     onClick={() => addToCart(item)}
-                    className="w-full h-12 bg-surface-container-low hover:bg-primary hover:text-white transition-all rounded-xl font-bold flex items-center justify-center gap-2 group"
+                    disabled={!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0)}
+                    className="w-full h-12 bg-surface-container-low hover:bg-primary hover:text-white disabled:opacity-50 disabled:grayscale disabled:hover:bg-surface-container-low disabled:hover:text-on-surface-variant transition-all rounded-xl font-bold flex items-center justify-center gap-2 group"
                   >
-                    <Plus size={18} />
-                    <span>Add to Order</span>
+                    {!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0) ? (
+                      <>
+                        <X size={18} />
+                        <span>Sold Out</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus size={18} />
+                        <span>Add to Order</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </motion.div>
@@ -13155,6 +13272,19 @@ const CustomerView = ({
                         <p className="text-xs text-on-surface-variant font-medium">
                           {shop?.name || "Local Shop"} • R {order.total_price.toFixed(2)}
                         </p>
+                          <div className="flex flex-col gap-0.5 mt-1 text-[10px] text-on-surface-variant/80">
+                            <div className="flex items-center gap-1.5 ">
+                              <MapPin size={10} className="text-primary/60" />
+                              <span className="italic block">
+                                {order.address}, {order.city}
+                              </span>
+                            </div>
+                            {order.lat && order.lng && (
+                              <div className="ml-4 text-[8px] text-primary/40 font-mono italic">
+                                {order.lat.toFixed(5)}, {order.lng.toFixed(5)}
+                              </div>
+                            )}
+                          </div>
                       </div>
                     </div>
 

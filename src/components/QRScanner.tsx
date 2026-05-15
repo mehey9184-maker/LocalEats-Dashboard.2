@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { X, Camera, Zap } from 'lucide-react';
-import { motion } from 'motion/react';
 
 interface QRScannerProps {
   onScan: (code: string) => void;
@@ -30,11 +29,10 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScan, onClose }) => {
           <p className="text-[10px] font-black uppercase text-zinc-600 tracking-widest">Scanner Initializing...</p>
         </div>
         
-        {/* Animated Scanning Line */}
-        <motion.div 
-          animate={{ top: ['0%', '100%', '0%'] }}
-          transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-          className="absolute left-0 right-0 h-1 bg-[#39FF14] shadow-[0_0_15px_#39FF14] z-10"
+        {/* Scanning Line */}
+        <div 
+          className="absolute left-0 right-0 h-1 bg-[#39FF14] shadow-[0_0_15px_#39FF14] z-10 animate-pulse"
+          style={{ top: '50%' }}
         />
 
         {isSimulating && (
