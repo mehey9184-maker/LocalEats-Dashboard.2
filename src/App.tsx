@@ -10460,8 +10460,16 @@ const RiderManagement = ({
           table: 'rider_connections',
           filter: `shop_id=eq.${currentShop.id}`
         },
-        () => {
-          fetchConnections();
+        (payload) => {
+          // Local State Hydration: Update connections directly for simple connection changes
+          if (payload.eventType === 'UPDATE') {
+            setConnections(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
+          } else if (payload.eventType === 'INSERT') {
+             // For inserts, we still fetch to get the profile join if it exists
+             void fetchConnections();
+          } else if (payload.eventType === 'DELETE') {
+            setConnections(prev => prev.filter(c => c.id !== payload.old.id));
+          }
         }
       )
       .subscribe();
@@ -10469,6 +10477,7 @@ const RiderManagement = ({
     // Targeted tracking for the selected rider (Smooth SSOT)
     let profileSub: ReturnType<typeof supabase.channel> | null = null;
     if (selectedTrackId) {
+      // Idempotent Subscriptions: Ensure any previous selector sub is cleared before creating new one
       profileSub = supabase
         .channel(`track_rider_${selectedTrackId}`)
         .on(
@@ -10479,8 +10488,22 @@ const RiderManagement = ({
             table: 'rider_profiles',
             filter: `id=eq.${selectedTrackId}`
           },
-          () => {
-            fetchConnections();
+          (payload) => {
+            // Local State Hydration: Update coordinates and status directly without full re-fetch
+            const newProfile = payload.new as RiderProfile;
+            setConnections(prev => prev.map(c => {
+               if (c.rider_id === selectedTrackId) {
+                 return {
+                   ...c,
+                   current_latitude: newProfile.current_latitude,
+                   current_longitude: newProfile.current_longitude,
+                   is_online: newProfile.is_online,
+                   status: newProfile.status,
+                   last_seen: newProfile.updated_at
+                 };
+               }
+               return c;
+            }));
           }
         )
         .subscribe();
@@ -13914,16 +13937,34 @@ const LockedRiderMode = ({
           filter: "delivery_status=in.(finding_rider,accepted,picked_up)" 
         },
         (payload) => { 
-          // Only sync if order is in an active delivery state
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const order = payload.new as Order;
-            if (order.delivery_status === 'finding_rider' && payload.eventType === 'INSERT') {
-               toast.info("🚨 New Mission Broadcast!", { description: "Tap to view in Available Missions", duration: 5000 });
-               const audio = new Audio('/notification.mp3');
-               audio.play().catch(() => {});
+          // Local State Hydration: Update missions directly
+          const order = payload.new as Order;
+          
+          if (payload.eventType === 'INSERT') {
+            if (order.delivery_status === 'finding_rider') {
+              setAvailableMissions(prev => [order, ...prev]);
+              toast.info("🚨 New Mission Broadcast!", { description: "Tap to view in Available Missions", duration: 5000 });
+              const audio = new Audio('/notification.mp3');
+              audio.play().catch(() => {});
             }
+          } else if (payload.eventType === 'UPDATE') {
+            // Update Active Missions
+            setActiveMissions(prev => prev.map(o => o.id === order.id ? { ...o, ...order } : o));
+            
+            // Handle availability logic
+            if (order.delivery_status === 'finding_rider') {
+              setAvailableMissions(prev => {
+                const exists = prev.find(o => o.id === order.id);
+                if (exists) return prev.map(o => o.id === order.id ? { ...o, ...order } : o);
+                return [order, ...prev];
+              });
+            } else {
+              setAvailableMissions(prev => prev.filter(o => o.id !== order.id));
+            }
+          } else if (payload.eventType === 'DELETE') {
+            setActiveMissions(prev => prev.filter(o => o.id !== payload.old.id));
+            setAvailableMissions(prev => prev.filter(o => o.id !== payload.old.id));
           }
-          void fetchRiderData(); 
         }
       )
       .subscribe();
@@ -13932,8 +13973,16 @@ const LockedRiderMode = ({
       .channel("rider_dashboard_profiles")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "rider_profiles" },
-        () => { void fetchRiderData(); }
+        { 
+          event: "UPDATE", 
+          schema: "public", 
+          table: "rider_profiles",
+          filter: `id=eq.${riderProfile?.id}` 
+        },
+        (payload) => { 
+          // Local Hydration for own profile
+          setRiderProfile(prev => prev ? { ...prev, ...payload.new } : (payload.new as RiderProfile)); 
+        }
       )
       .subscribe();
 
@@ -13941,8 +13990,21 @@ const LockedRiderMode = ({
       .channel("rider_dashboard_connections")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "rider_connections" },
-        () => { void fetchRiderData(); }
+        { 
+          event: "*", 
+          schema: "public", 
+          table: "rider_connections" 
+        },
+        (payload) => { 
+          // Update connections locally
+          if (payload.eventType === 'UPDATE') {
+            setActiveConnections(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
+          } else if (payload.eventType === 'DELETE') {
+            setActiveConnections(prev => prev.filter(c => c.id !== payload.old.id));
+          } else {
+            void fetchRiderData(); // Fetches are okay for rare inserts/complex changes
+          }
+        }
       )
       .subscribe();
 
@@ -13952,7 +14014,7 @@ const LockedRiderMode = ({
       supabase.removeChannel(profileSubscription);
       supabase.removeChannel(connectionsSubscription);
     };
-  }, [fetchRiderData, riderProfile?.is_online]);
+  }, [fetchRiderData, riderProfile?.is_online, riderProfile?.id]);
 
   const recalibrateGPS = () => {
      const city = riderProfile?.city || "Tembisa";
