@@ -146,6 +146,55 @@ const calculateDistance = (
   return R * c;
 };
 
+/**
+ * 🚲 Smooth Location Interpolation (Lerp)
+ * Prevents pins from jumping visually when new coordinates arrive.
+ */
+function useSmoothLocation(lat?: number, lng?: number) {
+  const [smoothLat, setSmoothLat] = useState<number | undefined>(lat);
+  const [smoothLng, setSmoothLng] = useState<number | undefined>(lng);
+  const requestRef = useRef<number>(undefined);
+  const targetRef = useRef({ lat, lng });
+  const animateRef = useRef<() => void>(undefined);
+
+  useEffect(() => {
+    targetRef.current = { lat, lng };
+  }, [lat, lng]);
+
+  const animate = useCallback(() => {
+    if (targetRef.current.lat !== undefined && targetRef.current.lng !== undefined) {
+      setSmoothLat((prev) => {
+        if (prev === undefined) return targetRef.current.lat;
+        const diff = targetRef.current.lat! - prev;
+        if (Math.abs(diff) < 0.000001) return targetRef.current.lat!;
+        return prev + diff * 0.1; // Lerp factor for ultra-smooth easing
+      });
+      setSmoothLng((prev) => {
+        if (prev === undefined) return targetRef.current.lng;
+        const diff = targetRef.current.lng! - prev;
+        if (Math.abs(diff) < 0.000001) return targetRef.current.lng!;
+        return prev + diff * 0.1;
+      });
+    }
+    if (animateRef.current) {
+      requestRef.current = requestAnimationFrame(animateRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    animateRef.current = animate;
+  });
+
+  useEffect(() => {
+    requestRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    };
+  }, [animate]);
+
+  return { lat: smoothLat, lng: smoothLng };
+}
+
 const LeafletMap = ({
   center,
   zoom = 13,
@@ -6176,7 +6225,12 @@ const OrdersManagement = ({
         .channel("riders-sync")
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "rider_connections" },
+          { 
+            event: "*", 
+            schema: "public", 
+            table: "rider_connections",
+            filter: `shop_id=eq.${currentShop.id}`
+          },
           () => void fetchRiders(),
         )
         .subscribe();
@@ -10310,6 +10364,12 @@ const RiderManagement = ({
     connections.find(c => c.rider_id === selectedTrackId),
   [connections, selectedTrackId]);
 
+  // SSOT: Single Source of Truth for smoothed location
+  const { lat: smoothLat, lng: smoothLng } = useSmoothLocation(
+    trackedRider?.latitude, 
+    trackedRider?.longitude
+  );
+
   useEffect(() => {
     if (activeCode) {
       import("qrcode").then((QRCode) => {
@@ -10406,10 +10466,31 @@ const RiderManagement = ({
       )
       .subscribe();
 
+    // Targeted tracking for the selected rider (Smooth SSOT)
+    let profileSub: ReturnType<typeof supabase.channel> | null = null;
+    if (selectedTrackId) {
+      profileSub = supabase
+        .channel(`track_rider_${selectedTrackId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'rider_profiles',
+            filter: `id=eq.${selectedTrackId}`
+          },
+          () => {
+            fetchConnections();
+          }
+        )
+        .subscribe();
+    }
+
     return () => {
       void supabase.removeChannel(channel);
+      if (profileSub) void supabase.removeChannel(profileSub);
     };
-  }, [fetchConnections, currentShop.id]);
+  }, [fetchConnections, currentShop.id, selectedTrackId]);
 
   const generateCode = async () => {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -10879,16 +10960,16 @@ const RiderManagement = ({
                   </div>
 
                   <div className="flex-1 relative bg-surface-container-highest">
-                     {trackedRider.latitude && trackedRider.longitude ? (
+                     {smoothLat && smoothLng ? (
                         <MapContainer
-                          center={[trackedRider.latitude, trackedRider.longitude]}
+                          center={[smoothLat, smoothLng]}
                           zoom={15}
                           className="w-full h-full"
                           zoomControl={false}
                         >
                           <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
                           <Marker 
-                            position={[trackedRider.latitude, trackedRider.longitude]}
+                            position={[smoothLat, smoothLng]}
                             icon={L.icon({
                               iconUrl: 'https://cdn-icons-png.flaticon.com/512/3195/3195868.png',
                               iconSize: [40, 40],
@@ -13799,18 +13880,19 @@ const LockedRiderMode = ({
           setRiderCoords([latitude, longitude]);
           
           // Throttled DB update, only if online
-          void (async () => {
-             const { data: { user } } = await supabase.auth.getUser();
-             // In a perfect system we'd verify riderProfile?.is_online here, but we don't have it directly in the dependency array
-             // to prevent constant re-subscriptions. We'll update the DB and let RLS block if not allowed, or just do a simple check.
-             if (user) {
-               await supabase.from("rider_profiles").update({
-                 current_latitude: latitude,
-                 current_longitude: longitude,
-                 updated_at: new Date().toISOString()
-               }).eq("id", user.id).eq("is_online", true); // Only update coordinates if they are marked online!
-             }
-          })();
+           // SSOT: Single Source of Truth update with Race-Condition Protection (Stale Data Filter)
+           void (async () => {
+              const { data: { user } } = await supabase.auth.getUser();
+              if (user) {
+                // Use RPC to enforce stale data checks and PostGIS geographical types
+                await supabase.rpc("update_rider_location", {
+                  p_rider_id: user.id,
+                  p_lat: latitude,
+                  p_lng: longitude,
+                  p_captured_at: new Date().toISOString()
+                });
+              }
+           })();
         },
         (err) => {
            console.error("Geo error:", err);
@@ -13820,21 +13902,25 @@ const LockedRiderMode = ({
       );
     }
 
-    // Listen for changes in orders, profile and online status
+    // Listen for changes in active orders only (Optimized Real-time Subscription)
     const ordersSubscription = supabase
-      .channel("rider_dashboard_orders")
+      .channel("active_rider_missions")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "orders" },
+        { 
+          event: "*", 
+          schema: "public", 
+          table: "orders",
+          filter: "delivery_status=in.(finding_rider,accepted,picked_up)" 
+        },
         (payload) => { 
+          // Only sync if order is in an active delivery state
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const order = payload.new as Order;
-            // Notify if a new mission is looking for a rider
             if (order.delivery_status === 'finding_rider' && payload.eventType === 'INSERT') {
-              toast.info("🚨 New Mission Broadcast!", { description: "Tap to view in Available Missions", duration: 5000 });
-              // Play a sound if available
-              const audio = new Audio('/notification.mp3');
-              audio.play().catch(() => {});
+               toast.info("🚨 New Mission Broadcast!", { description: "Tap to view in Available Missions", duration: 5000 });
+               const audio = new Audio('/notification.mp3');
+               audio.play().catch(() => {});
             }
           }
           void fetchRiderData(); 

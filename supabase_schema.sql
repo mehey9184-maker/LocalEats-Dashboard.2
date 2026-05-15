@@ -199,7 +199,30 @@ ADD COLUMN IF NOT EXISTS current_location geography(POINT, 4326),
 ADD COLUMN IF NOT EXISTS total_earnings NUMERIC DEFAULT 0,
 ADD COLUMN IF NOT EXISTS total_deliveries INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS active_points INTEGER DEFAULT 0,
+ADD COLUMN IF NOT EXISTS location_captured_at TIMESTAMPTZ,
 ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
+-- Create the robust update_rider_location function with Stale Data Filter
+-- This prevents race conditions where an older GPS packet arrives after a newer one.
+CREATE OR REPLACE FUNCTION update_rider_location(
+    p_rider_id UUID,
+    p_lat NUMERIC,
+    p_lng NUMERIC,
+    p_captured_at TIMESTAMPTZ
+)
+RETURNS VOID AS $$
+BEGIN
+    UPDATE rider_profiles
+    SET 
+        current_latitude = p_lat,
+        current_longitude = p_lng,
+        current_location = ST_SetSRID(ST_MakePoint(p_lng, p_lat), 4326)::geography,
+        location_captured_at = p_captured_at,
+        updated_at = now()
+    WHERE id = p_rider_id
+    AND (location_captured_at IS NULL OR location_captured_at < p_captured_at);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Ensure orders has all required delivery columns
 ALTER TABLE orders
