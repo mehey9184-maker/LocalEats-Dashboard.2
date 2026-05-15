@@ -3349,10 +3349,10 @@ const DashboardOverview = React.memo(({
           >
             {orders.length > 0 ? (
               <ResponsiveContainer
-                width="99%"
+                width="100%"
                 height="100%"
                 minHeight={256}
-                minWidth={1}
+                minWidth={100}
               >
                 <BarChart data={trendData}>
                   <Bar dataKey="value" radius={[8, 8, 0, 0]}>
@@ -9634,8 +9634,8 @@ const Insights = ({
               </button>
             </div>
           </div>
-          <div className="h-64 mt-4">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-64 mt-4" style={{ minHeight: "256px" }}>
+            <ResponsiveContainer width="100%" height="100%" minHeight={256} minWidth={100}>
               <BarChart data={dailyEarningsData}>
                 <defs>
                   <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
@@ -9702,12 +9702,12 @@ const Insights = ({
           <h2 className="text-sm font-semibold uppercase tracking-widest text-on-surface-variant/60 mb-6">
             Revenue by Category
           </h2>
-          <div className="h-64">
+          <div className="h-64" style={{ minHeight: "256px" }}>
             <ResponsiveContainer
-              width="99%"
+              width="100%"
               height="100%"
               minHeight={256}
-              minWidth={1}
+              minWidth={100}
             >
               <PieChart>
                 <Pie
@@ -9957,12 +9957,12 @@ const Insights = ({
           </div>
 
           {selectedItemForTrend ? (
-            <div className="h-48 w-full">
+            <div className="h-48 w-full" style={{ minHeight: "192px" }}>
               <ResponsiveContainer
-                width="99%"
+                width="100%"
                 height="100%"
                 minHeight={192}
-                minWidth={1}
+                minWidth={100}
               >
                 <AreaChart data={itemTrendData}>
                   <defs>
@@ -10055,12 +10055,12 @@ const Insights = ({
             </div>
           </div>
 
-          <div className="h-64 w-full">
+          <div className="h-64 w-full" style={{ minHeight: "256px" }}>
             <ResponsiveContainer
-              width="99%"
+              width="100%"
               height="100%"
               minHeight={256}
-              minWidth={1}
+              minWidth={100}
             >
               <AreaChart data={followerTrendData}>
                 <defs>
