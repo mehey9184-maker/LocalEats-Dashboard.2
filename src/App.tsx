@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Toaster, toast } from "sonner";
+import { OnboardingTour } from "./components/OnboardingTour";
 import { GoogleGenAI } from "@google/genai";
 import {
   LayoutDashboard,
@@ -11200,6 +11201,16 @@ function App() {
   const [shops, setShops] = useState<Shop[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [user, setUser] = useState<User | null>(null);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+
+  useEffect(() => {
+    if (user && role === "merchant") {
+      const hasOnboarded = localStorage.getItem("localeats_onboard_v1");
+      if (!hasOnboarded) {
+        setOnboardingOpen(true);
+      }
+    }
+  }, [user, role]);
   const [authView, setAuthView] = useState<"signin" | "signup">("signin");
   const [isVerifying, setIsVerifying] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -12479,6 +12490,17 @@ function App() {
         />
         <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
 
+        <OnboardingTour
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          isOpen={onboardingOpen}
+          onComplete={() => {
+            setOnboardingOpen(false);
+            localStorage.setItem("localeats_onboard_v1", "true");
+            toast.success("🎉 Guided onboarding completed! You are fully configured.");
+          }}
+        />
+
         {isOffline && (
           <div className="fixed top-0 left-0 right-0 z-[100] bg-error text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2">
             <PauseCircle size={14} />
@@ -12823,6 +12845,33 @@ function App() {
                     <ChevronRight
                       size={18}
                       className="text-on-surface-variant/40"
+                    />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setActiveTab("dashboard");
+                      setOnboardingOpen(true);
+                      toast.success("✨ Starting interactive walkthrough tour...");
+                    }}
+                    className="w-full flex items-center justify-between p-5 bg-gradient-to-r from-primary/[0.04] to-transparent hover:from-primary/[0.08] hover:to-primary/[0.02] rounded-2xl transition-all border border-primary/10 group shadow-sm shadow-primary/[0.02]"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                        <Sparkles size={18} className="animate-pulse" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface">
+                          App Walkthrough Tour
+                        </p>
+                        <p className="text-xs text-on-surface-variant">
+                          Restart the guided interactive manual tour of your workspace resources.
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight
+                      size={18}
+                      className="text-primary/60"
                     />
                   </button>
 
