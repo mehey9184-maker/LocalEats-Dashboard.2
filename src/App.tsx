@@ -81,6 +81,8 @@ import {
   Truck,
   Wallet,
   Heart,
+  Volume1,
+  Volume2,
 } from "lucide-react";
 import {
   BarChart,
@@ -11209,6 +11211,13 @@ function App() {
   const [soundAlerts, setSoundAlerts] = useState(() => {
     return localStorage.getItem("soundAlerts") !== "false";
   });
+  const [soundStyle, setSoundStyle] = useState<"calm" | "friendly" | "sparkle">(() => {
+    return (localStorage.getItem("soundStyle") as "calm" | "friendly" | "sparkle") || "calm";
+  });
+  const [soundVolume, setSoundVolume] = useState<number>(() => {
+    const val = localStorage.getItem("soundVolume");
+    return val ? parseInt(val) : 80;
+  });
   const [pushEnabled, setPushEnabled] = useState(() => {
     return (
       typeof window !== "undefined" &&
@@ -11287,6 +11296,14 @@ function App() {
   useEffect(() => {
     localStorage.setItem("soundAlerts", soundAlerts.toString());
   }, [soundAlerts]);
+
+  useEffect(() => {
+    localStorage.setItem("soundStyle", soundStyle);
+  }, [soundStyle]);
+
+  useEffect(() => {
+    localStorage.setItem("soundVolume", soundVolume.toString());
+  }, [soundVolume]);
 
   useEffect(() => {
     // Check current session with a timeout
@@ -11428,31 +11445,222 @@ function App() {
     }
   };
 
-  const playNotificationSound = (isRepeating = false) => {
+  const playNotificationSound = useCallback((isRepeating = false, styleOverride?: "calm" | "friendly" | "sparkle") => {
     // Vibrate if supported
     if ("vibrate" in navigator) {
       navigator.vibrate([200, 100, 200, 100, 200]);
     }
 
-    const audio = new Audio(
-      "https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3",
-    );
-    audio.volume = 1.0;
+    const style = styleOverride || soundStyle;
+    const vol = soundVolume / 100; // 0.0 to 1.0
 
-    if (isRepeating) {
-      audio.loop = true;
-      // Stop repeating sound after 10 seconds or when user clicks something
-      setTimeout(() => {
-        audio.pause();
-      }, 10000);
+    try {
+      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) {
+        // Fallback to Mixkit URL if Web Audio API not supported
+        const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3");
+        audio.volume = vol;
+        if (isRepeating) {
+          audio.loop = true;
+          setTimeout(() => { audio.pause(); }, 10000);
+        }
+        audio.play().catch((e) => console.log("Audio play blocked or failed:", e));
+        return { pause: () => audio.pause() };
+      }
+
+      const ctx = new AudioContextClass();
+      const masterGain = ctx.createGain();
+      masterGain.gain.setValueAtTime(vol * 0.15, ctx.currentTime); // Node scale volume for comfort
+      masterGain.connect(ctx.destination);
+      
+      const now = ctx.currentTime;
+
+      if (style === "calm") {
+        // High-end dual glass chime
+        const notes = [
+          { freq: 659.25, time: 0 },   // E5
+          { freq: 830.61, time: 0.1 },  // G#5
+          { freq: 987.77, time: 0.2 }   // B5
+        ];
+        
+        notes.forEach(({ freq, time }) => {
+          const osc = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+          
+          osc.type = "triangle";
+          osc.frequency.setValueAtTime(freq, now + time);
+          
+          gainNode.gain.setValueAtTime(0, now + time);
+          gainNode.gain.linearRampToValueAtTime(0.8, now + time + 0.04);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, now + time + 0.8);
+          
+          osc.connect(gainNode);
+          gainNode.connect(masterGain);
+          
+          osc.start(now + time);
+          osc.stop(now + time + 0.8);
+        });
+      } else if (style === "friendly") {
+        // Cozy organic bubble pop (marimba tap)
+        const notes = [
+          { freq: 440.00, time: 0, dur: 0.15 },
+          { freq: 554.37, time: 0.05, dur: 0.2 }
+        ];
+        
+        notes.forEach(({ freq, time, dur }) => {
+          const osc = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+          const filter = ctx.createBiquadFilter();
+          
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(freq, now + time);
+          osc.frequency.exponentialRampToValueAtTime(freq * 0.9, now + time + dur);
+          
+          filter.type = "lowpass";
+          filter.frequency.setValueAtTime(1200, now + time);
+          
+          gainNode.gain.setValueAtTime(0, now + time);
+          gainNode.gain.linearRampToValueAtTime(1.0, now + time + 0.01);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, now + time + dur);
+          
+          osc.connect(filter);
+          filter.connect(gainNode);
+          gainNode.connect(masterGain);
+          
+          osc.start(now + time);
+          osc.stop(now + time + dur);
+        });
+      } else if (style === "sparkle") {
+        // Bright shining cascading glockenspiel
+        const notes = [
+          { freq: 523.25, time: 0 },
+          { freq: 659.25, time: 0.06 },
+          { freq: 783.99, time: 0.12 },
+          { freq: 1046.50, time: 0.18 }
+        ];
+        
+        notes.forEach(({ freq, time }) => {
+          const osc = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+          
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(freq, now + time);
+          
+          gainNode.gain.setValueAtTime(0, now + time);
+          gainNode.gain.linearRampToValueAtTime(0.6, now + time + 0.01);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, now + time + 0.6);
+          
+          osc.connect(gainNode);
+          gainNode.connect(masterGain);
+          
+          const subOsc = ctx.createOscillator();
+          const subGain = ctx.createGain();
+          subOsc.type = "triangle";
+          subOsc.frequency.setValueAtTime(freq / 2, now + time);
+          subGain.gain.setValueAtTime(0, now + time);
+          subGain.gain.linearRampToValueAtTime(0.2, now + time + 0.01);
+          subGain.gain.exponentialRampToValueAtTime(0.001, now + time + 0.3);
+          
+          subOsc.connect(subGain);
+          subGain.connect(masterGain);
+          
+          osc.start(now + time);
+          osc.stop(now + time + 0.6);
+          subOsc.start(now + time);
+          subOsc.stop(now + time + 0.3);
+        });
+      }
+
+      // If repeating is true, schedule recurring oscillator runs
+      let repeatInterval: ReturnType<typeof setInterval> | null = null;
+      if (isRepeating) {
+        let count = 0;
+        repeatInterval = setInterval(() => {
+          count++;
+          if (count >= 5) { // Stop repeating after 10-12s
+            if (repeatInterval) clearInterval(repeatInterval);
+            return;
+          }
+          const repNow = ctx.currentTime;
+          if (style === "calm") {
+            const notes = [{ freq: 659.25, time: 0 }, { freq: 830.61, time: 0.1 }, { freq: 987.77, time: 0.2 }];
+            notes.forEach(({ freq, time }) => {
+              const osc = ctx.createOscillator();
+              const gainNode = ctx.createGain();
+              osc.type = "triangle";
+              osc.frequency.setValueAtTime(freq, repNow + time);
+              gainNode.gain.setValueAtTime(0, repNow + time);
+              gainNode.gain.linearRampToValueAtTime(0.8, repNow + time + 0.04);
+              gainNode.gain.exponentialRampToValueAtTime(0.001, repNow + time + 0.8);
+              osc.connect(gainNode); gainNode.connect(masterGain);
+              osc.start(repNow + time); osc.stop(repNow + time + 0.8);
+            });
+          } else if (style === "friendly") {
+            const notes = [{ freq: 440.00, time: 0, dur: 0.15 }, { freq: 554.37, time: 0.05, dur: 0.2 }];
+            notes.forEach(({ freq, time, dur }) => {
+              const osc = ctx.createOscillator();
+              const gainNode = ctx.createGain();
+              const filter = ctx.createBiquadFilter();
+              osc.type = "sine";
+              osc.frequency.setValueAtTime(freq, repNow + time);
+              osc.frequency.exponentialRampToValueAtTime(freq * 0.9, repNow + time + dur);
+              filter.type = "lowpass"; filter.frequency.setValueAtTime(1200, repNow + time);
+              gainNode.gain.setValueAtTime(0, repNow + time);
+              gainNode.gain.linearRampToValueAtTime(1.0, repNow + time + 0.01);
+              gainNode.gain.exponentialRampToValueAtTime(0.001, repNow + time + dur);
+              osc.connect(filter); filter.connect(gainNode); gainNode.connect(masterGain);
+              osc.start(repNow + time); osc.stop(repNow + time + dur);
+            });
+          } else if (style === "sparkle") {
+            const notes = [{ freq: 523.25, time: 0 }, { freq: 659.25, time: 0.06 }, { freq: 783.99, time: 0.12 }, { freq: 1046.50, time: 0.18 }];
+            notes.forEach(({ freq, time }) => {
+              const osc = ctx.createOscillator();
+              const gainNode = ctx.createGain();
+              osc.type = "sine";
+              osc.frequency.setValueAtTime(freq, repNow + time);
+              gainNode.gain.setValueAtTime(0, repNow + time);
+              gainNode.gain.linearRampToValueAtTime(0.6, repNow + time + 0.01);
+              gainNode.gain.exponentialRampToValueAtTime(0.001, repNow + time + 0.6);
+              osc.connect(gainNode); gainNode.connect(masterGain);
+              
+              const subOsc = ctx.createOscillator();
+              const subGain = ctx.createGain();
+              subOsc.type = "triangle";
+              subOsc.frequency.setValueAtTime(freq / 2, repNow + time);
+              subGain.gain.setValueAtTime(0, repNow + time);
+              subGain.gain.linearRampToValueAtTime(0.2, repNow + time + 0.01);
+              subGain.gain.exponentialRampToValueAtTime(0.001, repNow + time + 0.3);
+              subOsc.connect(subGain); subGain.connect(masterGain);
+              
+              osc.start(repNow + time); osc.stop(repNow + time + 0.6);
+              subOsc.start(repNow + time); subOsc.stop(repNow + time + 0.3);
+            });
+          }
+        }, 2200);
+      }
+
+      return {
+        pause: () => {
+          if (repeatInterval) {
+            clearInterval(repeatInterval);
+          }
+          try {
+            masterGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+            setTimeout(() => {
+              ctx.close().catch((err) => {
+                console.warn("AudioContext close error:", err);
+              });
+            }, 150);
+          } catch (err) {
+            console.warn("Error stopping synth:", err);
+          }
+        }
+      };
+    } catch (e) {
+      console.warn("Synthesizer error, fallback:", e);
+      return { pause: () => {} };
     }
-
-    audio.play().catch((e) => {
-      console.log("Audio play blocked or failed:", e);
-    });
-
-    return audio;
-  };
+  }, [soundStyle, soundVolume]);
 
   // Sound alert logic for new orders
   useEffect(() => {
@@ -11482,7 +11690,7 @@ function App() {
     }
 
     prevPendingCount.current = currentPendingCount;
-  }, [orders, soundAlerts, user]);
+  }, [orders, soundAlerts, user, playNotificationSound]);
 
   const fetchOrders = useCallback(async () => {
     if (!user) return;
@@ -12290,26 +12498,39 @@ function App() {
               </span>
             </div>
 
-            <nav className="hidden md:flex flex-1 items-center gap-4 lg:gap-8 overflow-x-auto scrollbar-hide px-4 whitespace-nowrap scroll-smooth mx-4">
-              {navItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={cn(
-                    "px-3 py-1 rounded-lg transition-colors font-medium text-sm flex items-center gap-2 relative shrink-0",
-                    activeTab === item.id
-                      ? "text-primary font-bold"
-                      : "text-on-surface/60 hover:bg-surface-container-low dark:hover:bg-surface-container-high",
-                  )}
-                >
-                  {item.label}
-                  {item.badge && (
-                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white animate-pulse">
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              ))}
+            <nav className="hidden md:flex flex-1 items-center gap-1 lg:gap-2 overflow-x-auto scrollbar-hide px-4 whitespace-nowrap scroll-smooth mx-4">
+              {navItems.map((item) => {
+                const isActive = activeTab === item.id;
+                return (
+                  <motion.button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className={cn(
+                      "px-4 py-2 rounded-xl transition-all font-medium text-sm flex items-center gap-2 relative shrink-0 overflow-hidden",
+                      isActive
+                        ? "text-primary font-bold"
+                        : "text-on-surface/60 hover:text-on-surface hover:bg-surface-container-low/50 dark:hover:bg-surface-container-high/50",
+                    )}
+                  >
+                    {isActive && (
+                      <motion.div
+                        layoutId="activeTabBackground"
+                        className="absolute inset-0 bg-primary/10 dark:bg-primary/20 rounded-xl -z-10"
+                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                      />
+                    )}
+                    <item.icon size={16} className={cn(isActive ? "stroke-[2.5px]" : "stroke-[1.8px]")} />
+                    {item.label}
+                    {item.badge && (
+                      <span className="relative flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white animate-pulse shrink-0">
+                        {item.badge}
+                      </span>
+                    )}
+                  </motion.button>
+                );
+              })}
             </nav>
 
             <div className="flex items-center gap-1 md:gap-4 shrink-0">
@@ -12661,34 +12882,128 @@ function App() {
                     </div>
                   </a>
 
-                  <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-primary/10 flex items-center justify-center text-primary">
-                        <Bell size={20} />
+                  <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-primary/10 flex items-center justify-center text-primary">
+                          <Bell size={20} />
+                        </div>
+                        <div className="text-left">
+                          <p className="font-bold text-on-surface">
+                            Sound Alerts
+                          </p>
+                          <p className="text-xs text-on-surface-variant">
+                            Play a sound when new orders arrive.
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-left">
-                        <p className="font-bold text-on-surface">
-                          Sound Alerts
-                        </p>
-                        <p className="text-xs text-on-surface-variant">
-                          Play a sound when new orders arrive.
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setSoundAlerts(!soundAlerts)}
-                      className={cn(
-                        "w-12 h-6 rounded-full transition-all relative",
-                        soundAlerts ? "bg-primary" : "bg-outline-variant",
-                      )}
-                    >
-                      <div
+                      <button
+                        onClick={() => {
+                          const nextState = !soundAlerts;
+                          setSoundAlerts(nextState);
+                          if (nextState) {
+                            setTimeout(() => playNotificationSound(false), 100);
+                          }
+                        }}
                         className={cn(
-                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
-                          soundAlerts ? "left-7" : "left-1",
+                          "w-12 h-6 rounded-full transition-all relative",
+                          soundAlerts ? "bg-primary" : "bg-outline-variant",
                         )}
-                      />
-                    </button>
+                      >
+                        <div
+                          className={cn(
+                            "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
+                            soundAlerts ? "left-7" : "left-1",
+                          )}
+                        />
+                      </button>
+                    </div>
+
+                    {soundAlerts && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-4 pt-4 border-t border-outline-variant/10 space-y-4 overflow-hidden"
+                      >
+                        {/* Tone style selection */}
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant/70">
+                            Selected Alert Melody
+                          </label>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            {[
+                              { id: "calm" as const, label: "Calm Chime", desc: "Warm glass chords" },
+                              { id: "friendly" as const, label: "Cozy Bubble", desc: "Cozy organic pop" },
+                              { id: "sparkle" as const, label: "Success Sparkle", desc: "Shimmering glock" }
+                            ].map((theme) => {
+                              const isSelected = soundStyle === theme.id;
+                              return (
+                                <button
+                                  key={theme.id}
+                                  onClick={() => {
+                                    setSoundStyle(theme.id);
+                                    playNotificationSound(false, theme.id);
+                                  }}
+                                  className={cn(
+                                    "p-3 rounded-xl border text-left flex flex-col justify-between transition-all duration-200 group relative overflow-hidden",
+                                    isSelected
+                                      ? "bg-primary/5 border-primary shadow-sm"
+                                      : "bg-surface-container-high/40 border-outline-variant/25 hover:bg-surface-container-high"
+                                  )}
+                                >
+                                  <div>
+                                    <p className={cn(
+                                      "text-xs font-bold transition-colors",
+                                      isSelected ? "text-primary" : "text-on-surface"
+                                    )}>
+                                      {theme.label}
+                                    </p>
+                                    <p className="text-[10px] text-on-surface-variant/80 mt-1 line-clamp-1">
+                                      {theme.desc}
+                                    </p>
+                                  </div>
+                                  <div className="self-end mt-2 flex items-center justify-center w-6 h-6 rounded-full bg-surface-container-highest group-hover:bg-primary/10 text-on-surface-variant group-hover:text-primary transition-all">
+                                    <Volume2 size={12} className={cn(isSelected ? "text-primary" : "")} />
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Volume Slider */}
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant/70">
+                              Alert Volume
+                            </label>
+                            <span className="text-xs font-bold text-primary font-mono">{soundVolume}%</span>
+                          </div>
+                          <div className="flex items-center gap-3 bg-surface-container-high/20 p-3 rounded-xl border border-outline-variant/10">
+                            <Volume1 size={16} className="text-on-surface-variant" />
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={soundVolume}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value);
+                                setSoundVolume(v);
+                              }}
+                              onMouseUp={() => {
+                                playNotificationSound(false, soundStyle);
+                              }}
+                              onTouchEnd={() => {
+                                playNotificationSound(false, soundStyle);
+                              }}
+                              className="flex-1 accent-primary h-1.5 rounded-lg appearance-none bg-outline-variant/40 cursor-pointer"
+                            />
+                            <Volume2 size={16} className="text-on-surface-variant" />
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
                   </div>
 
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
@@ -13017,16 +13332,24 @@ function App() {
             {navItems.map((item) => {
               const isActive = activeTab === item.id;
               return (
-                <button
+                <motion.button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
+                  whileTap={{ scale: 0.95 }}
                   className={cn(
-                    "flex flex-col items-center justify-center min-w-[70px] shrink-0 py-2 rounded-2xl transition-all duration-300 relative group",
+                    "flex flex-col items-center justify-center min-w-[70px] shrink-0 py-2 rounded-2xl relative group transition-colors duration-300",
                     isActive
-                      ? "bg-primary text-white shadow-xl shadow-primary/20 scale-105"
+                      ? "text-white"
                       : "text-on-surface-variant/60 hover:text-primary",
                   )}
                 >
+                  {isActive && (
+                    <motion.div
+                      layoutId="mobileActiveTabBackground"
+                      className="absolute inset-x-1 inset-y-0.5 bg-primary rounded-2xl shadow-lg shadow-primary/25 -z-10"
+                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                    />
+                  )}
                   <div className={cn(
                     "relative",
                     isActive ? "scale-110" : "group-active:scale-95 transition-transform"
@@ -13052,7 +13375,7 @@ function App() {
                   )}>
                     {item.label === "Dashboard" ? "Home" : item.label}
                   </span>
-                </button>
+                </motion.button>
               );
             })}
           </div>
@@ -13944,8 +14267,7 @@ const LockedRiderMode = ({
             if (order.delivery_status === 'finding_rider') {
               setAvailableMissions(prev => [order, ...prev]);
               toast.info("🚨 New Mission Broadcast!", { description: "Tap to view in Available Missions", duration: 5000 });
-              const audio = new Audio('/notification.mp3');
-              audio.play().catch(() => {});
+              playNotificationSound(false, "sparkle");
             }
           } else if (payload.eventType === 'UPDATE') {
             // Update Active Missions
