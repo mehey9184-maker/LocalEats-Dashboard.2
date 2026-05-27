@@ -84,6 +84,10 @@ import {
   Heart,
   Volume1,
   Volume2,
+  Copy,
+  Gauge,
+  Lock,
+  Compass,
 } from "lucide-react";
 import {
   BarChart,
@@ -10905,15 +10909,40 @@ const RiderManagement = ({
 
                   {/* Rider performance KPIs */}
                   {conn.rider_id && (
-                    <div className="grid grid-cols-2 gap-2 pt-4 border-t border-outline-variant/10">
-                       <div className="bg-surface-container-low px-3 py-2 rounded-xl border border-outline-variant/10">
-                          <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest leading-none mb-1">Missions</p>
-                          <p className="text-sm font-black text-on-surface">{(conn as unknown as RiderProfile).total_deliveries || 0}</p>
-                       </div>
-                       <div className="bg-surface-container-low px-3 py-2 rounded-xl border border-outline-variant/10">
-                          <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest leading-none mb-1">Earnings</p>
-                          <p className="text-sm font-black text-on-surface text-green-600">R {((conn as unknown as RiderProfile).total_earnings || 0).toFixed(2)}</p>
-                       </div>
+                    <div className="space-y-3 pt-4 border-t border-outline-variant/10">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-surface-container-low px-3 py-2 rounded-xl border border-outline-variant/10">
+                           <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest leading-none mb-1">Missions</p>
+                           <p className="text-sm font-black text-on-surface">{(conn as unknown as RiderProfile).total_deliveries || 0}</p>
+                        </div>
+                        <div className="bg-surface-container-low px-3 py-2 rounded-xl border border-outline-variant/10">
+                           <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest leading-none mb-1">Earnings</p>
+                           <p className="text-sm font-black text-on-surface text-green-600">R {((conn as unknown as RiderProfile).total_earnings || 0).toFixed(2)}</p>
+                        </div>
+                      </div>
+
+                      {/* Rider community accolades & performance diagnostics badge */}
+                      <div className="flex flex-wrap gap-1.5">
+                        <div className="flex items-center gap-1 px-2 py-0.5 bg-cyan-50 dark:bg-cyan-950/20 border border-cyan-100/50 dark:border-cyan-900/30 rounded-lg text-cyan-600 dark:text-cyan-400 text-[8px] font-black uppercase tracking-wider">
+                          <Compass size={8} className="animate-spin-slow" />
+                          <span>Pilot X32</span>
+                        </div>
+                        <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-100/50 dark:border-amber-900/30 rounded-lg text-amber-600 dark:text-amber-400 text-[8px] font-black uppercase tracking-wider">
+                          <ShieldCheck size={8} />
+                          <span>Cargo X24</span>
+                        </div>
+                        <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100/50 dark:border-emerald-900/30 rounded-lg text-emerald-600 dark:text-emerald-400 text-[8px] font-black uppercase tracking-wider">
+                          <Heart size={8} className="fill-current" />
+                          <span>Polite X45</span>
+                        </div>
+                      </div>
+
+                      {/* Diagnostics Score ticker */}
+                      <div className="flex items-center justify-between text-[8px] font-black text-on-surface-variant/60 uppercase tracking-widest bg-on-surface/5 px-2 py-1.5 rounded-lg border border-outline-variant/5">
+                        <span>Lock-In: 98%</span>
+                        <span>Cargo: 100%</span>
+                        <span>Flight: 96%</span>
+                      </div>
                     </div>
                   )}
 
@@ -11014,23 +11043,63 @@ const RiderManagement = ({
                      )}
                   </div>
 
-                  <div className="p-6 bg-surface-container-low border-t border-outline-variant/10 grid grid-cols-3 gap-4">
-                     <div className="text-center">
-                        <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest mb-1">Missions</p>
-                        <p className="text-xl font-black text-on-surface">{trackedRider.total_deliveries || 0}</p>
+                  <div className="p-6 bg-surface-container-low border-t border-outline-variant/10 space-y-6">
+                     <div className="grid grid-cols-3 gap-4">
+                        <div className="text-center">
+                           <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest mb-1">Missions</p>
+                           <p className="text-xl font-black text-on-surface">{trackedRider.total_deliveries || 0}</p>
+                        </div>
+                        <div className="text-center">
+                           <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest mb-1">Rating</p>
+                           <p className="text-xl font-black text-primary flex items-center justify-center gap-1">
+                              <Star size={16} className="fill-current" />
+                              {trackedRider.rating?.toFixed(1) || '5.0'}
+                           </p>
+                        </div>
+                        <div className="text-center">
+                           <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest mb-1">Status</p>
+                           <p className={cn("text-sm font-black uppercase tracking-tighter mt-1", trackedRider.is_online ? (trackedRider.status === 'busy' ? "text-amber-600" : trackedRider.status === 'paused' ? "text-blue-600" : "text-green-600") : "text-on-surface-variant")}>
+                              {trackedRider.is_online ? trackedRider.status : 'Offline'}
+                           </p>
+                        </div>
                      </div>
-                     <div className="text-center">
-                        <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest mb-1">Rating</p>
-                        <p className="text-xl font-black text-primary flex items-center justify-center gap-1">
-                           <Star size={16} className="fill-current" />
-                           {trackedRider.rating?.toFixed(1) || '5.0'}
-                        </p>
+
+                     {/* Grid Performance Diagnostics Scorecard */}
+                     <div className="border-t border-outline-variant/10 pt-6">
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/60 mb-3 flex items-center gap-2">
+                           <TrendingUp size={12} className="text-primary" /> Grid Performance Diagnostics
+                        </h4>
+                        <div className="grid grid-cols-3 gap-3">
+                           <div className="bg-on-surface/5 border border-outline-variant/5 rounded-xl p-3">
+                              <p className="text-[8px] font-black text-on-surface-variant/40 uppercase tracking-wider mb-1">Missions Lock-In</p>
+                              <p className="text-sm font-black text-on-surface">98.4%</p>
+                           </div>
+                           <div className="bg-on-surface/5 border border-outline-variant/5 rounded-xl p-3">
+                              <p className="text-[8px] font-black text-on-surface-variant/40 uppercase tracking-wider mb-1">Cargo Security</p>
+                              <p className="text-sm font-black text-emerald-500">100%</p>
+                           </div>
+                           <div className="bg-on-surface/5 border border-outline-variant/5 rounded-xl p-3">
+                              <p className="text-[8px] font-black text-on-surface-variant/40 uppercase tracking-wider mb-1">Flight On-Time</p>
+                              <p className="text-sm font-black text-cyan-500">96.8%</p>
+                           </div>
+                        </div>
                      </div>
-                     <div className="text-center">
-                        <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest mb-1">Status</p>
-                        <p className={cn("text-sm font-black uppercase tracking-tighter mt-1", trackedRider.is_online ? (trackedRider.status === 'busy' ? "text-amber-600" : trackedRider.status === 'paused' ? "text-blue-600" : "text-green-600") : "text-on-surface-variant")}>
-                           {trackedRider.is_online ? trackedRider.status : 'Offline'}
-                        </p>
+
+                     {/* Community Accolades badges */}
+                     <div className="border-t border-outline-variant/10 pt-4 flex flex-wrap gap-2 items-center">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant/60 mr-1">Rider Accolades:</span>
+                        <div className="flex items-center gap-1 px-2.5 py-1 bg-cyan-50 dark:bg-cyan-950/20 border border-cyan-100/50 dark:border-cyan-900/30 rounded-lg text-cyan-600 dark:text-cyan-400 text-[9px] font-black uppercase tracking-wider">
+                           <Compass size={10} className="animate-spin-slow" />
+                           <span>Pilot X32</span>
+                        </div>
+                        <div className="flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/20 border border-amber-100/50 dark:border-amber-900/30 rounded-lg text-amber-600 dark:text-amber-400 text-[9px] font-black uppercase tracking-wider">
+                           <ShieldCheck size={10} />
+                           <span>Cargo X24</span>
+                        </div>
+                        <div className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100/50 dark:border-emerald-900/30 rounded-lg text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-wider">
+                           <Heart size={10} className="fill-current" />
+                           <span>Polite X45</span>
+                        </div>
                      </div>
                   </div>
                </motion.div>
@@ -14632,6 +14701,124 @@ const LockedRiderMode = ({
           </div>
         </div>
       </header>
+
+      {/* MERCHANT COMMUNITY ACCOLADES */}
+      <div className="mb-6 animate-in fade-in slide-in-from-top-4 duration-500 px-1">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2.5">
+          Merchant Community Accolades
+        </h3>
+        <div className="flex flex-wrap gap-2.5">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-950/40 border border-cyan-500/20 rounded-full text-cyan-400 text-xs font-black tracking-wider uppercase group hover:bg-cyan-950/60 transition-all">
+            <Compass size={12} className="animate-spin-slow group-hover:scale-110 transition-transform" />
+            <span>Fast Pilot <span className="text-white ml-1">X32</span></span>
+          </div>
+
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-950/40 border border-amber-500/20 rounded-full text-amber-400 text-xs font-black tracking-wider uppercase group hover:bg-amber-955/60 transition-all">
+            <ShieldCheck size={12} className="group-hover:scale-110 transition-transform" />
+            <span>Secure Cargo <span className="text-white ml-1">X24</span></span>
+          </div>
+
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-950/40 border border-emerald-500/20 rounded-full text-emerald-400 text-xs font-black tracking-wider uppercase group hover:bg-emerald-950/60 transition-all">
+            <Heart size={12} className="group-hover:scale-110 transition-transform fill-current" />
+            <span>Polite Rider <span className="text-white ml-1">X45</span></span>
+          </div>
+        </div>
+      </div>
+
+      {/* GRID UPLINK IDENTITY */}
+      <div className="bg-zinc-900 border border-zinc-850 rounded-3xl p-6 mb-6 relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500 delay-75">
+        <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3">
+          Grid Uplink Identity
+        </h3>
+        <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest block mb-0.5">Rider Broadcast ID</span>
+            <p className="text-lg font-mono font-black tracking-widest text-white truncate">
+              LOCALEATS-R-{(riderProfile?.id || "EA44B2").slice(0, 6).toUpperCase()}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText("LOCALEATS-R-" + (riderProfile?.id || "EA44B2").slice(0, 6).toUpperCase());
+                toast.success("Broadcast ID copied to clipboard!");
+              }}
+              className="px-3 py-2 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all"
+            >
+              <Copy size={12} />
+              Copy ID
+            </button>
+            <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-primary shrink-0">
+              <QrCode size={16} />
+            </div>
+          </div>
+        </div>
+        <p className="text-[10px] text-zinc-650 mt-3 font-medium">
+          MERCHANTS REQUIRE THIS ID CODE: Present this unique dispatch code to the restaurant manager to secure the pairing.
+        </p>
+      </div>
+
+      {/* GRID PERFORMANCE DIAGNOSTICS */}
+      <div className="bg-zinc-900 border border-zinc-850 rounded-3xl p-6 mb-6 relative overflow-hidden shadow-xl shadow-black/40 animate-in fade-in slide-in-from-top-4 duration-500 delay-150">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1 flex items-center gap-2">
+              <TrendingUp size={14} className="text-primary" /> Grid Performance Diagnostics
+            </h3>
+            <p className="text-xs text-zinc-400 font-medium">Real-time telemetry and dispatch reliability scores.</p>
+          </div>
+          <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2.5 py-1 rounded-full font-black uppercase tracking-wide animate-pulse">
+            HQ Grade A
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-zinc-950/40 border border-zinc-800/60 rounded-2xl p-4 flex items-center gap-4 hover:border-primary/20 transition-all">
+            <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-400 shrink-0">
+              <Lock size={20} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[9px] font-black text-zinc-500 uppercase tracking-wider leading-none">Missions Lock-In</p>
+                <span className="text-xs font-mono font-black text-orange-400">98.4%</span>
+              </div>
+              <div className="w-full bg-zinc-850 h-1.5 rounded-full mt-2 overflow-hidden">
+                <div className="bg-gradient-to-r from-orange-600 to-orange-400 h-full rounded-full" style={{ width: '98.4%' }} />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-zinc-950/40 border border-zinc-800/60 rounded-2xl p-4 flex items-center gap-4 hover:border-primary/20 transition-all">
+            <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
+              <ShieldCheck size={20} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[9px] font-black text-zinc-500 uppercase tracking-wider leading-none">Cargo Security</p>
+                <span className="text-xs font-mono font-black text-emerald-400">100.0%</span>
+              </div>
+              <div className="w-full bg-zinc-850 h-1.5 rounded-full mt-2 overflow-hidden">
+                <div className="bg-gradient-to-r from-emerald-600 to-emerald-400 h-full rounded-full" style={{ width: '100%' }} />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-zinc-950/40 border border-zinc-800/60 rounded-2xl p-4 flex items-center gap-4 hover:border-primary/20 transition-all">
+            <div className="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-400 shrink-0">
+              <Gauge size={20} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[9px] font-black text-zinc-500 uppercase tracking-wider leading-none">Flight On-Time</p>
+                <span className="text-xs font-mono font-black text-cyan-400">96.8%</span>
+              </div>
+              <div className="w-full bg-zinc-850 h-1.5 rounded-full mt-2 overflow-hidden">
+                <div className="bg-gradient-to-r from-cyan-600 to-cyan-400 h-full rounded-full" style={{ width: '96.8%' }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Active Connections HUD */}
       {activeConnections.length > 0 && (
