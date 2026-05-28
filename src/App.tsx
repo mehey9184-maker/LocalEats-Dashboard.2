@@ -88,6 +88,8 @@ import {
   Gauge,
   Lock,
   Compass,
+  Leaf,
+  Flame,
 } from "lucide-react";
 import {
   BarChart,
@@ -2772,6 +2774,8 @@ const DashboardOverview = React.memo(({
   const [recentFollowers, setRecentFollowers] = useState<
     { id: string; created_at: string }[]
   >([]);
+  const [chartMetric, setChartMetric] = useState<"orders" | "revenue">("revenue");
+  const [isStatusToggling, setIsStatusToggling] = useState(false);
 
   // Helper for weekly reset
   const getStartOfWeek = () => {
@@ -2808,6 +2812,44 @@ const DashboardOverview = React.memo(({
   const orderCount = weeklyOrders.length;
   const hasMenu = menuItems.length > 0;
   const [timeframe, setTimeframe] = useState<"weekly" | "monthly">("monthly");
+
+  const avgOrderValue = useMemo(() => {
+    if (orders.length === 0) return 0;
+    return totalSales / orders.length;
+  }, [orders, totalSales]);
+
+  const weeklyAvgOrderValue = useMemo(() => {
+    if (orderCount === 0) return 0;
+    return weeklySales / orderCount;
+  }, [weeklySales, orderCount]);
+
+  const statusDistribution = useMemo(() => {
+    const counts = {
+      pending: 0,
+      preparing: 0,
+      completed: 0,
+      cancelled: 0,
+    };
+    orders.forEach((o) => {
+      const s = o.status as keyof typeof counts;
+      if (counts[s] !== undefined) {
+        counts[s]++;
+      }
+    });
+
+    const colors = {
+      pending: "#f58220",    // Brand primary orange
+      preparing: "#3b82f6",  // Blue
+      completed: "#10b981",  // Emerald
+      cancelled: "#ef4444",  // Red
+    };
+
+    return Object.entries(counts).map(([name, value]) => ({
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      value,
+      color: colors[name as keyof typeof counts] || "#6b7280",
+    })).filter(item => item.value > 0);
+  }, [orders]);
 
   const avgPrepTime = useMemo(() => {
     const pendingCount = orders.filter(
@@ -2925,7 +2967,7 @@ const DashboardOverview = React.memo(({
     };
   }, [currentShop?.id, fetchFollowers]);
 
-  // Use real trend data from the last 7 or 30 days
+  // Use real trend data from the last 7 or 30 days (supporting count and revenue metrics)
   const trendData = useMemo(() => {
     if (orders.length === 0) return [];
 
@@ -2937,6 +2979,7 @@ const DashboardOverview = React.memo(({
         date: d.toISOString().split("T")[0],
         dayName: daysCount === 7 ? format(d, "EEE") : format(d, "MMM d"),
         count: 0,
+        revenue: 0,
       };
     }).reverse();
 
@@ -2947,14 +2990,25 @@ const DashboardOverview = React.memo(({
         if (isNaN(dateObj.getTime())) return;
         const orderDate = dateObj.toISOString().split("T")[0];
         const day = lastDays.find((d) => d.date === orderDate);
-        if (day) day.count++;
+        if (day) {
+          day.count++;
+          const price = typeof order.total_price === "string"
+            ? parseFloat(order.total_price.replace(/[^0-9.]/g, ""))
+            : Number(order.total_price || 0);
+          if (!isNaN(price)) {
+            day.revenue += price;
+          }
+        }
       } catch (e) {
         console.error("Error parsing order date:", e);
       }
     });
 
-    return lastDays.map((d) => ({ name: d.dayName, value: d.count }));
-  }, [orders, timeframe]);
+    return lastDays.map((d) => ({
+      name: d.dayName,
+      value: chartMetric === "revenue" ? d.revenue : d.count,
+    }));
+  }, [orders, timeframe, chartMetric]);
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -3158,6 +3212,119 @@ const DashboardOverview = React.memo(({
         </div>
       </motion.section>
 
+      {currentShop && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className={cn(
+            "border rounded-[2.5rem] p-6 lg:p-8 flex flex-col md:flex-row items-stretch justify-between gap-6 shadow-md relative overflow-hidden transition-all duration-505",
+            currentShop.is_active
+              ? "bg-gradient-to-br from-emerald-500/[0.04] via-transparent to-transparent border-emerald-500/20 shadow-emerald-500/[0.01]"
+              : "bg-gradient-to-br from-error/[0.04] via-transparent to-transparent border-error/20 shadow-error/[0.01]"
+          )}
+        >
+          <div className="absolute top-0 right-0 p-8 opacity-[0.02] pointer-events-none">
+            <Store size={140} />
+          </div>
+          
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 relative z-10 flex-1">
+            <div className={cn(
+              "w-16 h-16 rounded-3xl flex items-center justify-center shrink-0 transition-all duration-500",
+              currentShop.is_active
+                ? "bg-emerald-500/10 text-emerald-500 shadow-xl shadow-emerald-500/10"
+                : "bg-error/10 text-error shadow-xl shadow-error/10"
+            )}>
+              <Store size={28} />
+            </div>
+            
+            <div className="space-y-1 flex-1">
+              <div className="flex items-center flex-wrap gap-2.5">
+                <h3 className="text-lg md:text-xl font-headline font-black text-on-surface tracking-tight">
+                  {currentShop.name}
+                </h3>
+                <span className={cn(
+                  "px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5",
+                  currentShop.is_active
+                    ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                    : "bg-error/10 text-error border border-error/20"
+                )}>
+                  <span className={cn(
+                    "w-1.5 h-1.5 rounded-full",
+                    currentShop.is_active ? "bg-emerald-500 animate-pulse" : "bg-error"
+                  )} />
+                  {currentShop.is_active ? "Live & Accepting Orders" : "Offline / Paused"}
+                </span>
+              </div>
+              
+              <p className="text-xs md:text-sm text-on-surface-variant font-medium leading-relaxed max-w-xl">
+                {currentShop.is_active
+                  ? "Your storefront is fully active on the LocalEats map. Customers can place orders, view items, and pairing requests from nearby riders will automatically dispatch."
+                  : "Your storefront is currently hidden from the customer feed. Toggle below to open your virtual kitchen and go live."}
+              </p>
+              
+              {currentShop.opening_time && currentShop.closing_time && (
+                <p className="text-[10px] font-mono font-black text-on-surface-variant/60 uppercase tracking-widest flex items-center gap-1.5 pt-1">
+                  <Clock size={12} /> Standard hours: {currentShop.opening_time} - {currentShop.closing_time}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row md:flex-col lg:flex-row items-center gap-3 justify-center shrink-0 min-w-[200px] relative z-10 border-t md:border-t-0 md:border-l border-outline-variant/10 pt-4 md:pt-0 md:pl-6">
+            <div className="text-center md:text-right lg:text-center w-full">
+              <span className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest block mb-1.5">
+                Command Dispatch
+              </span>
+              <button
+                disabled={isStatusToggling}
+                onClick={async () => {
+                  setIsStatusToggling(true);
+                  const newStatus = !currentShop.is_active;
+                  
+                  const { error } = await supabase
+                    .from("shops")
+                    .update({ is_active: newStatus })
+                    .eq("id", currentShop.id);
+                    
+                  if (!error) {
+                    toast.success(
+                      `Storefront is now ${newStatus ? "Open & Live" : "Closed & Offline"}!`
+                    );
+                    onRefresh();
+                  } else {
+                    toast.error(`Failed to update storefront status: ${error.message}`);
+                  }
+                  setIsStatusToggling(false);
+                }}
+                className={cn(
+                  "w-full px-6 py-3 rounded-2xl font-headline font-black text-xs uppercase tracking-widest transition-all duration-300 shadow-md flex items-center justify-center gap-2",
+                  currentShop.is_active
+                    ? "bg-error text-white hover:bg-error/95 shadow-error/10 hover:scale-[1.02]"
+                    : "bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-500/10 hover:scale-[1.02]"
+                )}
+              >
+                {isStatusToggling ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Updating...</span>
+                  </>
+                ) : currentShop.is_active ? (
+                  <>
+                    <X size={14} />
+                    <span>Go Offline</span>
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    <span>Go Live Now</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       <OnboardingChecklist
         shops={shops}
         user={user}
@@ -3193,6 +3360,20 @@ const DashboardOverview = React.memo(({
             change="This Week"
             icon={ReceiptText}
             colorClass="bg-orange-50 text-orange-700"
+          />
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.18 }}
+          className="contents"
+        >
+          <StatCard
+            title="Avg Order Value"
+            value={`R ${weeklyAvgOrderValue.toFixed(2)}`}
+            change={`R ${avgOrderValue.toFixed(0)} overall`}
+            icon={TrendingUp}
+            colorClass="bg-emerald-50 text-emerald-700"
           />
         </motion.div>
         <motion.div
@@ -3311,41 +3492,70 @@ const DashboardOverview = React.memo(({
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.4 }}
-          className="lg:col-span-8 bg-surface-container-low rounded-xl p-8 border border-outline-variant/5"
+          className="lg:col-span-8 bg-surface-container-low rounded-[2rem] p-6 md:p-8 border border-outline-variant/5"
         >
-          <div className="flex justify-between items-center mb-10">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
             <div>
               <h2 className="text-xl font-headline font-bold text-on-surface">
-                Order Volume Trends
+                Business Analytics Trends
               </h2>
-              <p className="text-sm text-on-surface-variant">
-                Live performance tracking
+              <p className="text-sm text-on-surface-variant font-medium">
+                Live shop performance and statistics
               </p>
             </div>
             {orders.length > 0 && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setTimeframe("weekly")}
-                  className={cn(
-                    "px-4 py-1.5 rounded-full text-xs font-bold shadow-sm transition-all",
-                    timeframe === "weekly"
-                      ? "bg-primary text-on-primary"
-                      : "bg-white dark:bg-surface-container-high text-on-surface-variant",
-                  )}
-                >
-                  Weekly
-                </button>
-                <button
-                  onClick={() => setTimeframe("monthly")}
-                  className={cn(
-                    "px-4 py-1.5 rounded-full text-xs font-bold shadow-sm transition-all",
-                    timeframe === "monthly"
-                      ? "bg-primary text-on-primary"
-                      : "bg-white dark:bg-surface-container-high text-on-surface-variant",
-                  )}
-                >
-                  Monthly
-                </button>
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Metric Selector */}
+                <div className="flex bg-surface-container-high/60 p-1 rounded-xl border border-outline-variant/10">
+                  <button
+                    onClick={() => setChartMetric("revenue")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all",
+                      chartMetric === "revenue"
+                        ? "bg-primary text-on-primary shadow-sm"
+                        : "text-on-surface-variant hover:text-on-surface"
+                    )}
+                  >
+                    Revenue
+                  </button>
+                  <button
+                    onClick={() => setChartMetric("orders")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all",
+                      chartMetric === "orders"
+                        ? "bg-primary text-on-primary shadow-sm"
+                        : "text-on-surface-variant hover:text-on-surface"
+                    )}
+                  >
+                    Orders
+                  </button>
+                </div>
+
+                {/* Timeframe Selector */}
+                <div className="flex bg-surface-container-high/60 p-1 rounded-xl border border-outline-variant/10">
+                  <button
+                    onClick={() => setTimeframe("weekly")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all",
+                      timeframe === "weekly"
+                        ? "bg-primary text-on-primary shadow-sm"
+                        : "text-on-surface-variant hover:text-on-surface"
+                    )}
+                  >
+                    Weekly
+                  </button>
+                  <button
+                    onClick={() => setTimeframe("monthly")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all",
+                      timeframe === "monthly"
+                        ? "bg-primary text-on-primary shadow-sm"
+                        : "text-on-surface-variant hover:text-on-surface"
+                    )}
+                  >
+                    Monthly
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -3384,6 +3594,10 @@ const DashboardOverview = React.memo(({
                       boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
                       backgroundColor: darkMode ? "#1c1c1c" : "#ffffff",
                     }}
+                    formatter={(val: number | string) => [
+                      chartMetric === "revenue" ? `R ${Number(val).toLocaleString()}` : `${val} Orders`,
+                      chartMetric === "revenue" ? "Revenue" : "Volume"
+                    ]}
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -3405,6 +3619,34 @@ const DashboardOverview = React.memo(({
               </div>
             )}
           </div>
+
+          {orders.length > 0 && statusDistribution.length > 0 && (
+            <div className="mt-6 pt-6 border-t border-outline-variant/10">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/40 mb-3.5">
+                Current Kitchen Flow Status
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {statusDistribution.map((item) => (
+                  <div key={item.name} className="bg-on-surface/5 border border-outline-variant/5 rounded-2xl p-3 flex flex-col justify-between">
+                    <span className="text-[9px] font-black text-on-surface-variant/60 uppercase tracking-wider block mb-1">
+                      {item.name}
+                    </span>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xl font-headline font-black text-on-surface">
+                        {item.value}
+                      </span>
+                      <span className="text-[9px] text-on-surface-variant/40 font-bold">
+                        ({((item.value / orders.length) * 100).toFixed(0)}%)
+                      </span>
+                    </div>
+                    <div className="w-full bg-zinc-800/20 dark:bg-zinc-800/40 h-1 rounded-full mt-2 overflow-hidden">
+                      <div className="h-full rounded-full" style={{ backgroundColor: item.color, width: `${(item.value / orders.length) * 100}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </motion.div>
 
         <div className="lg:col-span-4 space-y-4">
@@ -3893,6 +4135,18 @@ const CreateShop = ({
   );
 };
 
+const parseDescriptionAndTags = (descString: string) => {
+  if (!descString) return { tags: [], description: "" };
+  const tagRegex = /\[Tags:\s*([^\]]+)\]/;
+  const match = descString.match(tagRegex);
+  if (match) {
+    const tags = match[1].split(",").map((t) => t.trim()).filter(Boolean);
+    const cleanDesc = descString.replace(tagRegex, "").trim();
+    return { tags, description: cleanDesc };
+  }
+  return { tags: [], description: descString };
+};
+
 const MenuManagement = ({
   shops,
   loading,
@@ -3955,6 +4209,11 @@ const MenuManagement = ({
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
+  const [selectedDietaryTags, setSelectedDietaryTags] = useState<string[]>([]);
+  const [filterDietary, setFilterDietary] = useState<string[]>([]);
+  const [editingPriceId, setEditingPriceId] = useState<number | null>(null);
+  const [editingStockId, setEditingStockId] = useState<number | null>(null);
+
   const filteredItems = useMemo(() => items.filter((item) => {
     const matchesSearch =
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -3974,16 +4233,23 @@ const MenuManagement = ({
       (stockFilter === "Low Stock" && !isUnlimited && (stock || 0) < 5) ||
       (stockFilter === "In Stock" && (isUnlimited || (stock || 0) >= 5));
 
-    return matchesSearch && matchesCategory && matchesPrice && matchesStock;
-  }), [items, searchTerm, filterCategory, priceRange, stockFilter]);
+    const { tags } = parseDescriptionAndTags(item.description || "");
+    const matchesDietary =
+      filterDietary.length === 0 ||
+      filterDietary.every((tag) => tags.includes(tag));
 
-  const categories = [
-    "All",
-    "Main Course",
-    "Appetizers",
-    "Desserts",
-    "Beverages",
-  ];
+    return matchesSearch && matchesCategory && matchesPrice && matchesStock && matchesDietary;
+  }), [items, searchTerm, filterCategory, priceRange, stockFilter, filterDietary]);
+
+  const categories = useMemo(() => {
+    const defaultCats = ["All", "Main Course", "Appetizers", "Desserts", "Beverages"];
+    items.forEach((item) => {
+      if (item.category && !defaultCats.includes(item.category)) {
+        defaultCats.push(item.category);
+      }
+    });
+    return defaultCats;
+  }, [items]);
 
   const fetchMenu = useCallback(async () => {
     if (!selectedShopId) return;
@@ -4037,6 +4303,7 @@ const MenuManagement = ({
 
   const handleAdd = () => {
     setEditingItem(null);
+    setSelectedDietaryTags([]);
     setFormData({
       name: "",
       price: "",
@@ -4137,6 +4404,10 @@ const MenuManagement = ({
       imageUrl = publicUrl;
     }
 
+    const finalDescription = selectedDietaryTags.length > 0
+      ? `${formData.description.trim()} [Tags: ${selectedDietaryTags.join(", ")}]`
+      : formData.description.trim();
+
     if (editingItem) {
       const { error } = await supabase
         .from("menu_items")
@@ -4144,7 +4415,7 @@ const MenuManagement = ({
           name: formData.name,
           price: parseFloat(formData.price),
           category: formData.category,
-          description: formData.description,
+          description: finalDescription,
           stock_quantity: formData.is_unlimited ? null : parseInt(formData.stock_quantity),
           image_url: imageUrl,
         })
@@ -4159,6 +4430,7 @@ const MenuManagement = ({
           setIsSaveSuccess(false);
           toast.success("Menu item updated successfully");
           setEditingItem(null);
+          setSelectedDietaryTags([]);
           setFormData({
             name: "",
             price: "",
@@ -4184,7 +4456,7 @@ const MenuManagement = ({
           name: formData.name,
           price: parseFloat(formData.price),
           category: formData.category,
-          description: formData.description,
+          description: finalDescription,
           stock_quantity: formData.is_unlimited ? null : parseInt(formData.stock_quantity),
           shop_id: selectedShopId,
           is_available: true,
@@ -4201,6 +4473,7 @@ const MenuManagement = ({
         setTimeout(() => {
           setIsSaveSuccess(false);
           toast.success("Menu item added successfully");
+          setSelectedDietaryTags([]);
           setFormData({
             name: "",
             price: "",
@@ -4225,14 +4498,18 @@ const MenuManagement = ({
 
   const handleEdit = (item: MenuItem) => {
     setEditingItem(item);
+    const { tags, description } = parseDescriptionAndTags(item.description || "");
     setFormData({
       name: item.name,
       price: item.price.toString(),
       category: item.category || "Main Course",
-      description: item.description || "",
-      stock_quantity: (item.stock_quantity || 10).toString(),
+      description: description,
+      stock_quantity: (item.stock_quantity === null || item.stock_quantity === undefined || item.stock_quantity === -1)
+        ? "10"
+        : item.stock_quantity.toString(),
       is_unlimited: item.stock_quantity === null || item.stock_quantity === undefined || item.stock_quantity === -1,
     });
+    setSelectedDietaryTags(tags);
     setImagePreview(item.image_url);
     // Scroll to form
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -4240,6 +4517,7 @@ const MenuManagement = ({
 
   const cancelEdit = () => {
     setEditingItem(null);
+    setSelectedDietaryTags([]);
     setFormData({
       name: "",
       price: "",
@@ -4420,6 +4698,52 @@ const MenuManagement = ({
     }
   };
 
+  const handleQuickPriceUpdate = async (itemId: number, newPriceStr: string) => {
+    const val = parseFloat(newPriceStr);
+    if (isNaN(val) || val < 0) {
+      toast.error("Please enter a valid price");
+      return;
+    }
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, price: val } : i)));
+    setEditingPriceId(null);
+
+    const { error } = await supabase
+      .from("menu_items")
+      .update({ price: val })
+      .eq("id", itemId);
+
+    if (error) {
+      toast.error("Failed to update price in database");
+      fetchMenu();
+    } else {
+      toast.success("Price updated successfully");
+      onRefreshMenu?.();
+    }
+  };
+
+  const handleQuickStockUpdate = async (itemId: number, newStockStr: string) => {
+    const val = parseInt(newStockStr);
+    if (isNaN(val) || val < 0) {
+      toast.error("Please enter a valid stock level");
+      return;
+    }
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, stock_quantity: val } : i)));
+    setEditingStockId(null);
+
+    const { error } = await supabase
+      .from("menu_items")
+      .update({ stock_quantity: val })
+      .eq("id", itemId);
+
+    if (error) {
+      toast.error("Failed to update stock in database");
+      fetchMenu();
+    } else {
+      toast.success("Stock level updated successfully");
+      onRefreshMenu?.();
+    }
+  };
+
   const selectedShop = shops.find((s) => s.id === selectedShopId);
 
   if (loading) {
@@ -4590,17 +4914,33 @@ const MenuManagement = ({
                       Category
                     </label>
                     <select
-                      className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all appearance-none"
-                      value={formData.category}
-                      onChange={(e) =>
-                        setFormData({ ...formData, category: e.target.value })
-                      }
+                      className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all appearance-none text-[13px]"
+                      value={categories.filter((c) => c !== "All").includes(formData.category) ? formData.category : "Custom"}
+                      onChange={(e) => {
+                        if (e.target.value === "Custom") {
+                          setFormData({ ...formData, category: "" });
+                        } else {
+                          setFormData({ ...formData, category: e.target.value });
+                        }
+                      }}
                     >
-                      <option>Main Course</option>
-                      <option>Appetizers</option>
-                      <option>Desserts</option>
-                      <option>Beverages</option>
+                      {categories.filter((c) => c !== "All").map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                      <option value="Custom">+ Create Custom...</option>
                     </select>
+                    {!categories.filter((c) => c !== "All").includes(formData.category) && (
+                      <input
+                        type="text"
+                        placeholder="Type category name..."
+                        value={formData.category}
+                        onChange={(e) =>
+                          setFormData({ ...formData, category: e.target.value })
+                        }
+                        className="w-full bg-surface-container-low border border-primary/20 rounded-xl py-2.5 px-4 mt-2 text-xs focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all animate-in slide-in-from-top-1 duration-205"
+                        required
+                      />
+                    )}
                   </div>
                 </div>
                 <div className="space-y-1.5">
@@ -4616,6 +4956,43 @@ const MenuManagement = ({
                       setFormData({ ...formData, description: e.target.value })
                     }
                   ></textarea>
+                </div>
+                <div className="space-y-2">
+                  <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1 block">
+                    Dietary & Lifestyle Tags
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {["Vegan", "Vegetarian", "Gluten-Free", "Spicy", "Halal"].map((tag) => {
+                      const isActive = selectedDietaryTags.includes(tag);
+                      let styleClasses = "border text-xs px-3 py-1.5 rounded-xl font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 select-none ";
+                      if (tag === "Vegan") {
+                        styleClasses += isActive ? "bg-emerald-500/15 text-emerald-600 border-emerald-500 shadow-sm" : "border-outline-variant/30 text-on-surface-variant hover:border-emerald-500/40";
+                      } else if (tag === "Vegetarian") {
+                        styleClasses += isActive ? "bg-teal-500/15 text-teal-600 border-teal-500 shadow-sm" : "border-outline-variant/30 text-on-surface-variant hover:border-teal-500/40";
+                      } else if (tag === "Gluten-Free") {
+                        styleClasses += isActive ? "bg-amber-500/15 text-amber-600 border-amber-500 shadow-sm" : "border-outline-variant/30 text-on-surface-variant hover:border-amber-500/40";
+                      } else if (tag === "Spicy") {
+                        styleClasses += isActive ? "bg-red-500/15 text-red-600 border-red-500 shadow-sm" : "border-outline-variant/30 text-on-surface-variant hover:border-red-500/40";
+                      } else if (tag === "Halal") {
+                        styleClasses += isActive ? "bg-blue-500/15 text-blue-600 border-blue-500 shadow-sm" : "border-outline-variant/30 text-on-surface-variant hover:border-blue-500/40";
+                      }
+                      return (
+                        <div
+                          key={tag}
+                          onClick={() => {
+                            setSelectedDietaryTags(prev => 
+                              prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+                            );
+                          }}
+                          className={styleClasses}
+                        >
+                          {(tag === "Vegan" || tag === "Vegetarian") && <Leaf size={14} />}
+                          {tag === "Spicy" && <Flame size={14} />}
+                          <span>{tag}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant ml-1">
@@ -4817,6 +5194,51 @@ const MenuManagement = ({
                     </select>
                   </div>
                 </div>
+                <div className="pt-2 border-t border-outline-variant/10">
+                  <span className="text-[10px] font-bold uppercase text-on-surface-variant/60 ml-1 block mb-2">
+                    Filter by Dietary / Allergens
+                  </span>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {["Vegan", "Vegetarian", "Gluten-Free", "Spicy", "Halal"].map((tag) => {
+                      const isActive = filterDietary.includes(tag);
+                      let styleClasses = "border text-[11px] px-3 py-1.5 rounded-xl font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 select-none ";
+                      if (tag === "Vegan") {
+                        styleClasses += isActive ? "bg-emerald-500/15 text-emerald-600 border-emerald-500 shadow-sm" : "border-outline-variant/20 bg-surface-container-lowest text-on-surface-variant/70 hover:border-emerald-500/30";
+                      } else if (tag === "Vegetarian") {
+                        styleClasses += isActive ? "bg-teal-500/15 text-teal-600 border-teal-500 shadow-sm" : "border-outline-variant/20 bg-surface-container-lowest text-on-surface-variant/70 hover:border-teal-500/30";
+                      } else if (tag === "Gluten-Free") {
+                        styleClasses += isActive ? "bg-amber-500/15 text-amber-600 border-amber-500 shadow-sm" : "border-outline-variant/20 bg-surface-container-lowest text-on-surface-variant/70 hover:border-amber-500/30";
+                      } else if (tag === "Spicy") {
+                        styleClasses += isActive ? "bg-red-500/15 text-red-600 border-red-500 shadow-sm" : "border-outline-variant/20 bg-surface-container-lowest text-on-surface-variant/70 hover:border-red-500/30";
+                      } else if (tag === "Halal") {
+                        styleClasses += isActive ? "bg-blue-500/15 text-blue-600 border-blue-500 shadow-sm" : "border-outline-variant/20 bg-surface-container-lowest text-on-surface-variant/70 hover:border-blue-500/30";
+                      }
+                      return (
+                        <div
+                          key={tag}
+                          onClick={() => {
+                            setFilterDietary(prev => 
+                              prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+                            );
+                          }}
+                          className={styleClasses}
+                        >
+                          {(tag === "Vegan" || tag === "Vegetarian") && <Leaf size={12} />}
+                          {tag === "Spicy" && <Flame size={12} />}
+                          <span>{tag}</span>
+                        </div>
+                      );
+                    })}
+                    {filterDietary.length > 0 && (
+                      <button
+                        onClick={() => setFilterDietary([])}
+                        className="text-[10px] font-bold text-primary hover:underline ml-2"
+                      >
+                        Clear Dietary Filters
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {selectedItems.length > 0 && (
@@ -4959,143 +5381,234 @@ const MenuManagement = ({
                   )}
                 </div>
               ) : (
-                filteredItems.map((item, i) => (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: i * 0.05 }}
-                    key={item.id}
-                    className={cn(
-                      "group relative bg-surface-container-lowest rounded-2xl md:rounded-[2rem] overflow-hidden shadow-sm hover:shadow-[0_8px_32px_-8px_rgba(167,52,0,0.15)] transition-all duration-300 border border-outline-variant/10",
-                      selectedItems.includes(item.id) &&
-                        "ring-2 ring-primary ring-offset-2",
-                    )}
-                  >
-                    <button
-                      onClick={() => toggleSelectItem(item.id)}
+                filteredItems.map((item, i) => {
+                  const { tags: itemTags, description: baseDescription } = parseDescriptionAndTags(item.description || "");
+                  return (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: i * 0.05 }}
+                      key={item.id}
                       className={cn(
-                        "absolute top-3 left-3 z-20 p-2 rounded-xl transition-all shadow-lg",
-                        selectedItems.includes(item.id)
-                          ? "bg-primary text-on-primary scale-110"
-                          : "bg-surface-container-highest/60 text-on-surface-variant backdrop-blur-md border border-outline-variant/10",
+                        "group relative bg-surface-container-lowest rounded-2xl md:rounded-[2rem] overflow-hidden shadow-sm hover:shadow-[0_8px_32px_-8px_rgba(167,52,0,0.15)] transition-all duration-300 border border-outline-variant/10",
+                        selectedItems.includes(item.id) &&
+                          "ring-2 ring-primary ring-offset-2",
                       )}
                     >
-                      {selectedItems.includes(item.id) ? (
-                        <CheckSquare size={18} />
-                      ) : (
-                        <Square size={18} />
-                      )}
-                    </button>
-                    <div className="relative h-40 md:h-48 bg-surface-container flex items-center justify-center overflow-hidden">
-                      {!isPlaceholderImage(item.image_url) ? (
-                        <img
-                          className={cn(
-                            "w-full h-full object-cover",
-                            !item.is_available && "grayscale opacity-50",
-                          )}
-                          src={item.image_url}
-                          alt={item.name}
-                        />
-                      ) : (
-                        <FoodPlaceholder size={48} />
-                      )}
-                      {(!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0)) && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                          <span className="bg-error text-white px-3 md:px-4 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-widest shadow-lg">
-                            {!item.is_available ? "Unavailable" : "Out of Stock"}
-                          </span>
-                        </div>
-                      )}
-                      <div className="absolute top-3 right-3 md:top-4 md:right-4 bg-surface/90 backdrop-blur-md px-2.5 py-1 rounded-full text-primary font-bold text-xs md:text-sm shadow-sm">
-                        R {Number(item.price || 0).toFixed(2)}
-                      </div>
-                    </div>
-                    <div className="p-4 md:p-6 space-y-2 md:space-y-3">
-                      <div className="flex justify-between items-start gap-2">
-                        <h4 className="font-headline font-semibold text-base md:text-lg leading-tight line-clamp-1">
-                          {item.name}
-                        </h4>
-                        <div className="flex gap-1 items-center shrink-0">
-                          <button
-                            onClick={() => toggleAvailability(item)}
+                      <button
+                        onClick={() => toggleSelectItem(item.id)}
+                        className={cn(
+                          "absolute top-3 left-3 z-20 p-2 rounded-xl transition-all shadow-lg",
+                          selectedItems.includes(item.id)
+                            ? "bg-primary text-on-primary scale-110"
+                            : "bg-surface-container-highest/60 text-on-surface-variant backdrop-blur-md border border-outline-variant/10",
+                        )}
+                      >
+                        {selectedItems.includes(item.id) ? (
+                          <CheckSquare size={18} />
+                        ) : (
+                          <Square size={18} />
+                        )}
+                      </button>
+                      <div className="relative h-40 md:h-48 bg-surface-container flex items-center justify-center overflow-hidden">
+                        {!isPlaceholderImage(item.image_url) ? (
+                          <img
                             className={cn(
-                              "flex items-center gap-1 px-1.5 py-0.5 md:py-1 rounded-full transition-all text-[9px] md:text-[10px] font-bold uppercase tracking-tighter",
-                              item.is_available
-                                ? "bg-primary/10 text-primary hover:bg-primary/20"
-                                : "bg-on-surface-variant/10 text-on-surface-variant hover:bg-on-surface-variant/20",
+                              "w-full h-full object-cover",
+                              !item.is_available && "grayscale opacity-50",
                             )}
-                            title={
-                              item.is_available
-                                ? "Mark as Unavailable"
-                                : "Mark as Available"
-                            }
-                          >
-                            {item.is_available ? (
-                              <ToggleRight size={16} />
-                            ) : (
-                              <ToggleLeft size={16} />
-                            )}
-                            <span className="hidden xs:inline">
-                              {item.is_available ? "Available" : "Unavailable"}
+                            src={item.image_url}
+                            alt={item.name}
+                          />
+                        ) : (
+                          <FoodPlaceholder size={48} />
+                        )}
+                        {(!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0)) && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                            <span className="bg-error text-white px-3 md:px-4 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-widest shadow-lg">
+                              {!item.is_available ? "Unavailable" : "Out of Stock"}
                             </span>
-                          </button>
-                          <button
-                            onClick={() => handleEdit(item)}
-                            className="p-1.5 md:p-2 text-on-surface-variant/40 hover:text-primary transition-colors"
-                          >
-                            <Edit2
-                              size={16}
-                              className="md:w-[18px] md:h-[18px]"
+                          </div>
+                        )}
+                        <div className="absolute top-3 right-3 md:top-4 md:right-4 bg-surface/90 backdrop-blur-md px-2.5 py-1 rounded-full text-primary font-bold text-xs md:text-sm shadow-sm z-30">
+                          {editingPriceId === item.id ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              className="w-16 bg-white text-primary rounded border border-primary/25 px-1.5 py-0.5 text-xs font-bold focus:ring-1 focus:ring-primary/40 outline-none"
+                              defaultValue={item.price}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleQuickPriceUpdate(item.id, (e.target as HTMLInputElement).value);
+                                } else if (e.key === "Escape") {
+                                  setEditingPriceId(null);
+                                }
+                              }}
+                              onBlur={(e) => {
+                                handleQuickPriceUpdate(item.id, e.target.value);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              autoFocus
                             />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  "Are you sure you want to delete this item?",
-                                )
-                              ) {
-                                handleDelete(item.id);
-                              }
-                            }}
-                            className="p-1.5 md:p-2 text-on-surface-variant/40 hover:text-error transition-colors"
-                          >
-                            <Trash2
-                              size={16}
-                              className="md:w-[18px] md:h-[18px]"
-                            />
-                          </button>
+                          ) : (
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingPriceId(item.id);
+                              }}
+                              className="cursor-pointer font-bold hover:scale-105 transition-all flex items-center gap-1"
+                              title="Click to quickly edit price"
+                            >
+                              R {Number(item.price || 0).toFixed(2)}
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <p className="text-on-surface-variant text-[10px] md:text-xs line-clamp-2 min-h-[2.5em]">
-                        {item.description || "No description provided."}
-                      </p>
-                      <div className="flex gap-2 pt-2 items-center justify-between border-t border-outline-variant/5">
-                        <span className="px-2 py-0.5 bg-surface-container-high rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
-                          {item.category || "General"}
-                        </span>
-                        <span
-                          className={cn(
-                            "text-[9px] md:text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-1",
-                            item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && (item.stock_quantity || 0) < 5
-                              ? "bg-error text-on-error animate-pulse shadow-[0_0_12px_rgba(255,0,0,0.3)]"
-                              : "bg-emerald-100 text-emerald-600",
-                          )}
-                        >
-                          {item.stock_quantity !== null && (item.stock_quantity || 0) < 5 && (
-                            <AlertCircle size={10} />
-                          )}
-                          Stock: {(item.stock_quantity === null || item.stock_quantity === undefined || item.stock_quantity === -1) ? "Unlimited" : (item.stock_quantity || 0)}
-                          {item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && (item.stock_quantity || 0) < 5 && (
-                            <span className="ml-1 text-[8px] font-black underline hidden xs:inline">
-                              LOW STOCK
+                      <div className="p-4 md:p-6 space-y-2 md:space-y-3">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex flex-col gap-1 md:gap-1.5 flex-1 min-w-0">
+                            <h4 className="font-headline font-semibold text-base md:text-lg leading-tight line-clamp-1 text-on-surface">
+                              {item.name}
+                            </h4>
+                            {itemTags.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {itemTags.map((tag) => {
+                                  let colorClass = "bg-neutral-100 text-neutral-600 border-neutral-200/50";
+                                  if (tag === "Vegan") colorClass = "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
+                                  else if (tag === "Vegetarian") colorClass = "bg-teal-500/10 text-teal-600 border-teal-500/20";
+                                  else if (tag === "Gluten-Free") colorClass = "bg-amber-500/10 text-amber-600 border-amber-500/20";
+                                  else if (tag === "Spicy") colorClass = "bg-red-500/10 text-red-600 border-red-500/20 animate-pulse";
+                                  else if (tag === "Halal") colorClass = "bg-blue-500/10 text-blue-600 border-blue-500/20";
+                                  return (
+                                    <span
+                                      key={tag}
+                                      className={cn(
+                                        "text-[8px] md:text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md border flex items-center gap-0.5 select-none",
+                                        colorClass
+                                      )}
+                                    >
+                                      {(tag === "Vegan" || tag === "Vegetarian") && <Leaf size={9} />}
+                                      {tag === "Spicy" && <Flame size={9} />}
+                                      {tag}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex gap-1 items-center shrink-0">
+                            <button
+                              onClick={() => toggleAvailability(item)}
+                              className={cn(
+                                "flex items-center gap-1 px-1.5 py-0.5 md:py-1 rounded-full transition-all text-[9px] md:text-[10px] font-bold uppercase tracking-tighter",
+                                item.is_available
+                                  ? "bg-primary/10 text-primary hover:bg-primary/20"
+                                  : "bg-on-surface-variant/10 text-on-surface-variant hover:bg-on-surface-variant/20",
+                              )}
+                              title={
+                                item.is_available
+                                  ? "Mark as Unavailable"
+                                  : "Mark as Available"
+                              }
+                            >
+                              {item.is_available ? (
+                                <ToggleRight size={16} />
+                              ) : (
+                                <ToggleLeft size={16} />
+                              )}
+                              <span className="hidden xs:inline">
+                                {item.is_available ? "Available" : "Unavailable"}
+                              </span>
+                            </button>
+                            <button
+                              onClick={() => handleEdit(item)}
+                              className="p-1.5 md:p-2 text-on-surface-variant/40 hover:text-primary transition-colors"
+                            >
+                              <Edit2
+                                size={16}
+                                className="md:w-[18px] md:h-[18px]"
+                              />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    "Are you sure you want to delete this item?",
+                                  )
+                                ) {
+                                  handleDelete(item.id);
+                                }
+                              }}
+                              className="p-1.5 md:p-2 text-on-surface-variant/40 hover:text-error transition-colors"
+                            >
+                              <Trash2
+                                size={16}
+                                className="md:w-[18px] md:h-[18px]"
+                              />
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-on-surface-variant text-[10px] md:text-xs line-clamp-2 min-h-[2.5em]">
+                          {baseDescription || "No description provided."}
+                        </p>
+                        <div className="flex gap-2 pt-2 items-center justify-between border-t border-outline-variant/5">
+                          <span className="px-2 py-0.5 bg-surface-container-high rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                            {item.category || "General"}
+                          </span>
+                          {editingStockId === item.id && !(item.stock_quantity === null || item.stock_quantity === undefined || item.stock_quantity === -1) ? (
+                            <input
+                              type="number"
+                              min="0"
+                              className="w-14 bg-white text-on-surface font-semibold rounded border border-primary/20 px-1 py-0.5 text-[9px] focus:ring-1 focus:ring-primary/40 outline-none"
+                              defaultValue={item.stock_quantity || 0}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleQuickStockUpdate(item.id, (e.target as HTMLInputElement).value);
+                                } else if (e.key === "Escape") {
+                                  setEditingStockId(null);
+                                }
+                              }}
+                              onBlur={(e) => {
+                                handleQuickStockUpdate(item.id, e.target.value);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              autoFocus
+                            />
+                          ) : (
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!(item.stock_quantity === null || item.stock_quantity === undefined || item.stock_quantity === -1)) {
+                                  setEditingStockId(item.id);
+                                } else {
+                                  toast.info("Stock is set to Unlimited. Edit item to set a specific limit.");
+                                }
+                              }}
+                              className={cn(
+                                "text-[9px] md:text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-1 cursor-pointer hover:scale-[1.03] active:scale-95 transition-all select-none",
+                                item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && (item.stock_quantity || 0) < 5
+                                  ? "bg-error text-on-error animate-pulse shadow-[0_0_12px_rgba(255,0,0,0.3)]"
+                                  : "bg-emerald-100 text-emerald-600",
+                              )}
+                              title="Click to inline edit stock count"
+                            >
+                              {item.stock_quantity !== null && (item.stock_quantity || 0) < 5 && (
+                                <AlertCircle size={10} />
+                              )}
+                              Stock: {(item.stock_quantity === null || item.stock_quantity === undefined || item.stock_quantity === -1) ? "Unlimited" : (item.stock_quantity || 0)}
+                              {item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && (item.stock_quantity || 0) < 5 && (
+                                <span className="ml-1 text-[8px] font-black underline hidden xs:inline">
+                                  LOW STOCK
+                                </span>
+                              )}
                             </span>
                           )}
-                        </span>
+                        </div>
                       </div>
-                    </div>
-                  </motion.div>
-                ))
+                    </motion.div>
+                  );
+                })
               )}
             </div>
           </section>
@@ -6186,6 +6699,14 @@ const OrdersManagement = ({
   const [ratingOrderId, setRatingOrderId] = useState<string | null>(null);
   const [ratingValue, setRatingValue] = useState<number>(0);
 
+  // Advanced upgrade configurations for client readiness
+  const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
+  const [printingFormat, setPrintingFormat] = useState<"80mm" | "58mm">("80mm");
+  const [printingIncludeAddr, setPrintingIncludeAddr] = useState<boolean>(true);
+  const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
+  const [cancelReasonPreset, setCancelReasonPreset] = useState<string>("Out of ingredients / Items unavailable");
+  const [customCancelExplanation, setCustomCancelExplanation] = useState<string>("Kitchen is temporarily out of ingredients.");
+
   useEffect(() => {
     if (currentShop) {
       const fetchRiders = async () => {
@@ -6204,27 +6725,28 @@ const OrdersManagement = ({
               current_longitude
             )
           `)
-          .eq("shop_id", currentShop.id)
-          .not("rider_id", "is", null);
+          .eq("shop_id", currentShop.id);
 
         if (data) {
           const now = new Date();
           const processed = (data as (RiderConnection & { rider_profiles: RiderProfile | null })[]).map((item) => {
             const conn = item as RiderConnection;
             const profile = item.rider_profiles;
+            const isInHouse = conn.connection_code === "IN-HOUSE";
             return {
               ...conn,
-              is_online: profile?.is_online || false,
+              is_online: profile?.is_online || (isInHouse ? true : false),
               rider_name: profile?.full_name || conn.rider_name,
               rider_phone: profile?.phone || conn.rider_phone,
-              status: profile?.status || (new Date(conn.expires_at) < now ? "expired" : conn.status),
+              status: profile?.status || (new Date(conn.expires_at) < now ? "expired" : (isInHouse ? "idle" : conn.status)),
               vehicle_type: profile?.vehicle_type || "Road",
               rating: profile?.rating || 5.0,
               current_latitude: profile?.current_latitude,
               current_longitude: profile?.current_longitude,
             };
           });
-          setConnectedRiders(processed);
+          const activeConnections = processed.filter(r => r.rider_id !== null || r.connection_code === "IN-HOUSE");
+          setConnectedRiders(activeConnections);
         }
       };
       void fetchRiders();
@@ -6282,6 +6804,144 @@ const OrdersManagement = ({
     }
     setRatingOrderId(null);
     setRatingValue(0);
+  };
+
+  const handleIframePrint = (order: Order, formatOption: "80mm" | "58mm", includeAddress: boolean) => {
+    try {
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "absolute";
+      iframe.style.width = "0px";
+      iframe.style.height = "0px";
+      iframe.style.border = "none";
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow?.document || iframe.contentDocument;
+      if (!doc) {
+        toast.error("Interactive printing is not available in full sandbox. Copying receipt text instead!");
+        copyReceiptToClipboard(order);
+        return;
+      }
+
+      const formattedItems = (order.items || [])
+        .map((i) => {
+          const isObj = typeof i === "object" && i !== null;
+          const p = isObj && "price" in i ? (i as { price: number }).price : (Number(order.total_price) || 0);
+          const q = isObj && "quantity" in i ? (i as { quantity: number }).quantity : 1;
+          const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
+          return `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span>${q}x ${n}</span>
+              <span>R${Number(p * q).toFixed(2)}</span>
+            </div>
+          `;
+        })
+        .join("") ||
+        `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${order.product_name}</span><span>R${Number(order.total_price || 0).toFixed(2)}</span></div>`;
+
+      const widthOfText = formatOption === "58mm" ? "240px" : "320px";
+
+      doc.write(`
+        <html>
+          <head>
+            <title>Receipt #LE-${order.id}</title>
+            <style>
+              body {
+                font-family: 'Courier New', Courier, monospace;
+                width: ${widthOfText};
+                padding: 12px;
+                font-size: 13px;
+                line-height: 1.3;
+                color: #000;
+                background: #fff;
+                margin: 0;
+              }
+              .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px; }
+              .total { border-top: 1px dashed #000; padding-top: 8px; margin-top: 8px; font-weight: bold; font-size: 14px; }
+              .footer { text-align: center; margin-top: 16px; font-size: 11px; border-top: 1px dashed #000; padding-top: 8px; }
+              @media print {
+                body { width: 100%; padding: 0; margin: 0; }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h3 style="margin: 0 0 4px 0; text-transform: uppercase; font-size: 16px; letter-spacing: 1px;">LOCALEATS</h3>
+              <p style="margin: 2px 0; font-size: 11px;">EATS WITH LOCAL ROOTS</p>
+              <p style="margin: 4px 0 2px 0;">Order ID: #LE-${order.id}</p>
+              <p style="margin: 2px 0;">${new Date(order.created_at).toLocaleString()}</p>
+              <p style="margin: 2px 0; font-weight: bold; text-transform: uppercase;">Fulfillment: ${order.order_type === "collection" ? "COLLECTION" : "DELIVERY"}</p>
+            </div>
+            <div class="items">
+              ${formattedItems}
+            </div>
+            <div class="total">
+              <div style="display: flex; justify-content: space-between;">
+                <span>GRAND TOTAL</span>
+                <span>R${Number(order.total_price || 0).toFixed(2)}</span>
+              </div>
+            </div>
+            <div class="footer">
+              <p style="margin: 2px 0; font-weight: bold;">Customer: ${order.customer_name || "Guest"}</p>
+              ${order.phone ? `<p style="margin: 2px 0;">Phone: ${order.phone}</p>` : ""}
+              ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${order.address}, ${order.city}</p>` : ""}
+              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${order.notes}"</p>` : ""}
+              <p style="margin: 12px 0 0 0; font-weight: bold; font-size: 12px;">THANK YOU FOR SUPPORTING LOCAL!</p>
+            </div>
+          </body>
+        </html>
+      `);
+      doc.close();
+
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (printErr) {
+          console.error("Direct printing failed inside sandbox iframe: ", printErr);
+        }
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+        }, 1200);
+      }, 150);
+    } catch (e) {
+      console.error(e);
+      toast.error("Printing failed. Copying receipt to clipboard instead.");
+      copyReceiptToClipboard(order);
+    }
+  };
+
+  const copyReceiptToClipboard = (order: Order) => {
+    const itemsText = (order.items || [])
+      .map((i) => {
+        const isObj = typeof i === "object" && i !== null;
+        const p = isObj && "price" in i ? (i as { price: number }).price : (Number(order.total_price) || 0);
+        const q = isObj && "quantity" in i ? (i as { quantity: number }).quantity : 1;
+        const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
+        return `${q}x ${n.padEnd(22)} R${(p * q).toFixed(2)}`;
+      })
+      .join("\n") || `1x ${order.product_name.padEnd(22)} R${(Number(order.total_price) || 0).toFixed(2)}`;
+
+    const textReceipt = `
+========================================
+           LOCALEATS ORDER
+Order ID: #LE-${order.id}
+Date: ${new Date(order.created_at).toLocaleString()}
+Type: ${order.order_type === "collection" ? "COLLECTION" : "DELIVERY"}
+----------------------------------------
+${itemsText}
+----------------------------------------
+TOTAL: R${Number(order.total_price || 0).toFixed(2)}
+========================================
+Customer: ${order.customer_name || "Guest"}
+Phone: ${order.phone || "N/A"}
+Address: ${order.address || ""}, ${order.city || ""}
+Notes: "${order.notes || "None"}"
+========================================
+    `.trim();
+
+    navigator.clipboard.writeText(textReceipt)
+      .then(() => toast.success("Receipt copied as plain-text! Ready to send on WhatsApp."))
+      .catch(() => toast.error("Failed to copy receipt to clipboard"));
   };
 
   const calculateDynamicETA = (order: Order) => {
@@ -7636,10 +8296,21 @@ const OrdersManagement = ({
                                                     <button
                                                       onClick={(e) => {
                                                         e.stopPropagation();
-                                                        onRequestRider(
-                                                          order.id,
-                                                          rider.rider_id!,
-                                                        );
+                                                        if (rider.connection_code === "IN-HOUSE") {
+                                                          onRequestRider(
+                                                            order.id,
+                                                            undefined,
+                                                            rider.rider_name || "In-House Driver",
+                                                            rider.rider_phone || ""
+                                                          );
+                                                        } else {
+                                                          onRequestRider(
+                                                            order.id,
+                                                            rider.rider_id || undefined,
+                                                            rider.rider_name || undefined,
+                                                            rider.rider_phone || undefined
+                                                          );
+                                                        }
                                                         setShowRiderPicker(
                                                           null,
                                                         );
@@ -7979,80 +8650,7 @@ const OrdersManagement = ({
                             </button>
                             <button
                               onClick={() => {
-                                const printWindow = window.open("", "_blank");
-                                if (printWindow) {
-                                  printWindow.document.write(`
-                                  <html>
-                                    <head>
-                                      <title>Receipt #LE-${order.id}</title>
-                                      <style>
-                                        body { font-family: 'Courier New', Courier, monospace; width: 300px; padding: 20px; }
-                                        .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
-                                        .item { display: flex; justify-content: space-between; margin-bottom: 5px; }
-                                        .total { border-top: 1px dashed #000; padding-top: 10px; margin-top: 10px; font-weight: bold; }
-                                        .footer { text-align: center; margin-top: 20px; font-size: 12px; }
-                                      </style>
-                                    </head>
-                                    <body>
-                                      <div class="header">
-                                        <h2>LocalEats</h2>
-                                        <p>Order #LE-${order.id}</p>
-                                        <p>${format(new Date(order.created_at), "yyyy-MM-dd HH:mm")}</p>
-                                      </div>
-                                      <div class="items">
-                                        ${
-                                          (order.items || [])
-                                            .map((i) => {
-                                              const isObj =
-                                                typeof i === "object" &&
-                                                i !== null;
-                                              const p =
-                                                isObj && "price" in i
-                                                  ? (i as { price: number })
-                                                      .price
-                                                  : 0;
-                                              const q =
-                                                isObj && "quantity" in i
-                                                  ? (i as { quantity: number })
-                                                      .quantity
-                                                  : 1;
-                                              const n =
-                                                isObj && "name" in i
-                                                  ? (i as { name: string }).name
-                                                  : String(i);
-                                              return `
-                                            <div class="item">
-                                              <span>${q}x ${n}</span>
-                                              <span>R${Number(p * q).toFixed(2)}</span>
-                                            </div>
-                                          `;
-                                            })
-                                            .join("") ||
-                                          `<div class="item"><span>1x ${order.product_name}</span><span>R${Number(order.total_price || 0).toFixed(2)}</span></div>`
-                                        }
-                                      </div>
-                                      <div class="total">
-                                        <div class="item">
-                                          <span>TOTAL</span>
-                                          <span>R${Number(order.total_price || 0).toFixed(2)}</span>
-                                        </div>
-                                      </div>
-                                      <div class="footer">
-                                        <p>Customer: ${order.customer_name}</p>
-                                        <p>Address: ${order.address}, ${order.city} ${order.country ? ', ' + order.country : ''}</p>
-                                        ${order.lat && order.lng ? `<p style="font-size: 8px; color: #666;">GPS: ${order.lat}, ${order.lng}</p>` : ''}
-                                        <p>Thank you for your order!</p>
-                                      </div>
-                                      <script>window.print(); window.close();</script>
-                                    </body>
-                                  </html>
-                                `);
-                                  printWindow.document.close();
-                                } else {
-                                  toast.error(
-                                    "Pop-up blocked. Please allow pop-ups to print receipts.",
-                                  );
-                                }
+                                setPrintingOrder(order);
                               }}
                               className={cn(
                                 "bg-surface-container-high rounded-full text-on-surface-variant hover:bg-surface-container-highest transition-all",
@@ -8066,13 +8664,9 @@ const OrdersManagement = ({
                               order.status !== "cancelled" && (
                                 <button
                                   onClick={() => {
-                                    if (
-                                      window.confirm(
-                                        "Are you sure you want to cancel this order? This cannot be undone.",
-                                      )
-                                    ) {
-                                      onUpdateStatus(order.id, "cancelled");
-                                    }
+                                    setCancellingOrder(order);
+                                    setCancelReasonPreset("Out of ingredients / Items unavailable");
+                                    setCustomCancelExplanation("Kitchen is temporarily out of key ingredients.");
                                   }}
                                   className={cn(
                                     "ml-auto bg-error/10 text-error rounded-full hover:bg-error/20 transition-all font-bold tracking-widest uppercase text-[10px]",
@@ -8174,29 +8768,62 @@ const OrdersManagement = ({
                 Notification Settings
               </h4>
               <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-surface-container-low rounded-2xl">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold">Sound Alerts</span>
-                    <span className="text-[10px] text-on-surface-variant">
-                      Play sound for new orders
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setSoundAlerts(!soundAlerts)}
-                    className={cn(
-                      "w-12 h-6 rounded-full relative transition-all duration-300",
-                      soundAlerts
-                        ? "bg-primary"
-                        : "bg-surface-container-highest",
-                    )}
-                  >
-                    <div
+                <div className="flex flex-col gap-2 p-4 bg-surface-container-low rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold">Sound Alerts</span>
+                      <span className="text-[10px] text-on-surface-variant">
+                        Play sound for new orders
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setSoundAlerts(!soundAlerts)}
                       className={cn(
-                        "absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300",
-                        soundAlerts ? "right-1" : "left-1",
+                        "w-12 h-6 rounded-full relative transition-all duration-300",
+                        soundAlerts
+                          ? "bg-primary"
+                          : "bg-surface-container-highest",
                       )}
-                    ></div>
-                  </button>
+                    >
+                      <div
+                        className={cn(
+                          "absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300",
+                          soundAlerts ? "right-1" : "left-1",
+                        )}
+                      ></div>
+                    </button>
+                  </div>
+                  {soundAlerts && (
+                    <button
+                      onClick={() => {
+                        try {
+                          const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+                          if (AudioCtx) {
+                            const ctx = new AudioCtx();
+                            const osc = ctx.createOscillator();
+                            const gain = ctx.createGain();
+                            osc.connect(gain);
+                            gain.connect(ctx.destination);
+                            osc.type = "sine";
+                            osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5 chime
+                            gain.gain.setValueAtTime(0.08, ctx.currentTime);
+                            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+                            osc.start();
+                            osc.stop(ctx.currentTime + 0.5);
+                            toast.success("Sound test: Speaker alerts are active!");
+                          } else {
+                            toast.info("Web Audio API not supported in this browser.");
+                          }
+                        } catch (err) {
+                          console.error("Audio trigger failed: ", err);
+                        }
+                      }}
+                      className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 bg-primary/5 hover:bg-primary/10 text-primary text-[10px] font-black uppercase tracking-wider rounded-lg border border-primary/10 transition-all active:scale-[0.98]"
+                    >
+                      <Volume2 size={12} className="animate-pulse" />
+                      Test Alert Speaker
+                    </button>
+                  )}
                 </div>
 
                 <div className="p-4 bg-surface-container-low rounded-2xl space-y-3">
@@ -8377,386 +9004,1689 @@ const OrdersManagement = ({
             </div>
           </div>
         )}
+
+        {/* Cancellation reasons Modal */}
+        <AnimatePresence>
+          {cancellingOrder && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                className="bg-surface-container-lowest max-w-lg w-full rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden border border-outline-variant/15"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-2 text-error">
+                    <AlertCircle size={24} />
+                    <h3 className="font-headline text-lg font-bold text-on-surface">Cancel Order #LE-{cancellingOrder.id}</h3>
+                  </div>
+                  <button
+                    onClick={() => setCancellingOrder(null)}
+                    className="p-1.5 hover:bg-surface-container-high rounded-full text-on-surface-variant transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <p className="text-xs text-on-surface-variant mb-4">
+                  Please select a reason for cancelling this order. This message will be sent directly to the customer so they are kept informed.
+                </p>
+
+                <div className="space-y-2 mb-6">
+                  {[
+                    "Out of ingredients / Items unavailable",
+                    "Kitchen is overloaded / Queue times are too high",
+                    "Rider/Delivery team unavailable or radius is too far",
+                    "Shop is closing / After business hours",
+                    "Incorrect customer details (address or phone number)",
+                    "Other (Write custom message below)"
+                  ].map((reason) => (
+                    <button
+                      key={reason}
+                      type="button"
+                      onClick={() => {
+                        setCancelReasonPreset(reason);
+                        if (reason !== "Other (Write custom message below)") {
+                          setCustomCancelExplanation(`We are sorry, but we had to cancel your order because: ${reason.toLowerCase()}`);
+                        } else {
+                          setCustomCancelExplanation("");
+                        }
+                      }}
+                      className={cn(
+                        "w-full text-left p-3 text-xs font-semibold rounded-xl border-2 transition-all flex items-center justify-between",
+                        cancelReasonPreset === reason
+                          ? "bg-error/5 border-error/50 text-error-container"
+                          : "bg-surface-container-low border-transparent text-on-surface-variant hover:border-outline-variant/20"
+                      )}
+                    >
+                      <span>{reason}</span>
+                      <div className={cn(
+                        "w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ml-3",
+                        cancelReasonPreset === reason ? "border-error bg-error text-white" : "border-outline"
+                      )}>
+                        {cancelReasonPreset === reason && <Check size={10} strokeWidth={3} />}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="space-y-1.5 mb-6">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70">
+                    Custom Notification Explanation
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={customCancelExplanation}
+                    onChange={(e) => setCustomCancelExplanation(e.target.value)}
+                    className="w-full bg-surface-container-low focus:bg-surface-container-lowest border border-outline-variant/30 focus:border-error/45 focus:ring-1 focus:ring-error/20 rounded-xl p-3 text-xs outline-none transition-all resize-none text-on-surface"
+                    placeholder="Tell the customer more about why their order was rejected..."
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCancellingOrder(null)}
+                    className="flex-1 py-3 bg-surface-container-high hover:bg-surface-container-highest text-on-surface hover:text-on-surface-variant font-bold rounded-full text-xs transition-all active:scale-[0.98]"
+                  >
+                    Keep Order Active
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const finalReason = cancelReasonPreset === "Other (Write custom message below)"
+                        ? (customCancelExplanation.trim() || "Order cancelled by kitchen supervisor.")
+                        : customCancelExplanation;
+                      void onUpdateStatus(cancellingOrder.id, "cancelled", finalReason);
+                      setCancellingOrder(null);
+                      toast.success("Order status updated to Cancelled");
+                    }}
+                    className="flex-1 py-3 bg-error text-white font-black rounded-full text-xs hover:bg-error-container hover:shadow-lg shadow-error/10 transition-all active:scale-[0.98]"
+                  >
+                    Confirm Cancellation
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Pop-up Free Thermal Printed Receipt Live Mockup Modal */}
+        <AnimatePresence>
+          {printingOrder && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs overflow-y-auto">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-surface-container-lowest max-w-2xl w-full rounded-3xl p-6 md:p-8 shadow-2xl relative border border-outline-variant/15 grid grid-cols-1 md:grid-cols-12 gap-6 items-start text-on-surface"
+              >
+                {/* Receipt controller pane */}
+                <div className="md:col-span-12 lg:col-span-5 space-y-5">
+                  <div>
+                    <h3 className="font-headline text-lg font-bold text-on-surface mb-1 flex items-center gap-2">
+                      <Printer size={20} className="text-primary" />
+                      Kitchen Ticket
+                    </h3>
+                    <p className="text-xs text-on-surface-variant">
+                      Configured with advanced standard widths to support standard POS thermal paper roles.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/80 block">
+                        Thermal Width Format
+                      </label>
+                      <div className="grid grid-cols-2 gap-2 bg-surface-container-low p-1.5 rounded-xl border border-outline-variant/10">
+                        {(["80mm", "58mm"] as const).map((fmt) => (
+                          <button
+                            key={fmt}
+                            type="button;}"
+                            onClick={() => setPrintingFormat(fmt)}
+                            className={cn(
+                              "py-1.5 text-xs font-bold rounded-lg transition-all",
+                              printingFormat === fmt
+                                ? "bg-primary text-white shadow-sm"
+                                : "text-on-surface-variant hover:bg-surface-container-highest"
+                            )}
+                          >
+                            {fmt === "80mm" ? "80mm (Wide)" : "58mm (Narrow)"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/80 block">
+                        Options & Fields
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setPrintingIncludeAddr(!printingIncludeAddr)}
+                        className="w-full flex items-center justify-between p-3 bg-surface-container-low hover:bg-surface-container-high rounded-xl text-left transition-all text-xs"
+                      >
+                        <span className="font-bold text-on-surface">Include Customer Address</span>
+                        <div className={cn(
+                          "w-4 h-4 rounded-sm border flex items-center justify-center shrink-0",
+                          printingIncludeAddr ? "border-primary bg-primary text-on-primary" : "border-outline"
+                        )}>
+                          {printingIncludeAddr && <Check size={12} strokeWidth={3} />}
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleIframePrint(printingOrder, printingFormat, printingIncludeAddr)}
+                      className="w-full py-3 bg-primary text-white font-black text-xs uppercase tracking-widest rounded-full shadow-md shadow-primary/20 hover:scale-[1.02] transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                    >
+                      <Printer size={16} />
+                      Execute Print Job
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => copyReceiptToClipboard(printingOrder)}
+                      className="w-full py-3 bg-surface-container-low hover:bg-surface-container-high text-on-surface-variant font-bold text-xs uppercase tracking-widest rounded-full transition-all active:scale-[0.98] flex items-center justify-center gap-2 border border-outline-variant/15"
+                    >
+                      <Copy size={16} />
+                      Copy Plain-Text Receipt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPrintingOrder(null)}
+                      className="w-full py-3 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-bold text-xs uppercase tracking-widest rounded-full transition-all active:scale-[0.98]"
+                    >
+                      Close Preview
+                    </button>
+                  </div>
+                </div>
+
+                {/* Receipt preview pane */}
+                <div className="md:col-span-12 lg:col-span-7 flex flex-col items-center bg-stone-950 border border-stone-800 rounded-2xl p-4 gap-3 self-stretch min-w-[260px]">
+                  <span className="text-[9px] font-black tracking-widest text-white/40 uppercase">
+                    Hardware Virtualizer Mockup
+                  </span>
+                  
+                  {/* Visual Thermal paper preview */}
+                  <div 
+                    className={cn(
+                      "bg-[#fafaf8] text-stone-900 p-6 font-mono text-xs shadow-2xl relative border-t-4 border-b-4 border-dashed border-stone-300 leading-relaxed font-semibold transition-all duration-300 mx-auto w-full",
+                      printingFormat === "58mm" ? "max-w-[220px] text-[10px]" : "max-w-[280px] text-xs"
+                    )}
+                    style={{
+                      boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)",
+                      backgroundImage: "radial-gradient(#ebeae4 10%, transparent 11%)",
+                      backgroundSize: "6px 6px"
+                    }}
+                  >
+                    {/* Decorative side gaps of paper */}
+                    <div className="absolute top-0 bottom-0 left-0 w-1 bg-stone-200/20 shadow-inner"></div>
+                    <div className="absolute top-0 bottom-0 right-0 w-1 bg-stone-200/20 shadow-inner"></div>
+
+                    <div className="text-center font-bold mb-4">
+                      <h4 className="text-sm font-extrabold tracking-wider uppercase m-0 leading-tight">LOCALEATS</h4>
+                      <p className="text-[9px] text-stone-500 m-1">EATS WITH LOCAL ROOTS</p>
+                      <div className="border-b border-dashed border-stone-400 my-2"></div>
+                      <p className="m-1">Order #LE-{printingOrder.id}</p>
+                      <p className="text-[10px] text-stone-500 m-1 font-medium">{new Date(printingOrder.created_at).toLocaleString()}</p>
+                      <p className="m-1 uppercase font-extrabold text-[10px] bg-stone-200 rounded px-1.5 py-0.5 inline-block mt-1">Fulfillment: {printingOrder.order_type === "collection" ? "Collection" : "Delivery"}</p>
+                    </div>
+
+                    <div className="space-y-2 my-4">
+                      {(printingOrder.items || []).length > 0 ? (
+                        (printingOrder.items || []).map((item: unknown, idx: number) => {
+                          const isObj = typeof item === "object" && item !== null;
+                          const typedItem = item as Record<string, unknown>;
+                          const p = isObj && "price" in typedItem ? Number(typedItem.price) || 0 : (Number(printingOrder.total_price) || 0);
+                          const q = isObj && "quantity" in typedItem ? Number(typedItem.quantity) || 1 : 1;
+                          const n = isObj && "name" in typedItem ? String(typedItem.name) : String(item);
+                          return (
+                            <div key={idx} className="flex justify-between items-start gap-2">
+                              <span>{q}x {n}</span>
+                              <span className="shrink-0">R{(p * q).toFixed(2)}</span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="flex justify-between items-start">
+                          <span>1x {printingOrder.product_name}</span>
+                          <span className="shrink-0">R{Number(printingOrder.total_price || 0).toFixed(2)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="border-t border-dashed border-stone-400 pt-2 my-2 mt-4 font-bold">
+                      <div className="flex justify-between text-sm">
+                        <span>GRAND TOTAL</span>
+                        <span>R{Number(printingOrder.total_price || 0).toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-center text-[10px] mt-6 border-t border-dashed border-stone-400 pt-3 space-y-1">
+                      <p className="m-0 font-bold">Customer: {printingOrder.customer_name || "Guest"}</p>
+                      {printingOrder.phone && <p className="m-0">Tel: {printingOrder.phone}</p>}
+                      {printingIncludeAddr && printingOrder.address && (
+                        <p className="m-0 italic leading-snug font-medium text-stone-600">Addr: {printingOrder.address}, {printingOrder.city}</p>
+                      )}
+                      {printingOrder.notes && (
+                        <p className="m-1 mt-2 text-left bg-stone-100 p-2 border border-stone-200 rounded text-stone-700 italic leading-normal">
+                          Notes: "{printingOrder.notes}"
+                        </p>
+                      )}
+                      <p className="m-0 font-extrabold text-[10px] text-stone-500 tracking-wider pt-2 border-t border-dotted border-stone-300">*** THANK YOU ***</p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
 };
 
-const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showCampaignModal, setShowCampaignModal] = useState(false);
-  const [campaignType, setCampaignType] = useState<"email" | "sms" | "social">(
-    "email",
-  );
+interface CampaignStats {
+  reach: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+}
 
-  const handleGenerateCampaign = () => {
-    setIsGenerating(true);
-    setTimeout(() => {
-      setIsGenerating(false);
-      setShowCampaignModal(true);
-    }, 2000);
+interface Campaign {
+  id: string;
+  name: string;
+  type: "email" | "sms" | "social";
+  objective: string;
+  channel: string;
+  subject?: string;
+  message: string;
+  status: "Sent" | "Scheduled" | "Draft";
+  sentAt: string;
+  stats?: CampaignStats;
+}
+
+interface MarketingCoupon {
+  id: string;
+  code: string;
+  discount_type: "percentage" | "fixed";
+  discount_value: number;
+}
+
+interface MarketingMenuItem {
+  id: string;
+  name: string;
+  price: number;
+}
+
+const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
+  const [coupons, setCoupons] = useState<MarketingCoupon[]>([]);
+  const [menuItems, setMenuItems] = useState<MarketingMenuItem[]>([]);
+
+  // Active general states
+  const [campaignsHistory, setCampaignsHistory] = useState<Campaign[]>([]);
+
+  // AI campaign assistant states
+  const [showCampaignModal, setShowCampaignModal] = useState(false);
+  const [campaignType, setCampaignType] = useState<"email" | "sms" | "social">("email");
+  const [campaignObjective, setCampaignObjective] = useState<string>("Weekend Special Offer");
+  const [selectedDishName, setSelectedDishName] = useState<string>("");
+  const [selectedCouponCode, setSelectedCouponCode] = useState<string>("");
+  const [tone, setTone] = useState<string>("Casual & Friendly");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedCopy, setGeneratedCopy] = useState({ subject: "", message: "" });
+  const [campaignTitleText, setCampaignTitleText] = useState("");
+  const [devicePreviewTab, setDevicePreviewTab] = useState<"compose" | "preview">("compose");
+
+  // Flyer Studio customizer states
+  const [showFlyerModal, setShowFlyerModal] = useState(false);
+  const [flyerTheme, setFlyerTheme] = useState<"orange" | "emerald" | "midnight" | "rose" | "purple">("orange");
+  const [flyerSize, setFlyerSize] = useState<"A4" | "Tent" | "Stand">("A4");
+  const [flyerHeadline, setFlyerHeadline] = useState("Order Online & Skip the Queue!");
+  const [flyerSubline, setFlyerSubline] = useState("Scan to view our live, fresh, handcrafted menu items.");
+  const [flyerCTA, setFlyerCTA] = useState("Fast bicycle delivery, direct service.");
+  const [flyerCouponCode, setFlyerCouponCode] = useState("");
+
+  // Table QR generator states
+  const [showTableQRModal, setShowTableQRModal] = useState(false);
+  const [tableCountStart, setTableCountStart] = useState<number>(1);
+  const [tableCountEnd, setTableCountEnd] = useState<number>(10);
+  const [tableInstructionCopy, setTableInstructionCopy] = useState("Scan to order online and get it served directly at your seat.");
+  const [qrGenerating, setQrGenerating] = useState(false);
+
+  // Load backend metadata (coupons & menu_items)
+  useEffect(() => {
+    const fetchMarketingData = async () => {
+      if (!currentShop?.id) return;
+      try {
+        // Fetch coupons
+        const { data: couponData } = await supabase
+          .from("coupons")
+          .select("*")
+          .eq("shop_id", currentShop.id);
+        if (couponData) setCoupons(couponData as unknown as MarketingCoupon[]);
+
+        // Fetch menu items
+        const { data: itemData } = await supabase
+          .from("menu_items")
+          .select("*")
+          .eq("shop_id", currentShop.id);
+        if (itemData) setMenuItems(itemData as unknown as MarketingMenuItem[]);
+      } catch (err) {
+        console.error("Error fetching marketing info:", err);
+      }
+    };
+    fetchMarketingData();
+  }, [currentShop?.id]);
+
+  // Load campaigns history
+  useEffect(() => {
+    const stored = localStorage.getItem("localeats_merch_campaigns");
+    if (stored) {
+      try {
+        setCampaignsHistory(JSON.parse(stored) as Campaign[]);
+      } catch (err) {
+        console.error("Error parsing campaign history", err);
+      }
+    } else {
+      const defaultCampaigns: Campaign[] = [
+        {
+          id: "cmp_1",
+          name: "Friday Lunch Special",
+          type: "sms",
+          objective: "Weekend Rush Hour",
+          channel: "SMS Blast",
+          message: "⚡️ Friday Feast! Get R50 off your woodfired pizza today from Cafe. Use code FRIDAY50 at checkout! Order now: localeats.co/menu",
+          status: "Sent",
+          sentAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+          stats: { reach: 300, clicks: 124, conversions: 42, revenue: 1680 }
+        },
+        {
+          id: "cmp_2",
+          name: "Easter Weekend Promo",
+          type: "email",
+          objective: "Dine-in Boost",
+          channel: "Email Newsletter",
+          subject: "❤️ Let us handle dinner: 15% off dynamic orders!",
+          message: "Hi Eater! Treating yourself to a gorgeous meal this long weekend? Skip the queue and order direct. Support local chefs and eco-friendly cyclists directly...",
+          status: "Sent",
+          sentAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+          stats: { reach: 520, clicks: 211, conversions: 68, revenue: 4120 }
+        },
+        {
+          id: "cmp_3",
+          name: "Unused Promo Draft",
+          type: "social",
+          objective: "Recover Cold Customers",
+          channel: "Social Post",
+          message: "We've missed you! Here's a little reminder that fresh deliciousness is just 3 clicks away. 🍕❤️ Use code SAVE10 today for some weekend vibes! #localeats #food",
+          status: "Draft",
+          sentAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+          stats: { reach: 0, clicks: 0, conversions: 0, revenue: 0 }
+        }
+      ];
+      localStorage.setItem("localeats_merch_campaigns", JSON.stringify(defaultCampaigns));
+      setCampaignsHistory(defaultCampaigns);
+    }
+  }, []);
+
+  const saveCampaigns = (newList: Campaign[]) => {
+    setCampaignsHistory(newList);
+    localStorage.setItem("localeats_merch_campaigns", JSON.stringify(newList));
   };
 
+  const getFallbackSubject = (objective: string, shopName: string, dish?: string, coupon?: string) => {
+    const couponStr = coupon ? ` (Use Code ${coupon})` : "";
+    switch(objective) {
+      case "Recover Cold Customers":
+        return `We miss you at ${shopName}! Here's a special treat...`;
+      case "Weekend Rush Hour":
+        return `Weekend mode: ON! Order direct from ${shopName}${couponStr}`;
+      case "Dish Highlight Promotion":
+        return `Have you tried our signature ${dish || "dishes"} at ${shopName}?`;
+      default:
+        return `Special invitation from ${shopName}! Order direct & save!`;
+    }
+  };
+
+  const getFallbackMessage = (channel: string, objective: string, tone: string, shopName: string, dish?: string, coupon?: string) => {
+    const dishPart = dish ? `our premium, hot-off-the-plate ${dish}` : "our delicious, handcrafted menu items";
+    const couponPart = coupon ? `Use exclusive promo code *${coupon}* at checkout to claim your offer!` : "Order directly from our link to escape the delivery app commissions.";
+    const toneSlogan = tone === "Playful" ? "🔥 Happiness is only a scan away!" : tone === "Urgent" ? "⚡ Offers valid for a limited time only! Don't miss out." : "❤️ Made with love by local chefs.";
+
+    if (channel === "sms") {
+      return `[${shopName}] Craving something special? 🍕 Order ${dishPart} direct from us today! ${couponPart} Tap direct order: localeats.co/menu`;
+    } else if (channel === "social") {
+      return `Weekend plans: sorted! 🥳 Treating ourselves to ${dishPart} from ${shopName}. ${couponPart}\n\nLocal ingredients, fast bicycle delivery, direct service. Support local businesses directly! \n\n#Localeats #SupportLocal #SouthAfricaFoodies ${dish ? `#${dish.replace(/\s+/g, "")}` : ""}`;
+    } else {
+      return `Dear Valued Customer,\n\nWe trust you are having a fantastic day! We wanted to reach out to you from ${shopName} to bring some delicious news to your inbox.\n\nToday, we're highlighting ${dishPart} - prepared fresh, sourced locally, and delivered hot to your doorstep by our eco-friendly local cyclist fleet!\n\n${couponPart}\n\nWhy order direct?\n- Support independent local chefs\n- Guaranteed faster delivery\n- Direct customer service\n\n${toneSlogan}\n\nWarm regards,\nThe team at ${shopName}`;
+    }
+  };
+
+  const handleGenerateCampaignWithAI = async () => {
+    setIsGenerating(true);
+    const dishContext = selectedDishName ? `highlighting our special dish: "${selectedDishName}"` : "";
+    const couponContext = selectedCouponCode ? `using promo code "${selectedCouponCode}"` : "";
+    
+    const systemPrompt = `You are an elite, highly persuasive restaurant marketing copywriter in South Africa. You are writing marketing copies for "${currentShop?.name || 'our shop'}", a food establishment.`;
+
+    const userPrompt = `Create a marketing campaign for the channel "${campaignType}".
+Objective: ${campaignObjective}
+Tone: ${tone}
+${dishContext}
+${couponContext}
+
+Please return the content in JSON format with these exact keys:
+{
+  "subject": "Compelling subject line (only if channel is email, otherwise empty string)",
+  "message": "Highly engaging, action-oriented, localized promotional text with emojis. Tailor length to the channel: clean email body for email, short snappy 130-char text with order link for SMS, and punchy caption with relevant hashtags for Social Media."
+}`;
+
+    try {
+      if (!import.meta.env.VITE_GEMINI_API_KEY) {
+        throw new Error("API Key Missing");
+      }
+      const ai = new GoogleGenAI({
+        apiKey: import.meta.env.VITE_GEMINI_API_KEY,
+      });
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: userPrompt,
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: "application/json",
+        },
+      });
+
+      const resText = response.text?.trim() || "{}";
+      const parsed = JSON.parse(resText);
+      
+      setGeneratedCopy({
+        subject: parsed.subject || "",
+        message: parsed.message || ""
+      });
+      setDevicePreviewTab("preview");
+      toast.success("AI generated your custom campaign copy!");
+    } catch (err) {
+      console.log("Gemini API generation failed, falling back to rule generator", err);
+      const fallbackSubject = getFallbackSubject(campaignObjective, currentShop?.name || "LocalEats", selectedDishName, selectedCouponCode);
+      const fallbackMessage = getFallbackMessage(campaignType, campaignObjective, tone, currentShop?.name || "LocalEats", selectedDishName, selectedCouponCode);
+      
+      setGeneratedCopy({
+        subject: fallbackSubject,
+        message: fallbackMessage
+      });
+      setDevicePreviewTab("preview");
+      toast.success("Campaign suggestions loaded successfully!");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const triggerLaunchCampaign = (status: "Sent" | "Scheduled" | "Draft") => {
+    if (!generatedCopy.message.trim()) {
+      toast.error("Generate or write copy content before scheduling!");
+      return;
+    }
+
+    const titleValue = campaignTitleText.trim() || `Campaign ${campaignsHistory.length + 1}`;
+    const newCamp = {
+      id: "cnt_" + Math.random().toString(36).substring(2, 8),
+      name: titleValue,
+      type: campaignType,
+      objective: campaignObjective,
+      channel: campaignType === "email" ? "Email Newsletter" : campaignType === "sms" ? "SMS Blast" : "Social Feed",
+      subject: campaignType === "email" ? generatedCopy.subject : undefined,
+      message: generatedCopy.message,
+      status: status,
+      sentAt: new Date().toISOString(),
+      stats: {
+        reach: status === "Sent" ? (campaignType === "email" ? 450 : campaignType === "sms" ? 280 : 150) : 0,
+        clicks: status === "Sent" ? Math.floor(Math.random() * 50) + 10 : 0,
+        conversions: status === "Sent" ? Math.floor(Math.random() * 10) + 2 : 0,
+        revenue: status === "Sent" ? Math.floor(Math.random() * 1500) + 200 : 0
+      }
+    };
+
+    saveCampaigns([newCamp, ...campaignsHistory]);
+    setShowCampaignModal(false);
+    setCampaignTitleText("");
+    setGeneratedCopy({ subject: "", message: "" });
+    toast.success(status === "Sent" ? "Campaign launched successfully!" : status === "Scheduled" ? "Campaign scheduled!" : "Saved draft successfully!");
+  };
+
+  const deleteCampaign = (id: string) => {
+    const updated = campaignsHistory.filter(c => c.id !== id);
+    saveCampaigns(updated);
+    toast.success("Campaign record removed.");
+  };
+
+  const BRAND_PALETTES = {
+    orange: { primary: "#FF5400", hex: "#FF5400", bg: "bg-orange-500", text: "text-orange-600", lightBg: "bg-orange-500/10", border: "border-orange-500/20" },
+    emerald: { primary: "#059669", hex: "#059669", bg: "bg-emerald-600", text: "text-emerald-600", lightBg: "bg-emerald-600/10", border: "border-emerald-600/20" },
+    midnight: { primary: "#0F172A", hex: "#0F172A", bg: "bg-zinc-800", text: "text-zinc-800", lightBg: "bg-zinc-800/10", border: "border-zinc-800/20" },
+    rose: { primary: "#BE123C", hex: "#BE123C", bg: "bg-rose-600", text: "text-rose-600", lightBg: "bg-rose-600/10", border: "border-rose-600/20" },
+    purple: { primary: "#7C3AED", hex: "#7C3AED", bg: "bg-purple-600", text: "text-purple-600", lightBg: "bg-purple-600/10", border: "border-purple-600/20" }
+  };
+
+  const handleGenerateFlyerPDF = async () => {
+    if (!currentShop) return;
+    try {
+      const { jsPDF } = await import("jspdf");
+      const QRCode = (await import("qrcode")).default;
+
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      
+      const palette = BRAND_PALETTES[flyerTheme];
+      const hexToRgb = (hex: string) => {
+        const bigint = parseInt(hex.replace("#", ""), 16);
+        return {
+          r: (bigint >> 16) & 255,
+          g: (bigint >> 8) & 255,
+          b: bigint & 255
+        };
+      };
+      const mainRgb = hexToRgb(palette.hex);
+
+      doc.setFillColor(254, 252, 248);
+      doc.rect(0, 0, pageWidth, pageHeight, "F");
+
+      doc.setDrawColor(mainRgb.r, mainRgb.g, mainRgb.b);
+      doc.setLineWidth(1.5);
+      doc.rect(8, 8, pageWidth - 16, pageHeight - 16, "D");
+      doc.setLineWidth(0.3);
+      doc.rect(10, 10, pageWidth - 20, pageHeight - 20, "D");
+
+      doc.setTextColor(mainRgb.r, mainRgb.g, mainRgb.b);
+      doc.setFontSize(38);
+      doc.setFont("helvetica", "bold");
+      doc.text("LocalEats", pageWidth / 2, 40, { align: "center" });
+
+      doc.setDrawColor(220, 215, 203);
+      doc.setLineWidth(0.4);
+      doc.line(50, 48, pageWidth - 50, 48);
+
+      doc.setTextColor(26, 28, 30);
+      doc.setFontSize(24);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${currentShop.name.toUpperCase()}`, pageWidth / 2, 65, { align: "center" });
+
+      doc.setFontSize(14);
+      doc.setTextColor(70, 70, 70);
+      doc.setFont("helvetica", "normal");
+      const splitHeadline = doc.splitTextToSize(flyerHeadline, pageWidth - 50);
+      doc.text(splitHeadline, pageWidth / 2, 78, { align: "center" });
+
+      const targetUrl = `https://www.localeatssa.co.za/shop/${currentShop.id}${flyerCouponCode ? `?coupon=${flyerCouponCode}` : ""}`;
+      const qrDataUrl = await QRCode.toDataURL(targetUrl, {
+        width: 400,
+        margin: 2,
+        color: {
+          dark: "#1A1C1E",
+          light: "#FFFFFF",
+        },
+      });
+
+      doc.setFillColor(255, 255, 255);
+      const boxSize = 88;
+      const boxX = (pageWidth - boxSize) / 2;
+      doc.rect(boxX, 98, boxSize, boxSize, "F");
+      doc.setDrawColor(210, 205, 195);
+      doc.setLineWidth(0.4);
+      doc.rect(boxX, 98, boxSize, boxSize, "D");
+
+      doc.addImage(qrDataUrl, "PNG", boxX + 4, 102, 80, 80);
+
+      doc.setFontSize(15);
+      doc.setTextColor(mainRgb.r, mainRgb.g, mainRgb.b);
+      doc.setFont("helvetica", "bold");
+      const splitSub = doc.splitTextToSize(flyerSubline, pageWidth - 50);
+      doc.text(splitSub, pageWidth / 2, 206, { align: "center" });
+
+      if (flyerCouponCode) {
+        doc.setFillColor(mainRgb.r, mainRgb.g, mainRgb.b);
+        doc.rect(30, 222, pageWidth - 60, 20, "F");
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.text(`DISCOUNT COUPON ACTIVE: ${flyerCouponCode.toUpperCase()}`, pageWidth / 2, 234, { align: "center" });
+      }
+
+      doc.setFontSize(11);
+      doc.setTextColor(100, 100, 100);
+      doc.setFont("helvetica", "italic");
+      doc.text(flyerCTA, pageWidth / 2, flyerCouponCode ? 256 : 242, { align: "center" });
+
+      doc.setFontSize(10);
+      doc.setTextColor(140, 140, 140);
+      doc.setFont("helvetica", "normal");
+      doc.text("Powered by LocalEats South Africa", pageWidth / 2, 280, { align: "center" });
+
+      doc.save(`Flyer_Custom_${currentShop.name.replace(/\s+/g, "_")}.pdf`);
+      toast.success("Branded PDF Flyer generated successfully!");
+      setShowFlyerModal(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to generate PDF Flyer");
+    }
+  };
+
+  const handleGenerateTableQRPDF = async () => {
+    if (!currentShop) return;
+    setQrGenerating(true);
+    try {
+      const { jsPDF } = await import("jspdf");
+      const QRCode = (await import("qrcode")).default;
+
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      const start = Number(tableCountStart);
+      const end = Number(tableCountEnd);
+
+      if (isNaN(start) || isNaN(end) || start > end || start < 1) {
+        toast.error("Please enter a valid start and end table range.");
+        setQrGenerating(false);
+        return;
+      }
+
+      for (let tableNum = start; tableNum <= end; tableNum++) {
+        if (tableNum > start) {
+          doc.addPage();
+        }
+
+        const tableName = `Table ${tableNum}`;
+
+        doc.setFillColor(254, 253, 251);
+        doc.rect(0, 0, pageWidth, pageHeight, "F");
+
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineDashPattern([3, 3], 0);
+        doc.setLineWidth(0.3);
+        doc.line(0, pageHeight / 3, pageWidth, pageHeight / 3);
+        doc.line(0, (2 * pageHeight) / 3, pageWidth, (2 * pageHeight) / 3);
+
+        doc.setLineDashPattern([], 0);
+
+        const cy = pageHeight / 2;
+
+        doc.setDrawColor(30, 41, 59);
+        doc.setLineWidth(1.2);
+        doc.rect(15, pageHeight / 3 + 10, pageWidth - 30, pageHeight / 3 - 20, "D");
+
+        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(32);
+        doc.setFont("helvetica", "bold");
+        doc.text(tableName, pageWidth / 2, cy - 30, { align: "center" });
+
+        const tableUrl = `https://www.localeatssa.co.za/shop/${currentShop.id}?table=${tableName.replace(/\s+/g, "%20")}`;
+        const qrDataUrl = await QRCode.toDataURL(tableUrl, {
+          width: 300,
+          margin: 1,
+          color: {
+            dark: "#0F172A",
+            light: "#FFFFFF",
+          },
+        });
+
+        doc.addImage(qrDataUrl, "PNG", (pageWidth - 52) / 2, cy - 18, 52, 52);
+
+        doc.setFontSize(12);
+        doc.setTextColor(255, 84, 0);
+        doc.setFont("helvetica", "bold");
+        doc.text("SCAN QR CODE TO PLACE ORDER", pageWidth / 2, cy + 44, { align: "center" });
+
+        doc.setFontSize(10);
+        doc.setTextColor(80, 80, 80);
+        doc.setFont("helvetica", "normal");
+        const splitText = doc.splitTextToSize(tableInstructionCopy, pageWidth - 40);
+        doc.text(splitText, pageWidth / 2, cy + 51, { align: "center" });
+
+        doc.setFontSize(11);
+        doc.setTextColor(140, 130, 120);
+        doc.setFont("helvetica", "bold");
+        doc.text(currentShop.name, pageWidth / 2, cy + 62, { align: "center" });
+
+        doc.setFontSize(8);
+        doc.setTextColor(180, 180, 180);
+        doc.text("--- FOLD BACKWARD ALONG DOTTED LINE ---", pageWidth / 2, 12, { align: "center" });
+        doc.text("--- FOLD BACKWARD ALONG DOTTED LINE ---", pageWidth / 2, pageHeight - 12, { align: "center" });
+      }
+
+      doc.save(`Table_QR_Tents_${start}_to_${end}.pdf`);
+      toast.success(`Generated workspace PDF containing ${end - start + 1} table tents!`);
+      setShowTableQRModal(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to generate table tents.");
+    } finally {
+      setQrGenerating(false);
+    }
+  };
+
+  const dashboardMetrics = useMemo(() => {
+    const sent = campaignsHistory.filter(c => c.status === "Sent");
+    const totalReach = sent.reduce((sum, c) => sum + (c.stats?.reach || 0), 0);
+    const totalClicks = sent.reduce((sum, c) => sum + (c.stats?.clicks || 0), 0);
+    const totalConversions = sent.reduce((sum, c) => sum + (c.stats?.conversions || 0), 0);
+    const totalRevenue = sent.reduce((sum, c) => sum + (c.stats?.revenue || 0), 0);
+    const avgCtr = totalReach > 0 ? ((totalClicks / totalReach) * 100).toFixed(1) : "0.0";
+    
+    return {
+      active: campaignsHistory.filter(c => c.status === "Scheduled").length,
+      reach: totalReach,
+      ctr: avgCtr,
+      conversions: totalConversions,
+      revenue: totalRevenue
+    };
+  }, [campaignsHistory]);
+
   return (
-    <div className="space-y-8">
-      <header className="space-y-1">
-        <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
-          Marketing
-        </h2>
-        <p className="text-sm text-on-surface-variant font-medium">
-          Grow {currentShop?.name || "your business"} with powerful marketing
-          tools.
-        </p>
+    <div className="space-y-8" id="marketing_studio_main">
+      <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="space-y-1">
+          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight" id="marketing_header_title">
+            Marketing Studio & Toolkit
+          </h2>
+          <p className="text-sm text-on-surface-variant font-medium">
+            Launch campaigns, print custom materials, and manage table QR codes for {currentShop?.name || "your business"}.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              setCampaignType("email");
+              setShowCampaignModal(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 text-xs bg-primary text-on-primary rounded-xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-md shadow-primary/10"
+            id="marketing_create_cmp_btn"
+          >
+            <Plus size={14} />
+            AI copywriter
+          </button>
+          <button
+            onClick={() => setShowFlyerModal(true)}
+            className="flex items-center gap-2 px-4 py-2 text-xs bg-surface-container border border-outline-variant/10 text-on-surface rounded-xl font-bold hover:bg-surface-container-high transition-colors"
+            id="marketing_flyer_studio_btn"
+          >
+            <Printer size={14} />
+            Flyer Builder
+          </button>
+        </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* METRICS ROW */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" id="marketing_metrics_row">
+        {[
+          { label: "Active Channels", value: "3 Active", desc: "SMS, Email, Social", icon: Mail, color: "text-blue-500 bg-blue-500/10" },
+          { label: "Est. Total Reach", value: dashboardMetrics.reach.toLocaleString(), desc: "Engaged recipients", icon: Users, color: "text-purple-500 bg-purple-500/10" },
+          { label: "Average CTR", value: `${dashboardMetrics.ctr}%`, desc: "Click-through rate", icon: Zap, color: "text-amber-500 bg-amber-500/10" },
+          { label: "Marketing Sales", value: `R${dashboardMetrics.revenue.toLocaleString()}`, desc: "Direct code revenue", icon: CreditCard, color: "text-emerald-500 bg-emerald-500/10" },
+        ].map((m, i) => (
+          <div key={i} className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/10">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-black text-on-surface-variant/60 uppercase tracking-wider">{m.label}</span>
+              <div className={cn("p-1.5 rounded-lg", m.color)}>
+                <m.icon size={14} />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-on-surface leading-none mb-1">{m.value}</p>
+            <p className="text-[10px] text-on-surface-variant/70 font-medium">{m.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6" id="marketing_secondary_cards">
+        {/* Email, SMS, Social fast templates triggers */}
         {[
           {
             title: "Email Campaigns",
-            desc: "Send newsletters and promotions to your customers.",
+            desc: "Draft professional newsletters with coupons and direct links.",
             icon: Mail,
-            color: "bg-blue-500",
+            color: "bg-blue-500 text-blue-500",
             type: "email",
           },
           {
-            title: "SMS Marketing",
-            desc: "Reach customers directly on their phones.",
+            title: "SMS Broadcasts",
+            desc: "Transmit flash discount alerts directly to customer cell numbers.",
             icon: MessageSquare,
-            color: "bg-green-500",
+            color: "bg-emerald-500 text-emerald-500",
             type: "sms",
           },
           {
-            title: "Social Media",
-            desc: "Connect your social accounts to post updates.",
+            title: "Social Caption Pack",
+            desc: "Design Instagram templates with high-engagement local hashtags.",
             icon: Share2,
-            color: "bg-purple-500",
+            color: "bg-purple-500 text-purple-500",
             type: "social",
           },
         ].map((tool, i) => (
           <motion.div
             key={i}
-            whileHover={{ y: -5 }}
-            className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4"
+            whileHover={{ y: -3 }}
+            className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 flex flex-col justify-between"
           >
-            <div
-              className={cn(
-                "w-12 h-12 rounded-2xl flex items-center justify-center text-white",
-                tool.color,
-              )}
-            >
-              <tool.icon size={24} />
+            <div className="space-y-4">
+              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center bg-on-surface/5", tool.color)}>
+                <tool.icon size={20} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-on-surface">{tool.title}</h3>
+                <p className="text-xs text-on-surface-variant/80 mt-1 leading-relaxed">{tool.desc}</p>
+              </div>
             </div>
-            <h3 className="text-lg font-bold text-on-surface">{tool.title}</h3>
-            <p className="text-sm text-on-surface-variant leading-relaxed">
-              {tool.desc}
-            </p>
             <button
               onClick={() => {
                 setCampaignType(tool.type as "email" | "sms" | "social");
                 setShowCampaignModal(true);
               }}
-              className="w-full py-2 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors"
+              className="mt-5 w-full py-2 bg-on-surface/5 text-on-surface text-xs font-bold rounded-xl hover:bg-on-surface/10 transition-colors"
             >
-              Configure
+              Compose with AI
             </button>
           </motion.div>
         ))}
-
-        {/* QR Table Ordering Card */}
-        <motion.div
-          whileHover={{ y: -5 }}
-          className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4 flex flex-col"
-        >
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white bg-teal-500">
-            <QrCode size={24} />
-          </div>
-          <h3 className="text-lg font-bold text-on-surface">Table Ordering</h3>
-          <p className="text-sm text-on-surface-variant leading-relaxed">
-            Generate QR codes for specific tables so dine-in customers can
-            order.
-          </p>
-          <button
-            onClick={() => {
-              toast.info("Table Ordering coming soon!", {
-                description:
-                  "You will be able to generate unique QR codes for each table.",
-              });
-            }}
-            className="w-full py-2 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors mt-auto"
-          >
-            Generate Codes
-          </button>
-        </motion.div>
-
-        {/* Printable Flyer Card */}
-        <motion.div
-          whileHover={{ y: -5 }}
-          className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4 flex flex-col"
-        >
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white bg-primary">
-            <Printer size={24} />
-          </div>
-          <h3 className="text-lg font-bold text-on-surface">Printable Flyer</h3>
-          <p className="text-sm text-on-surface-variant leading-relaxed">
-            Generate a branded PDF with a QR code linking to your shop.
-          </p>
-          <button
-            onClick={async () => {
-              if (!currentShop) return;
-              try {
-                const { jsPDF } = await import("jspdf");
-                const QRCode = (await import("qrcode")).default;
-
-                const doc = new jsPDF({
-                  orientation: "portrait",
-                  unit: "mm",
-                  format: "a4",
-                });
-
-                const pageWidth = doc.internal.pageSize.getWidth();
-                const pageHeight = doc.internal.pageSize.getHeight();
-
-                // Background
-                doc.setFillColor(250, 249, 248);
-                doc.rect(0, 0, pageWidth, pageHeight, "F");
-
-                // Header / Brand
-                doc.setTextColor(255, 84, 0);
-                doc.setFontSize(40);
-                doc.setFont("helvetica", "bold");
-                doc.text("LocalEats", pageWidth / 2, 40, { align: "center" });
-
-                // Shop Name
-                doc.setTextColor(26, 28, 30);
-                doc.setFontSize(28);
-                doc.text(`Order from ${currentShop.name}`, pageWidth / 2, 65, {
-                  align: "center",
-                });
-
-                // Subtitle
-                doc.setFontSize(16);
-                doc.setTextColor(83, 67, 63);
-                doc.text(
-                  "Scan the code below to view our menu",
-                  pageWidth / 2,
-                  80,
-                  { align: "center" },
-                );
-                doc.text(
-                  "and follow us on the LocalEats app!",
-                  pageWidth / 2,
-                  88,
-                  { align: "center" },
-                );
-
-                // Generate QR Code
-                const shopUrl = `https://www.localeatssa.co.za/?shopId=${currentShop.id}`;
-                const qrDataUrl = await QRCode.toDataURL(shopUrl, {
-                  width: 400,
-                  margin: 2,
-                  color: {
-                    dark: "#1A1C1E",
-                    light: "#FFFFFF",
-                  },
-                });
-
-                // Add QR Code to PDF
-                const qrSize = 80;
-                const qrX = (pageWidth - qrSize) / 2;
-                const qrY = 110;
-                doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
-
-                // Call to action below QR
-                doc.setFontSize(20);
-                doc.setTextColor(255, 84, 0);
-                doc.setFont("helvetica", "bold");
-                doc.text("Skip the queue. Order ahead.", pageWidth / 2, 210, {
-                  align: "center",
-                });
-
-                // Footer
-                doc.setFontSize(12);
-                doc.setTextColor(133, 115, 110);
-                doc.setFont("helvetica", "normal");
-                doc.text(
-                  "Powered by LocalEats South Africa",
-                  pageWidth / 2,
-                  280,
-                  { align: "center" },
-                );
-
-                doc.save(
-                  `LocalEats_Promo_${currentShop.name.replace(/\s+/g, "_")}.pdf`,
-                );
-                toast.success("Flyer generated successfully!");
-              } catch (err) {
-                console.error(err);
-                toast.error("Failed to generate flyer.");
-              }
-            }}
-            className="w-full py-2 mt-auto bg-primary text-on-primary font-bold rounded-xl text-xs hover:bg-primary/90 transition-colors"
-          >
-            Generate PDF
-          </button>
-        </motion.div>
       </div>
 
-      <div className="bg-primary/5 rounded-3xl p-8 border border-primary/10">
-        <div className="flex flex-col md:flex-row items-center gap-8">
-          <div className="flex-1 space-y-4 text-center md:text-left">
-            <h3 className="text-xl font-bold text-primary flex items-center justify-center md:justify-start gap-2">
-              <Sparkles size={24} />
-              AI Marketing Assistant
-            </h3>
-            <p className="text-on-surface-variant">
-              Let our AI help you create the perfect marketing campaign based on
-              your shop's performance data and customer trends.
-            </p>
-            <button
-              onClick={handleGenerateCampaign}
-              disabled={isGenerating}
-              className="px-6 py-3 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2 mx-auto md:mx-0"
-            >
-              {isGenerating ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-on-primary/30 border-t-on-primary rounded-full animate-spin" />
-                  Analyzing Data...
-                </>
-              ) : (
-                <>
-                  <Zap size={20} />
-                  Generate Campaign
-                </>
-              )}
-            </button>
-          </div>
-          <div className="w-full md:w-64 h-48 bg-surface-container-lowest rounded-2xl border border-outline-variant/10 flex items-center justify-center relative overflow-hidden group">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-            <Zap
-              size={64}
-              className="text-primary/20 group-hover:scale-110 transition-transform duration-500"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Campaign Builder Modal (Simplified) */}
-      {showCampaignModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-on-surface/20 backdrop-blur-sm">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="bg-surface-container-lowest w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden"
-          >
-            <div className="p-8 space-y-6">
-              <div className="flex justify-between items-center">
-                <h3 className="text-2xl font-headline font-bold text-on-surface">
-                  Create {campaignType.toUpperCase()} Campaign
-                </h3>
-                <button
-                  onClick={() => setShowCampaignModal(false)}
-                  className="p-2 hover:bg-surface-container rounded-full transition-colors"
-                >
-                  <X size={24} />
-                </button>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" id="marketing_interactive_studios">
+        {/* Interactive Dynamic Flyer Card */}
+        <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 flex flex-col justify-between md:flex-row gap-6">
+          <div className="flex-1 flex flex-col justify-between space-y-4">
+            <div className="space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center">
+                <Printer size={20} />
               </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-on-surface ml-1">
-                    Campaign Name
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g., Weekend Flash Sale"
-                    className="w-full px-4 py-3 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-on-surface ml-1">
-                    Target Audience
-                  </label>
-                  <select className="w-full px-4 py-3 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/20">
-                    <option>All Customers</option>
-                    <option>New Customers (Last 30 days)</option>
-                    <option>Inactive Customers (&gt; 60 days)</option>
-                    <option>High Spenders</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-on-surface ml-1">
-                    Campaign Message
-                  </label>
-                  <textarea
-                    rows={4}
-                    placeholder="Write your message here..."
-                    className="w-full px-4 py-3 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/20 resize-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-4 pt-4">
-                <button
-                  onClick={() => setShowCampaignModal(false)}
-                  className="flex-1 py-4 bg-surface-container text-on-surface font-bold rounded-2xl hover:bg-surface-container-high transition-all"
-                >
-                  Save Draft
-                </button>
-                <button
-                  onClick={() => {
-                    toast.success("Campaign scheduled successfully!");
-                    setShowCampaignModal(false);
-                  }}
-                  className="flex-1 py-4 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] transition-all"
-                >
-                  Launch Campaign
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      <div className="space-y-6">
-        <h3 className="text-xl font-bold text-on-surface flex items-center gap-2">
-          <Sparkles size={24} className="text-primary" />
-          Expert Marketing Strategies
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[
-            {
-              title: "Create Urgency with Expiry Dates",
-              strategy:
-                "Set short-term expiry dates (24-48 hours) for flash sales. This triggers FOMO (Fear Of Missing Out) and drives immediate action.",
-            },
-            {
-              title: "Target First-Time Customers",
-              strategy:
-                'Offer a "WELCOME10" code for 10% off their first order. This lowers the barrier to entry and builds initial trust.',
-            },
-            {
-              title: "Reward Loyalty",
-              strategy:
-                "Send exclusive codes to customers who haven't ordered in 30 days. Personalization increases redemption rates by up to 40%.",
-            },
-            {
-              title: "Social Media Exclusives",
-              strategy:
-                "Create unique codes for Instagram vs Facebook (e.g., INSTA5, FB5) to track which platform brings in more high-value customers.",
-            },
-          ].map((item, i) => (
-            <div
-              key={i}
-              className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/5"
-            >
-              <h4 className="font-bold text-on-surface mb-2">{item.title}</h4>
-              <p className="text-sm text-on-surface-variant leading-relaxed">
-                {item.strategy}
+              <h3 className="text-lg font-bold text-on-surface">Store Poster Studio</h3>
+              <p className="text-xs text-on-surface-variant leading-relaxed">
+                Design custom storefront posters featuring a customized brand theme, scan-to-order codes, and highlighted promo coupons.
               </p>
             </div>
-          ))}
+            <button
+              onClick={() => setShowFlyerModal(true)}
+              className="w-full md:w-fit px-5 py-2 text-xs bg-orange-500 text-white font-bold rounded-xl shadow-md hover:bg-orange-600 transition"
+            >
+              Customize & Generate
+            </button>
+          </div>
+          <div className="w-full md:w-44 h-40 bg-zinc-950/5 border border-outline-variant/10 rounded-2xl flex flex-col items-center justify-center p-4 relative overflow-hidden shrink-0">
+            <div className="absolute top-1 right-2 text-[8px] uppercase font-bold text-zinc-400 font-mono">Mockup Preview</div>
+            <div className="w-16 h-16 border-4 border-dashed border-orange-500/20 rounded-xl flex items-center justify-center mb-3">
+              <QrCode size={36} className="text-orange-500/60" />
+            </div>
+            <div className="text-[10px] font-bold text-on-surface text-center">LocalEats Flyer.pdf</div>
+            <div className="text-[8px] font-medium text-on-surface-variant/60 uppercase tracking-widest mt-0.5">Custom Branded</div>
+          </div>
+        </div>
+
+        {/* Dynamic 桌 QR Card */}
+        <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 flex flex-col justify-between md:flex-row gap-6">
+          <div className="flex-1 flex flex-col justify-between space-y-4">
+            <div className="space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                <QrCode size={20} />
+              </div>
+              <h3 className="text-lg font-bold text-on-surface">Dine-In Table QR Tents</h3>
+              <p className="text-xs text-on-surface-variant leading-relaxed">
+                Render custom foldable table tags. Dine-in customers scan their table to place food orders that go straight to your live terminal.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowTableQRModal(true)}
+              className="w-full md:w-fit px-5 py-2 text-xs bg-indigo-600 text-white font-bold rounded-xl shadow-md hover:bg-indigo-700 transition"
+            >
+              Generate Table Tents
+            </button>
+          </div>
+          <div className="w-full md:w-44 h-40 bg-zinc-950/5 border border-outline-variant/10 rounded-2xl flex flex-col items-center justify-center p-4 relative overflow-hidden shrink-0">
+            <div className="absolute top-1 right-2 text-[8px] uppercase font-bold text-zinc-400 font-mono">Fold Tent</div>
+            <div className="w-14 h-14 bg-white shadow-sm border border-outline-variant/20 rounded-lg flex flex-col items-center justify-center relative transform -rotate-6">
+              <div className="text-[8px] font-black leading-tight text-indigo-600">TABLE 5</div>
+              <QrCode size={22} className="text-zinc-800" />
+              <div className="text-[5px] uppercase text-zinc-400">Scan Me</div>
+            </div>
+            <div className="text-[9px] font-bold text-on-text mt-3 text-center">Export consecutive numbers</div>
+          </div>
         </div>
       </div>
+
+      {/* CAMPAIGN CHRONOLOGY & HISTORY STATS */}
+      <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-3xl p-6 space-y-4" id="marketing_cmp_history_panel">
+        <div className="flex items-center justify-between border-b border-outline-variant/10 pb-4">
+          <div>
+            <h3 className="font-bold text-base text-on-surface">Marketing Log & Analytics</h3>
+            <p className="text-[10px] text-on-surface-variant/70">Previous broadcasts and active promotional schedules</p>
+          </div>
+          <span className="text-xs font-bold text-primary bg-primary/5 px-2.5 py-1 rounded-lg">
+            {campaignsHistory.length} Total Campaigns
+          </span>
+        </div>
+
+        {campaignsHistory.length === 0 ? (
+          <div className="text-center py-8 text-on-surface-variant/40">
+            <Mail size={32} className="mx-auto mb-2 opacity-30" />
+            <p className="text-sm font-medium">No past campaign records found.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-outline-variant/10">
+            {campaignsHistory.map((cmp) => (
+              <div key={cmp.id} className="py-4 first:pt-0 last:pb-0 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
+                    cmp.type === "email" ? "bg-blue-500/10 text-blue-500" : cmp.type === "sms" ? "bg-emerald-500/10 text-emerald-500" : "bg-purple-500/10 text-purple-500"
+                  )}>
+                    {cmp.type === "email" ? <Mail size={18} /> : cmp.type === "sms" ? <MessageSquare size={18} /> : <Share2 size={18} />}
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-sm text-on-surface">{cmp.name}</p>
+                      <span className={cn(
+                        "text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider",
+                        cmp.status === "Sent" ? "bg-emerald-500/10 text-emerald-600" : cmp.status === "Scheduled" ? "bg-amber-500/10 text-amber-600" : "bg-zinc-500/10 text-zinc-500"
+                      )}>
+                        {cmp.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-on-surface-variant/80 font-mono select-all truncate max-w-sm md:max-w-md">{cmp.message}</p>
+                    <p className="text-[10px] text-on-surface-variant/60 font-medium">
+                      Objective: <span className="font-semibold text-on-surface-variant">{cmp.objective || "General promo"}</span> • Channel: <span className="font-semibold text-on-surface-variant">{cmp.channel}</span> • Sent: {new Date(cmp.sentAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+
+                {cmp.status === "Sent" && (
+                  <div className="flex flex-wrap items-center gap-4 bg-on-surface/5 px-4 py-2.5 rounded-2xl">
+                    <div className="text-center">
+                      <p className="text-xs font-bold text-on-surface">{cmp.stats?.reach || 0}</p>
+                      <p className="text-[8px] font-semibold uppercase text-on-surface-variant/60">Reach</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-bold text-on-surface">{cmp.stats?.clicks || 0}</p>
+                      <p className="text-[8px] font-semibold uppercase text-on-surface-variant/60">Clicks</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-bold text-on-surface">{cmp.stats?.conversions || 0}</p>
+                      <p className="text-[8px] font-semibold uppercase text-on-surface-variant/60">Sales</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-bold text-emerald-600">R{cmp.stats?.revenue || 0}</p>
+                      <p className="text-[8px] font-semibold uppercase text-on-surface-variant/60">Revenue</p>
+                    </div>
+                    <button
+                      onClick={() => deleteCampaign(cmp.id)}
+                      className="text-on-surface-variant/40 hover:text-red-500 transition-colors p-1"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+                {cmp.status !== "Sent" && (
+                  <button
+                    onClick={() => deleteCampaign(cmp.id)}
+                    className="text-on-surface-variant/40 hover:text-red-500 transition-colors self-end md:self-center p-2"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* EXPERT TIP BANNER */}
+      <div className="bg-primary/5 rounded-3xl p-6 border border-primary/10 flex items-center justify-between gap-6" id="marketing_assistant_trigger">
+        <div className="space-y-2">
+          <h4 className="font-bold text-sm text-primary flex items-center gap-2">
+            <Sparkles size={16} />
+            AI Marketing Strategist Advice
+          </h4>
+          <p className="text-xs text-on-surface-variant leading-relaxed max-w-2xl">
+            Restaurants that configure special codes like &quot;WELCOME10&quot; on physical table cards see an average 34% increase in direct mobile ordering volume, reducing long counter queue times.
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            setCampaignType("email");
+            setShowCampaignModal(true);
+          }}
+          className="shrink-0 scale-95 hover:scale-100 transition px-4 py-2 text-xs bg-primary text-on-primary font-bold rounded-xl"
+        >
+          Draft Campaign Now
+        </button>
+      </div>
+
+      {/* PRINTABLE FLYER BUILDER MODAL */}
+      <AnimatePresence>
+        {showFlyerModal && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm pointer-events-auto"
+              onClick={() => setShowFlyerModal(false)}
+            />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="w-full max-w-4xl bg-surface-container-low rounded-3xl border border-outline-variant/20 shadow-2xl relative flex flex-col md:flex-row pointer-events-auto overflow-hidden text-on-surface h-[90vh] md:h-auto md:max-h-[85vh]"
+            >
+              {/* Left Settings Panel */}
+              <div className="flex-1 p-6 md:p-8 space-y-5 overflow-y-auto">
+                <div className="flex items-center justify-between border-b border-outline-variant/10 pb-4">
+                  <div>
+                    <h3 className="font-bold text-lg">Promo Flyer Builder</h3>
+                    <p className="text-[10px] text-on-surface-variant/70 font-medium">Design professional physical posters instantly</p>
+                  </div>
+                  <button
+                    onClick={() => setShowFlyerModal(false)}
+                    className="w-8 h-8 rounded-full hover:bg-on-surface/5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">1. Poster Theme Palette</label>
+                    <div className="grid grid-cols-5 gap-2">
+                      {Object.entries(BRAND_PALETTES).map(([key, item]) => (
+                        <button
+                          key={key}
+                          onClick={() => setFlyerTheme(key as "orange" | "emerald" | "midnight" | "rose" | "purple")}
+                          className={cn(
+                            "py-2.5 px-2 rounded-xl border flex flex-col items-center gap-1.5 transition-all",
+                            flyerTheme === key ? "border-on-surface bg-on-surface/5" : "border-outline-variant/10 hover:bg-on-surface/5"
+                          )}
+                        >
+                          <div className={cn("w-4 h-4 rounded-full", item.bg)} />
+                          <span className="text-[9px] font-bold capitalize">{key}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">2. Flyer Format</label>
+                      <select
+                        value={flyerSize}
+                        onChange={(e) => setFlyerSize(e.target.value as "A4" | "Tent" | "Stand")}
+                        className="w-full px-3 py-2 bg-on-surface/5 text-xs font-bold border border-outline-variant/20 rounded-xl focus:ring-1 focus:ring-primary focus:outline-none"
+                      >
+                        <option value="A4">A4 Window Poster</option>
+                        <option value="Tent">Table Tent (Foldable)</option>
+                        <option value="Stand">Counter Stand (5x7)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5 font-headline">3. Active Promo Coupon</label>
+                      <select
+                        value={flyerCouponCode}
+                        onChange={(e) => setFlyerCouponCode(e.target.value)}
+                        className="w-full px-3 py-2 bg-on-surface/5 text-xs font-bold border border-outline-variant/20 rounded-xl focus:ring-1 focus:ring-primary focus:outline-none"
+                      >
+                        <option value="">No code overlay</option>
+                        {coupons.map((c) => (
+                          <option key={c.id} value={c.code}>
+                            {c.code} ({c.discount_type === "percentage" ? `${c.discount_value}% Off` : `R${c.discount_value} Off`})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">4. Main Display Headline</label>
+                    <input
+                      type="text"
+                      value={flyerHeadline}
+                      onChange={(e) => setFlyerHeadline(e.target.value)}
+                      placeholder="e.g. Order Online & Skip the queue!"
+                      className="w-full px-3 py-2.5 bg-on-surface/5 border border-outline-variant/20 rounded-xl text-xs focus:ring-1 focus:ring-primary focus:outline-none font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5 font-headline">5. Highlight Sub-headline</label>
+                    <input
+                      type="text"
+                      value={flyerSubline}
+                      onChange={(e) => setFlyerSubline(e.target.value)}
+                      placeholder="e.g. Scan code to explore our delicious menu"
+                      className="w-full px-3 py-2.5 bg-on-surface/5 border border-outline-variant/20 rounded-xl text-xs focus:ring-1 focus:ring-primary focus:outline-none font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">6. Secondary Call to Action (Footer Line)</label>
+                    <input
+                      type="text"
+                      value={flyerCTA}
+                      onChange={(e) => setFlyerCTA(e.target.value)}
+                      placeholder="e.g. WiFi Password: localchef / Free delivery in 2km"
+                      className="w-full px-3 py-2.5 bg-on-surface/5 border border-outline-variant/20 rounded-xl text-xs focus:ring-1 focus:ring-primary focus:outline-none font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button
+                    onClick={() => setShowFlyerModal(false)}
+                    className="flex-1 py-3 bg-transparent border border-outline-variant/20 rounded-xl text-xs font-bold hover:bg-on-surface/5 transition-colors"
+                  >
+                    Discard Changes
+                  </button>
+                  <button
+                    onClick={handleGenerateFlyerPDF}
+                    className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl text-xs shadow-md shadow-orange-500/10 flex items-center justify-center gap-1.5"
+                  >
+                    <Download size={14} />
+                    Download printable PDF
+                  </button>
+                </div>
+              </div>
+
+              {/* Right WYSIWYG Mockup Preview */}
+              <div className="w-full md:w-[350px] bg-zinc-900 p-6 flex flex-col justify-center items-center relative gap-4 shrink-0 overflow-y-auto">
+                <div className="text-white/60 text-[10px] font-mono absolute top-4 left-4">LIVE PREVIEW RECONSTRUCT</div>
+                
+                {/* The Virtual Card matching physical printing closely */}
+                <div className="w-[240px] aspect-[1/1.414] bg-[#FFFDF9] border border-white/10 rounded-xl p-5 shadow-2xl relative flex flex-col justify-between items-center text-zinc-900 select-none overflow-hidden">
+                  {/* Decorative Thin borders */}
+                  <div className={cn("absolute inset-2 border rounded-lg pointer-events-none", BRAND_PALETTES[flyerTheme].border)} />
+                  <div className={cn("absolute inset-2.5 border border-dashed rounded-lg pointer-events-none opacity-40", BRAND_PALETTES[flyerTheme].border)} />
+                  
+                  {/* LocalEats header logo */}
+                  <div className={cn("font-headline font-black text-lg text-center mt-2", BRAND_PALETTES[flyerTheme].text)}>
+                    LocalEats
+                  </div>
+
+                  <div className="w-[85%] border-b border-zinc-200" />
+
+                  {/* Merchant Name */}
+                  <div className="text-center">
+                    <div className="text-[10px] font-black uppercase text-zinc-400 tracking-wider">Ordering Direct From</div>
+                    <div className="text-xs font-black truncate max-w-[170px] mt-0.5">{currentShop?.name || "Our Restaurant"}</div>
+                  </div>
+
+                  {/* Headline Custom text */}
+                  <div className="text-[9px] font-bold text-center px-1 text-zinc-600 max-h-[30px] line-clamp-2 leading-tight">
+                    {flyerHeadline || "Scan code underneath to skip queues!"}
+                  </div>
+
+                  {/* Large Stylized QR Box */}
+                  <div className="w-28 h-28 bg-white border border-zinc-200/80 rounded-lg flex items-center justify-center shadow-inner relative">
+                    <QrCode size={92} className="text-zinc-800" />
+                    <div className="absolute inset-0 bg-zinc-950/5 flex items-center justify-center">
+                      <span className="text-[9px] bg-zinc-900 text-white font-bold px-1.5 py-0.5 rounded shadow">SCAN ME</span>
+                    </div>
+                  </div>
+
+                  {/* Custom Promo Subline details */}
+                  <div className={cn("text-[9px] font-bold text-center px-2 line-clamp-2 leading-tight", BRAND_PALETTES[flyerTheme].text)}>
+                    {flyerSubline || "Explore menu and claim special fast deliveries!"}
+                  </div>
+
+                  {/* Dynamic coupon banner card */}
+                  {flyerCouponCode ? (
+                    <div className={cn("text-white font-bold text-[8px] py-1 px-3 rounded text-center tracking-wider w-[85%] truncate uppercase", BRAND_PALETTES[flyerTheme].bg)}>
+                      CODE: {flyerCouponCode}
+                    </div>
+                  ) : (
+                    <div className="text-[7px] text-zinc-400 uppercase tracking-widest leading-none">Healthy • Local • Eco-Friendly</div>
+                  )}
+
+                  {/* Custom CTA footer */}
+                  <div className="text-[7px] text-zinc-400 font-serif italic text-center truncate max-w-[180px] mb-1">
+                    {flyerCTA || "WiFi Available on counter terminals"}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* DINE-IN TABLE QR BUILDER TENTS MODAL */}
+      <AnimatePresence>
+        {showTableQRModal && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm pointer-events-auto"
+              onClick={() => setShowTableQRModal(false)}
+            />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="w-full max-w-4xl bg-surface-container-low rounded-3xl border border-outline-variant/20 shadow-2xl relative flex flex-col md:flex-row pointer-events-auto overflow-hidden text-on-surface"
+            >
+              {/* Left Config Panel */}
+              <div className="flex-1 p-6 md:p-8 space-y-5">
+                <div className="flex items-center justify-between border-b border-outline-variant/10 pb-4">
+                  <div>
+                    <h3 className="font-bold text-lg">Dine-In Table Tent QR Studio</h3>
+                    <p className="text-[10px] text-on-surface-variant/70 font-medium">Generate print-ready consecutive table folders instantly</p>
+                  </div>
+                  <button
+                    onClick={() => setShowTableQRModal(false)}
+                    className="w-8 h-8 rounded-full hover:bg-on-surface/5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">Start Table Number</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={tableCountStart}
+                        onChange={(e) => setTableCountStart(Number(e.target.value))}
+                        className="w-full px-3 py-2 bg-on-surface/5 border border-outline-variant/20 rounded-xl text-xs font-bold focus:ring-1 focus:ring-primary focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">End Table Number</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={tableCountEnd}
+                        onChange={(e) => setTableCountEnd(Number(e.target.value))}
+                        className="w-full px-3 py-2 bg-on-surface/5 border border-outline-variant/20 rounded-xl text-xs font-bold focus:ring-1 focus:ring-primary focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">Dine-In instructions text</label>
+                    <textarea
+                      rows={3}
+                      value={tableInstructionCopy}
+                      onChange={(e) => setTableInstructionCopy(e.target.value)}
+                      placeholder="e.g. Scan QR to order, we will deliver direct to this table."
+                      className="w-full px-3 py-2.5 bg-on-surface/5 border border-outline-variant/20 rounded-xl text-xs focus:ring-1 focus:ring-primary focus:outline-none resize-none font-medium text-on-surface"
+                    />
+                  </div>
+
+                  <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
+                    <p className="text-[10px] text-primary font-bold uppercase tracking-wider flex items-center gap-1.5 mb-1">
+                      <Info size={12} /> Printing Guidelines
+                    </p>
+                    <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                      This generates a custom multi-page PDF on A4 spacing. Fold each sheet backwards into a triangular tent. Customers scan to browse, and their physical table identifier maps to your kitchen queue.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button
+                    onClick={() => setShowTableQRModal(false)}
+                    className="flex-1 py-3 bg-transparent border border-outline-variant/20 rounded-xl text-xs font-bold hover:bg-on-surface/5 transition-colors"
+                  >
+                    Discard Customization
+                  </button>
+                  <button
+                    onClick={handleGenerateTableQRPDF}
+                    disabled={qrGenerating}
+                    className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-600/10 hover:bg-indigo-700 transition flex items-center justify-center gap-1.5 disabled:opacity-55"
+                  >
+                    {qrGenerating ? "Cooking Document..." : "Download Table PDF"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Right WYSIWYG Mockup Tent Preview */}
+              <div className="w-full md:w-[350px] bg-slate-900 p-6 flex flex-col justify-center items-center relative gap-4 shrink-0 overflow-y-auto">
+                <div className="text-white/60 text-[10px] font-mono absolute top-4 left-4">PRE-VIEW FOLDED TENT</div>
+
+                {/* Simulated Tent 3D Face layout */}
+                <div className="w-[200px] border border-white/5 rounded-2xl bg-[#FFFDF9] py-6 px-5 text-slate-800 shadow-2xl relative flex flex-col items-center justify-between text-center overflow-hidden h-[300px]">
+                  {/* Decorative Frame */}
+                  <div className="absolute inset-2 border border-slate-300 rounded-xl" />
+                  
+                  {/* Table Label Badge */}
+                  <div className="z-10 bg-slate-800 text-white font-bold px-3 py-1 rounded-full text-xs uppercase tracking-wider leading-none mt-1">
+                    Table {tableCountStart || 1}
+                  </div>
+
+                  {/* Mockup QR */}
+                  <div className="w-24 h-24 border border-zinc-200 bg-white rounded-lg flex items-center justify-center p-1.5 my-3 shadow-sm z-10">
+                    <QrCode size={80} className="text-slate-800" />
+                  </div>
+
+                  {/* Scan Line text */}
+                  <div className="z-10 text-[9px] font-black text-rose-600 tracking-wider uppercase">
+                    Scan To Order Direct
+                  </div>
+
+                  {/* Dynamic user table instruction */}
+                  <div className="z-10 text-[8px] text-zinc-500 font-medium line-clamp-2 px-1 leading-tight tracking-tight">
+                    {tableInstructionCopy || "Scan to view our fresh live chef menu!"}
+                  </div>
+
+                  {/* Merchant Brand signoff */}
+                  <div className="z-10 text-[10px] font-black tracking-tight text-slate-700 uppercase mt-1">
+                    {currentShop?.name || "Local Restaurant"}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* AI MARKETING CAMPAIGN DRAWER BUILDER */}
+      <AnimatePresence>
+        {showCampaignModal && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm pointer-events-auto"
+              onClick={() => setShowCampaignModal(false)}
+            />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="w-full max-w-4xl bg-surface-container-low rounded-3xl border border-outline-variant/20 shadow-2xl relative flex flex-col md:flex-row pointer-events-auto overflow-hidden text-on-surface h-[90vh] md:h-auto md:max-h-[85vh]"
+            >
+              {/* Left Config Panel */}
+              <div className="flex-1 p-6 md:p-8 space-y-4 overflow-y-auto">
+                <div className="flex items-center justify-between border-b border-outline-variant/10 pb-3">
+                  <div>
+                    <h3 className="font-bold text-lg flex items-center gap-1.5">
+                      <Sparkles className="text-primary" size={18} />
+                      AI Multichannel Copywriter
+                    </h3>
+                    <p className="text-[10px] text-on-surface-variant/70 font-medium">Bespoke copy drafts configured by store-metrics with Gemini</p>
+                  </div>
+                  <button
+                    onClick={() => setShowCampaignModal(false)}
+                    className="w-8 h-8 rounded-full hover:bg-on-surface/5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3" id="marketing_cmp_inputs">
+                  <div>
+                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1">Target Channel</label>
+                    <select
+                      value={campaignType}
+                      onChange={(e) => setCampaignType(e.target.value as "email" | "sms" | "social")}
+                      className="w-full px-3 py-2 bg-on-surface/5 text-xs font-bold border border-outline-variant/20 rounded-xl focus:ring-1 focus:ring-primary focus:outline-none"
+                    >
+                      <option value="email">Email Broadcast</option>
+                      <option value="sms">SMS text alert</option>
+                      <option value="social">Social caption pack</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1 text-on-surface">Target Tone</label>
+                    <select
+                      value={tone}
+                      onChange={(e) => setTone(e.target.value)}
+                      className="w-full px-3 py-2 bg-on-surface/5 text-xs font-bold border border-outline-variant/20 rounded-xl focus:ring-1 focus:ring-primary focus:outline-none"
+                    >
+                      <option>Casual & Friendly</option>
+                      <option>Excited & Playful</option>
+                      <option>Urgent & Snappy</option>
+                      <option>Professional / Formal</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1">Promo Objective</label>
+                    <select
+                      value={campaignObjective}
+                      onChange={(e) => setCampaignObjective(e.target.value)}
+                      className="w-full px-3 py-2 bg-on-surface/5 text-xs font-bold border border-outline-variant/20 rounded-xl focus:ring-1 focus:ring-primary focus:outline-none"
+                    >
+                      <option>Weekend Special Offer</option>
+                      <option>Recover Cold Customers</option>
+                      <option>Dish Highlight Promotion</option>
+                      <option>Dine-in Boost</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1">Campaign Title (internal reference)</label>
+                    <input
+                      type="text"
+                      value={campaignTitleText}
+                      onChange={(e) => setCampaignTitleText(e.target.value)}
+                      placeholder="e.g. Easter Pizza Boost"
+                      className="w-full px-3 py-1.5 bg-on-surface/5 border border-outline-variant/20 rounded-xl text-xs focus:ring-1 focus:ring-primary focus:outline-none font-medium h-9"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black text-on-surface-variant/60 uppercase tracking-wider mb-1">Highlight Specific Dish</label>
+                    <select
+                      value={selectedDishName}
+                      onChange={(e) => setSelectedDishName(e.target.value)}
+                      className="w-full px-3 py-2 bg-on-surface/5 text-xs font-bold border border-outline-variant/20 rounded-xl focus:ring-1 focus:ring-primary focus:outline-none"
+                    >
+                      <option value="">No dish highlighted</option>
+                      {menuItems.map((item) => (
+                        <option key={item.id} value={item.name}>
+                          {item.name} (R{item.price})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-on-surface-variant/60 uppercase tracking-wider mb-1">Claim Code Link</label>
+                    <select
+                      value={selectedCouponCode}
+                      onChange={(e) => setSelectedCouponCode(e.target.value)}
+                      className="w-full px-3 py-2 bg-on-surface/5 text-xs font-bold border border-outline-variant/20 rounded-xl focus:ring-1 focus:ring-primary focus:outline-none"
+                    >
+                      <option value="">No code linked</option>
+                      {coupons.map((c) => (
+                        <option key={c.id} value={c.code}>
+                          {c.code}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Simulated edits pane for generated content */}
+                {generatedCopy.message && (
+                  <div className="space-y-3 bg-on-surface/5 p-4 rounded-2xl border border-outline-variant/10">
+                    <p className="text-[10px] font-black text-primary uppercase">Draft Editor Board</p>
+                    
+                    {campaignType === "email" && (
+                      <div>
+                        <label className="block text-[10px] font-black text-on-surface-variant/60 uppercase mb-1">Subject Line</label>
+                        <input
+                          type="text"
+                          value={generatedCopy.subject}
+                          onChange={(e) => setGeneratedCopy({ ...generatedCopy, subject: e.target.value })}
+                          className="w-full px-3 py-1.5 bg-surface rounded-xl text-xs font-medium focus:outline-none"
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-[10px] font-black text-on-surface-variant/60 uppercase mb-1">Message Body</label>
+                      <textarea
+                        rows={5}
+                        value={generatedCopy.message}
+                        onChange={(e) => setGeneratedCopy({ ...generatedCopy, message: e.target.value })}
+                        className="w-full p-3 bg-surface rounded-xl text-xs font-medium focus:outline-none resize-none font-sans"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2 flex flex-col md:flex-row gap-2">
+                  <button
+                    onClick={handleGenerateCampaignWithAI}
+                    disabled={isGenerating}
+                    className="flex-1 py-3 bg-primary text-on-primary font-bold rounded-xl text-xs shadow-md shadow-primary/20 hover:scale-[1.01] transition-all disabled:opacity-55 flex items-center justify-center gap-1.5"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <div className="w-4.5 h-4.5 border-2 border-on-primary/30 border-t-on-primary rounded-full animate-spin" />
+                        AI Drafting...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={14} />
+                        Run AI Content Generator
+                      </>
+                    )}
+                  </button>
+
+                  {generatedCopy.message && (
+                    <div className="flex gap-2 flex-1">
+                      <button
+                        onClick={() => triggerLaunchCampaign("Draft")}
+                        className="flex-1 py-3 bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-xl"
+                      >
+                        Save as Draft
+                      </button>
+                      <button
+                        onClick={() => triggerLaunchCampaign("Sent")}
+                        className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl"
+                      >
+                        Transmit Blast
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Device Simulator Panel */}
+              <div className="w-full md:w-[360px] bg-zinc-900 flex flex-col items-center justify-center p-6 shrink-0 md:border-l border-white/5 relative h-[50vh] md:h-auto overflow-y-auto">
+                <div className="flex gap-2 absolute top-4 left-4 border-b border-white/10 w-[90%] pb-2">
+                  <button
+                    onClick={() => setDevicePreviewTab("compose")}
+                    className={cn("text-[10px] font-bold px-2 py-1 rounded-md", devicePreviewTab === "compose" ? "bg-white/10 text-white" : "text-white/40")}
+                  >
+                    Instructions Guide
+                  </button>
+                  <button
+                    disabled={!generatedCopy.message}
+                    onClick={() => setDevicePreviewTab("preview")}
+                    className={cn("text-[10px] font-bold px-2 py-1 rounded-md disabled:opacity-45", devicePreviewTab === "preview" ? "bg-white/10 text-white" : "text-white/40")}
+                  >
+                    Phone Preview
+                  </button>
+                </div>
+
+                {devicePreviewTab === "preview" && generatedCopy.message ? (
+                  <div className="w-[200px] h-[350px] bg-black rounded-[2.5rem] border-4 border-zinc-700 relative p-3 text-white flex flex-col font-sans select-none overflow-hidden mt-6">
+                    {/* Speaker notch */}
+                    <div className="w-16 h-3.5 bg-zinc-800 rounded-b-2xl mx-auto absolute top-0 left-0 right-0 z-20 flex justify-center items-center">
+                      <div className="w-8 h-1 bg-zinc-500 rounded-full" />
+                    </div>
+
+                    {/* Simulating email screen */}
+                    {campaignType === "email" && (
+                      <div className="flex-1 bg-zinc-950 flex flex-col text-[8px] pt-4">
+                        <div className="p-2 border-b border-zinc-900 space-y-0.5">
+                          <p className="text-zinc-500">From: <span className="text-white font-bold">{currentShop?.name || 'LocalEats Brand'}</span></p>
+                          <p className="text-zinc-500 truncate">Subject: <span className="text-white font-black">{generatedCopy.subject || "No Subject"}</span></p>
+                        </div>
+                        <div className="flex-1 p-2 bg-[#FFFDF9] text-zinc-900 flex flex-col justify-between">
+                          <div className="space-y-1 overflow-y-auto max-h-[190px]">
+                            <p className="font-extrabold text-[9px] text-primary">LocalEats Daily Newsletter</p>
+                            <p className="text-[7.5px] leading-tight text-zinc-800 whitespace-pre-wrap">{generatedCopy.message}</p>
+                          </div>
+                          <button className="w-full py-1.5 bg-primary text-white text-[7px] font-black rounded-lg text-center leading-none mt-2">
+                            Place Order with Cyclist Fleet &rarr;
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Simulating SMS screen */}
+                    {campaignType === "sms" && (
+                      <div className="flex-1 bg-zinc-900 flex flex-col text-[8px] pt-4">
+                        <div className="p-2 border-b border-zinc-800 flex items-center justify-between text-[7px] bg-zinc-950 text-white">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          <span>072 142 8391 (Dispatcher)</span>
+                          <span className="text-zinc-500">iMessage</span>
+                        </div>
+                        <div className="flex-1 p-2 flex flex-col justify-start gap-4">
+                          <div className="bg-zinc-820 p-2.5 rounded-2xl max-w-[90%] self-start text-[7.5px] leading-relaxed text-zinc-200 border border-white/5 relative">
+                            <p>{generatedCopy.message}</p>
+                            <span className="absolute -bottom-3 right-1 text-[5px] text-zinc-500 font-mono">Delivered Today</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Simulating Social Media screen */}
+                    {campaignType === "social" && (
+                      <div className="flex-1 bg-zinc-950 flex flex-col text-[7.5px] pt-4 overflow-y-auto">
+                        <div className="flex items-center gap-1.5 p-1.5 border-b border-zinc-900 bg-zinc-950">
+                          <div className="w-3.5 h-3.5 rounded-full bg-primary flex items-center justify-center text-[5px] font-black uppercase text-white">LE</div>
+                          <span className="font-bold text-white">{currentShop?.name.replace(/\s+/g, "_").toLowerCase() || "localeats_restaurant"}</span>
+                        </div>
+                        <div className="w-full aspect-square bg-zinc-100 flex flex-col items-center justify-center relative select-none">
+                          <Sparkles size={24} className="text-primary/10 animate-pulse" />
+                          <span className="text-[6.5px] tracking-widest text-zinc-400 font-black uppercase pointer-events-none mt-2">Menu Spotlight Graphic</span>
+                        </div>
+                        <div className="p-2 space-y-1 bg-zinc-950 text-zinc-200 flex-1">
+                          <p className="leading-tight whitespace-pre-wrap text-[7px]"><span className="font-black text-white mr-1">{currentShop?.name.replace(/\s+/g, "_").toLowerCase() || "localeats_restaurant"}</span>{generatedCopy.message}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-w-[210px] text-center mt-6">
+                    <Sparkles size={24} className="text-primary/30 mx-auto animate-bounce" />
+                    <p className="text-[10px] font-bold text-white uppercase tracking-wider">How to start with AI</p>
+                    <p className="text-[9px] text-white/60 leading-relaxed text-center font-medium">
+                      Select target attributes in composer controls (promo dish, goal metrics, custom code overlays) and launch generator, preview mockup dynamically, and blast campaigns recorded directly in logs.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -8778,6 +10708,17 @@ const Coupons = ({
     min_order_value: "",
     expiry_date: "",
   });
+
+  // Advanced search/filter states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "expired">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "percentage" | "fixed">("all");
+
+  // Edit modal states
+  const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
+
+  // Delete safety check states
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchCoupons = async () => {
@@ -8803,12 +10744,32 @@ const Coupons = ({
     e.preventDefault();
     if (!currentShop?.id) return;
 
+    // Guardrail: Duplicate check
+    const isDuplicate = coupons.some(
+      (c) => c.code.toUpperCase() === newCoupon.code.toUpperCase()
+    );
+    if (isDuplicate) {
+      toast.error(`A coupon with the code "${newCoupon.code.toUpperCase()}" already exists. Please choose a different code.`);
+      return;
+    }
+
+    // Safety check on value ratios
+    const val = parseFloat(newCoupon.discount_value);
+    if (isNaN(val) || val <= 0) {
+      toast.error("Please enter a valid discount value greater than zero.");
+      return;
+    }
+    if (newCoupon.discount_type === "percentage" && val > 95) {
+      toast.error("Margin override blocked: Percentage discounts cannot exceed 95% off.");
+      return;
+    }
+
     const { error } = await supabase.from("coupons").insert([
       {
         shop_id: currentShop.id,
         code: newCoupon.code.toUpperCase(),
         discount_type: newCoupon.discount_type,
-        discount_value: parseFloat(newCoupon.discount_value),
+        discount_value: val,
         min_order_value: parseFloat(newCoupon.min_order_value) || 0,
         expiry_date: newCoupon.expiry_date || null,
         is_active: true,
@@ -8837,6 +10798,56 @@ const Coupons = ({
     }
   };
 
+  const handleUpdateCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentShop?.id || !editingCoupon) return;
+
+    // Duplicate Check
+    const isDuplicate = coupons.some(
+      (c) => c.code.toUpperCase() === editingCoupon.code.toUpperCase() && c.id !== editingCoupon.id
+    );
+    if (isDuplicate) {
+      toast.error(`A coupon with code "${editingCoupon.code.toUpperCase()}" already exists elsewhere.`);
+      return;
+    }
+
+    // Safeguard validation
+    if (editingCoupon.discount_value <= 0) {
+      toast.error("Discount value must be greater than zero.");
+      return;
+    }
+    if (editingCoupon.discount_type === "percentage" && editingCoupon.discount_value > 95) {
+      toast.error("Margin protection warning: Maximum discount rate is limited to 95%.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("coupons")
+      .update({
+        code: editingCoupon.code.toUpperCase(),
+        discount_type: editingCoupon.discount_type,
+        discount_value: Number(editingCoupon.discount_value),
+        min_order_value: Number(editingCoupon.min_order_value) || 0,
+        expiry_date: editingCoupon.expiry_date || null,
+        is_active: editingCoupon.is_active,
+      })
+      .eq("id", editingCoupon.id);
+
+    if (error) {
+      toast.error("Failed to update coupon details");
+    } else {
+      toast.success("Coupon modified successfully!");
+      setEditingCoupon(null);
+      // Refresh
+      const { data } = await supabase
+        .from("coupons")
+        .select("*")
+        .eq("shop_id", currentShop.id)
+        .order("created_at", { ascending: false });
+      if (data) setCoupons(data);
+    }
+  };
+
   const toggleCoupon = async (id: string, isActive: boolean) => {
     const { error } = await supabase
       .from("coupons")
@@ -8847,8 +10858,34 @@ const Coupons = ({
       setCoupons((prev) =>
         prev.map((c) => (c.id === id ? { ...c, is_active: !isActive } : c)),
       );
-      toast.success(`Coupon ${!isActive ? "activated" : "deactivated"}`);
+      toast.success(`Coupon ${!isActive ? "activated" : "paused"}`);
     }
+  };
+
+  const handleDeleteCoupon = async (id: string) => {
+    const { error } = await supabase
+      .from("coupons")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      toast.error("Failed to delete coupon (it may already be associated with old order transactions). Try pausing it instead.");
+    } else {
+      setCoupons((prev) => prev.filter((c) => c.id !== id));
+      setShowDeleteConfirm(null);
+      toast.success("Coupon removed permanently");
+    }
+  };
+
+  const handleApplyPreset = (preset: {
+    code: string;
+    discount_type: "percentage" | "fixed";
+    discount_value: string;
+    min_order_value: string;
+    expiry_date: string;
+  }) => {
+    setNewCoupon(preset);
+    toast.success(`Preset "${preset.code}" auto-loaded! Feel free to edit values before saving.`);
   };
 
   const getPerformance = (code: string) => {
@@ -8868,62 +10905,222 @@ const Coupons = ({
     };
   };
 
+  const exportToCSV = () => {
+    if (coupons.length === 0) {
+      toast.error("No promo codes to export.");
+      return;
+    }
+
+    const headers = ["ID", "Code", "Type", "Value", "Min Order Value (R)", "Status", "Expiry Date", "Redemptions", "Saved Value (R)", "Sales Value (R)"];
+    
+    const rows = coupons.map((c) => {
+      const perf = getPerformance(c.code);
+      const isExpired = c.expiry_date && new Date(c.expiry_date) < new Date();
+      const statusStr = isExpired ? "Expired" : c.is_active ? "Active" : "Inactive";
+      return [
+        c.id,
+        c.code,
+        c.discount_type,
+        c.discount_value,
+        c.min_order_value,
+        statusStr,
+        c.expiry_date || "No Expiry",
+        perf.count,
+        perf.discount.toFixed(2),
+        perf.sales.toFixed(2)
+      ];
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.map(val => `"${val}"`).join(","))].join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${currentShop?.name || "LocalEats"}_CouponsData_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Coupon performance CSV report downloaded successfully!");
+  };
+
+  // Filter & Search logic
+  const filteredCoupons = useMemo(() => {
+    return coupons.filter((coupon) => {
+      // 1. Search Query Match
+      if (searchQuery.trim() !== "") {
+        const queryText = searchQuery.toLowerCase();
+        if (!coupon.code.toLowerCase().includes(queryText)) {
+          return false;
+        }
+      }
+
+      // 2. Type Filter Match
+      if (typeFilter !== "all" && coupon.discount_type !== typeFilter) {
+        return false;
+      }
+
+      // 3. Status Filter Match
+      const isExpired = coupon.expiry_date && new Date(coupon.expiry_date) < new Date();
+      if (statusFilter === "active") {
+        return coupon.is_active && !isExpired;
+      }
+      if (statusFilter === "inactive") {
+        return !coupon.is_active;
+      }
+      if (statusFilter === "expired") {
+        return !!isExpired;
+      }
+
+      return true;
+    });
+  }, [coupons, searchQuery, statusFilter, typeFilter]);
+
+  // Find top performer coupon by generated customer sales volume
+  const topCouponCode = useMemo(() => {
+    let maxSales = 0;
+    let topCode = "";
+    coupons.forEach((c) => {
+      const perf = getPerformance(c.code);
+      if (perf.sales > maxSales && perf.count > 0) {
+        maxSales = perf.sales;
+        topCode = c.code;
+      }
+    });
+    return topCode;
+  }, [coupons, orders]);
+
+  // Active coupons expiring in the next 48 hours (2 days)
+  const expiringSoonCoupons = useMemo(() => {
+    return coupons.filter((c) => {
+      if (!c.is_active || !c.expiry_date) return false;
+      const remainingMs = new Date(c.expiry_date).getTime() - Date.now();
+      const remainingDays = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
+      return remainingDays > 0 && remainingDays <= 2;
+    });
+  }, [coupons]);
+
+  // Campaign inspiration formulas
+  const CAMPAIGN_PRESETS = [
+    {
+      code: "WELCOME10",
+      discount_type: "percentage" as const,
+      discount_value: "10",
+      min_order_value: "100",
+      expiry_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      title: "New Customer Match",
+      badge: "User Base Grow",
+      desc: "Perfect initial low friction voucher with a standard basket size requirement."
+    },
+    {
+      code: "FRIDAYRUSH50",
+      discount_type: "fixed" as const,
+      discount_value: "50",
+      min_order_value: "250",
+      expiry_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      title: "High Basket Driver",
+      badge: "Friday Boost",
+      desc: "Reward large lunch baskets with direct flat value discount to bypass third-party platforms."
+    },
+    {
+      code: "LOVETACO25",
+      discount_type: "percentage" as const,
+      discount_value: "25",
+      min_order_value: "150",
+      expiry_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      title: "Apology & Winback",
+      badge: "Customer Retention",
+      desc: "A highly persuasive 25% discount to Win Back cold users with an attractive rate."
+    }
+  ];
+
   return (
-    <div className="space-y-8">
-      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 sm:gap-0">
+    <div className="space-y-8" id="coupons_studio_tab">
+      {expiringSoonCoupons.length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 anim-pulse" id="coupons_expiring_soon_global_alert">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-amber-500/10 rounded-xl text-amber-600 dark:text-amber-400 shrink-0">
+              <Clock size={18} />
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-amber-800 dark:text-amber-300 uppercase tracking-widest">At-Risk Campaigns</h4>
+              <p className="text-xs text-amber-700 dark:text-amber-400/80 mt-0.5 font-medium">
+                You have <strong>{expiringSoonCoupons.length} coupon{expiringSoonCoupons.length > 1 ? "s" : ""}</strong> expiring within 48 hours. Consider extending their validity or activating preset campaigns!
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              const el = document.getElementById("coupons_quick_suggest_panel");
+              el?.scrollIntoView({ behavior: "smooth" });
+            }}
+            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black uppercase rounded-lg transition shrink-0 tracking-wider text-center"
+          >
+            Review Templates
+          </button>
+        </div>
+      )}
+
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="space-y-1">
-          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
-            Coupons
+          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight" id="coupons_main_title">
+            Merchant Coupon Studio
           </h2>
           <p className="text-sm text-on-surface-variant font-medium">
-            Manage discount codes and track performance.
+            Deploy codes, configure profit boundaries, edit conditions, and track redemption flow.
           </p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-primary text-on-primary font-bold rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.98] transition-all w-full sm:w-auto justify-center"
-        >
-          <Plus size={20} />
-          Create Coupon
-        </button>
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          <button
+            onClick={exportToCSV}
+            className="flex items-center gap-2 px-4 py-2.5 bg-surface-container border border-outline-variant/10 text-on-surface text-xs font-bold rounded-xl hover:bg-surface-container-high transition"
+            id="coupons_export_csv_btn"
+          >
+            <FileDown size={14} />
+            CSV Report
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary font-bold rounded-xl shadow-md hover:scale-[1.01] transition-transform text-xs"
+            id="coupons_create_btn"
+          >
+            <Plus size={14} />
+            New Code
+          </button>
+        </div>
       </header>
 
       {/* Performance Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4" id="coupons_stats_row">
         {[
           {
             label: "Total Redemptions",
             value: orders.filter((o) => o.coupon_code).length,
             icon: Ticket,
-            color: "text-blue-500",
+            color: "text-blue-500 bg-blue-500/10",
           },
           {
             label: "Total Discounts Given",
             value: `R${Number(orders.reduce((acc, curr) => acc + (curr.discount_amount || 0), 0)).toFixed(2)}`,
             icon: Zap,
-            color: "text-orange-500",
+            color: "text-orange-500 bg-orange-500/10",
           },
           {
             label: "Coupon-Driven Sales",
             value: `R${Number(orders.filter((o) => o.coupon_code).reduce((acc, curr) => acc + Number(curr.total_price), 0)).toFixed(2)}`,
             icon: TrendingUp,
-            color: "text-green-500",
+            color: "text-green-500 bg-green-500/10",
           },
         ].map((stat, i) => (
           <div
             key={i}
             className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/10 shadow-sm flex items-center gap-4"
           >
-            <div
-              className={cn(
-                "w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center",
-                stat.color,
-              )}
-            >
-              <stat.icon size={24} />
+            <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center font-bold", stat.color)}>
+              <stat.icon size={22} />
             </div>
             <div>
-              <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
+              <p className="text-[10px] font-black text-on-surface-variant/70 uppercase tracking-widest leading-none mb-1">
                 {stat.label}
               </p>
               <p className="text-xl font-black text-on-surface">{stat.value}</p>
@@ -8932,110 +11129,246 @@ const Coupons = ({
         ))}
       </div>
 
+      {/* WORKSPACE TOOLS: SEARCH & FILTERS CONTROLS */}
+      <div className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10 flex flex-col sm:flex-row items-center gap-3">
+        <div className="relative w-full sm:flex-1">
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
+          <input
+            type="text"
+            placeholder="Search by coupon code (e.g. WELCOME...)"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-on-surface/5 text-xs font-bold rounded-xl border-none focus:ring-1 focus:ring-primary focus:outline-none"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-on-surface-variant hover:text-on-surface"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto shrink-0 select-none">
+          <div className="flex items-center gap-1.5 bg-on-surface/5 px-2 py-1.5 rounded-xl border border-outline-variant/10">
+            <span className="text-[10px] uppercase font-black text-on-surface-variant/60">Status:</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive" | "expired")}
+              className="bg-transparent border-none text-[11px] font-bold text-on-surface focus:outline-none cursor-pointer"
+            >
+              <option value="all">All Promo Codes</option>
+              <option value="active">Active Only</option>
+              <option value="inactive">Inactive Only</option>
+              <option value="expired">Expired Only</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-on-surface/5 px-2 py-1.5 rounded-xl border border-outline-variant/10">
+            <span className="text-[10px] uppercase font-black text-on-surface-variant/60">Type:</span>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as "all" | "percentage" | "fixed")}
+              className="bg-transparent border-none text-[11px] font-bold text-on-surface focus:outline-none cursor-pointer"
+            >
+              <option value="all">All Types</option>
+              <option value="percentage">Percentage (%)</option>
+              <option value="fixed">Fixed Flat Basket (R)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2].map((i) => (
+          {[1, 2, 3, 4].map((i) => (
             <div
               key={i}
               className="h-32 bg-surface-container animate-pulse rounded-3xl"
             />
           ))}
         </div>
-      ) : coupons.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {coupons.map((coupon) => {
+      ) : filteredCoupons.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6" id="coupons_grid_container">
+          {filteredCoupons.map((coupon) => {
             const perf = getPerformance(coupon.code);
-            const isExpired =
-              coupon.expiry_date && new Date(coupon.expiry_date) < new Date();
+            const isExpired = coupon.expiry_date && new Date(coupon.expiry_date) < new Date();
+            
+            // Calculate if expiring in less than 48 hours for urgent warning
+            let isExpiringSoon = false;
+            let expiryString = "";
+            if (coupon.expiry_date && !isExpired) {
+              const remainingMs = new Date(coupon.expiry_date).getTime() - Date.now();
+              const remainingDays = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
+              isExpiringSoon = remainingDays <= 2;
+              expiryString = remainingDays === 0 ? "Expires TODAY" : remainingDays === 1 ? "Expires TOMORROW" : `Expires in ${remainingDays} days`;
+            }
 
             return (
               <div
                 key={coupon.id}
-                className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4"
+                className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/10 shadow-sm flex flex-col justify-between group relative overflow-hidden"
               >
-                <div className="flex justify-between items-start">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-black font-mono text-primary tracking-wider">
-                        {coupon.code}
-                      </span>
-                      <span
-                        className={cn(
-                          "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest",
-                          coupon.is_active && !isExpired
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700",
-                        )}
-                      >
-                        {isExpired
-                          ? "Expired"
-                          : coupon.is_active
-                            ? "Active"
-                            : "Inactive"}
-                      </span>
-                    </div>
-                    <p className="text-sm text-on-surface-variant font-medium">
-                      {coupon.discount_type === "percentage"
-                        ? `${coupon.discount_value}% OFF`
-                        : `R${coupon.discount_value} OFF`}
-                    </p>
-                    {coupon.expiry_date && (
-                      <p
-                        className={cn(
-                          "text-[10px] font-bold flex items-center gap-1",
-                          isExpired
-                            ? "text-red-500"
-                            : "text-on-surface-variant/60",
-                        )}
-                      >
-                        <Calendar size={12} />
-                        Expires:{" "}
-                        {format(new Date(coupon.expiry_date), "MMM dd, yyyy")}
-                      </p>
-                    )}
+                {isExpiringSoon && (
+                  <div className="absolute top-0 left-0 right-0 bg-amber-500 text-white text-[9px] font-black uppercase text-center py-0.5 tracking-wider flex items-center justify-center gap-1">
+                    <Clock size={10} />
+                    {expiryString}
                   </div>
-                  <button
-                    onClick={() => toggleCoupon(coupon.id, coupon.is_active)}
-                    disabled={isExpired}
-                    className={cn(
-                      "p-3 rounded-2xl transition-colors",
-                      isExpired
-                        ? "bg-surface-container text-on-surface-variant/20 cursor-not-allowed"
-                        : coupon.is_active
-                          ? "bg-red-50 text-red-600 hover:bg-red-100"
-                          : "bg-green-50 text-green-600 hover:bg-green-100",
-                    )}
-                  >
-                    {coupon.is_active ? <X size={20} /> : <Check size={20} />}
-                  </button>
+                )}
+
+                <div className={cn("space-y-4", isExpiringSoon ? "pt-2" : "")}>
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-black font-mono text-primary tracking-wider select-all">
+                          {coupon.code}
+                        </span>
+                        <span
+                          className={cn(
+                            "text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest",
+                            isExpired
+                              ? "bg-red-500/10 text-red-600"
+                              : coupon.is_active
+                                ? "bg-emerald-500/10 text-emerald-600"
+                                : "bg-zinc-500/10 text-zinc-500",
+                          )}
+                        >
+                          {isExpired
+                            ? "Expired"
+                            : coupon.is_active
+                              ? "Active"
+                              : "Inactive"}
+                        </span>
+                        {coupon.code === topCouponCode && (
+                          <span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest bg-amber-500/10 text-amber-600 flex items-center gap-1 select-none animate-pulse">
+                            <Sparkles size={8} className="text-amber-500 fill-amber-500 animate-spin" style={{ animationDuration: '3s' }} />
+                            TOP PERFORMER
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-base font-black text-on-surface">
+                        {coupon.discount_type === "percentage"
+                          ? `${coupon.discount_value}% OFF`
+                          : `R${coupon.discount_value} OFF`}
+                      </p>
+                      <p className="text-[10px] text-on-surface-variant/80 font-bold">
+                        Min. Order requirement: <span className="text-on-surface text-xs font-semibold">R{coupon.min_order_value || 0}</span>
+                      </p>
+                      {coupon.expiry_date && (
+                        <p
+                          className={cn(
+                            "text-[10px] font-bold flex items-center gap-1 mt-1",
+                            isExpired
+                              ? "text-red-500"
+                              : isExpiringSoon
+                                ? "text-amber-500"
+                                : "text-on-surface-variant/60",
+                          )}
+                        >
+                          <Calendar size={12} />
+                          Ends:{" "}
+                          {format(new Date(coupon.expiry_date), "MMM dd, yyyy")}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {/* Edit Button */}
+                      <button
+                        onClick={() => setEditingCoupon(coupon)}
+                        className="p-2 text-on-surface-variant/70 hover:text-on-surface hover:bg-on-surface/5 rounded-xl transition-colors"
+                        title="Edit Code Parameters"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+
+                      {/* Active Toggle Toggle Switch */}
+                      <button
+                        onClick={() => toggleCoupon(coupon.id, coupon.is_active)}
+                        disabled={isExpired}
+                        className={cn(
+                          "p-2 rounded-xl transition-colors",
+                          isExpired
+                            ? "text-on-surface-variant/20 cursor-not-allowed"
+                            : coupon.is_active
+                              ? "text-emerald-500 hover:bg-emerald-500/10"
+                              : "text-zinc-400 hover:bg-zinc-500/10",
+                        )}
+                        title={coupon.is_active ? "Pause Code" : "Activate Code"}
+                      >
+                        {coupon.is_active ? <Check size={18} /> : <X size={18} />}
+                      </button>
+
+                      {/* Delete Code Button */}
+                      <button
+                        onClick={() => setShowDeleteConfirm(coupon.id)}
+                        className="p-2 text-red-500/70 hover:text-red-600 hover:bg-red-500/10 rounded-xl transition-colors"
+                        title="Delete Permanently"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* MINI PERFORMANCE SECTION */}
+                  <div className="pt-3 border-t border-outline-variant/10 grid grid-cols-3 gap-2 bg-on-surface/5 p-3 rounded-2xl">
+                    <div className="text-center">
+                      <p className="text-[9px] font-black text-on-surface-variant/60 uppercase">
+                        Redeemed
+                      </p>
+                      <p className="text-sm font-black text-on-surface mt-0.5">
+                        {perf.count} times
+                      </p>
+                    </div>
+                    <div className="text-center border-x border-outline-variant/10">
+                      <p className="text-[9px] font-black text-on-surface-variant/60 uppercase">
+                        Deducted
+                      </p>
+                      <p className="text-sm font-black text-orange-600 mt-0.5">
+                        R{Number(perf.discount || 0).toFixed(0)}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[9px] font-black text-on-surface-variant/60 uppercase font-sans">
+                        Driven Sales
+                      </p>
+                      <p className="text-sm font-black text-emerald-600 mt-0.5">
+                        R{Number(perf.sales || 0).toFixed(0)}
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="pt-4 border-t border-outline-variant/5 grid grid-cols-3 gap-2">
-                  <div className="text-center">
-                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase">
-                      Used
-                    </p>
-                    <p className="text-sm font-black text-on-surface">
-                      {perf.count}
-                    </p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase">
-                      Saved
-                    </p>
-                    <p className="text-sm font-black text-on-surface">
-                      R{Number(perf.discount || 0).toFixed(0)}
-                    </p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase">
-                      Sales
-                    </p>
-                    <p className="text-sm font-black text-on-surface">
-                      R{Number(perf.sales || 0).toFixed(0)}
-                    </p>
-                  </div>
-                </div>
+                {/* Confirm Delete Overlay inside card */}
+                <AnimatePresence>
+                  {showDeleteConfirm === coupon.id && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 bg-surface-container backdrop-blur-sm z-30 flex flex-col items-center justify-center p-4 text-center"
+                    >
+                      <AlertCircle size={28} className="text-red-500 mb-2 animate-bounce" />
+                      <p className="text-xs font-black text-on-surface">Delete {coupon.code}?</p>
+                      <p className="text-[10px] text-on-surface-variant/80 mt-1 max-w-[220px]">This operation is irreversible. Safe metrics will retain.</p>
+                      <div className="flex gap-2 mt-3 select-none">
+                        <button
+                          onClick={() => setShowDeleteConfirm(null)}
+                          className="px-3 py-1 bg-surface-container-high text-[10px] text-on-surface font-bold rounded-lg"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCoupon(coupon.id)}
+                          className="px-3 py-1 bg-red-600 text-[10px] text-white font-bold rounded-lg"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             );
           })}
@@ -9046,19 +11379,67 @@ const Coupons = ({
             size={48}
             className="mx-auto text-on-surface-variant/20 mb-4"
           />
-          <h3 className="text-lg font-bold text-on-surface">No Coupons Yet</h3>
-          <p className="text-sm text-on-surface-variant max-w-xs mx-auto mt-2">
-            Create your first discount code to attract more customers to your
-            shop.
+          <h3 className="text-base font-bold text-on-surface">No matching promo codes found</h3>
+          <p className="text-xs text-on-surface-variant max-w-xs mx-auto mt-2">
+            Try adjusting your search criteria, clearing your filters, or use one of our templates below.
           </p>
           <button
-            onClick={() => setShowCreateModal(true)}
-            className="mt-6 px-6 py-2 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors"
+            onClick={() => {
+              setSearchQuery("");
+              setStatusFilter("all");
+              setTypeFilter("all");
+            }}
+            className="mt-4 px-4 py-2 bg-on-surface/5 hover:bg-on-surface/10 text-on-surface font-bold rounded-xl text-xs transition"
           >
-            Create First Coupon
+            Clear Filters
           </button>
         </div>
       )}
+
+      {/* QUICK INSPIRATION IDEAS DESK SECTION */}
+      <div className="bg-primary/5 rounded-3xl p-6 border border-primary/10 space-y-4" id="coupons_quick_suggest_panel">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+          <div>
+            <h4 className="text-sm font-black text-primary flex items-center gap-1.5 uppercase tracking-wider">
+              <Sparkles size={16} />
+              Pre-Vetted Campaign Formulas
+            </h4>
+            <p className="text-xs text-on-surface-variant">Click to instantaneous loading standard restaurant growth templates.</p>
+          </div>
+          <span className="text-[10px] font-bold text-on-surface-variant/70 border border-outline-variant/20 px-2 py-1 rounded-lg">
+            3 High-Performance Defaults
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {CAMPAIGN_PRESETS.map((preset, idx) => (
+            <div
+              key={idx}
+              className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10 hover:border-primary/20 transition flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex justify-between items-start mb-2">
+                  <span className="font-mono text-xs font-black text-primary bg-primary/5 px-2 py-0.5 rounded-lg">
+                    {preset.code}
+                  </span>
+                  <span className="text-[8px] font-black uppercase text-on-surface-variant/60 bg-on-surface/5 px-1.5 py-0.5 rounded-md">
+                    {preset.badge}
+                  </span>
+                </div>
+                <h5 className="text-xs font-bold text-on-surface">{preset.title}</h5>
+                <p className="text-[10px] text-on-surface-variant/80 mt-1 mb-3 leading-relaxed">{preset.desc}</p>
+              </div>
+
+              <button
+                onClick={() => handleApplyPreset(preset)}
+                className="w-full py-1.5 bg-primary/10 text-primary text-[10px] font-black rounded-lg hover:bg-primary hover:text-white transition leading-none"
+              >
+                Apply Preset Template
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Create Coupon Modal */}
       <AnimatePresence>
@@ -9075,12 +11456,12 @@ const Coupons = ({
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-md bg-surface-container-lowest rounded-[32px] shadow-2xl overflow-hidden border border-outline-variant/10"
+              className="relative w-full max-w-md bg-surface-container-lowest rounded-[32px] shadow-2xl overflow-hidden border border-outline-variant/10 z-50"
             >
               <form onSubmit={handleCreateCoupon} className="p-8 space-y-6">
                 <header className="flex justify-between items-center">
                   <h3 className="text-2xl font-headline font-black text-on-surface tracking-tight">
-                    New Coupon
+                    New Coupon Setup
                   </h3>
                   <button
                     type="button"
@@ -9093,8 +11474,8 @@ const Coupons = ({
 
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">
-                      Coupon Code
+                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                      Voucher Code
                     </label>
                     <input
                       required
@@ -9104,37 +11485,35 @@ const Coupons = ({
                       onChange={(e) =>
                         setNewCoupon({
                           ...newCoupon,
-                          code: e.target.value.toUpperCase(),
+                          code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""),
                         })
                       }
-                      className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 focus:ring-4 focus:ring-primary/5 outline-none transition-all font-mono font-bold uppercase"
+                      className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/20 outline-none transition-all font-mono font-bold uppercase"
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">
-                        Type
+                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                        Discount Type
                       </label>
                       <select
                         value={newCoupon.discount_type}
                         onChange={(e) =>
                           setNewCoupon({
                             ...newCoupon,
-                            discount_type: e.target.value as
-                              | "percentage"
-                              | "fixed",
+                            discount_type: e.target.value as "percentage" | "fixed",
                           })
                         }
-                        className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 outline-none transition-all font-bold appearance-none"
+                        className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 outline-none transition-all font-bold appearance-none cursor-pointer"
                       >
                         <option value="percentage">Percentage (%)</option>
-                        <option value="fixed">Fixed (R)</option>
+                        <option value="fixed">Fixed Flat R</option>
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">
-                        Value
+                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                        Discount Rate value
                       </label>
                       <input
                         required
@@ -9149,13 +11528,69 @@ const Coupons = ({
                             discount_value: e.target.value,
                           })
                         }
-                        className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 outline-none transition-all font-bold"
+                        className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 outline-none transition-all font-bold"
                       />
                     </div>
                   </div>
 
+                  {/* PROFIT MARGIN SENSITIVE GUARDRAIL WARNING banner */}
+                  {newCoupon.discount_value && (
+                    (() => {
+                      const discountVal = parseFloat(newCoupon.discount_value);
+                      if (newCoupon.discount_type === "percentage" && discountVal > 50) {
+                        return (
+                          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 text-[10px] font-bold p-3 rounded-xl flex items-start gap-2 leading-relaxed">
+                            <Info size={16} className="shrink-0 text-amber-500 mt-0.5" />
+                            <span>
+                              <strong>High discount caution:</strong> A discount rate above 50% may result in net negative transaction fees. We suggest pairing this code with a higher minimum order threshold.
+                            </span>
+                          </div>
+                        );
+                      }
+                      if (newCoupon.discount_type === "fixed" && discountVal > 150) {
+                        return (
+                          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 text-[10px] font-bold p-3 rounded-xl flex items-start gap-2 leading-relaxed">
+                            <Info size={16} className="shrink-0 text-amber-500 mt-0.5" />
+                            <span>
+                              <strong>Large Cash Back caution:</strong> R{discountVal} flat discounts can deplete margins quickly if the actual order totals are low. A min order limit of R300+ is advised.
+                            </span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()
+                  )}
+
+                  {/* DYNAMIC SCENARIO ESTIMATOR FOR TRANSPARENCY */}
+                  {newCoupon.discount_value && !isNaN(parseFloat(newCoupon.discount_value)) && (
+                    (() => {
+                      const discountVal = parseFloat(newCoupon.discount_value);
+                      const baseCart = 200;
+                      let customerPays = 200;
+                      let saved = 0;
+                      if (newCoupon.discount_type === "percentage") {
+                        saved = (baseCart * Math.min(100, discountVal)) / 100;
+                        customerPays = baseCart - saved;
+                      } else {
+                        saved = discountVal;
+                        customerPays = Math.max(0, baseCart - saved);
+                      }
+                      return (
+                        <div className="bg-surface-container-low p-3.5 rounded-2xl border border-outline-variant/10 text-[11px] space-y-1.5 label-card select-none">
+                          <p className="font-bold text-on-surface text-[10px] uppercase tracking-wider text-primary">Live Cart Scenario Estimate (R200 Basket Size)</p>
+                          <div className="grid grid-cols-2 gap-1 text-on-surface-variant font-medium">
+                            <div>Customer Discount:</div>
+                            <div className="text-right font-black text-orange-600">-R{saved.toFixed(2)}</div>
+                            <div>Estimated Basket Total:</div>
+                            <div className="text-right font-black text-emerald-600">R{customerPays.toFixed(2)}</div>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  )}
+
                   <div className="space-y-1.5">
-                    <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
                       Min Order Value (R)
                     </label>
                     <input
@@ -9168,12 +11603,12 @@ const Coupons = ({
                           min_order_value: e.target.value,
                         })
                       }
-                      className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 outline-none transition-all font-bold"
+                      className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/20 outline-none transition-all font-bold"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
                       Expiry Date (Optional)
                     </label>
                     <input
@@ -9185,17 +11620,186 @@ const Coupons = ({
                           expiry_date: e.target.value,
                         })
                       }
-                      className="w-full px-5 py-4 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/30 outline-none transition-all font-bold"
+                      className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/20 outline-none transition-all font-bold cursor-pointer"
                     />
                   </div>
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-4 bg-primary text-on-primary font-black rounded-2xl shadow-lg shadow-primary/20 hover:scale-[0.99] active:scale-95 transition-all"
+                  className="w-full py-3.5 bg-primary text-on-primary font-black rounded-xl shadow-lg hover:scale-[0.99] active:scale-95 transition-all text-xs"
                 >
-                  Create Coupon
+                  Create Coupon Code
                 </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* EDIT COUPON MODAL */}
+      <AnimatePresence>
+        {editingCoupon && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setEditingCoupon(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm shadow-2xl"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md bg-surface-container-lowest rounded-[32px] shadow-2xl overflow-hidden border border-outline-variant/10 z-50 text-left"
+            >
+              <form onSubmit={handleUpdateCoupon} className="p-8 space-y-6">
+                <header className="flex justify-between items-center">
+                  <h3 className="text-xl font-headline font-black text-on-surface tracking-tight">
+                    Edit App Coupon Parameters
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setEditingCoupon(null)}
+                    className="p-2 hover:bg-surface-container rounded-full transition-colors"
+                  >
+                    <X size={20} />
+                  </button>
+                </header>
+
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                      Coupon Code Name (Static)
+                    </label>
+                    <input
+                      required
+                      type="text"
+                      placeholder="e.g. WELCOME10"
+                      value={editingCoupon.code}
+                      onChange={(e) =>
+                        setEditingCoupon({
+                          ...editingCoupon,
+                          code: e.target.value.toUpperCase().replace(/\s+/g, ""),
+                        })
+                      }
+                      className="w-full px-4 py-3 bg-on-surface/5 text-on-surface-variant/80 rounded-2xl border border-outline-variant/10 outline-none transition-all font-mono font-bold uppercase"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                        Discount Type
+                      </label>
+                      <select
+                        value={editingCoupon.discount_type}
+                        onChange={(e) =>
+                          setEditingCoupon({
+                            ...editingCoupon,
+                            discount_type: e.target.value as "percentage" | "fixed",
+                          })
+                        }
+                        className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 outline-none transition-all font-bold appearance-none cursor-pointer"
+                      >
+                        <option value="percentage">Percentage (%)</option>
+                        <option value="fixed">Fixed R</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                        Discount Value rate
+                      </label>
+                      <input
+                        required
+                        type="number"
+                        value={editingCoupon.discount_value}
+                        onChange={(e) =>
+                          setEditingCoupon({
+                            ...editingCoupon,
+                            discount_value: Number(e.target.value),
+                          })
+                        }
+                        className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 outline-none transition-all font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                      Minimum order requirement (R)
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 150"
+                      value={editingCoupon.min_order_value || ""}
+                      onChange={(e) =>
+                        setEditingCoupon({
+                          ...editingCoupon,
+                          min_order_value: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/20 outline-none transition-all font-bold"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                      Adjust expiration date (Optional)
+                    </label>
+                    <input
+                      type="date"
+                      value={editingCoupon.expiry_date || ""}
+                      onChange={(e) =>
+                        setEditingCoupon({
+                          ...editingCoupon,
+                          expiry_date: e.target.value || null,
+                        })
+                      }
+                      className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/20 outline-none transition-all font-bold cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Active Slide switch toggler inside edit screen */}
+                  <div className="flex items-center justify-between p-3 bg-on-surface/5 rounded-2xl select-none">
+                    <div>
+                      <span className="text-xs font-bold text-on-surface block">Coupon is Active</span>
+                      <span className="text-[9px] text-on-surface-variant/80">Allows customers to apply this code on checkout.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingCoupon({
+                          ...editingCoupon,
+                          is_active: !editingCoupon.is_active,
+                        })
+                      }
+                      className={cn(
+                        "font-black px-3 py-1.5 text-[9px] uppercase rounded-xl transition-all tracking-wider",
+                        editingCoupon.is_active ? "bg-emerald-500 text-white" : "bg-zinc-300 text-zinc-700"
+                      )}
+                    >
+                      {editingCoupon.is_active ? "Active" : "Paused"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingCoupon(null)}
+                    className="flex-1 py-3 bg-surface-container text-on-surface text-xs font-bold rounded-xl"
+                  >
+                    Discard Changes
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 bg-primary text-on-primary text-xs font-bold rounded-xl shadow-lg"
+                  >
+                    Save Changes
+                  </button>
+                </div>
               </form>
             </motion.div>
           </div>
@@ -9221,6 +11825,23 @@ const Insights = ({
   const [followerTrendData, setFollowerTrendData] = useState<
     { name: string; value: number }[]
   >([]);
+  const [timeFilter, setTimeFilter] = useState<"today" | "7d" | "30d" | "all">("7d");
+
+  const filteredOrdersForInsights = useMemo(() => {
+    const now = new Date();
+    if (timeFilter === "today") {
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      return orders.filter((o) => new Date(o.created_at) >= startOfToday);
+    } else if (timeFilter === "7d") {
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return orders.filter((o) => new Date(o.created_at) >= sevenDaysAgo);
+    } else if (timeFilter === "30d") {
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return orders.filter((o) => new Date(o.created_at) >= thirtyDaysAgo);
+    }
+    return orders;
+  }, [orders, timeFilter]);
 
   useEffect(() => {
     const fetchReviews = async () => {
@@ -9329,7 +11950,7 @@ const Insights = ({
 
   const peakHoursData = useMemo(() => {
     const hours = Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0 }));
-    orders.forEach((order) => {
+    filteredOrdersForInsights.forEach((order) => {
       const date = new Date(order.created_at);
       if (!isNaN(date.getTime())) {
         const hour = date.getHours();
@@ -9354,7 +11975,7 @@ const Insights = ({
           ? "bg-primary"
           : "bg-on-surface-variant/20",
     }));
-  }, [orders]);
+  }, [filteredOrdersForInsights]);
 
   const itemTrendData = useMemo(() => {
     if (!selectedItemForTrend) return [];
@@ -9369,7 +11990,7 @@ const Insights = ({
       };
     }).reverse();
 
-    orders
+    filteredOrdersForInsights
       .filter((o) => o.product_name === selectedItemForTrend)
       .forEach((order) => {
         const orderDate = new Date(order.created_at)
@@ -9380,16 +12001,18 @@ const Insights = ({
       });
 
     return last7Days.map((d) => ({ name: d.dayName, value: d.revenue }));
-  }, [orders, selectedItemForTrend]);
+  }, [filteredOrdersForInsights, selectedItemForTrend]);
 
   // Calculate top sellers from orders
-  const productCounts = orders.reduce((acc: Record<string, number>, order) => {
-    acc[order.product_name] = (acc[order.product_name] || 0) + 1;
-    return acc;
-  }, {});
+  const productCounts = useMemo(() => {
+    return filteredOrdersForInsights.reduce((acc: Record<string, number>, order) => {
+      acc[order.product_name] = (acc[order.product_name] || 0) + 1;
+      return acc;
+    }, {});
+  }, [filteredOrdersForInsights]);
 
   const exportToCSV = () => {
-    if (orders.length === 0) {
+    if (filteredOrdersForInsights.length === 0) {
       toast.error("No orders to export");
       return;
     }
@@ -9397,7 +12020,7 @@ const Insights = ({
     const headers = ["Order ID", "Product", "Price", "Status", "Date"];
     const csvContent = [
       headers.join(","),
-      ...orders.map((o) =>
+      ...filteredOrdersForInsights.map((o) =>
         [
           o.id,
           `"${o.product_name}"`,
@@ -9442,7 +12065,7 @@ const Insights = ({
   const menuAnalytics = useMemo(() => {
     return menuItems
       .map((item) => {
-        const itemOrders = orders.filter((o) => o.product_name === item.name);
+        const itemOrders = filteredOrdersForInsights.filter((o) => o.product_name === item.name);
         const totalRevenue = itemOrders.reduce(
           (sum, o) => sum + Number(o.total_price),
           0,
@@ -9479,30 +12102,66 @@ const Insights = ({
         };
       })
       .sort((a, b) => b.totalRevenue - a.totalRevenue);
-  }, [orders, menuItems]);
+  }, [filteredOrdersForInsights, menuItems]);
 
-  const categoryRevenue = orders.reduce(
-    (acc: Record<string, number>, order) => {
-      const item = menuItems.find((i) => i.name === order.product_name);
-      const category = item?.category || "Other";
-      acc[category] = (acc[category] || 0) + Number(order.total_price);
-      return acc;
-    },
-    {},
-  );
+  const categoryRevenue = useMemo(() => {
+    return filteredOrdersForInsights.reduce(
+      (acc: Record<string, number>, order) => {
+        const item = menuItems.find((i) => i.name === order.product_name);
+        const category = item?.category || "Other";
+        acc[category] = (acc[category] || 0) + Number(order.total_price);
+        return acc;
+      },
+      {},
+    );
+  }, [filteredOrdersForInsights, menuItems]);
 
   const dailyEarningsData = useMemo(() => {
-    const last7Days = Array.from({ length: 7 }, (_, index) => {
+    if (timeFilter === "today") {
+      const slots = Array.from({ length: 8 }, (_, i) => {
+        const hour = 8 + i * 2;
+        const hourLabel = hour > 12 ? `${hour - 12}PM` : hour === 12 ? "12PM" : `${hour}AM`;
+        return {
+          id: hour,
+          name: hourLabel,
+          earnings: 0,
+        };
+      });
+
+      filteredOrdersForInsights
+        .filter(
+          (o) =>
+            o.status === "completed" ||
+            o.status === "preparing" ||
+            o.status === "ready",
+        )
+        .forEach((order) => {
+          const orderDate = new Date(order.created_at);
+          const h = orderDate.getHours();
+          let matchedSlot = slots[0];
+          for (const s of slots) {
+            if (h >= s.id && h < s.id + 2) {
+              matchedSlot = s;
+              break;
+            }
+          }
+          matchedSlot.earnings += Number(order.total_price);
+        });
+      return slots;
+    }
+
+    const daysToShow = timeFilter === "30d" ? 30 : timeFilter === "all" ? 60 : 7;
+    const daysArray = Array.from({ length: daysToShow }, (_, index) => {
       const d = new Date();
       d.setDate(d.getDate() - index);
       return {
         date: d.toISOString().split("T")[0],
-        dayName: format(d, "EEE"),
+        dayName: daysToShow > 7 ? format(d, "dd MMM") : format(d, "EEE"),
         earnings: 0,
       };
     }).reverse();
 
-    orders
+    filteredOrdersForInsights
       .filter(
         (o) =>
           o.status === "completed" ||
@@ -9513,15 +12172,15 @@ const Insights = ({
         const orderDate = new Date(order.created_at)
           .toISOString()
           .split("T")[0];
-        const day = last7Days.find((d) => d.date === orderDate);
+        const day = daysArray.find((d) => d.date === orderDate);
         if (day) day.earnings += Number(order.total_price);
       });
 
-    return last7Days.map((d) => ({ name: d.dayName, earnings: d.earnings }));
-  }, [orders]);
+    return daysArray.map((d) => ({ name: d.dayName, earnings: d.earnings }));
+  }, [filteredOrdersForInsights, timeFilter]);
 
   const couponPerformance = useMemo(() => {
-    const couponOrders = orders.filter((o) => o.coupon_code);
+    const couponOrders = filteredOrdersForInsights.filter((o) => o.coupon_code);
     const totalDiscount = couponOrders.reduce(
       (acc, curr) => acc + (curr.discount_amount || 0),
       0,
@@ -9554,7 +12213,89 @@ const Insights = ({
         .map(([code, stats]) => ({ code, ...stats }))
         .sort((a, b) => b.sales - a.sales),
     };
-  }, [orders]);
+  }, [filteredOrdersForInsights]);
+
+  // Intelligent heuristical advisor rules (Client-Approved Business Advisory corner)
+  const businessAdvice = useMemo(() => {
+    const adviceList: {
+      id: string;
+      title: string;
+      description: string;
+      type: "success" | "warning" | "info" | "action";
+      metric?: string;
+    }[] = [];
+
+    const actualTopSeller = topSellers[0];
+    if (actualTopSeller && actualTopSeller.count >= 2) {
+      adviceList.push({
+        id: "top_seller_pricing",
+        title: "Optimize High-Volume Revenue",
+        description: `"${actualTopSeller.name}" is your absolute top runner with ${actualTopSeller.count} orders. Consider packaging it with beverages as a combo deal or introducing a slight 4-5% price hike to boost restaurant margins.`,
+        type: "success",
+        metric: `${actualTopSeller.count} Orders`,
+      });
+    }
+
+    const negativeReviews = reviews.filter((r) => r.rating <= 3 && !r.response);
+    if (negativeReviews.length > 0) {
+      adviceList.push({
+        id: "reviews_response",
+        title: "Urgent Review Responses",
+        description: `You have ${negativeReviews.length} unanswered feedback entries rated 3 stars or less. Replying proactively to negative reviews recovers trust for up to 65% of local foodies.`,
+        type: "warning",
+        metric: `${negativeReviews.length} Negative`,
+      });
+    }
+
+    const lowStockItems = menuItems.filter((m) => m.is_active && (m.stock_quantity || 0) <= 4);
+    if (lowStockItems.length > 0) {
+      const names = lowStockItems.slice(0, 2).map((i) => i.name).join(", ");
+      adviceList.push({
+        id: "low_stock_refill",
+        title: "Replenish Inventory Warning",
+        description: `Critical inventory warning: "${names}" ${lowStockItems.length > 2 ? `and ${lowStockItems.length - 2} more` : ""} are below 5 units left. Replenish kitchen stocks now to avoid canceled orders during rush hours.`,
+        type: "action",
+        metric: "Restock Needed",
+      });
+    }
+
+    const stagnantItems = menuItems.filter((item) => {
+      const sold = filteredOrdersForInsights.some((o) => o.product_name === item.name);
+      return !sold && item.is_active && (item.stock_quantity || 0) > 8;
+    });
+    if (stagnantItems.length > 0) {
+      const itemToPromo = stagnantItems[0];
+      adviceList.push({
+        id: "stagnant_rescue",
+        title: "Activate Cold Offerings",
+        description: `"${itemToPromo.name}" has healthy stock levels (${itemToPromo.stock_quantity} pieces available) but zero sales. Try boosting traction by launching a coupon template campaign for it!`,
+        type: "info",
+        metric: "0% Traction",
+      });
+    }
+
+    if (couponPerformance.totalRedemptions === 0 && filteredOrdersForInsights.length > 3) {
+      adviceList.push({
+        id: "coupon_traction_boost",
+        title: "Boost Sales via Coupons",
+        description: "Zero coupons were applied in this period. Setting up a 'FAST30' or 'FREESHIP' code is highly recommended to increase average checkout size.",
+        type: "info",
+        metric: "0 Redemptions",
+      });
+    }
+
+    if (adviceList.length === 0) {
+      adviceList.push({
+        id: "general",
+        title: "Exceptional Store Performance Profile",
+        description: "Your local restaurant metrics look well balanced! Keep on-time delivery rates high and monitor reviews to lock in recurring customers.",
+        type: "success",
+        metric: "Optimal",
+      });
+    }
+
+    return adviceList;
+  }, [topSellers, reviews, menuItems, filteredOrdersForInsights, couponPerformance]);
 
   const pieData = Object.entries(categoryRevenue).map(([name, value]) => ({
     name,
@@ -9591,13 +12332,110 @@ const Insights = ({
       <motion.section
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-primary/5 pb-6"
       >
-        <h1 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2 font-headline">
-          Business Insights
-        </h1>
-        <p className="text-on-surface-variant font-body">
-          Data-driven performance overview for LocalEats.
-        </p>
+        <div className="space-y-1">
+          <h1 className="text-4xl font-extrabold tracking-tight text-on-surface mb-1 font-headline">
+            Business Insights
+          </h1>
+          <p className="text-on-surface-variant text-sm font-medium">
+            Data-driven performance overview for LocalEats.
+          </p>
+        </div>
+
+        {/* Segmented Time Filter Control */}
+        <div className="flex bg-surface-container-high p-1 rounded-2xl border border-outline-variant/5 self-stretch sm:self-auto select-none" id="insights_time_segmented_filter">
+          {(["today", "7d", "30d", "all"] as const).map((filter) => {
+            const isActive = timeFilter === filter;
+            const labels = {
+              today: "Today",
+              "7d": "7 Days",
+              "30d": "30 Days",
+              all: "All Time",
+            };
+            return (
+              <button
+                key={filter}
+                onClick={() => setTimeFilter(filter)}
+                className={cn(
+                  "flex-1 sm:flex-initial px-4 py-2 text-xs font-black uppercase tracking-wider rounded-xl transition-all",
+                  isActive
+                    ? "bg-primary text-on-primary shadow-sm scale-102"
+                    : "text-on-surface-variant/70 hover:text-on-surface hover:bg-surface-container-highest"
+                )}
+              >
+                {labels[filter]}
+              </button>
+            );
+          })}
+        </div>
+      </motion.section>
+
+      {/* Intelligent Merchant Advisor Panel */}
+      <motion.section
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="bg-surface-container-low/60 rounded-[2rem] p-6 border border-outline-variant/10 space-y-4"
+        id="insights_advisory_panel"
+      >
+        <div className="flex items-center gap-2">
+          <Sparkles className="text-primary fill-primary/10 animate-pulse" size={18} />
+          <h2 className="text-xs font-black tracking-widest text-on-surface uppercase font-headline">
+            Merchant Intelligence Room
+          </h2>
+          <span className="text-[9px] font-black tracking-widest bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase">
+            Advice Auto-Calculated
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="insights_advisory_grid">
+          {businessAdvice.slice(0, 3).map((advice) => {
+            const colors = {
+              success: "bg-emerald-500/5 border-emerald-500/20 text-emerald-800 dark:text-emerald-300",
+              warning: "bg-amber-500/5 border-amber-500/20 text-amber-800 dark:text-amber-300",
+              action: "bg-rose-500/5 border-rose-500/20 text-rose-800 dark:text-rose-300",
+              info: "bg-primary/5 border-primary/20 text-on-surface",
+            };
+
+            const badges = {
+              success: "bg-emerald-500/10 text-emerald-600",
+              warning: "bg-amber-500/10 text-amber-600",
+              action: "bg-rose-500/10 text-rose-600",
+              info: "bg-primary/10 text-primary",
+            };
+
+            return (
+              <div
+                key={advice.id}
+                className={cn(
+                  "p-5 rounded-2xl border flex flex-col justify-between gap-3 text-xs font-semibold hover:shadow-sm transition-all",
+                  colors[advice.type]
+                )}
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-extrabold uppercase tracking-wide text-on-surface text-[11px] flex items-center gap-1.5">
+                      {advice.type === "warning" && <AlertCircle size={12} className="text-amber-500 shrink-0" />}
+                      {advice.type === "action" && <AlertCircle size={12} className="text-rose-500 shrink-0" />}
+                      {advice.type === "success" && <Sparkles size={12} className="text-emerald-500 shrink-0" />}
+                      {advice.type === "info" && <Info size={12} className="text-primary shrink-0" />}
+                      {advice.title}
+                    </h3>
+                    {advice.metric && (
+                      <span className={cn("text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full", badges[advice.type])}>
+                        {advice.metric}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-on-surface-variant font-medium leading-relaxed font-body text-[11px]">
+                    {advice.description}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </motion.section>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
@@ -9610,7 +12448,13 @@ const Insights = ({
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
             <div>
               <h2 className="text-sm font-bold uppercase tracking-widest text-on-surface-variant/60 mb-1">
-                Daily Earnings (Last 7 Days)
+                {timeFilter === "today"
+                  ? "Today's Earnings (Hourly)"
+                  : timeFilter === "7d"
+                    ? "Daily Earnings (Last 7 Days)"
+                    : timeFilter === "30d"
+                      ? "Daily Earnings (Last 30 Days)"
+                      : "Earnings Overview (All-Time)"}
               </h2>
               <div className="flex items-baseline gap-3">
                 <span className="text-4xl font-black text-on-surface font-headline">
@@ -10352,7 +13196,7 @@ const RiderManagement = ({
 }: {
   currentShop: Shop;
   orders: Order[];
-  onRequestRider: (id: string, riderId?: string) => void;
+  onRequestRider: (id: string, riderId?: string, riderName?: string, riderPhone?: string) => void;
   sendRiderNudge: (riderId: string, message: string) => Promise<void>;
   user: User | null;
 }) => {
@@ -10366,6 +13210,13 @@ const RiderManagement = ({
   } | null>(null);
 
   const [qrUrl, setQrUrl] = useState<string>("");
+  const [pairingCodeDuration, setPairingCodeDuration] = useState<"24h" | "7d" | "30d" | "never">("24h");
+  const [showInHouseModal, setShowInHouseModal] = useState(false);
+  const [inHouseName, setInHouseName] = useState("");
+  const [inHousePhone, setInHousePhone] = useState("");
+  const [inHouseVehicle, setInHouseVehicle] = useState<"Road" | "Bicycle" | "Motorbike" | "Electric">("Motorbike");
+  const [nudgingRider, setNudgingRider] = useState<RiderConnection | null>(null);
+  const [customNudgeText, setCustomNudgeText] = useState("");
 
   const trackedRider = useMemo(() => 
     connections.find(c => c.rider_id === selectedTrackId),
@@ -10425,12 +13276,13 @@ const RiderManagement = ({
       const processed = (data as (RiderConnection & { rider_profiles: RiderProfile | null })[]).map((item) => {
         const conn = item as RiderConnection;
         const profile = item.rider_profiles;
+        const isInHouse = conn.connection_code === "IN-HOUSE";
         return {
           ...conn,
-          is_online: profile?.is_online || false,
+          is_online: profile?.is_online || (isInHouse ? true : false),
           rider_name: profile?.full_name || conn.rider_name,
           rider_phone: profile?.phone || conn.rider_phone,
-          status: profile?.status || (new Date(conn.expires_at) < new Date() ? "expired" : conn.status),
+          status: profile?.status || (new Date(conn.expires_at) < new Date() ? "expired" : (isInHouse ? "idle" : conn.status)),
           vehicle_type: profile?.vehicle_type || "Road",
           rating: profile?.rating || 5.0,
           total_deliveries: profile?.total_deliveries || 0,
@@ -10446,11 +13298,11 @@ const RiderManagement = ({
   }, [currentShop.id]);
 
   const activeConnectionsCount = connections.filter(
-    (c) => c.rider_id && new Date(c.expires_at) >= new Date(),
+    (c) => (c.rider_id || c.connection_code === "IN-HOUSE") && new Date(c.expires_at) >= new Date(),
   ).length;
 
   const availableCodesCount = connections.filter(
-    (c) => !c.rider_id && new Date(c.expires_at) >= new Date(),
+    (c) => !c.rider_id && c.connection_code !== "IN-HOUSE" && new Date(c.expires_at) >= new Date(),
   ).length;
 
   useEffect(() => {
@@ -10524,7 +13376,21 @@ const RiderManagement = ({
 
   const generateCode = async () => {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    
+    let offsetMs = 24 * 60 * 60 * 1000; // 24h default
+    let durationLabel = "24 hours";
+    if (pairingCodeDuration === "7d") {
+      offsetMs = 7 * 24 * 60 * 60 * 1000;
+      durationLabel = "7 days";
+    } else if (pairingCodeDuration === "30d") {
+      offsetMs = 30 * 24 * 60 * 60 * 1000;
+      durationLabel = "30 days";
+    } else if (pairingCodeDuration === "never") {
+      offsetMs = 5 * 365 * 24 * 60 * 60 * 1000; // 5 years
+      durationLabel = "5 years";
+    }
+
+    const expiresAt = new Date(Date.now() + offsetMs).toISOString();
 
     const { error } = await supabase.from("rider_connections").insert({
       shop_id: currentShop.id,
@@ -10539,7 +13405,33 @@ const RiderManagement = ({
       setActiveCode({ code, expires: expiresAt });
       setShowCode(true);
       void fetchConnections();
-      toast.success("Pairing code generated! Valid for 24 hours.");
+      toast.success(`Pairing code generated! Valid for ${durationLabel}.`);
+    }
+  };
+
+  const addInHouseRider = async () => {
+    if (!inHouseName.trim() || !inHousePhone.trim()) {
+      toast.error("Please fill in Rider Name and Phone Number");
+      return;
+    }
+
+    const { error } = await supabase.from("rider_connections").insert({
+      shop_id: currentShop.id,
+      rider_name: inHouseName.trim(),
+      rider_phone: inHousePhone.trim(),
+      connection_code: "IN-HOUSE",
+      expires_at: new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000).toISOString(), // 5 years
+      status: "active",
+    });
+
+    if (error) {
+      toast.error("Failed to add in-house rider: " + error.message);
+    } else {
+      setInHouseName("");
+      setInHousePhone("");
+      setShowInHouseModal(false);
+      void fetchConnections();
+      toast.success("In-house driver registered successfully! Ready for direct assignment.");
     }
   };
 
@@ -10610,22 +13502,43 @@ const RiderManagement = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={broadcastTestOrder}
-            className="flex items-center gap-2 px-6 py-3 bg-amber-500/10 text-amber-600 rounded-2xl font-bold hover:bg-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+            className="flex items-center gap-2 px-5 py-3 bg-amber-500/10 text-amber-600 rounded-2xl font-bold hover:bg-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all text-sm"
           >
-            <Zap size={20} />
+            <Zap size={18} />
             Auto-Broadcast Mission
           </button>
 
           <button
-            onClick={generateCode}
-            className="flex items-center gap-2 px-6 py-3 bg-primary text-on-primary rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
+            onClick={() => setShowInHouseModal(true)}
+            className="flex items-center gap-2 px-5 py-3 bg-indigo-500/10 text-indigo-600 border border-indigo-500/20 rounded-2xl font-bold hover:bg-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all text-sm"
           >
-            <Plus size={20} />
-            New Pairing Code
+            <Users size={18} />
+            + In-House Driver
           </button>
+
+          <div className="flex items-center bg-primary/5 border border-primary/20 rounded-2xl px-3 py-1.5 gap-2">
+            <span className="text-[10px] font-black uppercase text-primary/70 tracking-wider">Expiry:</span>
+            <select
+              value={pairingCodeDuration}
+              onChange={(e) => setPairingCodeDuration(e.target.value as "24h" | "7d" | "30d" | "never")}
+              className="bg-transparent border-0 text-xs font-bold text-primary focus:ring-0 focus:outline-none pr-8 cursor-pointer"
+            >
+              <option value="24h">24 Hours</option>
+              <option value="7d">7 Days</option>
+              <option value="30d">30 Days</option>
+              <option value="never">Never Expire</option>
+            </select>
+            <button
+              onClick={generateCode}
+              className="flex items-center gap-1.5 px-4 py-2 bg-primary text-on-primary rounded-xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-md shadow-primary/10 text-xs"
+            >
+              <Plus size={14} />
+              Gen Code
+            </button>
+          </div>
         </div>
       </header>
 
@@ -10949,10 +13862,8 @@ const RiderManagement = ({
                   {!isExpired && conn.rider_id && !conn.is_online && (
                     <button
                       onClick={() => {
-                        sendRiderNudge(
-                          conn.rider_id!,
-                          "Dispatcher is nudging you to go online!",
-                        );
+                        setNudgingRider(conn);
+                        setCustomNudgeText("⚠️ Dispatcher is nudging you to go online!");
                       }}
                       className="w-full py-2.5 bg-amber-500/10 text-amber-600 text-[10px] font-black rounded-xl uppercase hover:bg-amber-500/20 transition-all border border-amber-500/10 flex items-center justify-center gap-2"
                     >
@@ -11105,6 +14016,206 @@ const RiderManagement = ({
                </motion.div>
             </div>
          )}
+      </AnimatePresence>
+
+      {/* IN-HOUSE DRIVER REGISTRATION MODAL */}
+      <AnimatePresence>
+        {showInHouseModal && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm pointer-events-auto"
+              onClick={() => setShowInHouseModal(false)}
+            />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="w-full max-w-md bg-surface-container-low rounded-3xl border border-outline-variant/20 shadow-2xl relative flex flex-col pointer-events-auto overflow-hidden text-on-surface"
+            >
+              <div className="p-6 border-b border-outline-variant/10 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                    <Users size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">Add In-House Driver</h3>
+                    <p className="text-[10px] text-on-surface-variant/60 font-medium">Bypass pairing code registration</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowInHouseModal(false)}
+                  className="w-8 h-8 rounded-full hover:bg-on-surface/5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5 font-headline">Driver Name</label>
+                  <input
+                    type="text"
+                    value={inHouseName}
+                    onChange={(e) => setInHouseName(e.target.value)}
+                    placeholder="e.g. Sipho Nkosi"
+                    className="w-full px-4 py-3 bg-on-surface/5 border border-outline-variant/10 rounded-xl text-sm focus:ring-1 focus:ring-primary focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5 font-headline">Phone Number</label>
+                  <input
+                    type="text"
+                    value={inHousePhone}
+                    onChange={(e) => setInHousePhone(e.target.value)}
+                    placeholder="e.g. +27 71 234 5678"
+                    className="w-full px-4 py-3 bg-on-surface/5 border border-outline-variant/10 rounded-xl text-sm focus:ring-1 focus:ring-primary focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5 font-headline">Vehicle Type</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["Road", "Bicycle", "Motorbike", "Electric"] as const).map((v) => (
+                      <button
+                        key={v}
+                        onClick={() => setInHouseVehicle(v)}
+                        className={cn(
+                          "py-2 px-3 text-xs font-bold rounded-xl border transition-all text-center uppercase tracking-tight",
+                          inHouseVehicle === v
+                            ? "bg-indigo-500 text-white border-indigo-500"
+                            : "bg-on-surface/5 text-on-surface-variant/70 border-outline-variant/10 hover:bg-on-surface/10"
+                        )}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 bg-on-surface/5 border-t border-outline-variant/10 flex gap-3">
+                <button
+                  onClick={() => setShowInHouseModal(false)}
+                  className="flex-1 py-3 bg-transparent border border-outline-variant/20 rounded-xl text-sm font-bold hover:bg-on-surface/5"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={addInHouseRider}
+                  className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition"
+                >
+                  Register Driver
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* INTERACTIVE DRIVER NUDGE DIALOG */}
+      <AnimatePresence>
+        {nudgingRider && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm pointer-events-auto"
+              onClick={() => setNudgingRider(null)}
+            />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="w-full max-w-md bg-surface-container-low rounded-3xl border border-outline-variant/20 shadow-2xl relative flex flex-col pointer-events-auto overflow-hidden text-on-surface animate-in fade-in-50 zoom-in-95"
+            >
+              <div className="p-6 border-b border-outline-variant/10 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                    <Zap size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">Nudge Rider Profile</h3>
+                    <p className="text-[10px] text-on-surface-variant/60 font-medium font-mono">Send secure push notification</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setNudgingRider(null)}
+                  className="w-8 h-8 rounded-full hover:bg-on-surface/5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="bg-surface px-4 py-3 rounded-2xl border border-outline-variant/10 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                    <Bike size={20} />
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm text-on-surface">{nudgingRider.rider_name}</p>
+                    <p className="text-xs text-on-surface-variant/60 uppercase font-mono">{nudgingRider.connection_code}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">Quick Templates</label>
+                  <div className="space-y-2">
+                    {[
+                      "⚠️ Rush hour load! Go online now.",
+                      "⚡ Tip value increased by 20% in your zone!",
+                      "📦 High priority order awaits prompt dispatch.",
+                      "🚦 Weather surges active - earn extra per delivery!"
+                    ].map((tpl) => (
+                      <button
+                        key={tpl}
+                        onClick={() => setCustomNudgeText(tpl)}
+                        className="w-full p-2.5 bg-on-surface/5 hover:bg-on-surface/10 rounded-xl border border-outline-variant/5 text-xs text-left font-semibold text-on-surface-variant hover:text-on-surface transition-colors"
+                      >
+                        {tpl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">Custom Dispatch Note</label>
+                  <textarea
+                    rows={3}
+                    value={customNudgeText}
+                    onChange={(e) => setCustomNudgeText(e.target.value)}
+                    placeholder="Describe specific instruction..."
+                    className="w-full px-4 py-3 bg-on-surface/5 border border-outline-variant/10 rounded-xl text-sm focus:ring-1 focus:ring-primary focus:outline-none resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="p-6 bg-on-surface/5 border-t border-outline-variant/10 flex gap-3">
+                <button
+                  onClick={() => setNudgingRider(null)}
+                  className="flex-1 py-3 bg-transparent border border-outline-variant/20 rounded-xl text-sm font-bold hover:bg-on-surface/5"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    const msg = customNudgeText.trim() || "⚠️ Real-time status update notification";
+                    void sendRiderNudge(nudgingRider.rider_id || nudgingRider.id, msg);
+                    setNudgingRider(null);
+                    setCustomNudgeText("");
+                  }}
+                  className="flex-1 py-3 bg-amber-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition"
+                >
+                  Send Signal Nudge
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
     </div>
   );
@@ -11305,6 +14416,27 @@ function App() {
       Notification.permission === "granted"
     );
   });
+
+  // Business Settings State
+  const [storeStatus, setStoreStatus] = useState<"open" | "busy" | "closed">("open");
+  const [prepTime, setPrepTime] = useState(15);
+  const [autoPrint, setAutoPrint] = useState(false);
+  const [deliverySettings, setDeliverySettings] = useState({
+    type: "fixed",
+    baseFee: 25,
+    freeDeliveryOver: 300,
+    maxDistanceKm: 15
+  });
+  const [operatingHours, setOperatingHours] = useState([
+    { day: "Mon", open: "09:00", close: "21:00", active: true },
+    { day: "Tue", open: "09:00", close: "21:00", active: true },
+    { day: "Wed", open: "09:00", close: "21:00", active: true },
+    { day: "Thu", open: "09:00", close: "21:00", active: true },
+    { day: "Fri", open: "09:00", close: "22:00", active: true },
+    { day: "Sat", open: "10:00", close: "22:00", active: true },
+    { day: "Sun", open: "10:00", close: "20:00", active: true },
+  ]);
+
   const prevPendingCount = useRef(0);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [kitchenMode, setKitchenMode] = useState(false);
@@ -12227,17 +15359,26 @@ function App() {
     }
   };
 
-  const requestRider = async (id: string, targetRiderId?: string) => {
+  const requestRider = async (
+    id: string,
+    targetRiderId?: string,
+    targetRiderName?: string,
+    targetRiderPhone?: string
+  ) => {
     const previousOrders = [...orders];
+    const isManualInHouse = !targetRiderId && targetRiderName;
+    
     setOrders((prev) =>
       prev.map((o) =>
         o.id === id
           ? {
               ...o,
               status: "accepted",
-              delivery_status: "finding_rider",
+              delivery_status: isManualInHouse ? "accepted" : "finding_rider",
               delivery_fee: FLAT_DELIVERY_FEE,
-              rider_id: targetRiderId || o.rider_id,
+              rider_id: targetRiderId || null,
+              rider_name: targetRiderName || o.rider_name || null,
+              rider_phone: targetRiderPhone || o.rider_phone || null,
               order_type: "delivery",
               restaurant_name: o.restaurant_name || currentShop.name,
               city: o.city || "Tembisa",
@@ -12251,7 +15392,7 @@ function App() {
     const currentOrder = orders.find((o) => o.id === id);
     const updateData: Record<string, unknown> = {
       status: "accepted",
-      delivery_status: "finding_rider",
+      delivery_status: isManualInHouse ? "accepted" : "finding_rider",
       delivery_fee: FLAT_DELIVERY_FEE,
       price: currentOrder?.price || currentOrder?.total_price || 0,
       total_price: currentOrder?.total_price || currentOrder?.price || 0,
@@ -12265,8 +15406,10 @@ function App() {
       order_type: "delivery",
       city: currentOrder?.city || "Tembisa",
       shop_id: currentOrder?.shop_id || currentShop.id,
+      rider_id: targetRiderId || null,
+      rider_name: targetRiderName || null,
+      rider_phone: targetRiderPhone || null,
     };
-    if (targetRiderId) updateData.rider_id = targetRiderId;
 
     // Clean undefined from updateData
     if (updateData.status === undefined) delete updateData.status;
@@ -12281,9 +15424,15 @@ function App() {
       setOrders(previousOrders);
       toast.error("We couldn't request a rider right now. Please try again.");
     } else {
-      toast.success("Rider requested! Searching for available cyclists...", {
-        icon: <Rocket className="text-primary" size={18} />,
-      });
+      if (isManualInHouse) {
+        toast.success(`Order assigned instantly to ${targetRiderName}!`, {
+          icon: <Bike className="text-primary" size={18} />,
+        });
+      } else {
+        toast.success("Rider requested! Searching for available cyclists...", {
+          icon: <Rocket className="text-primary" size={18} />,
+        });
+      }
     }
   };
 
@@ -12999,6 +16148,254 @@ function App() {
                       <ExternalLink size={18} className="text-blue-500" />
                     </div>
                   </a>
+
+                  {/* Order Operations Section */}
+                  <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
+                    <div className="flex items-center gap-2 border-b border-outline-variant/10 pb-4">
+                      <Store size={18} className="text-on-surface-variant" />
+                      <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Order Operations</h3>
+                    </div>
+
+                    {/* Store Status Toggle */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface">Store Status</p>
+                        <p className="text-xs text-on-surface-variant">Are you currently accepting new orders?</p>
+                      </div>
+                      <div className="flex bg-surface-container-high p-1 rounded-xl border border-outline-variant/10">
+                         {(["open", "busy", "closed"] as const).map((statusOption) => {
+                           const labels = { open: "Open", busy: "Busy", closed: "Closed" };
+                           const activeClass = 
+                             statusOption === "open" ? "bg-emerald-500 text-white shadow-sm" : 
+                             statusOption === "busy" ? "bg-amber-500 text-white shadow-sm" :
+                             "bg-rose-500 text-white shadow-sm";
+                           
+                           return (
+                             <button
+                               key={statusOption}
+                               onClick={() => {
+                                 setStoreStatus(statusOption);
+                                 toast.success(`Store status updated to ${labels[statusOption]}`);
+                               }}
+                               className={cn(
+                                 "px-4 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all",
+                                 storeStatus === statusOption ? activeClass : "text-on-surface-variant hover:bg-surface-container-highest"
+                               )}
+                             >
+                               {labels[statusOption]}
+                             </button>
+                           );
+                         })}
+                      </div>
+                    </div>
+
+                    {/* Default Prep Time */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface">Default Prep Time</p>
+                        <p className="text-xs text-on-surface-variant">Estimated minutes to prepare an average order.</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                         <input 
+                           type="range" 
+                           min="5" 
+                           max="60" 
+                           step="5"
+                           value={prepTime}
+                           onChange={(e) => setPrepTime(Number(e.target.value))}
+                           className="w-24 accent-primary h-1.5 bg-outline-variant/20 rounded-lg appearance-none cursor-pointer"
+                         />
+                         <span className="w-12 text-right text-xs font-black text-primary font-mono">{prepTime} min</span>
+                      </div>
+                    </div>
+
+                    {/* Auto-print Receipts */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="text-left">
+                         <p className="font-bold text-on-surface flex items-center gap-2">
+                           Hardware: Auto-Print Receipts <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Beta</span>
+                         </p>
+                         <p className="text-xs text-on-surface-variant">Automatically print the receipt when order is accepted. Requires connection to local ESC/POS printer.</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const nextState = !autoPrint;
+                          setAutoPrint(nextState);
+                          if (nextState) toast.success("Auto-print enabled. Please ensure your POS printer is connected.");
+                        }}
+                        className={cn(
+                          "w-12 h-6 rounded-full transition-all relative shrink-0",
+                          autoPrint ? "bg-primary" : "bg-outline-variant",
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
+                            autoPrint ? "left-7" : "left-1",
+                          )}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Operational Hours */}
+                  <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
+                    <div className="flex items-center gap-2 border-b border-outline-variant/10 pb-4">
+                      <Clock size={18} className="text-on-surface-variant" />
+                      <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Operating Hours</h3>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      {operatingHours.map((dayObj, index) => (
+                        <div key={dayObj.day} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-surface-container-highest/20 rounded-xl border border-outline-variant/5">
+                          <div className="flex items-center gap-3 w-32">
+                             <input 
+                               type="checkbox"
+                               checked={dayObj.active}
+                               onChange={(e) => {
+                                 const newHours = [...operatingHours];
+                                 newHours[index].active = e.target.checked;
+                                 setOperatingHours(newHours);
+                               }}
+                               className="w-4 h-4 text-primary rounded border-outline-variant/30 focus:ring-primary focus:ring-2 bg-transparent"
+                             />
+                             <span className={cn("text-xs font-black uppercase tracking-wider", dayObj.active ? "text-on-surface" : "text-on-surface-variant/50")}>
+                               {dayObj.day}
+                             </span>
+                          </div>
+                          
+                          {dayObj.active ? (
+                            <div className="flex items-center gap-3 flex-1">
+                              <input 
+                                type="time"
+                                value={dayObj.open}
+                                onChange={(e) => {
+                                  const newHours = [...operatingHours];
+                                  newHours[index].open = e.target.value;
+                                  setOperatingHours(newHours);
+                                }}
+                                className="bg-surface-container-low text-xs border border-outline-variant/20 rounded-lg px-2 py-1.5 focus:outline-none focus:border-primary/50 font-mono"
+                              />
+                              <span className="text-on-surface-variant text-xs font-bold">to</span>
+                              <input 
+                                type="time"
+                                value={dayObj.close}
+                                onChange={(e) => {
+                                  const newHours = [...operatingHours];
+                                  newHours[index].close = e.target.value;
+                                  setOperatingHours(newHours);
+                                }}
+                                className="bg-surface-container-low text-xs border border-outline-variant/20 rounded-lg px-2 py-1.5 focus:outline-none focus:border-primary/50 font-mono"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex-1">
+                              <span className="text-[10px] font-black uppercase tracking-widest text-rose-500/70 bg-rose-500/10 px-2 py-1 rounded-md">Closed</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      <div className="flex justify-end pt-2">
+                        <button 
+                          onClick={() => toast.success("Operating hours saved successfully.")}
+                          className="px-4 py-2 bg-primary text-on-primary rounded-xl text-xs font-bold shadow-sm"
+                        >
+                          Save Hours
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Delivery & Dispatch Settings */}
+                  <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
+                    <div className="flex items-center gap-2 border-b border-outline-variant/10 pb-4">
+                      <Truck size={18} className="text-on-surface-variant" />
+                      <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Delivery Logistics</h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-3">
+                        <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
+                          Delivery Fee Model
+                        </label>
+                        <div className="flex bg-surface-container-high p-1 rounded-xl border border-outline-variant/5">
+                          {(["fixed", "distance"] as const).map((type) => (
+                            <button
+                              key={type}
+                              onClick={() => setDeliverySettings({...deliverySettings, type})}
+                              className={cn(
+                                "flex-1 px-4 py-2 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all",
+                                deliverySettings.type === type ? "bg-primary text-on-primary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-highest"
+                              )}
+                            >
+                              {type === "fixed" ? "Fixed Rate" : "Per KM"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                         <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
+                           {deliverySettings.type === "fixed" ? "Base Delivery Fee (R)" : "Rate Per KM (R)"}
+                         </label>
+                         <input 
+                           type="number" 
+                           value={deliverySettings.baseFee}
+                           onChange={(e) => setDeliverySettings({...deliverySettings, baseFee: Number(e.target.value)})}
+                           className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
+                         />
+                      </div>
+                      
+                      <div className="space-y-3">
+                         <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
+                           Free Delivery Threshold (R)
+                         </label>
+                         <input 
+                           type="number" 
+                           value={deliverySettings.freeDeliveryOver}
+                           onChange={(e) => setDeliverySettings({...deliverySettings, freeDeliveryOver: Number(e.target.value)})}
+                           className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
+                           placeholder="e.g. 300 (0 for no free delivery)"
+                         />
+                      </div>
+                      
+                      <div className="space-y-3">
+                         <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
+                           Max Delivery Radius (KM)
+                         </label>
+                         <div className="flex items-center gap-3">
+                           <input 
+                             type="range" 
+                             min="1" 
+                             max="30" 
+                             value={deliverySettings.maxDistanceKm}
+                             onChange={(e) => setDeliverySettings({...deliverySettings, maxDistanceKm: Number(e.target.value)})}
+                             className="flex-1 accent-primary h-1.5 bg-outline-variant/20 rounded-lg appearance-none cursor-pointer"
+                           />
+                           <span className="w-12 text-right text-xs font-black text-primary font-mono">{deliverySettings.maxDistanceKm}km</span>
+                         </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Financial & Payout Settings */}
+                  <div className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
+                        <Wallet size={20} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface">Payouts & Banking</p>
+                        <p className="text-xs text-on-surface-variant">Manage your bank account for weekly payouts.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                       <span className="text-[10px] items-center font-bold uppercase tracking-wider text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full whitespace-nowrap hidden md:inline-flex">
+                         Verified
+                       </span>
+                       <ChevronRight size={18} className="text-on-surface-variant/40" />
+                    </div>
+                  </div>
 
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center justify-between w-full">
