@@ -108,6 +108,7 @@ import {
 import { format } from "date-fns";
 import AppMapBackground from "./components/AppMapBackground";
 import { SavingOverlay } from "./components/ui/SavingOverlay";
+import { ConfirmModal } from "./components/ui/ConfirmModal";
 import { createClient, User } from "@supabase/supabase-js";
 import {
   MapContainer,
@@ -4209,6 +4210,23 @@ const MenuManagement = ({
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
+
+  const confirmAction = (title: string, message: string, onConfirm: () => void, confirmText = "Delete") => {
+    setConfirmDialog({ isOpen: true, title, message, onConfirm, confirmText });
+  };
+
   const [selectedDietaryTags, setSelectedDietaryTags] = useState<string[]>([]);
   const [filterDietary, setFilterDietary] = useState<string[]>([]);
   const [editingPriceId, setEditingPriceId] = useState<number | null>(null);
@@ -4615,62 +4633,63 @@ const MenuManagement = ({
           ? `Change category to "${value}" for ${selectedItems.length} items?`
           : `Mark ${selectedItems.length} items as ${action}?`;
 
-    if (!window.confirm(confirmMessage)) return;
+    confirmAction("Confirm Batch Action", confirmMessage, async () => {
+      setConfirmDialog(p => ({...p, isOpen: false}));
+      // Snapshot for rollback
+      const previousItems = [...items];
 
-    // Snapshot for rollback
-    const previousItems = [...items];
-
-    // Optimistic Update
-    if (action === "delete") {
-      setItems((prev) => prev.filter((item) => !selectedItems.includes(item.id)));
-    } else if (action === "category" && value) {
-      setItems((prev) =>
-        prev.map((item) =>
-          selectedItems.includes(item.id) ? { ...item, category: value } : item
-        )
-      );
-    } else {
-      setItems((prev) =>
-        prev.map((item) =>
-          selectedItems.includes(item.id)
-            ? { ...item, is_available: action === "available" }
-            : item
-        )
-      );
-    }
-
-    try {
+      // Optimistic Update
       if (action === "delete") {
-        const { error } = await supabase
-          .from("menu_items")
-          .delete()
-          .in("id", selectedItems);
-        if (error) throw error;
-        toast.success(`Deleted ${selectedItems.length} items`);
-      } else if (action === "category") {
-        const { error } = await supabase
-          .from("menu_items")
-          .update({ category: value })
-          .in("id", selectedItems);
-        if (error) throw error;
-        toast.success(`Updated category for ${selectedItems.length} items`);
+        setItems((prev) => prev.filter((item) => !selectedItems.includes(item.id)));
+      } else if (action === "category" && value) {
+        setItems((prev) =>
+          prev.map((item) =>
+            selectedItems.includes(item.id) ? { ...item, category: value } : item
+          )
+        );
       } else {
-        const { error } = await supabase
-          .from("menu_items")
-          .update({ is_available: action === "available" })
-          .in("id", selectedItems);
-        if (error) throw error;
-        toast.success(`Updated ${selectedItems.length} items`);
+        setItems((prev) =>
+          prev.map((item) =>
+            selectedItems.includes(item.id)
+              ? { ...item, is_available: action === "available" }
+              : item
+          )
+        );
       }
-      setSelectedItems([]);
-      fetchMenu();
-    } catch (error: unknown) {
-      // Rollback
-      setItems(previousItems);
-      toast.error(
-        `Bulk action failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
-    }
+
+      try {
+        if (action === "delete") {
+          const { error } = await supabase
+            .from("menu_items")
+            .delete()
+            .in("id", selectedItems);
+          if (error) throw error;
+          toast.success(`Deleted ${selectedItems.length} items`);
+        } else if (action === "category") {
+          const { error } = await supabase
+            .from("menu_items")
+            .update({ category: value })
+            .in("id", selectedItems);
+          if (error) throw error;
+          toast.success(`Updated category for ${selectedItems.length} items`);
+        } else {
+          const { error } = await supabase
+            .from("menu_items")
+            .update({ is_available: action === "available" })
+            .in("id", selectedItems);
+          if (error) throw error;
+          toast.success(`Updated ${selectedItems.length} items`);
+        }
+        setSelectedItems([]);
+        fetchMenu();
+      } catch (error: unknown) {
+        // Rollback
+        setItems(previousItems);
+        toast.error(
+          `Bulk action failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+    }, action === "delete" ? "Delete All" : "Confirm");
   };
 
   const toggleSelectAll = () => {
@@ -4764,6 +4783,14 @@ const MenuManagement = ({
 
   return (
     <div className="space-y-12">
+      <ConfirmModal
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(p => ({...p, isOpen: false}))}
+      />
       <motion.section
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -5532,13 +5559,14 @@ const MenuManagement = ({
                             </button>
                             <button
                               onClick={() => {
-                                if (
-                                  window.confirm(
-                                    "Are you sure you want to delete this item?",
-                                  )
-                                ) {
-                                  handleDelete(item.id);
-                                }
+                                confirmAction(
+                                  "Confirm Delete",
+                                  "Are you sure you want to delete this menu item?",
+                                  () => {
+                                    setConfirmDialog(p => ({...p, isOpen: false}));
+                                    handleDelete(item.id);
+                                  }
+                                );
                               }}
                               className="p-1.5 md:p-2 text-on-surface-variant/40 hover:text-error transition-colors"
                             >
@@ -9628,7 +9656,7 @@ Please return the content in JSON format with these exact keys:
       const splitHeadline = doc.splitTextToSize(flyerHeadline, pageWidth - 50);
       doc.text(splitHeadline, pageWidth / 2, 78, { align: "center" });
 
-      const targetUrl = `https://www.localeatssa.co.za/shop/${currentShop.id}${flyerCouponCode ? `?coupon=${flyerCouponCode}` : ""}`;
+      const targetUrl = `https://www.localeatssa.co.za/?shopId=${currentShop.id}${flyerCouponCode ? `&coupon=${flyerCouponCode}` : ""}`;
       const qrDataUrl = await QRCode.toDataURL(targetUrl, {
         width: 400,
         margin: 2,
@@ -9737,7 +9765,7 @@ Please return the content in JSON format with these exact keys:
         doc.setFont("helvetica", "bold");
         doc.text(tableName, pageWidth / 2, cy - 30, { align: "center" });
 
-        const tableUrl = `https://www.localeatssa.co.za/shop/${currentShop.id}?table=${tableName.replace(/\s+/g, "%20")}`;
+        const tableUrl = `https://www.localeatssa.co.za/?shopId=${currentShop.id}&table=${tableName.replace(/\s+/g, "%20")}`;
         const qrDataUrl = await QRCode.toDataURL(tableUrl, {
           width: 300,
           margin: 1,
@@ -14425,7 +14453,8 @@ function App() {
     type: "fixed",
     baseFee: 25,
     freeDeliveryOver: 300,
-    maxDistanceKm: 15
+    maxDistanceKm: 15,
+    minOrderAmount: 50
   });
   const [operatingHours, setOperatingHours] = useState([
     { day: "Mon", open: "09:00", close: "21:00", active: true },
@@ -14444,6 +14473,25 @@ function App() {
     return localStorage.getItem("darkMode") === "true";
   });
   const shopsRef = useRef<Shop[]>([]);
+
+  // Interactive Confirm Dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
+
+  const confirmAction = (title: string, message: string, onConfirm: () => void, confirmText = "Delete") => {
+    setConfirmDialog({ isOpen: true, title, message, onConfirm, confirmText });
+  };
+
 
   const currentShop = useMemo(
     () => shops.find((s) => s.owner_id === user?.id),
@@ -14483,12 +14531,29 @@ function App() {
 
   // Load cached data on mount
   useEffect(() => {
-    const cachedShops = localStorage.getItem("le_shops");
-    const cachedOrders = localStorage.getItem("le_orders");
-    const cachedMenu = localStorage.getItem("le_menu");
-    if (cachedShops) setShops(JSON.parse(cachedShops));
-    if (cachedOrders) setOrders(JSON.parse(cachedOrders));
-    if (cachedMenu) setMenuItems(JSON.parse(cachedMenu));
+    try {
+      const cachedShops = localStorage.getItem("le_shops");
+      if (cachedShops) setShops(JSON.parse(cachedShops));
+    } catch (e) {
+      console.error("Error parsing cached shops. Resetting item.", e);
+      localStorage.removeItem("le_shops");
+    }
+
+    try {
+      const cachedOrders = localStorage.getItem("le_orders");
+      if (cachedOrders) setOrders(JSON.parse(cachedOrders));
+    } catch (e) {
+      console.error("Error parsing cached orders. Resetting item.", e);
+      localStorage.removeItem("le_orders");
+    }
+
+    try {
+      const cachedMenu = localStorage.getItem("le_menu");
+      if (cachedMenu) setMenuItems(JSON.parse(cachedMenu));
+    } catch (e) {
+      console.error("Error parsing cached menu. Resetting item.", e);
+      localStorage.removeItem("le_menu");
+    }
   }, []);
 
   useEffect(() => {
@@ -15085,44 +15150,46 @@ function App() {
 
   const deleteAllOrders = async () => {
     if (!user) return;
-    if (
-      !window.confirm(
-        "Are you sure you want to delete ALL orders? This action cannot be undone.",
-      )
-    )
-      return;
+    
+    confirmAction(
+      "Confirm Delete All",
+      "Are you sure you want to delete ALL orders? This action cannot be undone.",
+      async () => {
+        setConfirmDialog(p => ({...p, isOpen: false}));
 
-    // First, get the shops owned by this user
-    const { data: ownedShops, error: shopsError } = await supabase
-      .from("shops")
-      .select("id")
-      .eq("owner_id", user.id);
+        // First, get the shops owned by this user
+        const { data: ownedShops, error: shopsError } = await supabase
+          .from("shops")
+          .select("id")
+          .eq("owner_id", user.id);
 
-    if (shopsError) {
-      console.error("Error fetching owned shops for deletion:", shopsError);
-      return;
-    }
+        if (shopsError) {
+          console.error("Error fetching owned shops for deletion:", shopsError);
+          return;
+        }
 
-    const ownedShopIds = ownedShops?.map((s) => s.id) || [];
+        const ownedShopIds = ownedShops?.map((s) => s.id) || [];
 
-    if (ownedShopIds.length === 0) {
-      toast.info("No orders to delete.");
-      return;
-    }
+        if (ownedShopIds.length === 0) {
+          toast.info("No orders to delete.");
+          return;
+        }
 
-    // Delete only orders belonging to these shops
-    const { error } = await supabase
-      .from("orders")
-      .delete()
-      .in("shop_id", ownedShopIds);
+        // Delete only orders belonging to these shops
+        const { error } = await supabase
+          .from("orders")
+          .delete()
+          .in("shop_id", ownedShopIds);
 
-    if (error) {
-      console.error("Delete All Orders Error:", error);
-      toast.error("We couldn't delete these orders right now. Please try again.");
-    } else {
-      toast.success("All orders have been deleted.");
-      fetchOrders();
-    }
+        if (error) {
+          console.error("Delete All Orders Error:", error);
+          toast.error("We couldn't delete these orders right now. Please try again.");
+        } else {
+          toast.success("All orders have been deleted.");
+          fetchOrders();
+        }
+      }
+    );
   };
 
   const updateOrderStatus = async (
@@ -15700,6 +15767,14 @@ function App() {
         darkMode && "dark",
       )}
     >
+      <ConfirmModal
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(p => ({...p, isOpen: false}))}
+      />
         {/* Existing Toaster */}
         <Toaster
           position="top-center"
@@ -16236,16 +16311,65 @@ function App() {
                         />
                       </button>
                     </div>
+
+                    {/* Receipt Layout Toggle */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2 border-t border-outline-variant/10">
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface flex items-center gap-2">
+                          Kitchen Format / Standard format
+                        </p>
+                        <p className="text-xs text-on-surface-variant">
+                          Toggle between large-text Kitchen dispatch dockets vs customer stylized thermal receipts.
+                        </p>
+                      </div>
+                      <div className="flex bg-surface-container-high p-1 rounded-xl border border-outline-variant/5 text-xs font-black uppercase">
+                        <button className="px-3 py-1.5 bg-zinc-800 text-white rounded-lg">Full Logo</button>
+                        <button className="px-3 py-1.5 text-on-surface-variant hover:bg-surface-container-highest rounded-lg transition-colors">Kitchen</button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Operational Hours */}
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
-                    <div className="flex items-center gap-2 border-b border-outline-variant/10 pb-4">
-                      <Clock size={18} className="text-on-surface-variant" />
-                      <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Operating Hours</h3>
+                    <div className="flex items-center justify-between border-b border-outline-variant/10 pb-4">
+                      <div className="flex items-center gap-2">
+                        <Clock size={18} className="text-on-surface-variant" />
+                        <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Operating Hours</h3>
+                      </div>
+                      <div className="flex items-center gap-2">
+                         <span className="text-xs font-bold text-on-surface-variant">Holiday Mode</span>
+                         <button
+                            onClick={() => {
+                              toast.info("Holiday Mode toggled. Your store is now temporarily closed until you turn this off.", { icon: <PauseCircle className="text-primary"/> });
+                            }}
+                            className={cn(
+                              "w-10 h-5 rounded-full transition-all relative shrink-0",
+                              "bg-outline-variant/40"
+                            )}
+                          >
+                            <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-all" />
+                          </button>
+                      </div>
                     </div>
                     
                     <div className="space-y-4">
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => {
+                            const monday = operatingHours[0];
+                            const newHours = operatingHours.map(d => 
+                              ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(d.day) 
+                                ? { ...d, open: monday.open, close: monday.close, active: monday.active }
+                                : d
+                            );
+                            setOperatingHours(newHours);
+                            toast.success("Monday's hours copied to all weekdays.");
+                          }}
+                          className="text-xs font-black uppercase text-primary hover:bg-primary/5 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+                        >
+                          <Copy size={14} /> Copy Monday to Mon-Fri
+                        </button>
+                      </div>
                       {operatingHours.map((dayObj, index) => (
                         <div key={dayObj.day} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-surface-container-highest/20 rounded-xl border border-outline-variant/5">
                           <div className="flex items-center gap-3 w-32">
@@ -16358,6 +16482,19 @@ function App() {
                            placeholder="e.g. 300 (0 for no free delivery)"
                          />
                       </div>
+
+                      <div className="space-y-3">
+                         <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
+                           Minimum Order Amount (R)
+                         </label>
+                         <input 
+                           type="number" 
+                           value={deliverySettings.minOrderAmount}
+                           onChange={(e) => setDeliverySettings({...deliverySettings, minOrderAmount: Number(e.target.value)})}
+                           className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
+                           placeholder="e.g. 50"
+                         />
+                      </div>
                       
                       <div className="space-y-3">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
@@ -16392,6 +16529,25 @@ function App() {
                     <div className="flex items-center gap-2">
                        <span className="text-[10px] items-center font-bold uppercase tracking-wider text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full whitespace-nowrap hidden md:inline-flex">
                          Verified
+                       </span>
+                       <ChevronRight size={18} className="text-on-surface-variant/40" />
+                    </div>
+                  </div>
+
+                  {/* Staff & Access Control */}
+                  <div className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center text-orange-600 group-hover:scale-110 transition-transform">
+                        <Users size={20} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface">Staff & Managers</p>
+                        <p className="text-xs text-on-surface-variant">Add staff accounts and configure permission roles.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                       <span className="text-[10px] items-center font-bold uppercase tracking-wider text-orange-600 bg-orange-500/10 px-2 py-0.5 rounded-full whitespace-nowrap hidden md:inline-flex">
+                         1 Active
                        </span>
                        <ChevronRight size={18} className="text-on-surface-variant/40" />
                     </div>
