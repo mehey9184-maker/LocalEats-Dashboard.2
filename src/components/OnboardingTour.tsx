@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
   UtensilsCrossed,
@@ -123,8 +123,6 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
     }
   }, [currentStep, isOpen, activeTab, setActiveTab]);
 
-  if (!isOpen) return null;
-
   const step = TOUR_STEPS[currentStep];
   const isFirst = currentStep === 0;
   const isLast = currentStep === TOUR_STEPS.length - 1;
@@ -148,108 +146,116 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
   };
 
   return (
-    <div id="onboarding-tour-overlay" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      {/* Background Mask to highlight current active panel */}
-      <div className="absolute inset-0 pointer-events-none" />
-
-      <AnimatePresence mode="wait">
+    <AnimatePresence mode="wait">
+      {isOpen && (
         <motion.div
-          key={currentStep}
-          initial={{ opacity: 0, scale: 0.92, y: 15 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: -10 }}
-          transition={{ type: "spring", stiffness: 350, damping: 28 }}
-          id="onboarding-tour-card"
-          className="relative w-full max-w-lg bg-surface dark:bg-surface-container-high rounded-3xl shadow-2xl border border-outline-variant/20 overflow-hidden flex flex-col"
+          key="onboarding-tour-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
         >
-          {/* Top colored aesthetic bar styled dynamically */}
-          <div className={`h-2 bg-gradient-to-r ${step.color} w-full`} />
+          {/* Background Mask to highlight current active panel */}
+          <div className="absolute inset-0 pointer-events-none" />
 
-          {/* Close button */}
-          <button
-            onClick={handleSkip}
-            className="absolute top-4 right-4 p-2 rounded-full text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface dark:hover:bg-surface-container-highest transition-all z-10"
-            aria-label="Skip tour"
+          <motion.div
+            key={`step-${currentStep}`}
+            initial={{ opacity: 0, scale: 0.92, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -10 }}
+            transition={{ type: "spring", stiffness: 350, damping: 28 }}
+            id="onboarding-tour-card"
+            className="relative w-full max-w-lg bg-surface dark:bg-surface-container-high rounded-3xl shadow-2xl border border-outline-variant/20 overflow-hidden flex flex-col"
           >
-            <X size={16} />
-          </button>
+            {/* Top colored aesthetic bar styled dynamically */}
+            <div className={`h-2 bg-gradient-to-r ${step.color} w-full`} />
 
-          <div className="p-6 md:p-8 space-y-6 flex-1">
-            {/* Header section with icon, badge & title */}
-            <div className="flex items-start gap-4">
-              <div className={`p-3.5 rounded-2xl bg-gradient-to-tr ${step.color} text-white shadow-md shrink-0`}>
-                <step.icon size={24} />
-              </div>
-              <div className="space-y-1 text-left">
-                <span className="text-[10px] font-bold tracking-widest text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-full">
-                  {step.badge}
-                </span>
-                <h3 className="text-xl font-bold font-headline text-on-surface select-none">
-                  {step.title}
-                </h3>
-              </div>
-            </div>
-
-            {/* Core Description */}
-            <p className="text-sm text-on-surface-variant leading-relaxed select-none text-left">
-              {step.description}
-            </p>
-
-            {/* Highlight helper card (proportional UX cues) */}
-            <div className="p-4 bg-surface-container-low dark:bg-surface-container-highest/80 rounded-2xl border border-outline-variant/10 text-left flex items-start gap-3">
-              <span className="text-base select-none shrink-0 mt-0.5">💡</span>
-              <p className="text-xs text-on-surface font-medium leading-normal select-none">
-                {step.highlightText}
-              </p>
-            </div>
-
-            {/* Step indicator progress bars */}
-            <div className="flex gap-1.5 pt-2">
-              {TOUR_STEPS.map((_, idx) => (
-                <div
-                  key={idx}
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    idx === currentStep ? "w-8 bg-primary" : "w-2 bg-outline-variant/35"
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Action button bar */}
-          <div className="bg-surface-container-low dark:bg-surface-container-highest/50 px-6 py-4 flex items-center justify-between border-t border-outline-variant/10">
+            {/* Close button */}
             <button
               onClick={handleSkip}
-              className="text-xs text-on-surface-variant/70 hover:text-primary font-bold transition-colors select-none"
+              className="absolute top-4 right-4 p-2 rounded-full text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface dark:hover:bg-surface-container-highest transition-all z-10"
+              aria-label="Skip tour"
             >
-              Skip Walkthrough
+              <X size={16} />
             </button>
 
-            <div className="flex items-center gap-3">
-              {!isFirst && (
-                <button
-                  onClick={handlePrev}
-                  className="px-4 py-2 text-xs font-bold font-headline text-on-surface border border-outline-variant/30 rounded-xl hover:bg-surface-container-high transition-all flex items-center gap-1.5 select-none"
-                >
-                  <ChevronLeft size={14} /> Back
-                </button>
-              )}
+            <div className="p-6 md:p-8 space-y-6 flex-1">
+              {/* Header section with icon, badge & title */}
+              <div className="flex items-start gap-4">
+                <div className={`p-3.5 rounded-2xl bg-gradient-to-tr ${step.color} text-white shadow-md shrink-0`}>
+                  <step.icon size={24} />
+                </div>
+                <div className="space-y-1 text-left">
+                  <span className="text-[10px] font-bold tracking-widest text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-full">
+                    {step.badge}
+                  </span>
+                  <h3 className="text-xl font-bold font-headline text-on-surface select-none">
+                    {step.title}
+                  </h3>
+                </div>
+              </div>
 
-              <motion.button
-                onClick={handleNext}
-                whileTap={{ scale: 0.95 }}
-                className={`px-5 py-2.5 text-xs font-bold font-headline rounded-xl shadow-lg transition-all flex items-center gap-1.5 select-none ${
-                  isLast
-                    ? "bg-primary text-white shadow-primary/20 hover:bg-primary-dark"
-                    : "bg-on-surface text-surface dark:bg-white dark:text-black hover:opacity-90"
-                }`}
-              >
-                {isLast ? "Done" : isFirst ? <>Let's Go <Play size={12} className="fill-current" /></> : <>Next <ChevronRight size={14} /></>}
-              </motion.button>
+              {/* Core Description */}
+              <p className="text-sm text-on-surface-variant leading-relaxed select-none text-left">
+                {step.description}
+              </p>
+
+              {/* Highlight helper card (proportional UX cues) */}
+              <div className="p-4 bg-surface-container-low dark:bg-surface-container-highest/80 rounded-2xl border border-outline-variant/10 text-left flex items-start gap-3">
+                <span className="text-base select-none shrink-0 mt-0.5">💡</span>
+                <p className="text-xs text-on-surface font-medium leading-normal select-none">
+                  {step.highlightText}
+                </p>
+              </div>
+
+              {/* Step indicator progress bars */}
+              <div className="flex gap-1.5 pt-2">
+                {TOUR_STEPS.map((_, idx) => (
+                  <div
+                    key={idx}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      idx === currentStep ? "w-8 bg-primary" : "w-2 bg-outline-variant/35"
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+
+            {/* Action button bar */}
+            <div className="bg-surface-container-low dark:bg-surface-container-highest/50 px-6 py-4 flex items-center justify-between border-t border-outline-variant/10">
+              <button
+                onClick={handleSkip}
+                className="text-xs text-on-surface-variant/70 hover:text-primary font-bold transition-colors select-none"
+              >
+                Skip Walkthrough
+              </button>
+
+              <div className="flex items-center gap-3">
+                {!isFirst && (
+                  <button
+                    onClick={handlePrev}
+                    className="px-4 py-2 text-xs font-bold font-headline text-on-surface border border-outline-variant/30 rounded-xl hover:bg-surface-container-high transition-all flex items-center gap-1.5 select-none"
+                  >
+                    <ChevronLeft size={14} /> Back
+                  </button>
+                )}
+
+                <motion.button
+                  onClick={handleNext}
+                  whileTap={{ scale: 0.95 }}
+                  className={`px-5 py-2.5 text-xs font-bold font-headline rounded-xl shadow-lg transition-all flex items-center gap-1.5 select-none ${
+                    isLast
+                      ? "bg-primary text-white shadow-primary/20 hover:bg-primary-dark"
+                      : "bg-on-surface text-surface dark:bg-white dark:text-black hover:opacity-90"
+                  }`}
+                >
+                  {isLast ? "Done" : isFirst ? <>Let's Go <Play size={12} className="fill-current" /></> : <>Next <ChevronRight size={14} /></>}
+                </motion.button>
+              </div>
+            </div>
+          </motion.div>
         </motion.div>
-      </AnimatePresence>
-    </div>
+      )}
+    </AnimatePresence>
   );
 };

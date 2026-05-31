@@ -5,7 +5,7 @@ import React, {
   useMemo,
   useCallback,
 } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
 import { OnboardingTour } from "./components/OnboardingTour";
 import { GoogleGenAI } from "@google/genai";
@@ -515,6 +515,20 @@ export interface Order {
   merchant_rating?: number;
    merchant_feedback?: string;
 }
+
+const safeGetOrderItems = (items: unknown): (string | { name: string; price: number; quantity: number })[] => {
+  if (!items) return [];
+  if (Array.isArray(items)) return items;
+  if (typeof items === "string") {
+    try {
+      const parsed = JSON.parse(items);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
 
 export interface RiderProfile {
   id: string;
@@ -6850,7 +6864,7 @@ const OrdersManagement = ({
         return;
       }
 
-      const formattedItems = (order.items || [])
+      const formattedItems = safeGetOrderItems(order.items)
         .map((i) => {
           const isObj = typeof i === "object" && i !== null;
           const p = isObj && "price" in i ? (i as { price: number }).price : (Number(order.total_price) || 0);
@@ -6939,7 +6953,7 @@ const OrdersManagement = ({
   };
 
   const copyReceiptToClipboard = (order: Order) => {
-    const itemsText = (order.items || [])
+    const itemsText = safeGetOrderItems(order.items)
       .map((i) => {
         const isObj = typeof i === "object" && i !== null;
         const p = isObj && "price" in i ? (i as { price: number }).price : (Number(order.total_price) || 0);
@@ -7878,8 +7892,8 @@ Notes: "${order.notes || "None"}"
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-outline-variant/10">
-                                  {order.items && order.items.length > 0 ? (
-                                    order.items.map((item, idx) => (
+                                  {safeGetOrderItems(order.items).length > 0 ? (
+                                    safeGetOrderItems(order.items).map((item, idx) => (
                                       <tr
                                         key={idx}
                                         className="hover:bg-surface-container-highest/30 transition-colors"
@@ -9036,7 +9050,7 @@ Notes: "${order.notes || "None"}"
         {/* Cancellation reasons Modal */}
         <AnimatePresence>
           {cancellingOrder && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div key="cancellingOrder-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 15 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -9135,14 +9149,14 @@ Notes: "${order.notes || "None"}"
                   </button>
                 </div>
               </motion.div>
-            </div>
+            </motion.div>
           )}
         </AnimatePresence>
 
         {/* Pop-up Free Thermal Printed Receipt Live Mockup Modal */}
         <AnimatePresence>
           {printingOrder && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs overflow-y-auto">
+            <motion.div key="printingOrder-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs overflow-y-auto">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -9309,7 +9323,7 @@ Notes: "${order.notes || "None"}"
                   </div>
                 </div>
               </motion.div>
-            </div>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
@@ -10105,7 +10119,7 @@ Please return the content in JSON format with these exact keys:
       {/* PRINTABLE FLYER BUILDER MODAL */}
       <AnimatePresence>
         {showFlyerModal && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div key="showFlyerModal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[120] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -10293,14 +10307,14 @@ Please return the content in JSON format with these exact keys:
                 </div>
               </div>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          </motion.div>
+          )}
+        </AnimatePresence>
 
       {/* DINE-IN TABLE QR BUILDER TENTS MODAL */}
       <AnimatePresence>
         {showTableQRModal && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div key="showTableQRModal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[120] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -10427,14 +10441,14 @@ Please return the content in JSON format with these exact keys:
                 </div>
               </div>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          </motion.div>
+          )}
+        </AnimatePresence>
 
       {/* AI MARKETING CAMPAIGN DRAWER BUILDER */}
       <AnimatePresence>
         {showCampaignModal && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div key="showCampaignModal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[120] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -10712,9 +10726,9 @@ Please return the content in JSON format with these exact keys:
                 )}
               </div>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          </motion.div>
+          )}
+        </AnimatePresence>
     </div>
   );
 };
@@ -10916,7 +10930,7 @@ const Coupons = ({
     toast.success(`Preset "${preset.code}" auto-loaded! Feel free to edit values before saving.`);
   };
 
-  const getPerformance = (code: string) => {
+  const getPerformance = useCallback((code: string) => {
     const redemptions = orders.filter((o) => o.coupon_code === code);
     const totalDiscount = redemptions.reduce(
       (acc, curr) => acc + (curr.discount_amount || 0),
@@ -10931,7 +10945,7 @@ const Coupons = ({
       discount: totalDiscount,
       sales: totalSales,
     };
-  };
+  }, [orders]);
 
   const exportToCSV = () => {
     if (coupons.length === 0) {
@@ -11016,7 +11030,7 @@ const Coupons = ({
       }
     });
     return topCode;
-  }, [coupons, orders]);
+  }, [coupons, getPerformance]);
 
   // Active coupons expiring in the next 48 hours (2 days)
   const expiringSoonCoupons = useMemo(() => {
@@ -11472,7 +11486,7 @@ const Coupons = ({
       {/* Create Coupon Modal */}
       <AnimatePresence>
         {showCreateModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div key="showCreateModal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -11661,14 +11675,14 @@ const Coupons = ({
                 </button>
               </form>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          </motion.div>
+          )}
+        </AnimatePresence>
 
       {/* EDIT COUPON MODAL */}
       <AnimatePresence>
         {editingCoupon && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div key="editingCoupon-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -11830,9 +11844,9 @@ const Coupons = ({
                 </div>
               </form>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          </motion.div>
+          )}
+        </AnimatePresence>
     </div>
   );
 };
@@ -13918,7 +13932,13 @@ const RiderManagement = ({
       {/* TRACKER MODAL */}
       <AnimatePresence>
          {selectedTrackId && trackedRider && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-10 pointer-events-none">
+            <motion.div
+               key="tracker-overlay"
+               initial={{ opacity: 0 }}
+               animate={{ opacity: 1 }}
+               exit={{ opacity: 0 }}
+               className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-10 pointer-events-none"
+            >
                <motion.div 
                  initial={{ opacity: 0 }}
                  animate={{ opacity: 1 }}
@@ -14042,14 +14062,14 @@ const RiderManagement = ({
                      </div>
                   </div>
                </motion.div>
-            </div>
+            </motion.div>
          )}
       </AnimatePresence>
 
       {/* IN-HOUSE DRIVER REGISTRATION MODAL */}
       <AnimatePresence>
         {showInHouseModal && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div key="showInHouseModal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[110] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -14140,14 +14160,14 @@ const RiderManagement = ({
                 </button>
               </div>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          </motion.div>
+          )}
+        </AnimatePresence>
 
       {/* INTERACTIVE DRIVER NUDGE DIALOG */}
       <AnimatePresence>
         {nudgingRider && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div key="nudgingRider-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[110] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -14242,9 +14262,9 @@ const RiderManagement = ({
                 </button>
               </div>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          </motion.div>
+          )}
+        </AnimatePresence>
     </div>
   );
 };
@@ -14320,17 +14340,64 @@ class ErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-red-50 text-red-900 p-4">
-          <h1 className="text-2xl font-bold mb-4">Something went wrong.</h1>
-          <p className="mb-4 text-center max-w-md">
-            {this.state.error?.message || "An unexpected error occurred."}
-          </p>
-          <button
-            className="px-4 py-2 bg-red-600 text-white rounded shadow"
-            onClick={() => window.location.reload()}
-          >
-            Reload Page
-          </button>
+        <div className="flex flex-col items-center justify-center min-h-screen bg-zinc-950 text-zinc-100 p-6 selection:bg-orange-500/30">
+          <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-orange-500/10 text-orange-500 mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            
+            <h1 className="text-xl font-bold tracking-tight mb-2 uppercase font-sans text-white">Self-Healing Shelter</h1>
+            <p className="text-sm text-zinc-400 mb-6 font-sans leading-relaxed">
+              We intercepted a runtime crash:
+              <span className="font-mono text-xs text-rose-400 block mt-2 p-3 bg-black/40 rounded border border-zinc-800/40 text-left overflow-x-auto max-h-24 leading-normal select-text">
+                {this.state.error?.message || "An unexpected render failure occurred."}
+              </span>
+            </p>
+
+            <div className="flex flex-col gap-3">
+              <button
+                className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-colors"
+                onClick={() => {
+                  try {
+                    localStorage.removeItem("le_shops");
+                    localStorage.removeItem("le_orders");
+                    localStorage.removeItem("le_menu");
+                  } catch {
+                    console.warn("Soft local storage purge bypassed.");
+                  }
+                  window.location.reload();
+                }}
+              >
+                Soft Repair & Reload
+              </button>
+              
+              <button
+                className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs uppercase tracking-widest rounded-xl transition-colors border border-zinc-750"
+                onClick={() => {
+                  try {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                  } catch {
+                    console.warn("Nuclear local storage purge bypassed.");
+                  }
+                  window.location.reload();
+                }}
+              >
+                Hard Reset (Nuclear Reset)
+              </button>
+
+              <button
+                className="w-full py-2 bg-transparent hover:text-zinc-300 text-zinc-500 font-bold text-xs uppercase transition-colors"
+                onClick={() => window.location.reload()}
+              >
+                Just Reload (No Wipe)
+              </button>
+            </div>
+          </div>
         </div>
       );
     }
@@ -16817,7 +16884,7 @@ function App() {
       {/* Help Modal */}
       <AnimatePresence>
         {showHelp && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6">
+            <motion.div key="showHelp-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -16992,9 +17059,9 @@ function App() {
                 </button>
               </div>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          </motion.div>
+          )}
+        </AnimatePresence>
 
       {/* BottomNavBar */}
       {!kitchenMode && (
@@ -18586,7 +18653,7 @@ const LockedRiderMode = ({
                   </div>
                   <div className="flex items-center gap-1 text-zinc-500">
                     <Info size={10} />
-                    <span>{JSON.parse(order.items || "[]").length} Items</span>
+                    <span>{safeGetOrderItems(order.items).length} Items</span>
                   </div>
                 </div>
 
@@ -18634,7 +18701,7 @@ const LockedRiderMode = ({
       {/* Pairing Modal */}
       <AnimatePresence>
         {showPairingModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-zinc-950/80 backdrop-blur-sm">
+            <motion.div key="showPairingModal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-zinc-950/80 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -18676,9 +18743,9 @@ const LockedRiderMode = ({
                 </button>
               </div>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          </motion.div>
+          )}
+        </AnimatePresence>
 
       {/* Footer Instructions */}
       <div className="mt-8 pt-8 border-t border-zinc-900">

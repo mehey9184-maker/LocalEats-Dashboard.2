@@ -21,7 +21,7 @@
     "leaflet": "^1.9.4",
     "leaflet-routing-machine": "^3.2.12",
     "lucide-react": "^0.344.0",
-    "motion": "^12.38.0",
+    "framer-motion": "^11.15.0",
     "pigeon-maps": "^0.22.1",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
@@ -52,5 +52,9 @@
     "typescript": "^5.2.2",
     "typescript-eslint": "^8.57.2",
     "vite": "^5.1.6"
+  },
+  "overrides": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   }
 }
