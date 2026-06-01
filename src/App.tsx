@@ -8,6 +8,7 @@ import React, {
 import { motion, AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
 import { OnboardingTour } from "./components/OnboardingTour";
+import AIMenuScannerModal from "./components/AIMenuScannerModal";
 import { GoogleGenAI } from "@google/genai";
 import {
   LayoutDashboard,
@@ -3981,6 +3982,25 @@ const CreateShop = ({
     setIsSaving(true);
     setIsSaveSuccess(false);
     try {
+      // Check if a shop with the exact same name already exists for this owner
+      const { data: existingShop, error: checkError } = await supabase
+        .from("shops")
+        .select("id")
+        .eq("owner_id", user.id)
+        .eq("name", formData.name.trim())
+        .maybeSingle();
+
+      if (checkError) {
+        console.error("Error checking query duplicate shop:", checkError);
+      }
+
+      if (existingShop) {
+        toast.error(`A shop named "${formData.name.trim()}" already exists. Duplicate shops are prevented.`);
+        setIsSaving(false);
+        setIsSaveSuccess(false);
+        return;
+      }
+
       const { error } = await supabase.from("shops").insert({
         ...formData,
         owner_id: user.id,
@@ -4222,6 +4242,7 @@ const MenuManagement = ({
   >("All");
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -4274,7 +4295,17 @@ const MenuManagement = ({
   }), [items, searchTerm, filterCategory, priceRange, stockFilter, filterDietary]);
 
   const categories = useMemo(() => {
-    const defaultCats = ["All", "Main Course", "Appetizers", "Desserts", "Beverages"];
+    const defaultCats = [
+      "All",
+      "Breakfast Menu",
+      "Eggs Menu",
+      "Toast Bread",
+      "Sandwiches",
+      "Main Course",
+      "Appetizers",
+      "Desserts",
+      "Beverages"
+    ];
     items.forEach((item) => {
       if (item.category && !defaultCats.includes(item.category)) {
         defaultCats.push(item.category);
@@ -4398,6 +4429,32 @@ const MenuManagement = ({
 
     e.preventDefault();
     if (!selectedShopId) return;
+
+    // Check for duplicate menu item name before proceeding with any uploads
+    if (!editingItem) {
+      setIsSaving(true);
+      try {
+        const { data: existingItem, error: checkError } = await supabase
+          .from("menu_items")
+          .select("id")
+          .eq("shop_id", selectedShopId)
+          .eq("name", formData.name.trim())
+          .maybeSingle();
+
+        if (checkError) {
+          console.error("Duplicate check query error:", checkError);
+        }
+
+        if (existingItem) {
+          toast.error(`"${formData.name.trim()}" already exists in your menu. Duplicate names are prevented.`);
+          setIsSaving(false);
+          setIsSaveSuccess(false);
+          return;
+        }
+      } catch (err) {
+        console.error("Error checking for duplicate menu item:", err);
+      }
+    }
 
     setIsSaving(true);
     setIsSaveSuccess(false);
@@ -4805,6 +4862,17 @@ const MenuManagement = ({
         onConfirm={confirmDialog.onConfirm}
         onCancel={() => setConfirmDialog(p => ({...p, isOpen: false}))}
       />
+      <AIMenuScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        selectedShopId={selectedShopId}
+        onRefreshMenu={() => {
+          fetchMenu();
+          onRefreshMenu?.();
+        }}
+        supabase={supabase}
+        defaultCategories={categories}
+      />
       <motion.section
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -4872,16 +4940,11 @@ const MenuManagement = ({
               {!editingItem && (
                 <button
                   type="button"
-                  onClick={() =>
-                    toast.info("Bulk Import feature coming soon!", {
-                      description:
-                        "You will be able to upload a CSV or use AI to scan your physical menu.",
-                    })
-                  }
-                  className="px-4 py-2 bg-surface-container-high text-primary font-bold text-xs rounded-xl hover:bg-primary/10 transition-colors flex items-center gap-2 shadow-sm"
+                  onClick={() => setIsScannerOpen(true)}
+                  className="px-4 py-2.5 bg-gradient-to-r from-primary/10 to-primary/20 text-primary font-bold text-xs rounded-xl hover:bg-primary/25 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2 shadow-sm border border-primary/20"
                 >
-                  <Upload size={16} />
-                  Bulk Import
+                  <Sparkles size={14} className="animate-pulse" />
+                  AI Menu Scanner 📸
                 </button>
               )}
             </div>

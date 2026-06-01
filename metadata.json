@@ -1,5 +1,6 @@
 {
   "name": "LocalEats Vendor Dashboard",
   "description": "A professional full-stack vendor dashboard for LocalEats, featuring real-time order management, menu curation, and business insights.",
-  "requestFramePermissions": ["geolocation"]
+  "requestFramePermissions": ["geolocation", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
