@@ -9,7 +9,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({ className }) => {
   return (
     <div 
       className={cn(
-        "bg-surface-container-highest/50 rounded-md animate-skeleton",
+        "rounded-md shimmer-effect",
         className
       )} 
     />

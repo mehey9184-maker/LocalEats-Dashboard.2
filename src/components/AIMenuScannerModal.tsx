@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { motion } from "framer-motion";
 import { 
   X, Camera, Upload, RefreshCw, Sparkles, Check, 
   Trash2, AlertCircle, Info, Wifi, WifiOff, CloudLightning 
@@ -520,11 +519,8 @@ Example JSON:
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 15 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 15 }}
-        className="relative bg-surface p-6 sm:p-8 rounded-[2.5rem] shadow-[0_24px_50px_-12px_rgba(167,52,0,0.15)] border border-outline-variant/10 w-full max-w-4xl max-h-[90vh] flex flex-col justify-between overflow-hidden"
+      <div
+        className="relative bg-surface p-6 sm:p-8 rounded-[2.5rem] shadow-[0_24px_50px_-12px_rgba(167,52,0,0.15)] border border-outline-variant/10 w-full max-w-4xl max-h-[90vh] flex flex-col justify-between overflow-hidden transform scale-100 opacity-100 transition-all duration-300"
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-outline-variant/10">
@@ -944,7 +940,7 @@ Example JSON:
             </div>
           </div>
         )}
-      </motion.div>
+      </div>
     </div>
   );
 }

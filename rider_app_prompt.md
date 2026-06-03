@@ -1,14 +1,14 @@
-# LocalEats Rider App - Build Prompt
+# LocalEats Rider App - Update Prompt
 
-Use this prompt in a new project in AI Studio to build the Rider/Courier application.
+Use this prompt to update the existing Rider/Courier application in AI Studio.
 
 ---
 
-**Project Name:** LocalEats Rider
-**Description:** A high-performance, mobile-first delivery application for cyclists using Supabase as the realtime backend. Featuring an Uber-style interface with integrated navigation.
+**Project Name:** LocalEats Rider (applies to rider.localeatssa.co.za)
+**Context:** I already have an existing web application built. I am NOT starting from scratch. I need to integrate new dynamic features that sync with the merchant courier configurations.
 
 ## 🚀 The Mission
-Build a "Cyberpunk-inspired / Uber-Style" delivery rider app. The app must allow self-employed cyclists to go online, accept food missions, and navigate to targets using an integrated, full-screen map interface.
+Update my existing Rider app to respect the merchant's `allow_external_riders` and `auto_look_for_rider` settings, and display trust banners based on `cash_trust_enabled`.
 
 ## 🛠 Tech Stack
 - **Framework:** React 18+ (Vite)
@@ -74,6 +74,16 @@ The app will interact with an existing `orders` table:
 - Input 6-digit merchant codes.
 - Connections expire in 24 hours (countdown in sidebar/top bar).
 
+## 📡 Integration with Storefront Courier Configuration (CRITICAL ALIGNMENT)
+The Rider app MUST coordinate with settings defined by standard merchants in their dashboards:
+1. **Rider Access Rules (`allow_external_riders` in `shops` table):**
+   - **If `false`:** Only riders with a valid active 24-hour linkage (matching `shop_id` in `rider_connections`) are authorized to see or pull orders from this merchant. The app MUST hide these missions from public feeds for unlinked riders.
+   - **If `true`:** ANY active/online rider in the region is authorized to view and accept these missions from the public "FEED".
+2. **Auto-Broadcast Rule (`auto_look_for_rider` in `shops` table):**
+   - When a merchant has no active/linked drivers, the order's `delivery_status` triggers to `finding_rider` and instantly broadcasts to the pool. When this occurs, show an "AUTO-DISPATCH SIGNAL" tag on the client card.
+3. **Verified Trade Trust (`cash_trust_enabled` in `shops` table):**
+   - When carrying cash on arrival orders for stores where `cash_trust_enabled === true`, render a **"TRUSTED LOCAL PARTNER"** banner in green on the active rider screen. This notifies the driver that the customer has verified security clearing for cash handovers.
+
 ## 🎨 Visual Direction
 - **Style:** Extreme Brutalism / Cyberpunk.
 - **Colors:** Deep Black (`#050505`), Neon Green (`#39FF14`), Electric Blue, and Warning Orange.
@@ -87,4 +97,4 @@ The app will interact with an existing `orders` table:
 ---
 
 **Initial Action:** 
-"Please build the 'Uber Driver' HUD shell. Initialize the Leaflet map as the background and implement the 'Go Online/Offline' logic with Geolocated marker tracking."
+"Please integrate the Storefront Courier Configuration logic into my existing React components. Review my current code and let me know where we need to query `allow_external_riders`, `auto_look_for_rider`, and `cash_trust_enabled`."

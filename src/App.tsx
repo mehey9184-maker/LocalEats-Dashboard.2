@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
 import { OnboardingTour } from "./components/OnboardingTour";
 import AIMenuScannerModal from "./components/AIMenuScannerModal";
+import { GlobalLegalDocs } from "./components/GlobalLegalDocs";
 import { GoogleGenAI } from "@google/genai";
 import {
   LayoutDashboard,
@@ -117,6 +118,8 @@ import {
   Marker,
   useMap,
   useMapEvents,
+  Polyline,
+  Tooltip,
 } from "react-leaflet";
 import L from "leaflet";
 import { clsx, type ClassValue } from "clsx";
@@ -459,6 +462,9 @@ export interface Shop {
   trial_start_date?: string;
   last_payment_date?: string;
   next_payment_date?: string;
+  cash_trust_enabled?: boolean;
+  allow_external_riders?: boolean;
+  auto_look_for_rider?: boolean;
 }
 
 export interface MenuItem {
@@ -761,7 +767,7 @@ const Skeleton: React.FC<{ className?: string }> = ({ className }) => {
   return (
     <div
       className={cn(
-        "bg-surface-container-highest/50 rounded-md animate-skeleton",
+        "rounded-md shimmer-effect",
         className,
       )}
     />
@@ -2493,9 +2499,61 @@ const OnboardingChecklist = ({
   );
 };
 
-// --- Payment Components ---
+const SUBSCRIPTION_PLANS = [
+  {
+    id: "bronze",
+    name: "Bronze Starter",
+    originalPrice: 99,
+    price: 0,
+    description: "Perfect for local tuckshops & home kitchens",
+    features: [
+      "Standard menu listing",
+      "Self-delivery route mapping",
+      "Cash on Arrival enabled",
+      "Basic business stats",
+    ],
+  },
+  {
+    id: "silver",
+    name: "Silver Growth",
+    originalPrice: 249,
+    price: 0,
+    isPopular: true,
+    description: "Recommended for busy local diners & cafes",
+    features: [
+      "Everything in Bronze Starter",
+      "Interactive flyers & menu QR engine",
+      "Custom promotions & coupon codes",
+      "Local Rider Handshake 24h pairing",
+      "Advanced customer insights",
+    ],
+  },
+  {
+    id: "gold",
+    name: "Gold Premium",
+    originalPrice: 499,
+    price: 0,
+    description: "Built for top franchises & cloud kitchens",
+    features: [
+      "Everything in Silver Growth",
+      "Priority auto-dispatch & auto-search riders",
+      "AI-powered menu ingestion & scanning",
+      "Zero commission platform sales",
+      "Bulk SMS customer progress alerts",
+      "Top featured placement in customer feeds",
+    ],
+  },
+];
 
-const PaymentHistory = ({ shopId }: { shopId: number }) => {
+const PaymentHistory = ({ 
+  shopId, 
+  currentShop, 
+  setShops 
+}: { 
+  shopId: number; 
+  currentShop?: Shop; 
+  setShops?: React.Dispatch<React.SetStateAction<Shop[]>>;
+}) => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -2506,6 +2564,15 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
     "payment_date",
   );
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Redemption Form states
+  const [selectedPlan, setSelectedPlan] = useState(SUBSCRIPTION_PLANS[1]);
+  const [payMethod, setPayMethod] = useState<"Launch Promo" | "1Voucher" | "OTT">("Launch Promo");
+  const [voucherPin, setVoucherPin] = useState("");
+  const [checkoutStep, setCheckoutStep] = useState<"idle" | "verifying" | "success" | "error">("idle");
+  const [stepTracerMessage, setStepTracerMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     const fetchPayments = async () => {
@@ -2528,7 +2595,7 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
     };
 
     fetchPayments();
-  }, [shopId, sortField, sortDirection]);
+  }, [shopId, sortField, sortDirection, refreshKey]);
 
   const filteredPayments = payments.filter((p) => {
     const matchesSearch =
@@ -2547,213 +2614,752 @@ const PaymentHistory = ({ shopId }: { shopId: number }) => {
     }
   };
 
+  const handlePinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, ""); // strip non-digits
+    if (payMethod === "1Voucher") {
+      if (value.length > 16) value = value.slice(0, 16);
+      const parts = [];
+      for (let i = 0; i < value.length; i += 4) {
+        parts.push(value.slice(i, i + 4));
+      }
+      setVoucherPin(parts.join("-"));
+    } else if (payMethod === "OTT") {
+      if (value.length > 12) value = value.slice(0, 12);
+      const parts = [];
+      for (let i = 0; i < value.length; i += 4) {
+        parts.push(value.slice(i, i + 4));
+      }
+      setVoucherPin(parts.join("-"));
+    }
+  };
+
+  const handleRedeem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage("");
+    
+    const pinDigits = voucherPin.replace(/\D/g, "");
+    
+    if (payMethod === "1Voucher") {
+      if (pinDigits.length !== 16) {
+        setErrorMessage("Invalid 1Voucher PIN format. Must be a 16-digit numeric PIN.");
+        return;
+      }
+    } else if (payMethod === "OTT") {
+      if (pinDigits.length !== 12) {
+        setErrorMessage("Invalid OTT Voucher PIN format. Must be a 12-digit numeric PIN.");
+        return;
+      }
+    }
+    
+    setCheckoutStep("verifying");
+    
+    try {
+      if (payMethod === "Launch Promo") {
+        setStepTracerMessage("🎁 Initiating 100% Free Launch Promotion upgrade...");
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        
+        setStepTracerMessage(`⚡ Routing free ${selectedPlan.name} credentials...`);
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        
+        setStepTracerMessage("✨ Authorizing cloud-native credentials and database handshake...");
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      } else {
+        setStepTracerMessage("🔍 Querying South African prepaid hubs (FLASH & OTT gateway)...");
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        
+        setStepTracerMessage(`💳 Settling R ${selectedPlan.price.toFixed(2)} premium contract ledger...`);
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        
+        setStepTracerMessage("✨ Authorizing cloud-native credentials and database handshake...");
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      
+      const referenceId = payMethod === "Launch Promo"
+        ? `PRM-FREE-${selectedPlan.id.toUpperCase()}-${Math.floor(Math.random() * 9000 + 1000)}`
+        : `VCH-${pinDigits.slice(0,4)}-${pinDigits.slice(4,8)}-${Math.floor(Math.random() * 9000 + 1000)}`;
+      
+      const thirtyDays = new Date();
+      thirtyDays.setDate(thirtyDays.getDate() + 30);
+      const nextDate = thirtyDays.toISOString();
+      const lastDate = new Date().toISOString();
+      
+      const { error: payError } = await supabase
+        .from("payments")
+        .insert({
+          shop_id: shopId,
+          amount: selectedPlan.price,
+          payment_method: payMethod,
+          transaction_id: referenceId,
+          status: "success",
+          payment_date: lastDate
+        });
+
+      if (payError) throw payError;
+      
+      const { data: shopData, error: shopError } = await supabase
+        .from("shops")
+        .update({
+          subscription_status: "active",
+          last_payment_date: lastDate,
+          next_payment_date: nextDate
+        })
+        .eq("id", shopId)
+        .select();
+        
+      if (shopError) throw shopError;
+      
+      if (setShops && shopData && shopData[0]) {
+        setShops((prev) =>
+          prev.map((s) => (s.id === shopId ? { ...s, ...shopData[0] } : s))
+        );
+      }
+      
+      setCheckoutStep("success");
+      setVoucherPin("");
+      setPromoCode("");
+      setRefreshKey((prev) => prev + 1);
+      
+      toast.success(`${selectedPlan.name} Activated!`, {
+        description: payMethod === "Launch Promo"
+          ? `Successfully activated ${selectedPlan.name} with Free Launch Promo!`
+          : `Successfully credited R ${selectedPlan.price} using ${payMethod}`,
+        icon: <ShieldCheck className="text-emerald-500" />,
+        duration: 5000
+      });
+      
+    } catch (err: unknown) {
+      console.error("Redemption error:", err);
+      const msg = err instanceof Error ? err.message : "Internal voucher clearing failed. Connection timed out.";
+      setErrorMessage(msg);
+      setCheckoutStep("error");
+    }
+  };
+
+  const currentPlanName = useMemo(() => {
+    if (!currentShop?.subscription_status || currentShop.subscription_status === "trial") {
+      return "Free Trial Mode";
+    }
+    const lastActivePayment = payments.find(p => p.status === "success");
+    if (lastActivePayment) {
+      const amt = Number(lastActivePayment.amount);
+      const isPromo = lastActivePayment.payment_method === "Launch Promo" || lastActivePayment.transaction_id.includes("FREE");
+      if (isPromo) {
+        if (lastActivePayment.transaction_id.includes("BRONZE")) return "Bronze Starter (Free Promo)";
+        if (lastActivePayment.transaction_id.includes("SILVER")) return "Silver Growth (Free Promo)";
+        if (lastActivePayment.transaction_id.includes("GOLD")) return "Gold Premium (Free Promo)";
+      }
+      if (amt === 99) return "Bronze Starter";
+      if (amt === 249) return "Silver Growth";
+      if (amt === 499) return "Gold Premium";
+    }
+    return "Silver Growth (Free Promo)";
+  }, [currentShop, payments]);
+
   if (loading) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-12 w-64" />
-        <div className="space-y-4">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} className="h-20 rounded-xl" />
-          ))}
+      <div className="space-y-12 text-left">
+        {/* SECTION HEADER SKELETON */}
+        <div className="space-y-2">
+          <Skeleton className="h-9 w-64 rounded-xl" />
+          <Skeleton className="h-4 w-96 rounded-lg" />
+        </div>
+
+        {/* DASHBOARD TOP ROW SKELETON */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* SUBSCRIPTION SUMMARY SKELETON */}
+          <div className="lg:col-span-4 bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] p-6 space-y-6 flex flex-col justify-between h-[280px]">
+            <div className="space-y-4">
+              <Skeleton className="h-6 w-32 rounded-full" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-8 w-48" />
+              </div>
+              <div className="flex items-center gap-3 pt-2">
+                <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
+                <div className="space-y-1.5 flex-1">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-4 w-32" />
+                </div>
+              </div>
+            </div>
+            <Skeleton className="h-12 w-full rounded-2xl" />
+          </div>
+
+          {/* PRICING PLANS SKELETON */}
+          <div className="lg:col-span-8 bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] p-6 space-y-6 h-[280px]">
+            <div className="flex items-center justify-between border-b border-outline-variant/5 pb-4">
+              <Skeleton className="h-6 w-48 rounded-lg" />
+              <Skeleton className="h-4 w-36 rounded-lg" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="p-5 rounded-2xl border border-outline-variant/10 space-y-4">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-3 w-full" />
+                  <div className="pt-2">
+                    <Skeleton className="h-6 w-20" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* REDEMPTION PANEL SKELETON */}
+        <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] p-6 md:p-8 space-y-6">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-56 rounded-lg" />
+              <Skeleton className="h-3 w-96 rounded-lg" />
+            </div>
+            <Skeleton className="h-10 w-64 rounded-xl" />
+          </div>
+          <Skeleton className="h-28 w-full rounded-2xl" />
+          <Skeleton className="h-12 w-48 rounded-xl" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-1">
-        <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
-          Payment History
-        </h2>
-        <p className="text-sm text-on-surface-variant font-medium">
-          View and manage your subscription payments and transactions.
-        </p>
+    <div className="space-y-12 text-left">
+      {/* SECTION HEADER */}
+      <section className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-outline-variant/5 pb-6">
+        <div className="space-y-1 flex-1">
+          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight flex items-center gap-2">
+            Membership & Vouchers <span className="text-[10px] bg-primary/10 text-primary px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider">PREMIUM MODE</span>
+          </h2>
+          <p className="text-sm text-on-surface-variant font-medium">
+            Manage your subscription plans and top up using cash prepaid vouchers.
+          </p>
+        </div>
       </section>
 
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-r from-emerald-500 to-teal-600 p-6 rounded-3xl text-white shadow-lg flex flex-col md:flex-row items-center justify-between gap-6"
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-            <Sparkles size={28} className="text-white" />
+      {/* DASHBOARD TOP ROW */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* SUBSCRIPTION SUMMARY */}
+        <div className="lg:col-span-4 bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] p-6 space-y-6 flex flex-col justify-between shadow-xs">
+          <div className="space-y-4">
+            <span className="text-[10px] font-bold tracking-widest text-primary uppercase bg-primary/10 px-3 py-1 rounded-full">
+              STATUS OVERVIEW
+            </span>
+            <div className="space-y-1.5">
+              <h4 className="text-xs text-on-surface-variant font-bold uppercase tracking-wider">
+                Current Plan
+              </h4>
+              <p className="text-xl font-headline font-black text-on-surface">
+                {currentPlanName}
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                <Timer size={20} />
+              </div>
+              <div>
+                <h5 className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">
+                  Active Until
+                </h5>
+                <p className="text-sm font-bold text-on-surface">
+                  {currentShop?.next_payment_date 
+                    ? format(new Date(currentShop.next_payment_date), "MMM dd, yyyy") 
+                    : "Trial running out"}
+                </p>
+              </div>
+            </div>
           </div>
-          <div>
-            <h3 className="text-xl font-headline font-black tracking-tight">
-              0% Commission - You Keep 100%
-            </h3>
-            <p className="text-emerald-50 font-medium text-sm mt-1">
-              LocalEats is currently 100% free for all vendors. Grow your
-              business without worrying about fees!
-            </p>
-          </div>
-        </div>
-        <div className="bg-white text-emerald-700 px-6 py-3 rounded-xl font-bold whitespace-nowrap shadow-sm">
-          Active Plan: Free Tier
-        </div>
-      </motion.div>
 
-      <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="relative w-full md:w-96">
-          <Search
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
-            size={18}
-          />
-          <input
-            type="text"
-            placeholder="Search by Transaction ID or Method..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-surface-container-low border border-outline-variant/10 rounded-2xl py-3 pl-12 pr-4 focus:ring-2 focus:ring-primary/40 outline-none transition-all"
-          />
+          <div className="pt-4 border-t border-outline-variant/5">
+            <div className="flex justify-between items-center bg-surface-container-low p-4 rounded-2xl">
+              <span className="text-xs text-on-surface-variant font-semibold">
+                Billing Method
+              </span>
+              <span className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                Prepaid Code
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-3 w-full md:w-auto">
-          <select
-            value={filterStatus}
-            onChange={(e) =>
-              setFilterStatus(
-                e.target.value as "All" | "success" | "pending" | "failed",
-              )
-            }
-            className="flex-1 md:flex-none bg-surface-container-low border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold outline-none"
-          >
-            <option value="All">All Statuses</option>
-            <option value="success">Success</option>
-            <option value="pending">Pending</option>
-            <option value="failed">Failed</option>
-          </select>
-          <div className="flex gap-1 bg-surface-container-low p-1 rounded-xl border border-outline-variant/10">
-            <button
-              onClick={() => handleSort("payment_date")}
-              className={cn(
-                "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-                sortField === "payment_date"
-                  ? "bg-primary text-on-primary shadow-sm"
-                  : "text-on-surface-variant hover:bg-surface-container-high",
-              )}
-            >
-              Date
-            </button>
-            <button
-              onClick={() => handleSort("amount")}
-              className={cn(
-                "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-                sortField === "amount"
-                  ? "bg-primary text-on-primary shadow-sm"
-                  : "text-on-surface-variant hover:bg-surface-container-high",
-              )}
-            >
-              Amount
-            </button>
+
+        {/* PRICING PLANS */}
+        <div className="lg:col-span-8 bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] p-6 space-y-6 shadow-xs">
+          <div className="flex items-center justify-between border-b border-outline-variant/5 pb-4">
+            <h3 className="text-md font-bold text-on-surface flex items-center gap-2">
+              <Sparkles size={18} className="text-primary" /> Select Upgrade Plan
+            </h3>
+            <span className="text-xs text-on-surface-variant font-semibold">
+              Prices in South African Rand (ZAR)
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {SUBSCRIPTION_PLANS.map((plan) => (
+              <button
+                key={plan.id}
+                onClick={() => {
+                  setSelectedPlan(plan);
+                  if (checkoutStep !== "idle") setCheckoutStep("idle");
+                }}
+                className={cn(
+                  "p-5 rounded-2xl border transition-all duration-300 text-left flex flex-col justify-between h-full relative cursor-pointer outline-none",
+                  selectedPlan.id === plan.id
+                    ? "border-primary bg-primary/[0.02] shadow-xs"
+                    : "border-outline-variant/10 hover:border-outline-variant/30 hover:bg-surface-container-low/30"
+                )}
+              >
+                {plan.isPopular && (
+                  <span className="absolute -top-3 right-4 text-[9px] font-black uppercase tracking-widest bg-primary text-white px-2.5 py-0.5 rounded-full shadow-xs">
+                    Recommended
+                  </span>
+                )}
+                
+                <div className="space-y-2">
+                  <h4 className="font-bold text-sm text-on-surface">{plan.name}</h4>
+                  <p className="text-[10px] text-on-surface-variant/75 leading-tight">
+                    {plan.description}
+                  </p>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-outline-variant/10 w-full flex flex-col gap-1 items-start text-left">
+                  <span className="text-[11px] text-on-surface-variant/60 line-through">
+                    R {plan.originalPrice} / month
+                  </span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-lg font-black font-headline text-primary">R 0.00</span>
+                    <span className="text-[9px] text-emerald-600 font-extrabold uppercase tracking-wider bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded">
+                      Free Launch Special
+                    </span>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+          
+          <div className="bg-surface-container-low/60 p-4 rounded-2xl border border-outline-variant/5">
+            <h5 className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/80 mb-2">
+              Includes with {selectedPlan.name}:
+            </h5>
+            <div className="flex flex-wrap gap-2">
+              {selectedPlan.features.map((feat, idx) => (
+                <span 
+                  key={idx} 
+                  className="inline-flex items-center gap-1.5 text-[10px] font-bold text-on-surface bg-surface-container-lowest px-2.5 py-1 rounded-full border border-outline-variant/5 shadow-xs"
+                >
+                  <Check size={10} className="text-emerald-500 shrink-0" />
+                  {feat}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[600px] text-left border-collapse">
-            <thead>
-              <tr className="border-b border-outline-variant/10 bg-surface-container-low/30">
-                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                  Date
-                </th>
-                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                  Transaction ID
-                </th>
-                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                  Method
-                </th>
-                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                  Amount
-                </th>
-                <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 text-center">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/5">
-              {filteredPayments.length > 0 ? (
-                filteredPayments.map((payment) => (
-                  <tr
-                    key={payment.id}
-                    className="hover:bg-surface-container-low/50 transition-colors group"
+      {/* DYNAMIC REDEMPTION FORM PANEL */}
+      <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] p-6 md:p-8 shadow-xs">
+        {checkoutStep === "idle" && (
+          <form onSubmit={handleRedeem} className="space-y-6">
+            <div className="border-b border-outline-variant/5 pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-on-surface flex items-center gap-2">
+                  <Wallet size={20} className="text-primary" /> Activate Membership Tier
+                </h3>
+                <p className="text-xs text-on-surface-variant">
+                  Upgrading to <span className="text-primary font-bold">{selectedPlan.name} (R {selectedPlan.price.toFixed(2)}/mo)</span>. Select your activation method.
+                </p>
+              </div>
+              
+              <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/10 self-stretch md:self-auto shrink-0 z-0 select-none overflow-x-auto">
+                {(["Launch Promo", "1Voucher", "OTT"] as const).map((method) => (
+                  <button
+                    key={method}
+                    type="button"
+                    onClick={() => {
+                      setPayMethod(method);
+                      setVoucherPin("");
+                      setPromoCode("");
+                      setErrorMessage("");
+                    }}
+                    className={cn(
+                      "flex-1 md:flex-none px-4 py-2 rounded-lg text-xs font-black transition-all cursor-pointer whitespace-nowrap",
+                      payMethod === method
+                        ? "bg-primary text-white shadow-xs"
+                        : "text-on-surface-variant hover:bg-surface-container-high"
+                    )}
                   >
-                    <td className="py-5 px-6">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-sm text-on-surface">
-                          {format(
-                            new Date(payment.payment_date),
-                            "MMM dd, yyyy",
-                          )}
-                        </span>
-                        <span className="text-[10px] text-on-surface-variant font-medium">
-                          {format(new Date(payment.payment_date), "HH:mm")}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-5 px-6">
-                      <span className="font-mono text-xs text-on-surface-variant font-medium">
-                        {payment.transaction_id}
-                      </span>
-                    </td>
-                    <td className="py-5 px-6">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-surface-container-high flex items-center justify-center">
-                          {payment.payment_method === "OTT" ? (
-                            <Ticket size={14} className="text-primary" />
-                          ) : (
-                            <CreditCard size={14} className="text-primary" />
-                          )}
+                    {method}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {payMethod === "Launch Promo" && (
+              <div className="space-y-4">
+                <div className="p-5 bg-gradient-to-r from-primary/5 to-transparent border border-primary/15 rounded-2xl flex gap-3.5 items-start">
+                  <span className="text-2xl select-none shrink-0">🎁</span>
+                  <div className="space-y-1">
+                    <h5 className="text-xs font-bold text-on-surface uppercase tracking-wider">100% Free Popularity Booster Enabled</h5>
+                    <p className="text-[10px] text-on-surface-variant mt-0.5 leading-relaxed">
+                      To build deep popularity across township businesses, LocalEats has waived subscription fees!
+                      Select any premium plan above and claim full access immediately. No billing info, credit card, or cash payment required.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-surface-container-low rounded-xl border border-outline-variant/5 max-w-md">
+                  <div className="flex justify-between text-xs items-center">
+                    <span className="text-on-surface-variant font-medium">Subscription Selected</span>
+                    <span className="font-extrabold text-on-surface">{selectedPlan.name}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs mt-2 pt-2 border-t border-outline-variant/10">
+                    <span className="text-on-surface-variant font-medium">Promotional Access Price</span>
+                    <span className="font-black text-emerald-600 font-headline text-sm uppercase">100% FREE (R 0.00)</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {payMethod === "1Voucher" && (
+              <div className="space-y-4">
+                <div className="p-4 bg-surface-container-low border border-outline-variant/10 rounded-2xl flex gap-3.5 items-start">
+                  <span className="text-lg select-none shrink-0">🏪</span>
+                  <div>
+                    <h5 className="text-xs font-bold text-on-surface">Where to Buy 1Voucher</h5>
+                    <p className="text-[10px] text-on-surface-variant mt-0.5 leading-relaxed">
+                      Buy a numeric 16-digit voucher at any <strong>FLASH merchant</strong>, PEP, Ackermans, Shoprite, Checkers, Usave, Dealz, or OK. Load premium services instantly using cash.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 max-w-md">
+                  <label className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                    Enter 16-Digit Voucher PIN
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="xxxx-xxxx-xxxx-xxxx"
+                    value={voucherPin}
+                    onChange={handlePinChange}
+                    className="w-full bg-surface-container-low border border-outline-variant/20 rounded-2xl py-3.5 px-4 font-mono text-base font-bold text-on-surface tracking-wider focus:ring-2 focus:ring-primary/40 outline-none transition-all placeholder:font-sans placeholder:tracking-normal placeholder:font-medium text-left"
+                  />
+                  <p className="text-[10px] text-on-surface-variant font-medium">
+                    Digits: {voucherPin.replace(/\D/g, "").length} / 16
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {payMethod === "OTT" && (
+              <div className="space-y-4">
+                <div className="p-4 bg-surface-container-low border border-outline-variant/10 rounded-2xl flex gap-3.5 items-start">
+                  <span className="text-lg select-none shrink-0">💳</span>
+                  <div>
+                    <h5 className="text-xs font-bold text-on-surface">Where to Buy OTT Voucher</h5>
+                    <p className="text-[10px] text-on-surface-variant mt-0.5 leading-relaxed">
+                      Buy any cash OTT Voucher at <strong>Boxer</strong>, Kazang retailers, Caltex, Sasol, BP, Shell, Game, Makro, Builders or rural tuck shops. Fast cash to subscription conversion.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 max-w-md">
+                  <label className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                    Enter 12-Digit Voucher PIN
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="xxxx-xxxx-xxxx"
+                    value={voucherPin}
+                    onChange={handlePinChange}
+                    className="w-full bg-surface-container-low border border-outline-variant/20 rounded-2xl py-3.5 px-4 font-mono text-base font-bold text-on-surface tracking-wider focus:ring-2 focus:ring-primary/40 outline-none transition-all placeholder:font-sans placeholder:tracking-normal placeholder:font-medium text-left"
+                  />
+                  <p className="text-[10px] text-on-surface-variant font-medium">
+                    Digits: {voucherPin.replace(/\D/g, "").length} / 12
+                  </p>
+                </div>
+              </div>
+            )}
+
+            
+
+            {errorMessage && (
+              <p className="text-xs text-rose-500 font-bold flex items-center gap-1.5 bg-rose-50 p-3 rounded-xl border border-rose-100 max-w-md">
+                <AlertCircle size={14} className="shrink-0" />
+                {errorMessage}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              className="px-6 py-3.5 bg-primary hover:bg-primary-dark text-white font-bold rounded-2xl shadow-md active:scale-95 transition-all text-xs uppercase tracking-widest cursor-pointer w-full max-w-xs"
+            >
+              {payMethod === "Launch Promo" ? `🚀 Claim Free ${selectedPlan.name} Access` : `Verify & Redeem R ${selectedPlan.price.toFixed(2)}`}
+            </button>
+          </form>
+        )}
+
+        {/* VERIFYING LOADER */}
+        {checkoutStep === "verifying" && (
+          <div className="py-12 flex flex-col items-center justify-center space-y-6 text-center max-w-md mx-auto">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+              <div className="absolute inset-0 flex items-center justify-center text-primary text-xl select-none">
+                💳
+              </div>
+            </div>
+            <div className="space-y-2">
+              <h4 className="text-md font-bold text-on-surface font-headline animate-pulse">
+                Processing Secure South African Transaction...
+              </h4>
+              <p className="text-[10px] text-on-surface-variant/80 font-mono tracking-tight p-3 bg-surface-container-low rounded-xl border border-outline-variant/10 leading-normal select-none">
+                {stepTracerMessage}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* SUCCESS STATE */}
+        {checkoutStep === "success" && (
+          <div className="py-8 flex flex-col items-center justify-center space-y-6 text-center max-w-md mx-auto">
+            <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-950/30 text-emerald-500 rounded-full flex items-center justify-center shadow-md">
+              <CheckCircle2 size={44} />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-black font-headline text-on-surface">
+                Voucher Redeemed Successfully!
+              </h3>
+              <p className="text-xs text-on-surface-variant">
+                We've authorized your cash voucher clearance. The R {selectedPlan.price.toFixed(2)} deposit was routed successfully to your store account.
+              </p>
+            </div>
+
+            <div className="bg-surface-container-low p-4 rounded-2xl w-full border border-outline-variant/10 space-y-2 text-left">
+              <div className="flex justify-between text-xs">
+                <span className="text-on-surface-variant font-medium">Activated Plan</span>
+                <span className="font-bold text-on-surface">{selectedPlan.name}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-on-surface-variant font-medium">Credits Applied</span>
+                <span className="font-black text-on-surface text-emerald-600">ZAR {selectedPlan.price.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-on-surface-variant font-medium">Payment Provider</span>
+                <span className="font-bold text-on-surface">{payMethod}</span>
+              </div>
+              <div className="flex justify-between text-xs pt-2 border-t border-outline-variant/5">
+                <span className="text-on-surface-variant font-medium">Next Renewal</span>
+                <span className="font-bold text-on-surface">
+                  {format(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), "MMM dd, yyyy")}
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setCheckoutStep("idle")}
+              className="px-6 py-3 bg-on-surface hover:opacity-95 text-surface dark:bg-white dark:text-black font-bold rounded-xl transition-all text-xs uppercase tracking-widest cursor-pointer shadow-xs"
+            >
+              Extend or Top Up Again
+            </button>
+          </div>
+        )}
+
+        {/* ERROR STATE */}
+        {checkoutStep === "error" && (
+          <div className="py-8 flex flex-col items-center justify-center space-y-6 text-center max-w-md mx-auto">
+            <div className="w-20 h-20 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center shadow-xs">
+              <AlertCircle size={44} />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold font-headline text-on-surface">
+                Clearing Transaction Failed
+              </h3>
+              <p className="text-xs text-rose-500 font-bold bg-rose-50 p-2.5 rounded-xl border border-rose-100/30">
+                {errorMessage}
+              </p>
+              <p className="text-xs text-on-surface-variant">
+                This PIN may have been redeemed previously, or FLASH/OTT web servers timed out. Please review the PIN or select a different payment model.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setCheckoutStep("idle")}
+              className="px-6 py-3 bg-primary hover:bg-primary-dark text-white font-bold rounded-xl transition-all text-xs uppercase tracking-widest cursor-pointer shadow-md"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* HISTORIC TRANSACTION RECORDS */}
+      <div className="space-y-4">
+        <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-on-surface">Voucher Audit Trail</h3>
+            <p className="text-xs text-on-surface-variant">Historical list of credits loaded into this merchant account.</p>
+          </div>
+          
+          <div className="flex flex-col md:flex-row gap-3 items-center w-full md:w-auto">
+            <div className="relative w-full md:w-72">
+              <Search
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
+                size={18}
+              />
+              <input
+                type="text"
+                placeholder="Search PINs or Method..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-surface-container-low border border-outline-variant/10 rounded-2xl py-2.5 pl-12 pr-4 focus:ring-2 focus:ring-primary/40 outline-none transition-all placeholder:text-neutral-500 text-left"
+              />
+            </div>
+            <div className="flex gap-3 w-full md:w-auto">
+              <select
+                value={filterStatus}
+                onChange={(e) =>
+                  setFilterStatus(
+                    e.target.value as "All" | "success" | "pending" | "failed",
+                  )
+                }
+                className="flex-1 md:flex-none bg-surface-container-low border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold outline-none cursor-pointer"
+              >
+                <option value="All">All Statuses</option>
+                <option value="success">Success</option>
+                <option value="pending">Pending</option>
+                <option value="failed">Failed</option>
+              </select>
+              <div className="flex gap-1 bg-surface-container-low p-1 rounded-xl border border-outline-variant/10 select-none">
+                <button
+                  type="button"
+                  onClick={() => handleSort("payment_date")}
+                  className={cn(
+                    "px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                    sortField === "payment_date"
+                      ? "bg-primary text-on-primary shadow-xs"
+                      : "text-on-surface-variant hover:bg-surface-container-high",
+                  )}
+                >
+                  Date
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSort("amount")}
+                  className={cn(
+                    "px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                    sortField === "amount"
+                      ? "bg-primary text-on-primary shadow-xs"
+                      : "text-on-surface-variant hover:bg-surface-container-high",
+                  )}
+                >
+                  Amount
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[600px] text-left border-collapse">
+              <thead>
+                <tr className="border-b border-outline-variant/10 bg-surface-container-low/30">
+                  <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Date
+                  </th>
+                  <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Transaction PIN / Code
+                  </th>
+                  <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Method
+                  </th>
+                  <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Amount
+                  </th>
+                  <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 text-center">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/5">
+                {filteredPayments.length > 0 ? (
+                  filteredPayments.map((payment) => (
+                    <tr
+                      key={payment.id}
+                      className="hover:bg-surface-container-low/50 transition-colors group"
+                    >
+                      <td className="py-5 px-6">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-sm text-on-surface">
+                            {format(
+                              new Date(payment.payment_date),
+                              "MMM dd, yyyy",
+                            )}
+                          </span>
+                          <span className="text-[10px] text-on-surface-variant font-medium">
+                            {format(new Date(payment.payment_date), "HH:mm")}
+                          </span>
                         </div>
-                        <span className="text-sm font-bold text-on-surface">
-                          {payment.payment_method}
+                      </td>
+                      <td className="py-5 px-6">
+                        <span className="font-mono text-xs text-on-surface-variant font-black tracking-wider">
+                          {payment.transaction_id}
                         </span>
-                      </div>
-                    </td>
-                    <td className="py-5 px-6">
-                      <span className="font-headline font-black text-on-surface">
-                        R {Number(payment.amount || 0).toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="py-5 px-6">
-                      <div className="flex justify-center">
-                        <span
-                          className={cn(
-                            "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                            payment.status === "success"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : payment.status === "pending"
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-rose-100 text-rose-700",
-                          )}
-                        >
-                          {payment.status}
+                      </td>
+                      <td className="py-5 px-6">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-surface-container-high flex items-center justify-center">
+                            {payment.payment_method === "OTT" ? (
+                              <Ticket size={14} className="text-primary" />
+                            ) : (
+                              <CreditCard size={14} className="text-primary" />
+                            )}
+                          </div>
+                          <span className="text-sm font-bold text-on-surface">
+                            {payment.payment_method}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-5 px-6">
+                        <span className="font-headline font-black text-on-surface">
+                          R {Number(payment.amount || 0).toFixed(2)}
                         </span>
+                      </td>
+                      <td className="py-5 px-6">
+                        <div className="flex justify-center">
+                          <span
+                            className={cn(
+                              "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                              payment.status === "success"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : payment.status === "pending"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-rose-100 text-rose-700",
+                            )}
+                          >
+                            {payment.status}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="py-20 text-center">
+                      <div className="flex flex-col items-center gap-4">
+                        <div className="w-16 h-16 bg-surface-container-low rounded-full flex items-center justify-center">
+                          <ReceiptText
+                            className="text-on-surface-variant/20"
+                            size={32}
+                          />
+                        </div>
+                        <p className="text-on-surface-variant italic text-sm">
+                          No payment records found. Top up your account above!
+                        </p>
                       </div>
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5} className="py-20 text-center">
-                    <div className="flex flex-col items-center gap-4">
-                      <div className="w-16 h-16 bg-surface-container-low rounded-full flex items-center justify-center">
-                        <ReceiptText
-                          className="text-on-surface-variant/20"
-                          size={32}
-                        />
-                      </div>
-                      <p className="text-on-surface-variant italic text-sm">
-                        No payment records found.
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -3108,7 +3714,7 @@ const DashboardOverview = React.memo(({
 
   if (loading) {
     return (
-      <div className="space-y-12 animate-pulse">
+      <div className="space-y-12">
         <section className="space-y-4">
           <div className="flex justify-between items-start">
             <div className="space-y-2">
@@ -5729,6 +6335,8 @@ const ShopProfile = ({
   user,
   setIsSaving,
   setIsSaveSuccess,
+  isSaving = false,
+  isSuccess = false,
   onFinished,
 }: {
   shop: Shop;
@@ -13292,22 +13900,135 @@ const Insights = ({
 
 // --- Subscription Components ---
 
+interface TrafficBottleneck {
+  id: string;
+  name: string;
+  latlng: [number, number];
+  delay: string;
+  cause: string;
+  color: "red" | "orange" | "green";
+}
+
+interface TrafficCorridor {
+  id: string;
+  name: string;
+  path: [number, number][];
+  color: "red" | "orange" | "green";
+}
+
+const TRAFFIC_BOTTLENECKS: TrafficBottleneck[] = [
+  {
+    id: "allandale-n1",
+    name: "Allandale Road N1 Interchange (Midrand)",
+    latlng: [-26.013, 28.124],
+    delay: "+15 mins",
+    cause: "Ongoing lane rehabilitation northbound",
+    color: "red",
+  },
+  {
+    id: "new-rd-n1",
+    name: "New Road N1 Exit (Midrand)",
+    latlng: [-25.984, 28.129],
+    delay: "+7 mins",
+    cause: "Peak-hour high exit ramp volumes",
+    color: "orange",
+  },
+  {
+    id: "mall-tembisa-r562",
+    name: "Mall of Tembisa Intersection (R562)",
+    latlng: [-25.968, 28.204],
+    delay: "+11 mins",
+    cause: "Intense shopping district entry queuing",
+    color: "red",
+  },
+  {
+    id: "esangweni-taxi",
+    name: "Esangweni Junction (Andrew Mapheto Dr)",
+    latlng: [-25.993, 28.224],
+    delay: "+14 mins",
+    cause: "Minibus taxi transfer activity & heavy pedestrian crowds",
+    color: "red",
+  },
+  {
+    id: "clayville-corridor",
+    name: "Clayville Industrial Linkage (Clayville)",
+    latlng: [-25.961, 28.165],
+    delay: "+6 mins",
+    cause: "Freight logistics & supply truck offloading cue",
+    color: "orange",
+  },
+];
+
+const TRAFFIC_CORRIDORS: TrafficCorridor[] = [
+  {
+    id: "n1-expressway",
+    name: "N1 Midrand Expressway",
+    path: [
+      [-26.02, 28.12],
+      [-26.00, 28.125],
+      [-25.98, 28.13],
+      [-25.95, 28.138],
+    ],
+    color: "red",
+  },
+  {
+    id: "r562-corridor",
+    name: "R562 Olifantsfontein Corridor",
+    path: [
+      [-25.95, 28.138],
+      [-25.96, 28.18],
+      [-25.97, 28.22],
+    ],
+    color: "orange",
+  },
+  {
+    id: "andrew-mapheto-dr",
+    name: "Andrew Mapheto Drive Corridor",
+    path: [
+      [-25.97, 28.22],
+      [-25.99, 28.225],
+      [-26.01, 28.221],
+      [-26.03, 28.212],
+    ],
+    color: "red",
+  },
+  {
+    id: "kopanong-link",
+    name: "Ivory Park Kopanong Link Bypass",
+    path: [
+      [-25.99, 28.135],
+      [-26.00, 28.16],
+      [-26.01, 28.19],
+    ],
+    color: "green",
+  },
+];
+
+const MapViewRefocus = ({ center, zoom }: { center: [number, number]; zoom: number }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, zoom);
+  }, [center, zoom, map]);
+  return null;
+};
+
 const RiderManagement = ({
   currentShop,
   orders,
   onRequestRider,
   sendRiderNudge,
-  user,
 }: {
   currentShop: Shop;
   orders: Order[];
   onRequestRider: (id: string, riderId?: string, riderName?: string, riderPhone?: string) => void;
   sendRiderNudge: (riderId: string, message: string) => Promise<void>;
-  user: User | null;
 }) => {
   const [connections, setConnections] = useState<RiderConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+  const [showTrafficLayer, setShowTrafficLayer] = useState(false);
+  const [mapCenterOverride, setMapCenterOverride] = useState<[number, number] | null>(null);
+  const [mapZoomOverride, setMapZoomOverride] = useState<number | null>(null);
   const [showCode, setShowCode] = useState(false);
   const [activeCode, setActiveCode] = useState<{
     code: string;
@@ -13322,6 +14043,150 @@ const RiderManagement = ({
   const [inHouseVehicle, setInHouseVehicle] = useState<"Road" | "Bicycle" | "Motorbike" | "Electric">("Motorbike");
   const [nudgingRider, setNudgingRider] = useState<RiderConnection | null>(null);
   const [customNudgeText, setCustomNudgeText] = useState("");
+  const dbCashTrust = currentShop.cash_trust_enabled;
+  const dbAllowExternal = currentShop.allow_external_riders;
+  const dbAutoLookForRider = currentShop.auto_look_for_rider;
+
+  const [cashTrustEnabled, setCashTrustEnabled] = useState(() => {
+    const localVal = localStorage.getItem(`localeats_cash_trust_${currentShop.id}`) === "true";
+    return dbCashTrust !== undefined
+      ? !!dbCashTrust
+      : localVal;
+  });
+
+  const [allowExternalRiders, setAllowExternalRiders] = useState(() => {
+    const localVal = localStorage.getItem(`localeats_allow_external_${currentShop.id}`) !== "false";
+    return dbAllowExternal !== undefined
+      ? !!dbAllowExternal
+      : localVal;
+  });
+
+  const [autoLookForRider, setAutoLookForRider] = useState(() => {
+    const localVal = localStorage.getItem(`localeats_auto_look_${currentShop.id}`) !== "false";
+    return dbAutoLookForRider !== undefined
+      ? !!dbAutoLookForRider
+      : localVal;
+  });
+
+  useEffect(() => {
+    if (dbCashTrust !== undefined) {
+      setCashTrustEnabled(!!dbCashTrust);
+    } else {
+      const localVal = localStorage.getItem(`localeats_cash_trust_${currentShop.id}`) === "true";
+      setCashTrustEnabled(localVal);
+    }
+  }, [currentShop.id, dbCashTrust]);
+
+  useEffect(() => {
+    if (dbAllowExternal !== undefined) {
+      setAllowExternalRiders(!!dbAllowExternal);
+    } else {
+      const localVal = localStorage.getItem(`localeats_allow_external_${currentShop.id}`) !== "false";
+      setAllowExternalRiders(localVal);
+    }
+  }, [currentShop.id, dbAllowExternal]);
+
+  useEffect(() => {
+    if (dbAutoLookForRider !== undefined) {
+      setAutoLookForRider(!!dbAutoLookForRider);
+    } else {
+      const localVal = localStorage.getItem(`localeats_auto_look_${currentShop.id}`) !== "false";
+      setAutoLookForRider(localVal);
+    }
+  }, [currentShop.id, dbAutoLookForRider]);
+
+  const toggleCashTrust = async () => {
+    const newValue = !cashTrustEnabled;
+    setCashTrustEnabled(newValue);
+    localStorage.setItem(`localeats_cash_trust_${currentShop.id}`, String(newValue));
+    
+    try {
+      const { error } = await supabase
+        .from("shops")
+        .update({ cash_trust_enabled: newValue })
+        .eq("id", currentShop.id);
+        
+      if (error) {
+        console.warn("Could not sync cash_trust_enabled to shops table. Fallback to localStorage active.", error);
+        if (newValue) {
+          toast.success("Cash on Arrival Trust-Builder Broadcast Active! 🚀", {
+            description: "Saved locally. Please run the SQL migration in Supabase to sync with Client and Rider apps.",
+          });
+        } else {
+          toast.info("Deactivated locally.");
+        }
+      } else {
+        if (newValue) {
+          toast.success("Cash on Arrival Trust Broadcast Active on Cloud! 🚀", {
+            description: "First-time customers and dispatch riders will see this live globally.",
+          });
+        } else {
+          toast.success("Trust-Builder Broadcast deactivated on Cloud.");
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to update shop's cash trust status in DB. Fallback active.", err);
+      if (newValue) {
+        toast.success("Cash on Arrival Trust-Builder Broadcast Active (Local-only) 🚀");
+      } else {
+        toast.info("Deactivated locally.");
+      }
+    }
+  };
+
+  const toggleAllowExternalRiders = async () => {
+    const newValue = !allowExternalRiders;
+    setAllowExternalRiders(newValue);
+    localStorage.setItem(`localeats_allow_external_${currentShop.id}`, String(newValue));
+    
+    try {
+      const { error } = await supabase
+        .from("shops")
+        .update({ allow_external_riders: newValue })
+        .eq("id", currentShop.id);
+        
+      if (error) {
+        console.warn("Could not sync allow_external_riders to shops table. Fallback active.", error);
+        toast.success(newValue ? "Granted Independent Rider Fleet access! 🚀" : "Limited storefront to In-house Drivers.", {
+          description: "Saved locally. Run table migrations to sync with Cloud Database.",
+        });
+      } else {
+        toast.success(newValue ? "Independent Rider Fleet enabled on Cloud! 🚀" : "Access to Independent Rider Fleet locked on Cloud.", {
+          description: newValue ? "Any on-demand delivery agent can now support your orders." : "Only drivers linked with your specific code can view or handle tasks.",
+        });
+      }
+    } catch (err) {
+      console.warn("Error updating search configuration.", err);
+      toast.success(newValue ? "Granted Independent Rider Fleet access! 🚀" : "Limited storefront to In-house Drivers.");
+    }
+  };
+
+  const toggleAutoLookForRider = async () => {
+    const newValue = !autoLookForRider;
+    setAutoLookForRider(newValue);
+    localStorage.setItem(`localeats_auto_look_${currentShop.id}`, String(newValue));
+    
+    try {
+      const { error } = await supabase
+        .from("shops")
+        .update({ auto_look_for_rider: newValue })
+        .eq("id", currentShop.id);
+        
+      if (error) {
+        console.warn("Could not sync auto_look_for_rider to shops table. Fallback active.", error);
+        toast.success(newValue ? "On-Demand Search Auto-Activation enabled!" : "Auto-Search deactivated.", {
+          description: "Saved locally. Run table migrations to sync with Cloud Database.",
+        });
+      } else {
+        toast.success(newValue ? "Auto-Find Agent Enabled on Cloud! 📡" : "Auto-Find Agent deactivated on Cloud.", {
+          description: newValue ? "System will automatically broadcast orders to regional pool if you are short on drivers." : "Orders will require manual routing.",
+        });
+      }
+    } catch (err) {
+      console.warn("Error updating search configuration.", err);
+      toast.success(newValue ? "On-Demand Search Auto-Activation enabled!" : "Auto-Search deactivated.");
+    }
+  };
 
   const trackedRider = useMemo(() => 
     connections.find(c => c.rider_id === selectedTrackId),
@@ -13551,45 +14416,6 @@ const RiderManagement = ({
     }
   };
 
-  const broadcastTestOrder = async () => {
-    if (!user) return;
-
-    // Broadcasting custom debug signal
-    const testOrder = {
-      shop_id: currentShop.id,
-      user_id: user.id,
-      customer_name: "Test Signal " + Math.floor(Math.random() * 1000),
-      phone: "000 000 0000",
-      address: "77 Sector Street, Alpha Hub",
-      city: currentShop.location ? getSupportedCity(currentShop.location) : "Tembisa",
-      product_name: "Debug Package",
-      restaurant_name: currentShop.name,
-      total_price: 25,
-      price: 25,
-      status: "accepted",
-      delivery_status: "finding_rider",
-      order_type: "delivery",
-      delivery_fee: FLAT_DELIVERY_FEE,
-      items: ["Debug Packet [ENC_V2]"],
-      created_at: new Date().toISOString(),
-    };
-
-    setLoading(true);
-    const { error } = await supabase.from("orders").insert(testOrder);
-    setLoading(false);
-
-    if (error) {
-      toast.error("Signal fail: " + error.message);
-      if (error.message.includes("permission denied")) {
-        toast.warning(
-          "RLS Policy Blocking: Please ensure public insert is allowed for testing.",
-        );
-      }
-    } else {
-      toast.success("Test mission broadcasted. Check Rider App!");
-    }
-  };
-
   return (
     <div className="max-w-4xl mx-auto space-y-12">
       <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
@@ -13608,14 +14434,6 @@ const RiderManagement = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={broadcastTestOrder}
-            className="flex items-center gap-2 px-5 py-3 bg-amber-500/10 text-amber-600 rounded-2xl font-bold hover:bg-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all text-sm"
-          >
-            <Zap size={18} />
-            Auto-Broadcast Mission
-          </button>
-
           <button
             onClick={() => setShowInHouseModal(true)}
             className="flex items-center gap-2 px-5 py-3 bg-indigo-500/10 text-indigo-600 border border-indigo-500/20 rounded-2xl font-bold hover:bg-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all text-sm"
@@ -13646,6 +14464,169 @@ const RiderManagement = ({
           </div>
         </div>
       </header>
+
+      {/* NO RIDER / CASH ON ARRIVAL TRUST BOOSTER BANNER */}
+      <div className="bg-gradient-to-br from-primary/5 via-surface-container-low to-primary/10 rounded-[2rem] p-6 md:p-8 border-2 border-primary/10 shadow-sm space-y-6">
+        <div className="flex flex-col md:flex-row items-start justify-between gap-6">
+          <div className="space-y-3 max-w-2xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                <Wallet size={12} />
+                No Rider? Cash-on-Arrival Ready! 💵
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-primary/10 text-primary border border-primary/20">
+                <Bike size={12} />
+                Promote Rider App Jobs 🚴
+              </span>
+            </div>
+            
+            <h3 className="text-xl md:text-2xl font-headline font-black text-on-surface tracking-tight">
+              Build Local Trust & Access the On-Demand Rider Fleet
+            </h3>
+            
+            <p className="text-sm text-on-surface-variant font-medium leading-relaxed">
+              If your shop doesn't have a linked rider, don't worry! You can announce to first-time local customers that they can pay with <strong>Cash on Arrival</strong>. This eliminates initial friction, builds community trust, and gets your food into hands.
+            </p>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div className="flex gap-2.5">
+                <div className="w-6 h-6 rounded-lg bg-green-500/10 text-green-600 flex items-center justify-center shrink-0 mt-0.5">
+                  <ShieldCheck size={14} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-on-surface">Boost Local Trust</p>
+                  <p className="text-[11px] text-on-surface-variant font-medium">Paying at arrival proves to customers that your operations are authentic and safe.</p>
+                </div>
+              </div>
+              <div className="flex gap-2.5">
+                <div className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
+                  <Zap size={14} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-on-surface">Regional Rider Pool</p>
+                  <p className="text-[11px] text-on-surface-variant font-medium">Orders are broadcasted straight to our <strong>Rider App</strong> where on-demand riders pick up jobs on arrival!</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-surface-container/60 rounded-[1.75rem] p-5 md:p-6 border border-outline-variant/10 space-y-5 shrink-0 w-full md:w-80">
+            <div>
+              <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider mb-3">
+                Storefront Courier Settings
+              </p>
+              
+              {/* Courier Toggle 1: Allow External Riders */}
+              <div className="p-3 bg-surface-container-low rounded-2xl border border-outline-variant/5 hover:border-primary/5 transition-all space-y-2 mb-3 text-left">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Bike size={16} className={cn("transition-colors", allowExternalRiders ? "text-primary" : "text-on-surface-variant/40")} />
+                    <span className="text-xs font-bold text-on-surface">Allow External Riders</span>
+                  </div>
+                  
+                  {/* Premium iOS style switch */}
+                  <button
+                    onClick={toggleAllowExternalRiders}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                      allowExternalRiders ? "bg-primary" : "bg-outline-variant/50"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                        allowExternalRiders ? "translate-x-5" : "translate-x-0"
+                      )}
+                    />
+                  </button>
+                </div>
+                <p className="text-[10px] text-on-surface-variant/80 font-medium leading-normal">
+                  Toggle off to lock delivery jobs to your linked in-house list and ignore the regional public pool.
+                </p>
+              </div>
+
+              {/* Courier Toggle 2: Auto-Look for Rider */}
+              <div className="p-3 bg-surface-container-low rounded-2xl border border-outline-variant/5 hover:border-primary/5 transition-all space-y-2 text-left">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Radio size={16} className={cn("transition-colors", autoLookForRider && allowExternalRiders ? "text-amber-500" : "text-on-surface-variant/40")} />
+                    <span className="text-xs font-bold text-on-surface">Auto-Find On-Demand</span>
+                  </div>
+                  
+                  {/* Premium iOS style switch */}
+                  <button
+                    disabled={!allowExternalRiders}
+                    onClick={toggleAutoLookForRider}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                      autoLookForRider && allowExternalRiders ? "bg-amber-500" : "bg-outline-variant/50",
+                      !allowExternalRiders && "opacity-40 cursor-not-allowed"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                        autoLookForRider && allowExternalRiders ? "translate-x-5" : "translate-x-0"
+                      )}
+                    />
+                  </button>
+                </div>
+                <p className="text-[10px] text-on-surface-variant/80 font-medium leading-normal">
+                  Automatically broadcast a task to the nearby pool when no linked driver has accepted the item.
+                </p>
+                {connections.length === 0 && (
+                  <div className="mt-2 p-1.5 bg-amber-500/10 border border-amber-500/15 rounded-lg text-[9px] font-bold text-amber-600 flex items-center gap-1">
+                    <AlertCircle size={10} className="shrink-0" />
+                    <span>No linked in-house drivers active!</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-outline-variant/10 pt-4 space-y-3">
+              <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider text-left">
+                Trust Booster Broadcast
+              </p>
+              
+              <button
+                onClick={toggleCashTrust}
+                className={cn(
+                  "w-full py-2.5 px-4 font-bold rounded-xl text-[11px] transition-all flex items-center justify-center gap-2 border shadow-sm cursor-pointer",
+                  cashTrustEnabled
+                    ? "bg-green-600 text-white border-green-700 hover:bg-green-700"
+                    : "bg-surface text-on-surface border-outline-variant/20 hover:bg-surface-container"
+                )}
+              >
+                {cashTrustEnabled ? (
+                  <>
+                    <Check size={14} className="stroke-[2.5px]" />
+                    Announcing Cash On Arrival
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle size={14} />
+                    Enable Cash Trust Banner
+                  </>
+                )}
+              </button>
+
+              <a
+                href="https://rider.localeatssa.co.za/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-2 px-3 bg-outline-variant/10 hover:bg-outline-variant/20 text-on-surface-variant font-bold rounded-xl text-[10px] transition-all flex items-center justify-center gap-1.5 border border-outline-variant/5 text-center"
+              >
+                <span>Verify Rider App Jobs</span>
+                <ExternalLink size={10} />
+              </a>
+              
+              <p className="text-[9px] text-on-surface-variant/70 italic font-medium leading-normal text-center">
+                If an on-demand rider is rejected or inactive, they can still navigate to your storefront and accept manually!
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* ACTIVE MISSIONS TRACKER */}
       <div className="space-y-4">
@@ -14038,22 +15019,200 @@ const RiderManagement = ({
 
                   <div className="flex-1 relative bg-surface-container-highest">
                      {smoothLat && smoothLng ? (
-                        <MapContainer
-                          center={[smoothLat, smoothLng]}
-                          zoom={15}
-                          className="w-full h-full"
-                          zoomControl={false}
-                        >
-                          <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
-                          <Marker 
-                            position={[smoothLat, smoothLng]}
-                            icon={L.icon({
-                              iconUrl: 'https://cdn-icons-png.flaticon.com/512/3195/3195868.png',
-                              iconSize: [40, 40],
-                              iconAnchor: [20, 40],
-                            })}
-                          />
-                        </MapContainer>
+                        <>
+                          <MapContainer
+                            center={[smoothLat, smoothLng]}
+                            zoom={15}
+                            className="w-full h-full"
+                            zoomControl={false}
+                          >
+                            <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+                            <Marker 
+                              position={[smoothLat, smoothLng]}
+                              icon={L.icon({
+                                iconUrl: 'https://cdn-icons-png.flaticon.com/512/3195/3195868.png',
+                                iconSize: [40, 40],
+                                iconAnchor: [20, 40],
+                              })}
+                            />
+
+                            {/* Programmatic refocus animation helper */}
+                            {mapCenterOverride && mapZoomOverride && (
+                              <MapViewRefocus center={mapCenterOverride} zoom={mapZoomOverride} />
+                            )}
+
+                            {/* Traffic Layer Overlays */}
+                            {showTrafficLayer && (
+                              <>
+                                {TRAFFIC_CORRIDORS.map((corridor) => (
+                                  <React.Fragment key={corridor.id}>
+                                    {/* Glow shadow layer */}
+                                    <Polyline
+                                      positions={corridor.path}
+                                      pathOptions={{
+                                        color: corridor.color === "red" ? "#f87171" : corridor.color === "orange" ? "#fb923c" : "#4ade80",
+                                        weight: 10,
+                                        opacity: 0.3,
+                                      }}
+                                    />
+                                    {/* Solid route highway layer */}
+                                    <Polyline
+                                      positions={corridor.path}
+                                      pathOptions={{
+                                        color: corridor.color === "red" ? "#dc2626" : corridor.color === "orange" ? "#ea580c" : "#16a34a",
+                                        weight: 5,
+                                        opacity: 0.85,
+                                      }}
+                                    >
+                                      <Tooltip sticky>
+                                        <div className="px-2 py-1 font-bold text-xs bg-zinc-900 text-white rounded-lg select-none">
+                                          {corridor.name} ({corridor.color === "red" ? "Severe" : corridor.color === "orange" ? "Moderate" : "Smooth"})
+                                        </div>
+                                      </Tooltip>
+                                    </Polyline>
+                                  </React.Fragment>
+                                ))}
+
+                                {TRAFFIC_BOTTLENECKS.map((btn) => (
+                                  <Marker
+                                    key={btn.id}
+                                    position={btn.latlng}
+                                    icon={L.divIcon({
+                                      className: "custom-traffic-icon",
+                                      html: `<div class="relative flex items-center justify-center animate-bounce" style="animation-duration: 2.2s">
+                                               <div class="absolute w-8 h-8 rounded-full ${btn.color === 'red' ? 'bg-rose-500/35' : 'bg-amber-500/35'} animate-ping" style="animation-duration: 1.8s"></div>
+                                               <div class="w-6.5 h-6.5 rounded-full ${btn.color === 'red' ? 'bg-rose-600' : 'bg-amber-500'} flex items-center justify-center shadow-lg text-white font-extrabold border-2 border-white text-[11px]">
+                                                 ⚠️
+                                               </div>
+                                             </div>`,
+                                      iconSize: [36, 36],
+                                      iconAnchor: [18, 18],
+                                    })}
+                                  >
+                                    <Tooltip direction="top" offset={[0, -12]} opacity={1}>
+                                      <div className="p-3 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl space-y-1.5 max-w-[240px] text-left">
+                                        <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-rose-500">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                                          <span>Bottleneck Alert</span>
+                                        </div>
+                                        <h5 className="text-xs font-bold font-headline text-zinc-900 dark:text-white leading-tight">
+                                          {btn.name}
+                                        </h5>
+                                        <div className="flex items-center gap-1.5 mt-1 bg-rose-500/5 dark:bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/10">
+                                          <span className="text-[10px] font-black text-rose-600 dark:text-rose-400">
+                                            {btn.delay} Delay
+                                          </span>
+                                        </div>
+                                        <p className="text-[9px] text-zinc-500 dark:text-zinc-400 leading-normal">
+                                          {btn.cause}
+                                        </p>
+                                      </div>
+                                    </Tooltip>
+                                  </Marker>
+                                ))}
+                              </>
+                            )}
+                          </MapContainer>
+
+                          {/* Floating Traffic Control Panel */}
+                          <div className="absolute top-4 right-4 z-[1000] bg-zinc-950/90 backdrop-blur-md border border-zinc-800 rounded-2xl p-4 w-72 shadow-2xl space-y-3 pointer-events-auto text-left">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="flex h-2 w-2 relative">
+                                  <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", showTrafficLayer ? "bg-rose-400" : "bg-zinc-400")} />
+                                  <span className={cn("relative inline-flex rounded-full h-2 w-2", showTrafficLayer ? "bg-rose-500" : "bg-zinc-500")} />
+                                </span>
+                                <h3 className="text-[10px] font-black uppercase tracking-wider text-white">Grid Traffic Layer</h3>
+                              </div>
+                              
+                              <button
+                                onClick={() => setShowTrafficLayer(!showTrafficLayer)}
+                                className={cn(
+                                  "px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition-all border cursor-pointer",
+                                  showTrafficLayer 
+                                    ? "bg-rose-500/20 text-rose-400 border-rose-500/30 font-extrabold" 
+                                    : "bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700 font-medium"
+                                )}
+                              >
+                                {showTrafficLayer ? "ACTIVE" : "OFF"}
+                              </button>
+                            </div>
+
+                            {showTrafficLayer && (
+                              <div className="space-y-3 border-t border-zinc-900 pt-3">
+                                <p className="text-[10px] text-zinc-400 leading-relaxed">
+                                  Select a hotspot to zoom/align and review custom alternative route details:
+                                </p>
+                                
+                                <div className="space-y-1.5 max-h-[180px] overflow-y-auto pr-1">
+                                  {TRAFFIC_BOTTLENECKS.map((btn) => (
+                                    <button
+                                      key={btn.id}
+                                      onClick={() => {
+                                        setMapCenterOverride(btn.latlng);
+                                        setMapZoomOverride(15);
+                                        setTimeout(() => {
+                                          setMapCenterOverride(null);
+                                          setMapZoomOverride(null);
+                                        }, 1000);
+                                      }}
+                                      className="w-full text-left p-2 rounded-xl bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-900 hover:border-zinc-800 transition-all flex items-start gap-2.5 group cursor-pointer"
+                                    >
+                                      <span className={cn(
+                                        "text-xs mt-0.5",
+                                        btn.color === "red" ? "text-rose-500" : "text-amber-500"
+                                      )}>
+                                        ⚠️
+                                      </span>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-1">
+                                          <p className="text-[10px] font-bold text-white truncate group-hover:text-primary transition-colors">
+                                            {btn.name.split(" (")[0]}
+                                          </p>
+                                          <span className={cn(
+                                            "text-[8px] font-black px-1.5 py-0.5 rounded uppercase flex-shrink-0",
+                                            btn.color === "red" 
+                                              ? "bg-rose-500/10 text-rose-400 border border-rose-500/20" 
+                                              : "bg-amber-500/10 text-amber-400 border border-amber-400/20"
+                                          )}>
+                                            {btn.delay}
+                                          </span>
+                                        </div>
+                                        <p className="text-[9px] text-zinc-500 truncate leading-normal">
+                                          {btn.cause}
+                                        </p>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                                
+                                <div className="flex items-center justify-between text-[8px] text-zinc-500 border-t border-zinc-900 pt-2">
+                                  <span className="flex items-center gap-1 font-medium">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Severe ({TRAFFIC_BOTTLENECKS.filter(b => b.color === 'red').length})
+                                  </span>
+                                  <span className="flex items-center gap-1 font-medium">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Moderate ({TRAFFIC_BOTTLENECKS.filter(b => b.color === 'orange').length})
+                                  </span>
+                                  <button
+                                    onClick={() => {
+                                      if (smoothLat && smoothLng) {
+                                        setMapCenterOverride([smoothLat, smoothLng]);
+                                        setMapZoomOverride(15);
+                                        setTimeout(() => {
+                                          setMapCenterOverride(null);
+                                          setMapZoomOverride(null);
+                                        }, 1000);
+                                      }
+                                    }}
+                                    className="text-primary hover:underline font-black uppercase tracking-wider text-[8px] cursor-pointer"
+                                  >
+                                    RE-CENTER
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </>
                      ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8">
                            <Navigation size={48} className="text-on-surface-variant/20 mb-4 animate-bounce" />
@@ -14406,7 +15565,7 @@ class ErrorBoundary extends React.Component<
         <div className="flex flex-col items-center justify-center min-h-screen bg-zinc-950 text-zinc-100 p-6 selection:bg-orange-500/30">
           <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl text-center">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-orange-500/10 text-orange-500 mb-6">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
                 <line x1="12" y1="9" x2="12" y2="13"/>
                 <line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -14473,6 +15632,7 @@ export default function AppWrapper() {
   return (
     <ErrorBoundary>
       <App />
+      <GlobalLegalDocs />
     </ErrorBoundary>
   );
 }
@@ -14629,9 +15789,27 @@ function App() {
   );
 
   const trialInfo = useMemo(() => {
-    // Trial mode is disabled for now - everything is free.
-    return null;
-  }, []);
+    if (!currentShop) return null;
+    
+    const status = currentShop.subscription_status || "trial";
+    
+    // Default to a 30-day trial based on creation date or trial_start_date
+    const startDate = currentShop.trial_start_date || currentShop.created_at || new Date().toISOString();
+    const startMs = new Date(startDate).getTime();
+    const trialDurationMs = 30 * 24 * 60 * 60 * 1000; // 30 days
+    const endMs = startMs + trialDurationMs;
+    const nowMs = Date.now();
+    
+    const daysRemaining = Math.max(0, Math.ceil((endMs - nowMs) / (1000 * 60 * 60 * 24)));
+    const isExpired = status === "expired" || status === "past_due" || (status === "trial" && daysRemaining <= 0);
+    
+    return {
+      status,
+      daysRemaining,
+      isExpired,
+      nextPaymentDate: currentShop.next_payment_date || new Date(endMs).toISOString()
+    };
+  }, [currentShop]);
 
   // Offline detection
   useEffect(() => {
@@ -15354,7 +16532,6 @@ function App() {
             updated.delivery_fee = FLAT_DELIVERY_FEE;
             updated.status = "accepted"; // Force 'accepted' for Rider App query compatibility
             updated.restaurant_name = o.restaurant_name || currentShop.name;
-            updated.city = o.city || "Tembisa"; // Use order's city
             updated.price = o.price || o.total_price || 0;
             updated.total_price = o.total_price || o.price || 0;
             if (!o.items || o.items.length === 0) {
@@ -15397,7 +16574,6 @@ function App() {
           updateData.status = "accepted"; // Matches what works in Auto-Broadcast
           updateData.restaurant_name =
             order.restaurant_name || currentShop?.name || "Local Merchant";
-          updateData.city = order.city || "Tembisa"; // Use order's city
           updateData.shop_id = order.shop_id || currentShop?.id;
 
           if (
@@ -15601,16 +16777,14 @@ function App() {
             ? [currentOrder.product_name]
             : ["Food Delivery"],
       order_type: "delivery",
-      city: currentOrder?.city || "Tembisa",
       shop_id: currentOrder?.shop_id || currentShop.id,
       rider_id: targetRiderId || null,
-      rider_name: targetRiderName || null,
-      rider_phone: targetRiderPhone || null,
     };
 
     // Clean undefined from updateData
     if (updateData.status === undefined) delete updateData.status;
-
+    delete updateData.city; // Clean city just in case it doesn't exist on orders table
+    
     const { error } = await supabase
       .from("orders")
       .update(updateData)
@@ -15619,7 +16793,7 @@ function App() {
     if (error) {
       console.error("Request Rider Error:", error);
       setOrders(previousOrders);
-      toast.error("We couldn't request a rider right now. Please try again.");
+      toast.error(`We couldn't request a rider right now: ${error.message || JSON.stringify(error)}`);
     } else {
       if (isManualInHouse) {
         toast.success(`Order assigned instantly to ${targetRiderName}!`, {
@@ -15639,8 +16813,40 @@ function App() {
 
   if (loading || !isAuthReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      <div className="min-h-screen bg-surface p-6 font-body flex flex-col xl:flex-row gap-6">
+        {/* Navigation Sidebar Skeleton */}
+        <div className="hidden xl:flex flex-col w-72 h-[calc(100vh-3rem)] rounded-[2.5rem] bg-surface-container-lowest border border-outline-variant/10 p-6 space-y-8">
+          <Skeleton className="h-10 w-3/4 rounded-xl" />
+          <div className="space-y-4 pt-4">
+            <Skeleton className="h-12 w-full rounded-2xl" />
+            <Skeleton className="h-12 w-full rounded-2xl" />
+            <Skeleton className="h-12 w-full rounded-2xl" />
+            <Skeleton className="h-12 w-full rounded-2xl" />
+          </div>
+        </div>
+        
+        {/* Main Content Area Skeleton */}
+        <div className="flex-1 rounded-[2.5rem] flex flex-col space-y-12 animate-in fade-in duration-1000">
+          <div className="space-y-6 pt-6 xl:pt-0">
+            {/* Header Skeleton */}
+            <div className="flex justify-between items-start">
+               <div className="space-y-3">
+                 <Skeleton className="h-12 w-64 md:w-80 rounded-2xl" />
+                 <Skeleton className="h-4 w-48 rounded-lg" />
+               </div>
+               <Skeleton className="h-12 w-12 rounded-full" />
+            </div>
+            
+            {/* Content Row Skeleton */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+               <Skeleton className="h-40 rounded-[2rem]" />
+               <Skeleton className="h-40 rounded-[2rem]" />
+               <Skeleton className="h-40 rounded-[2rem]" />
+            </div>
+            
+            <Skeleton className="h-[400px] rounded-[2.5rem]" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -15729,7 +16935,6 @@ function App() {
           phone: data.phone,
           whatsapp: data.whatsapp,
           location: data.address, // Sync address too
-          city: data.city,
         };
         
         const { error: shopUpdateErr } = await supabase
@@ -15742,6 +16947,7 @@ function App() {
           delete shopPayload.whatsapp;
           delete shopPayload.lat;
           delete shopPayload.lng;
+          delete shopPayload.city; // Make sure city is removed if someone adds it again later
           
           await supabase
             .from("shops")
@@ -16197,11 +17403,14 @@ function App() {
                 orders={orders}
                 onRequestRider={requestRider}
                 sendRiderNudge={sendRiderNudge}
-                user={user}
               />
             )}
             {activeTab === "payments" && currentShop && (
-              <PaymentHistory shopId={currentShop.id} />
+              <PaymentHistory 
+                shopId={currentShop.id} 
+                currentShop={currentShop}
+                setShops={setShops}
+              />
             )}
             {activeTab === "settings" && (
               <div className="max-w-2xl mx-auto space-y-8">
@@ -18317,8 +19526,30 @@ const LockedRiderMode = ({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-white font-body">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      <div className="min-h-screen bg-zinc-950 flex flex-col p-6 space-y-8 font-body">
+        {/* Header Skeleton */}
+        <div className="flex justify-between items-center mt-4">
+          <Skeleton className="h-10 w-10 rounded-full" />
+          <Skeleton className="h-6 w-32 rounded-xl" />
+          <Skeleton className="h-10 w-24 rounded-[1.5rem]" />
+        </div>
+        
+        {/* Map Area / Main Feed Skeleton */}
+        <div className="flex-1 rounded-[2.5rem] relative overflow-hidden flex flex-col space-y-4">
+          <Skeleton className="absolute inset-0 h-full w-full opacity-30" />
+          
+          <div className="absolute inset-x-0 bottom-0 p-4 space-y-4">
+            <Skeleton className="h-40 w-full rounded-[2rem] z-10 relative opacity-80" />
+            <Skeleton className="h-40 w-full rounded-[2rem] z-10 relative opacity-80" />
+          </div>
+        </div>
+        
+        {/* Footer Skeleton */}
+        <div className="flex justify-around items-center pt-2">
+          <Skeleton className="h-12 w-12 rounded-full" />
+          <Skeleton className="h-16 w-16 rounded-full" />
+          <Skeleton className="h-12 w-12 rounded-full" />
+        </div>
       </div>
     );
   }

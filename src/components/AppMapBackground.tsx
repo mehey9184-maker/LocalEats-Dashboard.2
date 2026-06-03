@@ -15,6 +15,110 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
+interface TrafficBottleneck {
+  id: string;
+  name: string;
+  latlng: [number, number];
+  delay: string;
+  cause: string;
+  color: "red" | "orange" | "green";
+}
+
+interface TrafficCorridor {
+  id: string;
+  name: string;
+  path: [number, number][];
+  color: "red" | "orange" | "green";
+}
+
+const TRAFFIC_BOTTLENECKS: TrafficBottleneck[] = [
+  {
+    id: "allandale-n1",
+    name: "Allandale Road N1 Interchange (Midrand)",
+    latlng: [-26.013, 28.124],
+    delay: "+15 mins",
+    cause: "Ongoing lane rehabilitation northbound",
+    color: "red",
+  },
+  {
+    id: "new-rd-n1",
+    name: "New Road N1 Exit (Midrand)",
+    latlng: [-25.984, 28.129],
+    delay: "+7 mins",
+    cause: "Peak-hour high exit ramp volumes",
+    color: "orange",
+  },
+  {
+    id: "mall-tembisa-r562",
+    name: "Mall of Tembisa Intersection (R562)",
+    latlng: [-25.968, 28.204],
+    delay: "+11 mins",
+    cause: "Intense shopping district entry queuing",
+    color: "red",
+  },
+  {
+    id: "esangweni-taxi",
+    name: "Esangweni Junction (Andrew Mapheto Dr)",
+    latlng: [-25.993, 28.224],
+    delay: "+14 mins",
+    cause: "Minibus taxi transfer activity & heavy pedestrian crowds",
+    color: "red",
+  },
+  {
+    id: "clayville-corridor",
+    name: "Clayville Industrial Linkage (Clayville)",
+    latlng: [-25.961, 28.165],
+    delay: "+6 mins",
+    cause: "Freight logistics & supply truck offloading cue",
+    color: "orange",
+  },
+];
+
+const TRAFFIC_CORRIDORS: TrafficCorridor[] = [
+  {
+    id: "n1-expressway",
+    name: "N1 Midrand Expressway",
+    path: [
+      [-26.02, 28.12],
+      [-26.00, 28.125],
+      [-25.98, 28.13],
+      [-25.95, 28.138],
+    ],
+    color: "red",
+  },
+  {
+    id: "r562-corridor",
+    name: "R562 Olifantsfontein Corridor",
+    path: [
+      [-25.95, 28.138],
+      [-25.96, 28.18],
+      [-25.97, 28.22],
+    ],
+    color: "orange",
+  },
+  {
+    id: "andrew-mapheto-dr",
+    name: "Andrew Mapheto Drive Corridor",
+    path: [
+      [-25.97, 28.22],
+      [-25.99, 28.225],
+      [-26.01, 28.221],
+      [-26.03, 28.212],
+    ],
+    color: "red",
+  },
+  {
+    id: "kopanong-link",
+    name: "Ivory Park Kopanong Link Bypass",
+    path: [
+      [-25.99, 28.135],
+      [-26.00, 28.16],
+      [-26.01, 28.19],
+    ],
+    color: "green",
+  },
+];
+
 interface MapProps {
   riderCoords?: [number, number];
   missions: DeliveryOrder[];
@@ -26,6 +130,8 @@ export default function AppMapBackground({ riderCoords, missions, activeMission 
   const mapInstanceRef = useRef<L.Map | null>(null);
   const routingRef = useRef<L.Routing.Control | null>(null);
   const markersRef = useRef<{ [key: string]: L.Marker }>({});
+  const trafficLayersRef = useRef<L.LayerGroup | null>(null);
+  const [showTrafficLayer, setShowTrafficLayer] = React.useState(false);
 
   const center: [number, number] = riderCoords || [-26.2041, 28.0473];
 
@@ -43,6 +149,8 @@ export default function AppMapBackground({ riderCoords, missions, activeMission 
       L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         className: 'grayscale invert brightness-75 contrast-125'
       }).addTo(mapInstanceRef.current);
+      
+      trafficLayersRef.current = L.layerGroup().addTo(mapInstanceRef.current);
     }
 
     // Cleanup layer on unmount
@@ -54,6 +162,69 @@ export default function AppMapBackground({ riderCoords, missions, activeMission 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Update Traffic Layer Toggle
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const trafficGroup = trafficLayersRef.current;
+    if (!map || !trafficGroup) return;
+
+    trafficGroup.clearLayers();
+
+    if (showTrafficLayer) {
+      // Add Corridors
+      TRAFFIC_CORRIDORS.forEach((corridor) => {
+        // Glow shadow
+        L.polyline(corridor.path, {
+          color: corridor.color === "red" ? "#f87171" : corridor.color === "orange" ? "#fb923c" : "#4ade80",
+          weight: 10,
+          opacity: 0.3,
+        }).addTo(trafficGroup);
+
+        // Solid
+        L.polyline(corridor.path, {
+          color: corridor.color === "red" ? "#dc2626" : corridor.color === "orange" ? "#ea580c" : "#16a34a",
+          weight: 5,
+          opacity: 0.85,
+        }).bindTooltip(`<div class="px-2 py-1 font-bold text-xs bg-zinc-900 text-white rounded-lg select-none">${corridor.name} (${corridor.color === "red" ? "Severe" : corridor.color === "orange" ? "Moderate" : "Smooth"})</div>`, { sticky: true }).addTo(trafficGroup);
+      });
+
+      // Add Bottlenecks
+      TRAFFIC_BOTTLENECKS.forEach((btn) => {
+         L.marker(btn.latlng, {
+           icon: L.divIcon({
+              className: "custom-traffic-icon",
+              html: `<div class="relative flex items-center justify-center animate-bounce" style="animation-duration: 2.2s">
+                       <div class="absolute w-8 h-8 rounded-full ${btn.color === 'red' ? 'bg-rose-500/35' : 'bg-amber-500/35'} animate-ping" style="animation-duration: 1.8s"></div>
+                       <div class="w-6.5 h-6.5 rounded-full ${btn.color === 'red' ? 'bg-rose-600' : 'bg-amber-500'} flex items-center justify-center shadow-lg text-white font-extrabold border-2 border-white text-[11px]">
+                         ⚠️
+                       </div>
+                     </div>`,
+              iconSize: [36, 36],
+              iconAnchor: [18, 18],
+           })
+         }).bindTooltip(`
+            <div class="p-3 bg-white border border-zinc-200 rounded-2xl shadow-xl space-y-1.5 max-w-[240px] text-left">
+              <div class="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-rose-500">
+                <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                <span>Bottleneck Alert</span>
+              </div>
+              <h5 class="text-xs font-bold font-headline text-zinc-900 leading-tight">
+                ${btn.name}
+              </h5>
+              <div class="flex items-center gap-1.5 mt-1 bg-rose-500/5 px-2 py-1 rounded-lg border border-rose-500/10">
+                <span class="text-[10px] font-black text-rose-600">
+                  ${btn.delay} Delay
+                </span>
+              </div>
+              <p class="text-[9px] text-zinc-500 leading-normal">
+                ${btn.cause}
+              </p>
+            </div>
+         `, { direction: 'top', offset: [0, -12], opacity: 1 }).addTo(trafficGroup);
+      });
+    }
+  }, [showTrafficLayer]);
 
   // Update center smoothly on riderCoords change if not active
   useEffect(() => {
@@ -145,8 +316,15 @@ export default function AppMapBackground({ riderCoords, missions, activeMission 
     <div className="absolute inset-0 z-0 overflow-hidden bg-zinc-950">
       <div ref={mapRef} style={{ height: '100%', width: '100%' }} />
       <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-zinc-950 via-transparent to-zinc-950/40 z-10" />
-      <div className="absolute bottom-32 right-6 w-12 h-12 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center shadow-2xl z-20 pointer-events-auto">
-         <Navigation size={20} className="text-zinc-500" />
+      <div 
+        onClick={() => setShowTrafficLayer(!showTrafficLayer)}
+        className={`absolute bottom-32 right-6 w-12 h-12 border rounded-full flex items-center justify-center shadow-2xl z-20 pointer-events-auto cursor-pointer transition-all ${showTrafficLayer ? 'bg-amber-500 border-amber-400' : 'bg-zinc-900 border-zinc-800'}`}
+        title="Toggle Traffic Layer"
+      >
+         <Navigation size={20} className={showTrafficLayer ? 'text-black' : 'text-zinc-500'} />
+         {showTrafficLayer && (
+            <span className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full animate-ping"></span>
+         )}
       </div>
     </div>
   );

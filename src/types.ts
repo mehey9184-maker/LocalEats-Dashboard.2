@@ -12,6 +12,9 @@ export interface Shop {
   category?: string;
   owner_id: string | null;
   rating?: number;
+  cash_trust_enabled?: boolean;
+  allow_external_riders?: boolean;
+  auto_look_for_rider?: boolean;
 }
 
 export interface RiderProfile {
