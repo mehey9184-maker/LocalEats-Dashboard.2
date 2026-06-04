@@ -19183,6 +19183,77 @@ const CustomerView = ({
   const [showCheckout, setShowCheckout] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
+  const [customerLocation, setCustomerLocation] = useState<string>(() => {
+    return localStorage.getItem("localeats_customer_location") || "Tembisa";
+  });
+  const [onlyLocal, setOnlyLocal] = useState<boolean>(true);
+  const [isLocating, setIsLocating] = useState<boolean>(false);
+
+  useEffect(() => {
+    localStorage.setItem("localeats_customer_location", customerLocation);
+  }, [customerLocation]);
+
+  const detectGPSLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      return;
+    }
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        try {
+          let closestCity = "Tembisa";
+          let minDistance = Infinity;
+          for (const [cityName, coords] of Object.entries(CITY_CENTERS)) {
+            const dist = calculateDistance(latitude, longitude, coords.lat, coords.lng);
+            if (dist < minDistance) {
+              minDistance = dist;
+              closestCity = cityName;
+            }
+          }
+          setCustomerLocation(closestCity);
+          toast.success(`Location auto-detected: ${closestCity}!`, {
+            description: `Centered near your GPS coordinates: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+          });
+        } catch (error) {
+          console.error("GPS detection error:", error);
+          toast.error("Failed to parse precise location. Defaulting to Tembisa.");
+        } finally {
+          setIsLocating(false);
+        }
+      },
+      (err) => {
+        console.error("GPS error:", err);
+        toast.error("Location access denied or timed out. Please select your township manually.");
+        setIsLocating(false);
+      },
+      { timeout: 8000 }
+    );
+  };
+
+  const filteredMenuItems = useMemo(() => {
+    let items = menuItems;
+    
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      items = items.filter((item) =>
+        item.name.toLowerCase().includes(q) ||
+        (item.description && item.description.toLowerCase().includes(q))
+      );
+    }
+    
+    if (onlyLocal) {
+      items = items.filter((item) => {
+        const shop = shops.find((s) => s.id === item.shop_id);
+        if (!shop) return false;
+        const shopCity = getSupportedCity(shop.city || shop.location || "Tembisa");
+        return shopCity === customerLocation;
+      });
+    }
+    
+    return items;
+  }, [menuItems, shops, searchQuery, onlyLocal, customerLocation]);
 
   const fetchCustomerOrders = useCallback(async () => {
     if (!user) return;
@@ -19289,95 +19360,262 @@ const CustomerView = ({
 
       <main className="pt-24 px-6 max-w-7xl mx-auto">
         <section className="mb-10">
-          <h1 className="text-3xl font-headline font-black tracking-tight mb-2">
-            Hungry?
-          </h1>
-          <p className="text-on-surface-variant mb-6">
-            R5 Flat-Rate Delivery on all orders.
-          </p>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
+            <div>
+              <h1 className="text-3xl font-headline font-black tracking-tight mb-1 text-zinc-950 dark:text-white">
+                Hungry?
+              </h1>
+              <p className="text-xs font-bold text-on-surface-variant flex items-center gap-2 uppercase tracking-wider">
+                <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse shrink-0"></span>
+                R5 Flat-Rate Delivery Across Township Sections
+              </p>
+            </div>
+            
+            {/* Township interactive selector */}
+            <div className="flex flex-wrap items-center gap-2 bg-zinc-100 dark:bg-zinc-900/40 p-1.5 rounded-2xl border border-zinc-200/40 dark:border-zinc-800/40 shrink-0">
+              {["Tembisa", "Ivory Park", "Kaalfontein"].map((loc) => (
+                <button
+                  key={loc}
+                  onClick={() => {
+                    setCustomerLocation(loc);
+                    toast.success(`Territory shifted: ${loc}!`);
+                  }}
+                  className={cn(
+                    "px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer select-none",
+                    customerLocation === loc
+                      ? "bg-zinc-950 dark:bg-zinc-900 text-white shadow-sm"
+                      : "bg-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                  )}
+                >
+                  {loc}
+                </button>
+              ))}
+              <div className="h-4 w-[1px] bg-zinc-200 dark:bg-zinc-850 mx-1" />
+              <button
+                onClick={detectGPSLocation}
+                disabled={isLocating}
+                className={cn(
+                  "px-3 py-2 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-xl transition-all cursor-pointer text-primary flex items-center gap-1.5 text-xs font-black",
+                  isLocating && "animate-pulse"
+                )}
+                title="Detect my GPS location"
+              >
+                <Navigation size={14} className={isLocating ? "animate-spin text-primary" : "text-primary"} />
+                <span className="text-[10px] uppercase font-black tracking-wider">GPS</span>
+              </button>
+            </div>
+          </div>
 
-          <div className="relative group">
+          {/* Localized Township pride text banner */}
+          <div className="mb-6">
+            <AnimatePresence mode="wait">
+              {customerLocation === "Ivory Park" && (
+                <motion.div
+                  key="ivory_park_banner"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="bg-orange-500/5 dark:bg-zinc-900/30 border-2 border-primary/10 p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center gap-4 relative overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
+                  <div className="p-3 bg-primary/10 text-primary rounded-2xl shrink-0">
+                    <Store size={22} className="stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-1.5 leading-none">
+                      Ivory Park Eats 🇿🇦
+                      <span className="px-2 py-0.5 bg-primary/10 text-primary text-[8px] font-black rounded-full uppercase leading-none">Wall-to-Wall</span>
+                    </h4>
+                    <p className="text-sm font-black text-zinc-850 dark:text-zinc-200 mt-1.5">
+                      Wall-to-wall Ivory Park serving food for Ivory Park residents.
+                    </p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-xl font-medium leading-relaxed">
+                      From Kopanong Bypass link to any extension block, we are delivering wall-to-wall Ivory Park, providing delicious, locally crafted meals directly to your door with efficient cyclist connections.
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+
+              {customerLocation === "Tembisa" && (
+                <motion.div
+                  key="tembisa_banner"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="bg-orange-500/5 dark:bg-zinc-900/30 border-2 border-primary/10 p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center gap-4 relative overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
+                  <div className="p-3 bg-primary/10 text-primary rounded-2xl shrink-0">
+                    <Compass size={22} className="stroke-[2.5] text-primary" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-1.5 leading-none">
+                      Tembisa Food Hub 🇿🇦
+                      <span className="px-2 py-0.5 bg-primary/10 text-primary text-[8px] font-black rounded-full uppercase leading-none font-bold">Midrand/GP Hub</span>
+                    </h4>
+                    <p className="text-sm font-black text-zinc-850 dark:text-zinc-200 mt-1.5">
+                      Beautiful flavors across all Tembisa sections.
+                    </p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-xl font-medium leading-relaxed">
+                      Whether you're in Phomolong, Winnie Mandela, or Oakmoor, enjoy legendary golden kotas, hot flame-grilled plates, and street plates prepared fresh in the heart of our community.
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+
+              {customerLocation === "Kaalfontein" && (
+                <motion.div
+                  key="kaalfontein_banner"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="bg-orange-500/5 dark:bg-zinc-900/30 border-2 border-primary/10 p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center gap-4 relative overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
+                  <div className="p-3 bg-primary/10 text-primary rounded-2xl shrink-0">
+                    <Sparkles size={22} className="stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-1.5 leading-none">
+                      Kaalfontein Spotlight 🇿🇦
+                      <span className="px-2 py-0.5 bg-primary/10 text-primary text-[8px] font-black rounded-full uppercase leading-none font-bold">Eboni Focus</span>
+                    </h4>
+                    <p className="text-sm font-black text-zinc-850 dark:text-zinc-200 mt-1.5">
+                      Locally sourced favorites from Kaalfontein & Eboni.
+                    </p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-xl font-medium leading-relaxed">
+                      Serving Kaalfontein and Eboni with reliable, mouth-watering township meals. Sourced and delivered via in-community courier networks with absolute accuracy.
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="relative group mb-6">
             <Search
               className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
               size={20}
             />
             <input
               type="text"
-              placeholder="Search for kotas, burgers, or shops..."
+              placeholder={`Search for kotas, burgers or kitchens inside ${customerLocation}...`}
               className="w-full h-14 bg-surface-container-low border-none rounded-2xl pl-12 pr-4 focus:ring-2 focus:ring-primary/40 transition-all outline-none text-base"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
+
+          {/* Neighborhood filter selector lock */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-50 dark:bg-zinc-900/40 p-4 rounded-3xl border border-outline-variant/10 text-xs text-on-surface">
+            <div>
+              <p className="text-[10px] uppercase font-black tracking-widest text-zinc-500">Service Coverage Scope</p>
+              <p className="font-bold mt-0.5 italic text-zinc-700 dark:text-zinc-300">
+                {onlyLocal 
+                  ? `Filtering kitchens to strictly "${customerLocation}" and nearby sections`
+                  : `Showing all registered partner kitchens regardless of township`
+                }
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setOnlyLocal(!onlyLocal);
+                toast.info(onlyLocal ? "Now showing kitchens across all township networks!" : `Showing kitchens strictly located inside ${customerLocation}`);
+              }}
+              className={cn(
+                "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer border select-none shrink-0",
+                onlyLocal 
+                  ? "bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-800 dark:border-zinc-800" 
+                  : "bg-white text-zinc-650 hover:bg-zinc-50 hover:text-zinc-900 border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-850"
+              )}
+            >
+              {onlyLocal ? "Explore All Areas" : `Strictly ${customerLocation}`}
+            </button>
+          </div>
         </section>
 
-        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {menuItems
-            .filter((item) =>
-              item.name.toLowerCase().includes(searchQuery.toLowerCase()),
-            )
-            .map((item) => (
-              <motion.div
-                key={item.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-surface-container-lowest rounded-[2rem] overflow-hidden border border-outline-variant/10 shadow-sm hover:shadow-xl transition-all group"
-              >
-                <div className="h-48 relative overflow-hidden bg-surface-container">
-                  <img
-                    src={item.image_url || DEFAULT_MENU_IMAGE}
-                    alt={item.name}
-                    className={cn(
-                      "w-full h-full object-cover group-hover:scale-110 transition-transform duration-500",
-                      (!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0)) && "grayscale opacity-50"
+        {filteredMenuItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 text-center bg-zinc-50 dark:bg-zinc-900/10 rounded-[2.5rem] border border-dashed border-outline-variant/20 mb-10">
+            <Store className="text-zinc-300 dark:text-zinc-700 mb-4" size={48} />
+            <h3 className="font-black text-lg text-zinc-900 dark:text-white mb-1">No Kitchen Matches</h3>
+            <p className="text-xs text-zinc-500 max-w-sm font-medium">
+              We couldn't find any active menus matching your criteria in {customerLocation}. Try expanding your search by clicking <strong>"Explore All Areas"</strong> above.
+            </p>
+          </div>
+        ) : (
+          <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredMenuItems.map((item) => {
+              const shop = shops.find((s) => s.id === item.shop_id);
+              const shopCity = shop ? getSupportedCity(shop.city || shop.location || "Tembisa") : "Tembisa";
+              return (
+                <motion.div
+                  key={item.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-surface-container-lowest rounded-[2rem] overflow-hidden border border-outline-variant/10 shadow-sm hover:shadow-xl transition-all group flex flex-col justify-between"
+                >
+                  <div className="h-48 relative overflow-hidden bg-surface-container">
+                    <img
+                      src={item.image_url || DEFAULT_MENU_IMAGE}
+                      alt={item.name}
+                      className={cn(
+                        "w-full h-full object-cover group-hover:scale-110 transition-transform duration-500",
+                        (!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0)) && "grayscale opacity-50"
+                      )}
+                    />
+                    {isPlaceholderImage(item.image_url) && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none">
+                        <UtensilsCrossed size={48} className="text-white/30" />
+                      </div>
                     )}
-                  />
-                  {isPlaceholderImage(item.image_url) && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none">
-                      <UtensilsCrossed size={48} className="text-white/30" />
-                    </div>
-                  )}
-                  {(!item.is_available || (item.stock_quantity !== null && item.stock_quantity === 0)) && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-                      <span className="bg-error text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl">
-                        {!item.is_available ? "Unavailable" : "Out of Stock"}
+                    {(!item.is_available || (item.stock_quantity !== null && item.stock_quantity === 0)) && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+                        <span className="bg-error text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl">
+                          {!item.is_available ? "Unavailable" : "Out of Stock"}
+                        </span>
+                      </div>
+                    )}
+                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm">
+                      <span className="text-sm font-black text-primary">
+                        R {item.price.toFixed(2)}
                       </span>
                     </div>
-                  )}
-                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm">
-                    <span className="text-sm font-black text-primary">
-                      R {item.price.toFixed(2)}
-                    </span>
                   </div>
-                </div>
-                <div className="p-6 space-y-4">
-                  <div>
-                    <h3 className="text-xl font-bold mb-1">{item.name}</h3>
-                    <p className="text-xs text-on-surface-variant line-clamp-2">
-                      {item.description || "Fresh and hot from the kitchen."}
-                    </p>
+                  <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
+                    <div>
+                      {/* Affiliated Local Kitchen & Township marker */}
+                      <div className="flex items-center gap-1.5 mb-2.5 bg-zinc-100 dark:bg-zinc-900 px-2.5 py-1 rounded-lg w-fit text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider leading-none">
+                        <Store size={10} className="text-primary" />
+                        <span>{shop?.name || "Local Shop"} • {shopCity}</span>
+                      </div>
+                      <h3 className="text-xl font-bold mb-1">{item.name}</h3>
+                      <p className="text-xs text-on-surface-variant line-clamp-2">
+                        {item.description || "Fresh and hot from the kitchen."}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => addToCart(item)}
+                      disabled={!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0)}
+                      className="w-full mt-4 h-12 bg-surface-container-low hover:bg-primary hover:text-white disabled:opacity-50 disabled:grayscale disabled:hover:bg-surface-container-low disabled:hover:text-on-surface-variant transition-all rounded-xl font-bold flex items-center justify-center gap-2 group cursor-pointer"
+                    >
+                      {!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0) ? (
+                        <>
+                          <X size={18} />
+                          <span>Sold Out</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={18} />
+                          <span>Add to Order</span>
+                        </>
+                      )}
+                    </button>
                   </div>
-                  <button
-                    onClick={() => addToCart(item)}
-                    disabled={!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0)}
-                    className="w-full h-12 bg-surface-container-low hover:bg-primary hover:text-white disabled:opacity-50 disabled:grayscale disabled:hover:bg-surface-container-low disabled:hover:text-on-surface-variant transition-all rounded-xl font-bold flex items-center justify-center gap-2 group"
-                  >
-                    {!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0) ? (
-                      <>
-                        <X size={18} />
-                        <span>Sold Out</span>
-                      </>
-                    ) : (
-                      <>
-                        <Plus size={18} />
-                        <span>Add to Order</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </motion.div>
-            ))}
-        </section>
+                </motion.div>
+              );
+            })}
+          </section>
+        )}
 
         {customerOrders.length > 0 && (
           <section className="mt-16 space-y-6">
