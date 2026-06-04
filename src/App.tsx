@@ -11579,6 +11579,7 @@ const Coupons = ({
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [couponsAlertDismissed, setCouponsAlertDismissed] = useState(false);
   const [newCoupon, setNewCoupon] = useState({
     code: "",
     discount_type: "percentage" as "percentage" | "fixed",
@@ -11914,30 +11915,60 @@ const Coupons = ({
 
   return (
     <div className="space-y-8" id="coupons_studio_tab">
-      {expiringSoonCoupons.length > 0 && (
-        <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 anim-pulse" id="coupons_expiring_soon_global_alert">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-amber-500/10 rounded-xl text-amber-600 dark:text-amber-400 shrink-0">
-              <Clock size={18} />
-            </div>
-            <div>
-              <h4 className="text-xs font-black text-amber-800 dark:text-amber-300 uppercase tracking-widest">At-Risk Campaigns</h4>
-              <p className="text-xs text-amber-700 dark:text-amber-400/80 mt-0.5 font-medium">
-                You have <strong>{expiringSoonCoupons.length} coupon{expiringSoonCoupons.length > 1 ? "s" : ""}</strong> expiring within 48 hours. Consider extending their validity or activating preset campaigns!
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => {
-              const el = document.getElementById("coupons_quick_suggest_panel");
-              el?.scrollIntoView({ behavior: "smooth" });
+      <AnimatePresence>
+        {expiringSoonCoupons.length > 0 && !couponsAlertDismissed && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, x: 200 }}
+            drag="x"
+            dragConstraints={{ left: -100, right: 100 }}
+            dragElastic={0.15}
+            onDragEnd={(event, info) => {
+              if (Math.abs(info.offset.x) > 60) {
+                setCouponsAlertDismissed(true);
+                toast.info("Campaign alert swiped away.");
+              }
             }}
-            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black uppercase rounded-lg transition shrink-0 tracking-wider text-center"
+            title="Swipe left/right or click X to dismiss notice"
+            className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 anim-pulse cursor-grab active:cursor-grabbing select-none"
+            id="coupons_expiring_soon_global_alert"
           >
-            Review Templates
-          </button>
-        </div>
-      )}
+            <div className="flex items-start gap-3 flex-1">
+              <div className="p-2 bg-amber-500/10 rounded-xl text-amber-600 dark:text-amber-400 shrink-0">
+                <Clock size={18} />
+              </div>
+              <div>
+                <h4 className="text-xs font-black text-amber-800 dark:text-amber-300 uppercase tracking-widest">At-Risk Campaigns</h4>
+                <p className="text-xs text-amber-700 dark:text-amber-400/80 mt-0.5 font-medium">
+                  You have <strong>{expiringSoonCoupons.length} coupon{expiringSoonCoupons.length > 1 ? "s" : ""}</strong> expiring within 48 hours. Consider extending their validity or activating preset campaigns!
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+              <button
+                onClick={() => {
+                  const el = document.getElementById("coupons_quick_suggest_panel");
+                  el?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black uppercase rounded-lg transition shrink-0 tracking-wider text-center cursor-pointer pointer-events-auto"
+              >
+                Review Templates
+              </button>
+              <button
+                onClick={() => {
+                  setCouponsAlertDismissed(true);
+                  toast.info("Active campaign alert dismissed.");
+                }}
+                className="p-1.5 hover:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg transition shrink-0 cursor-pointer pointer-events-auto"
+                title="Dismiss Notice"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="space-y-1">
@@ -15940,6 +15971,8 @@ function App() {
 
   const prevPendingCount = useRef(0);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isOfflineDismissed, setIsOfflineDismissed] = useState(false);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
   const [kitchenMode, setKitchenMode] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     return localStorage.getItem("darkMode") === "true";
@@ -16123,8 +16156,14 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
   // Offline detection
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
+    const handleOnline = () => {
+      setIsOffline(false);
+      setIsOfflineDismissed(false);
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+      setIsOfflineDismissed(false);
+    };
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     return () => {
@@ -17473,6 +17512,8 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           position="top-center"
           richColors
           theme={darkMode ? "dark" : "light"}
+          closeButton
+          expand={true}
         />
         <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
         
@@ -17731,12 +17772,49 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           }}
         />
 
-        {isOffline && (
-          <div className="fixed top-0 left-0 right-0 z-[100] bg-error text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2">
-            <PauseCircle size={14} />
-            YOU ARE OFFLINE. Changes will be saved locally and synced when you
-            reconnect.
-          </div>
+        {isOffline && !isOfflineDismissed && (
+          <motion.div
+            initial={{ y: -50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -50, opacity: 0 }}
+            drag="y"
+            dragConstraints={{ top: -50, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.1 }}
+            onDragEnd={(event, info) => {
+              if (info.offset.y < -20) {
+                setIsOfflineDismissed(true);
+                toast.info("Offline notification bar swiped away. Auto-saving still active.", {
+                  action: {
+                    label: "Restore Banner",
+                    onClick: () => setIsOfflineDismissed(false),
+                  },
+                  duration: 5000,
+                });
+              }
+            }}
+            title="Drag up to hide notice"
+            className="fixed top-0 left-0 right-0 z-[100] bg-error text-white px-4 py-2.5 text-center text-xs font-bold flex items-center justify-between gap-2 shadow-lg cursor-grab active:cursor-grabbing select-none"
+          >
+            <div className="flex items-center gap-2 justify-center flex-1">
+              <PauseCircle size={14} className="animate-pulse" />
+              <span>YOU ARE OFFLINE. Local changes will sync when online. Swipe up / click close to dismiss this bar.</span>
+            </div>
+            <button
+              onClick={() => {
+                setIsOfflineDismissed(true);
+                toast.info("Offline notification bar swiped away. Auto-saving still active.", {
+                  action: {
+                    label: "Restore Banner",
+                    onClick: () => setIsOfflineDismissed(false),
+                  },
+                  duration: 5000,
+                });
+              }}
+              className="p-1 hover:bg-white/10 rounded-full transition-colors shrink-0 cursor-pointer"
+            >
+              <X size={14} />
+            </button>
+          </motion.div>
         )}
 
         {/* TopAppBar */}
@@ -19000,11 +19078,22 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
       {/* Update Notifier Floating Button */}
       <AnimatePresence>
-        {updateAvailable && (
+        {updateAvailable && !updateDismissed && (
           <motion.div
             initial={{ opacity: 0, y: 50, scale: 0.8 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            className="fixed bottom-24 md:bottom-8 left-6 z-[60]"
+            exit={{ opacity: 0, x: 150, scale: 0.8 }}
+            drag="x"
+            dragConstraints={{ left: -50, right: 150 }}
+            dragElastic={0.15}
+            onDragEnd={(event, info) => {
+              if (Math.abs(info.offset.x) > 50) {
+                setUpdateDismissed(true);
+                toast.info("Update notification swiped away. You can refresh manually anytime.");
+              }
+            }}
+            title="Swipe left/right or click X to dismiss update notice"
+            className="fixed bottom-24 md:bottom-8 left-6 z-[60] cursor-grab active:cursor-grabbing select-none flex items-center gap-1.5 bg-[#FF5400] text-white pl-5 pr-3 py-3 rounded-full shadow-2xl shadow-orange-500/60 border-2 border-white/20 transition-all font-body active:scale-95 hover:scale-102"
           >
             <button
               onClick={async () => {
@@ -19033,23 +19122,36 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                   "?v=" +
                   Date.now();
               }}
-              className="bg-[#FF5400] text-white px-5 py-3 rounded-full shadow-2xl shadow-orange-500/60 flex items-center gap-3 hover:scale-105 active:scale-95 border-2 border-white/20 transition-all font-body animate-pulse ring-4 ring-orange-500/20"
+              className="flex items-center gap-3 text-left cursor-pointer"
             >
-              <div className="relative">
-                <RefreshCw size={18} className="animate-spin" />
+              <div className="relative shrink-0">
+                <RefreshCw size={18} className="animate-spin text-white" />
                 <span className="absolute -top-1 -right-1 flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
                 </span>
               </div>
-              <div className="text-left">
+              <div>
                 <p className="text-[10px] font-black uppercase tracking-widest opacity-80 leading-none mb-0.5">
-                  New update (Checked {lastCheckTime})
+                  New update ({lastCheckTime})
                 </p>
-                <p className="text-sm font-bold leading-none">
+                <p className="text-xs font-black leading-none">
                   Refresh to See Changes
                 </p>
               </div>
+            </button>
+            
+            <div className="h-4 w-[1px] bg-white/25 mx-1 shrink-0" />
+            
+            <button
+              onClick={() => {
+                setUpdateDismissed(true);
+                toast.info("Update notice swiped away. Refresh manually when convenient.");
+              }}
+              className="p-1 hover:bg-white/10 rounded-full transition-colors shrink-0 cursor-pointer"
+              title="Dismiss list"
+            >
+              <X size={14} className="text-white" />
             </button>
           </motion.div>
         )}
