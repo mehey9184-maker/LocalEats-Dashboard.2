@@ -15856,6 +15856,7 @@ function App() {
   >([]);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [showHelp, setShowHelp] = useState(false);
+  const [showCustomerAuth, setShowCustomerAuth] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("user_role", role);
@@ -16700,11 +16701,12 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
   }, [user]);
 
   const fetchAllMenuItems = useCallback(async () => {
-    if (!user) return;
+    // NOTE: We allow guest fetching for customers
+    if (!user && role === "merchant") return;
 
     let query = supabase.from("menu_items").select("*");
 
-    if (role === "merchant") {
+    if (role === "merchant" && user) {
       const { data: ownedShops } = await fetchWithRetry(() =>
         supabase.from("shops").select("id").eq("owner_id", user.id),
       );
@@ -16749,8 +16751,11 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
   }, []);
 
   useEffect(() => {
-    if (user) {
-      void fetchOrders();
+    // If the user is logged in OR they are viewing as a customer (guest mode)
+    if (user || role === "customer") {
+      if (user) {
+        void fetchOrders();
+      }
       void fetchShops();
       void fetchAllMenuItems();
 
@@ -16770,7 +16775,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
         void supabase.removeChannel(shopsChannel);
       };
     }
-  }, [user, fetchOrders, fetchShops, fetchAllMenuItems]);
+  }, [user, role, fetchOrders, fetchShops, fetchAllMenuItems]);
 
   // Separate effect for order subscriptions to filter by shop_id
   useEffect(() => {
@@ -17423,11 +17428,13 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
     );
   }
 
-  if (!user) {
+  if (!user && (role !== "customer" || showCustomerAuth)) {
     return authView === "signin" ? (
       <SignIn
         onSignUpClick={() => setAuthView("signup")}
-        onSuccess={() => {}}
+        onSuccess={() => {
+          if (role === "customer") setShowCustomerAuth(false);
+        }}
       />
     ) : (
       <SignUp
@@ -17465,6 +17472,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           setCart={setCart}
           onSwitchRole={handleSwitchRole}
           user={user}
+          onSwitchToLogin={() => setShowCustomerAuth(true)}
         />
         <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
       </>
@@ -19170,6 +19178,7 @@ const CustomerView = ({
   setCart,
   onSwitchRole,
   user,
+  onSwitchToLogin,
 }: {
   shops: Shop[];
   menuItems: MenuItem[];
@@ -19179,6 +19188,7 @@ const CustomerView = ({
   >;
   onSwitchRole: () => void;
   user: User | null;
+  onSwitchToLogin?: () => void;
 }) => {
   const [showCheckout, setShowCheckout] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -19347,11 +19357,15 @@ const CustomerView = ({
           <div className="flex items-center gap-4">
             <button
               onClick={onSwitchRole}
-              className="text-xs font-bold text-on-surface-variant hover:text-primary transition-colors"
+              className="text-xs font-bold text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
             >
-              Merchant Mode
+              Partner Portal
             </button>
-            <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center">
+            <div 
+              className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center cursor-pointer hover:bg-primary/10 transition-colors"
+              onClick={user ? () => toast.success("Profile coming soon") : onSwitchToLogin}
+              title={user ? "Profile" : "Sign In"}
+            >
               <UserIcon size={20} className="text-on-surface-variant" />
             </div>
           </div>
@@ -19738,6 +19752,7 @@ const CustomerView = ({
             }}
             setIsSaving={setIsSaving}
             setIsSaveSuccess={setIsSaveSuccess}
+            onSwitchToLogin={onSwitchToLogin}
           />
         )}
       </AnimatePresence>
@@ -19753,6 +19768,7 @@ const CustomerCheckout = ({
   onOrderPlaced,
   setIsSaving,
   setIsSaveSuccess,
+  onSwitchToLogin,
 }: {
   cart: { item: MenuItem; quantity: number }[];
   subtotal: number;
@@ -19761,6 +19777,7 @@ const CustomerCheckout = ({
   onOrderPlaced: () => void;
   setIsSaving: (val: boolean) => void;
   setIsSaveSuccess: (val: boolean) => void;
+  onSwitchToLogin?: () => void;
 }) => {
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("Tembisa");
@@ -19811,6 +19828,7 @@ const CustomerCheckout = ({
   const handlePlaceOrder = async () => {
     if (!user) {
       toast.error("Please sign in to place an order");
+      if (onSwitchToLogin) onSwitchToLogin();
       return;
     }
 

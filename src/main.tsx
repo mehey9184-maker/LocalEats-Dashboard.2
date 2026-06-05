@@ -4,6 +4,16 @@ import App from './App.tsx';
 import './index.css';
 
 // --- SELF-HEALING / CRASH-RECOVERY PROTOCOL ---
+// Unconditionally unregister any legacy service workers on boot
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (const r of registrations) {
+      r.unregister();
+      console.log("[Self-Healing] Unregistered legacy service worker to ensure app updates.");
+    }
+  });
+}
+
 // Prevents persistent white-screens, cached data corruption, and infinite boot failures
 try {
   const handleGlobalCrash = (source: string, error: unknown) => {
