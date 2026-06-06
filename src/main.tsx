@@ -3,16 +3,8 @@ import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// --- SELF-HEALING / CRASH-RECOVERY PROTOCOL ---
-// Unconditionally unregister any legacy service workers on boot
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (const r of registrations) {
-      r.unregister();
-      console.log("[Self-Healing] Unregistered legacy service worker to ensure app updates.");
-    }
-  });
-}
+// --- CRASH-RECOVERY PROTOCOL ---
+// Note: We now use vite-plugin-pwa for service worker management
 
 // Prevents persistent white-screens, cached data corruption, and infinite boot failures
 try {
@@ -154,15 +146,6 @@ try {
   console.error("Critical self-healing initializer failure:", err);
 }
 
-/*
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(err => {
-      console.log('Service worker registration failed: ', err);
-    });
-  });
-}
-*/
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

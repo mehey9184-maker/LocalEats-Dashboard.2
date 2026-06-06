@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
+import { usePushNotifications } from "./hooks/usePushNotifications";
 import { OnboardingTour } from "./components/OnboardingTour";
 import AIMenuScannerModal from "./components/AIMenuScannerModal";
 import { LegalDocsModal } from "./components/LegalDocsModal";
@@ -16191,7 +16192,10 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
   useEffect(() => {
     try {
       const cachedShops = localStorage.getItem("le_shops");
-      if (cachedShops) setShops(JSON.parse(cachedShops));
+      if (cachedShops) {
+        const parsed = JSON.parse(cachedShops);
+        if (Array.isArray(parsed)) setShops(parsed);
+      }
     } catch (e) {
       console.error("Error parsing cached shops. Resetting item.", e);
       localStorage.removeItem("le_shops");
@@ -16199,7 +16203,10 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
     try {
       const cachedOrders = localStorage.getItem("le_orders");
-      if (cachedOrders) setOrders(JSON.parse(cachedOrders));
+      if (cachedOrders) {
+        const parsed = JSON.parse(cachedOrders);
+        if (Array.isArray(parsed)) setOrders(parsed);
+      }
     } catch (e) {
       console.error("Error parsing cached orders. Resetting item.", e);
       localStorage.removeItem("le_orders");
@@ -16207,7 +16214,10 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
     try {
       const cachedMenu = localStorage.getItem("le_menu");
-      if (cachedMenu) setMenuItems(JSON.parse(cachedMenu));
+      if (cachedMenu) {
+        const parsed = JSON.parse(cachedMenu);
+        if (Array.isArray(parsed)) setMenuItems(parsed);
+      }
     } catch (e) {
       console.error("Error parsing cached menu. Resetting item.", e);
       localStorage.removeItem("le_menu");
@@ -16361,24 +16371,8 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
     localStorage.setItem("soundAlerts", soundAlerts.toString());
   }, [soundAlerts]);
 
-  const requestPushPermissions = async () => {
-    if (!("Notification" in window)) {
-      toast.error("This browser does not support push notifications.");
-      return;
-    }
-    try {
-      const permission = await Notification.requestPermission();
-      if (permission === "granted") {
-        setPushEnabled(true);
-        toast.success("Push notifications enabled!");
-      } else {
-        setPushEnabled(false);
-        toast.error("Notification permission denied.");
-      }
-    } catch (error) {
-      console.error("Error requesting notification permission:", error);
-    }
-  };
+  // VAPID Push configuration moved to custom hook usePushNotifications
+  const { requestPushPermissions } = usePushNotifications(pushEnabled);
 
   const playNotificationSound = useCallback((isRepeating = false, styleOverride?: "calm" | "friendly" | "sparkle") => {
     // Vibrate if supported
@@ -18725,7 +18719,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                     <button
                       onClick={() => {
                         if (!pushEnabled) {
-                          requestPushPermissions();
+                          requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : activeTab === 'customer' ? 'client' : 'merchant', supabase);
                         } else {
                           toast.info(
                             "To disable push notifications, please change your browser settings.",
