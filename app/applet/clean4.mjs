@@ -1,0 +1,1 @@
+import fs from 'fs'; const c = fs.readFileSync('src/App.tsx', 'utf8'); const lines = c.split('\n'); const newLines = lines.slice(0, 19209); fs.writeFileSync('src/App.tsx', newLines.join('\n') + '\n');

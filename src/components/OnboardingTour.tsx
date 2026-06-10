@@ -112,15 +112,32 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
 
-  // Auto-switch tabs based on current step target
+  // Sync the tour step with manual tab selection from sidebar clicks
   useEffect(() => {
-    if (isOpen) {
-      const stepTargetTab = TOUR_STEPS[currentStep].tab;
-      if (activeTab !== stepTargetTab) {
-        setActiveTab(stepTargetTab);
+    if (!isOpen) return;
+
+    const stepTargetTab = TOUR_STEPS[currentStep].tab;
+    if (activeTab !== stepTargetTab) {
+      const matchIndex = TOUR_STEPS.findIndex((s) => s.tab === activeTab);
+      if (matchIndex !== -1) {
+        const timer = setTimeout(() => {
+          setCurrentStep(matchIndex);
+        }, 0);
+        return () => clearTimeout(timer);
       }
     }
-  }, [currentStep, isOpen, activeTab, setActiveTab]);
+  }, [activeTab, isOpen, currentStep]);
+
+  // Reset to first step of the tour on open
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        setCurrentStep(0);
+        setActiveTab(TOUR_STEPS[0].tab);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, setActiveTab]);
 
   const step = TOUR_STEPS[currentStep];
   const isFirst = currentStep === 0;
@@ -130,13 +147,17 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
     if (isLast) {
       onComplete();
     } else {
-      setCurrentStep((prev) => prev + 1);
+      const nextStep = currentStep + 1;
+      setCurrentStep(nextStep);
+      setActiveTab(TOUR_STEPS[nextStep].tab);
     }
   };
 
   const handlePrev = () => {
     if (!isFirst) {
-      setCurrentStep((prev) => prev - 1);
+      const prevStep = currentStep - 1;
+      setCurrentStep(prevStep);
+      setActiveTab(TOUR_STEPS[prevStep].tab);
     }
   };
 

@@ -8,6 +8,8 @@ import React, {
 import { motion, AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
 import { usePushNotifications } from "./hooks/usePushNotifications";
+import { useAppNavigation } from "./hooks/useAppNavigation";
+import { useAppInitializer } from "./hooks/useAppInitializer";
 import { OnboardingTour } from "./components/OnboardingTour";
 import AIMenuScannerModal from "./components/AIMenuScannerModal";
 import { LegalDocsModal } from "./components/LegalDocsModal";
@@ -81,7 +83,7 @@ import {
   Info,
   Navigation,
   Radio,
-  Package,
+  
   ShieldCheck,
   Timer,
   Loader2,
@@ -91,11 +93,12 @@ import {
   Volume1,
   Volume2,
   Copy,
-  Gauge,
-  Lock,
+  
+  
   Compass,
   Leaf,
   Flame,
+  WifiOff,
 } from "lucide-react";
 import {
   BarChart,
@@ -112,9 +115,10 @@ import {
   Legend,
 } from "recharts";
 import { format } from "date-fns";
-import AppMapBackground from "./components/AppMapBackground";
+
 import { SavingOverlay } from "./components/ui/SavingOverlay";
 import { ConfirmModal } from "./components/ui/ConfirmModal";
+import { Skeleton } from "./components/ui/Skeleton";
 import { createClient, User } from "@supabase/supabase-js";
 import {
   MapContainer,
@@ -130,6 +134,89 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import imageCompression from "browser-image-compression";
 import { LocalEatsLogo } from "./components/LocalEatsLogo";
+
+const FALLBACK_SHOPS: Shop[] = [
+    {
+      id: 9991,
+      name: "Tembisa Golden Kota Hub",
+      description: "LEGENDARY multi-layered golden township kotas stacked with polony, chips, cheese, and special house sauce.",
+      location: "Tembisa",
+      city: "Tembisa",
+      category: "Home Kitchen",
+      logo_url: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=300",
+      cash_trust_enabled: true,
+      allow_external_riders: true,
+      auto_look_for_rider: true
+    },
+    {
+      id: 9992,
+      name: "Ivory Corner Shisanyama",
+      description: "Sizzling flame-grilled beef, brisket, and boerewors paired with hot chakalaka and creamy pap.",
+      location: "Ivory Park",
+      city: "Ivory Park",
+      category: "Shisanyama",
+      logo_url: "https://images.unsplash.com/photo-1544025162-d76694265947?w=300",
+      cash_trust_enabled: true,
+      allow_external_riders: false,
+      auto_look_for_rider: false
+    },
+    {
+      id: 9993,
+      name: "Kaalfontein Flame Burgers",
+      description: "Smash burgers grilled to absolute juicy perfection with custom cheese and secret spices.",
+      location: "Kaalfontein",
+      city: "Kaalfontein",
+      category: "Fast Food",
+      logo_url: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=300",
+      cash_trust_enabled: false,
+      allow_external_riders: true,
+      auto_look_for_rider: true
+    }
+  ];
+
+const FALLBACK_MENU_ITEMS: MenuItem[] = [
+    {
+      id: 99901,
+      shop_id: 9991,
+      name: "The President's Special Kota",
+      description: "Triple patties, double eggs, melted cheddar layer, secret peri-peri whip, fully loaded.",
+      price: 65.00,
+      is_available: true,
+      stock_quantity: 45,
+      image_url: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=500"
+    },
+    {
+      id: 99902,
+      shop_id: 9991,
+      name: "Classic Township Quarter Kota",
+      description: "Loaded with hand-cut chips, thick polony, Russian, melted cheddar, and sweet mustard garnish.",
+      price: 45.00,
+      is_available: true,
+      stock_quantity: 20,
+      image_url: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=500"
+    },
+    {
+      id: 99903,
+      shop_id: 9992,
+      name: "Full Flame Brisket Platter",
+      description: "Flawlessly smoked chuck beef brisket, oversized helping of pap, freshly prepared daily chakalaka.",
+      price: 120.00,
+      is_available: true,
+      stock_quantity: 15,
+      image_url: "https://images.unsplash.com/photo-1544025162-d76694265947?w=500"
+    },
+    {
+      id: 99904,
+      shop_id: 9993,
+      name: "Double Cheese Kaalfontein Smash",
+      description: "Two 100g beef patties smashed thin, double mature cheddar, home-pickled cucumbers on brioche.",
+      price: 55.00,
+      is_available: true,
+      stock_quantity: 30,
+      image_url: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500"
+    }
+  ];
+
 // Fix Leaflet marker icons
 // @ts-expect-error - Leaflet Default Icon prototype doesn't have _getIconUrl type
 delete L.Icon.Default.prototype._getIconUrl;
@@ -145,24 +232,7 @@ L.Icon.Default.mergeOptions({
 const DEFAULT_MENU_IMAGE = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=800";
 const DEFAULT_SHOP_LOGO = "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&q=80&w=800";
 
-const calculateDistance = (
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-) => {
-  const R = 6371; // km
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
+
 
 /**
  * 🚲 Smooth Location Interpolation (Lerp)
@@ -469,6 +539,9 @@ export interface Shop {
   cash_trust_enabled?: boolean;
   allow_external_riders?: boolean;
   auto_look_for_rider?: boolean;
+  require_terminal_sync?: boolean;
+  terminal_provider?: string;
+  terminal_serial?: string;
 }
 
 export interface MenuItem {
@@ -525,6 +598,8 @@ export interface Order {
   order_type?: "delivery" | "collection";
   merchant_rating?: number;
    merchant_feedback?: string;
+  terminal_masked_card?: string;
+  terminal_sync_status?: string;
 }
 
 const safeGetOrderItems = (items: unknown): (string | { name: string; price: number; quantity: number })[] => {
@@ -593,11 +668,6 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const DASHBOARD_URL = "https://dashboard.localeatssa.co.za";
 const FLAT_DELIVERY_FEE = 5;
 
-const CITY_CENTERS = {
-  "Tembisa": { lat: -25.9964, lng: 28.2268 },
-  "Kaalfontein": { lat: -25.9912, lng: 28.2031 }, // Refined
-  "Ivory Park": { lat: -26.0025, lng: 28.1889 }   // Refined
-};
 
 const getSupportedCity = (cityName: string): string => {
   const normalized = cityName.toLowerCase();
@@ -775,6 +845,64 @@ const Skeleton: React.FC<{ className?: string }> = ({ className }) => {
         className,
       )}
     />
+  );
+};
+
+const DashboardSkeleton: React.FC = () => {
+  return (
+    <div className="p-6 md:p-8 space-y-8 animate-pulse">
+      {/* Top Header Row / Controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/60 backdrop-blur-md p-6 rounded-[2rem] border border-gray-100 shadow-sm">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-48 rounded-xl" />
+          <Skeleton className="h-4 w-64 rounded-lg" />
+        </div>
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-11 w-32 rounded-full" />
+          <Skeleton className="h-11 w-11 rounded-full" />
+        </div>
+      </div>
+
+      {/* Grid of Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-white/80 border border-gray-100 p-6 rounded-[2rem] shadow-sm space-y-4">
+            <div className="flex justify-between items-center">
+              <Skeleton className="h-4 w-24 rounded" />
+              <Skeleton className="h-8 w-8 rounded-full" />
+            </div>
+            <Skeleton className="h-9 w-32 rounded-xl" />
+            <Skeleton className="h-3 w-40 rounded" />
+          </div>
+        ))}
+      </div>
+
+      {/* Main Double-Panel Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 bg-white/80 border border-gray-100 p-6 rounded-[2.5rem] shadow-sm space-y-6 h-[400px]">
+          <div className="flex justify-between items-center">
+            <Skeleton className="h-6 w-36 rounded-lg" />
+            <Skeleton className="h-8 w-24 rounded-lg" />
+          </div>
+          <Skeleton className="h-full w-full rounded-[1.5rem]" />
+        </div>
+        <div className="bg-white/80 border border-gray-100 p-6 rounded-[2.5rem] shadow-sm space-y-6 h-[400px] flex flex-col justify-between">
+          <div className="space-y-4">
+            <Skeleton className="h-6 w-28 rounded-lg" />
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="flex gap-4 items-center">
+                <Skeleton className="h-10 w-10 rounded-full" />
+                <div className="space-y-2 flex-1">
+                  <Skeleton className="h-4 w-full rounded" />
+                  <Skeleton className="h-3 w-1/2 rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+          <Skeleton className="h-12 w-full rounded-2xl" />
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -2311,12 +2439,14 @@ const OnboardingChecklist = ({
   onNavigate,
   onEditProfile,
   hasMenu,
+  onLoadDemoData,
 }: {
   shops: Shop[];
   user: User | null;
   onNavigate: (tab: string) => void;
   onEditProfile: () => void;
   hasMenu: boolean;
+  onLoadDemoData?: () => void;
 }) => {
   const userOwnedShops = shops.filter((s) => s.owner_id === user?.id);
   const hasShop = userOwnedShops.length > 0;
@@ -2352,6 +2482,15 @@ const OnboardingChecklist = ({
             <p className="text-xs md:text-sm text-on-surface-variant font-medium">
               Complete these steps to start accepting orders from thirsty customers.
             </p>
+            {onLoadDemoData && (
+              <button
+                onClick={onLoadDemoData}
+                className="mt-3 px-4 py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 active:scale-[0.98] transition-all text-white font-headline font-black text-[10px] md:text-xs uppercase tracking-wider rounded-xl shadow-xs inline-flex items-center gap-2 border border-orange-400/20"
+              >
+                <Sparkles size={13} className="animate-pulse animate-duration-1000" />
+                Load Township Sandbox Data
+              </button>
+            )}
           </div>
         </div>
         
@@ -2549,15 +2688,290 @@ const SUBSCRIPTION_PLANS = [
   },
 ];
 
+const CodReconciliationView = ({
+  orders,
+  settledCodOrders,
+  toggleCodSettlement
+}: {
+  orders: Order[];
+  settledCodOrders: string[];
+  toggleCodSettlement: (id: string) => void;
+}) => {
+  const codOrders = useMemo(() => {
+    return orders.filter(o => {
+      const isCompleted = o.status === "completed";
+      const isCod = o.payment_method?.toLowerCase() === "cash";
+      return isCompleted && isCod;
+    });
+  }, [orders]);
+
+  const totalCollected = useMemo(() => {
+    return codOrders.reduce((sum, o) => sum + Number(o.total_price || 0), 0);
+  }, [codOrders]);
+
+  const settledAmount = useMemo(() => {
+    return codOrders
+      .filter(o => settledCodOrders.includes(o.id))
+      .reduce((sum, o) => sum + Number(o.total_price || 0), 0);
+  }, [codOrders, settledCodOrders]);
+
+  const pendingAmount = totalCollected - settledAmount;
+
+  const ridersState = useMemo(() => {
+    const riderMap: Record<string, { totalCash: number; orders: Order[] }> = {};
+    codOrders.forEach(o => {
+      const rider = o.rider_id || "Bra-Sipho (Demo)";
+      const isSettled = settledCodOrders.includes(o.id);
+      const amt = Number(o.total_price || 0);
+      if (!isSettled) {
+        if (!riderMap[rider]) {
+          riderMap[rider] = { totalCash: 0, orders: [] };
+        }
+        riderMap[rider].totalCash += amt;
+        riderMap[rider].orders.push(o);
+      }
+    });
+    return riderMap;
+  }, [codOrders, settledCodOrders]);
+
+  return (
+    <div className="space-y-8 animate-fade-in text-left">
+      <div className="bg-primary/[0.04] border border-primary/20 rounded-[2rem] p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="space-y-2 max-w-xl">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="text-primary animate-pulse" size={24} />
+            <h4 className="font-headline font-black text-sm tracking-widest text-primary uppercase">
+              Rider Cash Pairing Cipher (Safe Handshake)
+            </h4>
+          </div>
+          <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
+            In South African township delivery grids, physical cash transactions carry high physical security risks.
+            Riders accumulate a maximum safety threshold of cash on hand (e.g., **R 500**). Once they reach this cap, they must hand over the collected amount to the merchant to reset their safety bar and continue accepting orders.
+          </p>
+        </div>
+        <div className="shrink-0 flex items-center gap-2 bg-white dark:bg-zinc-900 border border-outline-variant/10 px-5 py-3 rounded-2xl shadow-xs">
+          <Lock size={16} className="text-primary" />
+          <div className="leading-tight">
+            <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Default Max Cap</p>
+            <p className="font-headline font-black text-sm text-primary">R 500.00</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] p-6 space-y-2 shadow-xs">
+          <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant/60">Total Cash Collected</p>
+          <p className="text-3xl font-headline font-black text-on-surface">R {totalCollected.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          <div className="text-[10px] text-zinc-500 font-semibold">{codOrders.length} completed Cash-on-Delivery orders</div>
+        </div>
+        <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] p-6 space-y-2 shadow-xs">
+          <p className="text-[10px] font-black uppercase tracking-wider text-amber-500">Pending Safe Handover</p>
+          <p className="text-3xl font-headline font-black text-amber-500">R {pendingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          <div className="text-[10px] text-zinc-500 font-semibold">Cash currently held by delivery riders</div>
+        </div>
+        <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] p-6 space-y-2 shadow-xs">
+          <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Handovers Settled (Cleared)</p>
+          <p className="text-3xl font-headline font-black text-emerald-600">R {settledAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          <div className="text-[10px] text-zinc-500 font-semibold">{settledCodOrders.length} reconciled orders</div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-lg font-bold text-on-surface">Rider Safety Status</h3>
+          <p className="text-xs text-on-surface-variant">Live cash tracker indicating accumulated balances relative to safety boundaries.</p>
+        </div>
+
+        {Object.keys(ridersState).length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Object.entries(ridersState).map(([riderId, state]) => {
+              const perc = Math.min(100, (state.totalCash / 500) * 100);
+              const isOverLimit = state.totalCash >= 500;
+              return (
+                <div key={riderId} className="bg-surface-container-lowest border border-outline-variant/10 rounded-3xl p-5 space-y-4 shadow-xs">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <div className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs",
+                        isOverLimit ? "bg-rose-100 text-rose-600" : "bg-zinc-100 text-zinc-600"
+                      )}>
+                        {riderId.charAt(0)}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm text-on-surface">{riderId}</h4>
+                        <p className="text-[9px] text-on-surface-variant/80 font-black uppercase tracking-wider font-sans">Accumulating Cash On Hand</p>
+                      </div>
+                    </div>
+                    <div>
+                      <span className={cn(
+                        "px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider",
+                        isOverLimit ? "bg-rose-100 text-rose-700 animate-pulse animate-duration-1000" : "bg-amber-100 text-amber-700"
+                      )}>
+                        {isOverLimit ? "⚠️ Cap Exceeded" : "🟢 Under Safety Cap"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs font-bold text-on-surface">
+                      <span>R {state.totalCash.toFixed(2)} held</span>
+                      <span className="text-on-surface-variant/60">Limit: R 500.00</span>
+                    </div>
+                    <div className="w-full bg-zinc-150 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
+                      <div 
+                        className={cn("h-full rounded-full transition-all duration-1000", isOverLimit ? "bg-error animate-pulse" : "bg-primary")}
+                        style={{ width: `${perc}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                  
+                  {isOverLimit && (
+                    <div className="text-[10px] text-error font-bold bg-error/5 p-2.5 rounded-xl border border-error/10 flex items-center gap-1.5">
+                      <Lock size={12} />
+                      <span>Rider should settle pending handover immediately. Go-live dispatched alerts restricted.</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-surface-container-low/40 border border-outline-variant/10 rounded-2xl p-6 text-center text-xs text-on-surface-variant italic">
+            Zero pending rider cash balances tracking. All active couriers are cleared or empty.
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-lg font-bold text-on-surface">Cash Deliveries Ledger</h3>
+          <p className="text-xs text-on-surface-variant">Review and manually clear physical cash-in-hand handshakes with riders.</p>
+        </div>
+
+        <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[700px] text-left border-collapse">
+              <thead>
+                <tr className="border-b border-outline-variant/10 bg-surface-container-low/30">
+                  <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Order ID
+                  </th>
+                  <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Customer
+                  </th>
+                  <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Rider Assigned
+                  </th>
+                  <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                    Total Settle
+                  </th>
+                  <th className="py-4 px-6 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 text-center">
+                    Clearing Status / Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/5">
+                {codOrders.length > 0 ? (
+                  codOrders.map((order) => {
+                    const isSettled = settledCodOrders.includes(order.id);
+                    return (
+                      <tr key={order.id} className="hover:bg-surface-container-low/30 transition-colors">
+                        <td className="py-5 px-6 font-mono text-xs text-on-surface-variant font-black">
+                          {order.id.slice(0, 12)}
+                        </td>
+                        <td className="py-5 px-6">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-sm text-on-surface">{order.customer_name}</span>
+                            <span className="text-[10px] text-on-surface-variant/80 font-semibold">{order.address}</span>
+                          </div>
+                        </td>
+                        <td className="py-5 px-6">
+                          <span className="text-sm font-bold text-on-surface">
+                            {order.rider_id || "Bra-Sipho (Demo)"}
+                          </span>
+                        </td>
+                        <td className="py-5 px-6 font-headline font-black text-on-surface">
+                          R {Number(order.total_price || 0).toFixed(2)}
+                        </td>
+                        <td className="py-5 px-6">
+                          <div className="flex justify-center items-center gap-3">
+                            <button
+                              onClick={() => toggleCodSettlement(order.id)}
+                              className={cn(
+                                "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all border flex items-center gap-1.5 active:scale-[0.98]",
+                                isSettled
+                                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/20"
+                                  : "bg-amber-500 text-white border-amber-600 hover:bg-amber-600 shadow-xs shadow-amber-500/10"
+                              )}
+                            >
+                              {isSettled ? (
+                                <>
+                                  <Check size={14} className="stroke-[3px]" />
+                                  <span>Cleared</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Lock size={13} />
+                                  <span>Clear Handshake</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="py-16 text-center text-sm text-on-surface-variant italic">
+                      No Cash on Delivery orders recorded. Run a test order checkout flow or load Sandbox data.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const PaymentHistory = ({ 
   shopId, 
   currentShop, 
-  setShops 
+  setShops,
+  orders = []
 }: { 
   shopId: number; 
   currentShop?: Shop; 
   setShops?: React.Dispatch<React.SetStateAction<Shop[]>>;
+  orders?: Order[];
+  setOrders?: React.Dispatch<React.SetStateAction<Order[]>>;
 }) => {
+  const [paymentsSubTab, setPaymentsSubTab] = useState<"billing" | "cod">("billing");
+  const [settledCodOrders, setSettledCodOrders] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("localeats_settled_cod_orders") || "[]");
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleCodSettlement = (orderId: string) => {
+    setSettledCodOrders(prev => {
+      const isSettled = prev.includes(orderId);
+      const next = isSettled ? prev.filter(id => id !== orderId) : [...prev, orderId];
+      localStorage.setItem("localeats_settled_cod_orders", JSON.stringify(next));
+      
+      toast.success(isSettled ? "Changed status back to Pending Handover" : "Marked Cash Handover Settled & Cleared!", {
+        description: `Order ${orderId.slice(0, 8)} handshake confirmed.`,
+        icon: isSettled ? <ShieldAlert size={16} className="text-amber-500" /> : <ShieldCheck size={16} className="text-emerald-500" />
+      });
+      return next;
+    });
+  };
+
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -2720,7 +3134,6 @@ const PaymentHistory = ({
       
       setCheckoutStep("success");
       setVoucherPin("");
-      setPromoCode("");
       setRefreshKey((prev) => prev + 1);
       
       toast.success(`${selectedPlan.name} Activated!`, {
@@ -2826,18 +3239,50 @@ const PaymentHistory = ({
   }
 
   return (
-    <div className="space-y-12 text-left">
+    <div className="space-y-8 text-left">
       {/* SECTION HEADER */}
       <section className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-outline-variant/5 pb-6">
         <div className="space-y-1 flex-1">
           <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight flex items-center gap-2">
-            Membership & Vouchers <span className="text-[10px] bg-primary/10 text-primary px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider">PREMIUM MODE</span>
+            Finance & Subscriptions <span className="text-[10px] bg-primary/10 text-primary px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider">PREMIUM MODE</span>
           </h2>
           <p className="text-sm text-on-surface-variant font-medium">
-            Manage your subscription plans and top up using cash prepaid vouchers.
+            Manage membership levels, top up vouchers, and reconcile physical cash deliveries.
           </p>
         </div>
       </section>
+
+      {/* SUB-TAB NAVIGATOR */}
+      <div className="flex border-b border-outline-variant/10">
+        <button
+          onClick={() => setPaymentsSubTab("billing")}
+          className={cn(
+            "px-6 py-3 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer outline-none",
+            paymentsSubTab === "billing"
+              ? "border-primary text-primary"
+              : "border-transparent text-on-surface-variant/60 hover:text-on-surface"
+          )}
+        >
+          Membership & Vouchers
+        </button>
+        <button
+          onClick={() => setPaymentsSubTab("cod")}
+          className={cn(
+            "px-6 py-3 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center gap-2 outline-none",
+            paymentsSubTab === "cod"
+              ? "border-primary text-primary"
+              : "border-transparent text-on-surface-variant/60 hover:text-on-surface"
+          )}
+        >
+          <span>COD Cash Reconciliation</span>
+          <span className="bg-emerald-500/10 text-emerald-500 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full">
+            Safe Handshake
+          </span>
+        </button>
+      </div>
+
+      {paymentsSubTab === "billing" ? (
+        <div className="space-y-12">
 
       {/* DASHBOARD TOP ROW */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -2980,7 +3425,6 @@ const PaymentHistory = ({
                     onClick={() => {
                       setPayMethod(method);
                       setVoucherPin("");
-                      setPromoCode("");
                       setErrorMessage("");
                     }}
                     className={cn(
@@ -3366,6 +3810,14 @@ const PaymentHistory = ({
           </div>
         </div>
       </div>
+      </div>
+      ) : (
+        <CodReconciliationView
+          orders={orders}
+          settledCodOrders={settledCodOrders}
+          toggleCodSettlement={toggleCodSettlement}
+        />
+      )}
     </div>
   );
 };
@@ -3456,6 +3908,7 @@ const DashboardOverview = React.memo(({
   setShowWeatherModal,
   generateWeatherAiAdvice,
   getWeatherInfo,
+  onLoadDemoData,
 }: {
   orders: Order[];
   loading: boolean;
@@ -3483,6 +3936,7 @@ const DashboardOverview = React.memo(({
     predictedDemand: string;
     productAffinities: { name: string; index: number }[];
   };
+  onLoadDemoData?: () => void;
 }) => {
   const [followerCount, setFollowerCount] = useState<number | string>("--");
   const [followerTrend, setFollowerTrend] = useState<string>("0");
@@ -3767,8 +4221,20 @@ const DashboardOverview = React.memo(({
     toast.success("Weekly report exported successfully!");
   };
 
+  const [showTestCheckout, setShowTestCheckout] = useState(false);
+  const [testOrderPayMethod, setTestOrderPayMethod] = useState("Cash");
+  const [cardName, setCardName] = useState("");
+  const [cardNumber, setCardNumber] = useState("");
+
   const generateTestOrder = async () => {
     if (!currentShop) return;
+
+    if (testOrderPayMethod === "Card Machine") {
+      if (!cardName.trim() || !cardNumber.trim() || cardNumber.length < 15) {
+        toast.error("Please provide valid Cardholder Name and Card Number.");
+        return;
+      }
+    }
 
     const testOrder = {
       shop_id: currentShop.id,
@@ -3785,6 +4251,9 @@ const DashboardOverview = React.memo(({
       status: "pending",
       order_type: "delivery",
       items: ["Test Burger (Debug)"],
+      payment_method: testOrderPayMethod,
+      terminal_masked_card: testOrderPayMethod === "Card Machine" ? `**** **** **** ${cardNumber.slice(-4)}` : null,
+      terminal_sync_status: testOrderPayMethod === "Card Machine" ? "synced" : null,
       created_at: new Date().toISOString(),
     };
 
@@ -3796,11 +4265,8 @@ const DashboardOverview = React.memo(({
     if (error) {
       toast.error("We couldn't create a test order right now. Please try again.");
     } else {
-      toast.success("Test order generated! Go to Orders to accept it.", {
-        description:
-          'Once accepted, click "Invoke Rider Dispatch" to test the Rider app feed.',
-        duration: 8000,
-      });
+      toast.success("Test order generated! Go to Orders to accept it.");
+      setShowTestCheckout(false);
       onRefresh();
     }
   };
@@ -3849,9 +4315,125 @@ const DashboardOverview = React.memo(({
     );
   }
 
-
   return (
     <div className="space-y-8 md:space-y-12">
+      <AnimatePresence>
+        {showTestCheckout && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
+              animate={{ backdropFilter: "blur(4px)", backgroundColor: "rgba(0,0,0,0.4)" }}
+              exit={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
+              className="absolute inset-0"
+              onClick={() => setShowTestCheckout(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-surface relative z-10 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-outline-variant/20 flex flex-col max-h-[90vh]"
+            >
+              <div className="p-6 md:p-8 space-y-6 flex-1 overflow-y-auto">
+                <div>
+                  <h2 className="text-2xl font-headline font-black text-on-surface">Customer Checkout</h2>
+                  <p className="text-xs text-on-surface-variant font-medium mt-1">This simulates the checkout panel a customer sees on your live storefront.</p>
+                </div>
+                
+                <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 space-y-2">
+                  <div className="flex justify-between text-sm font-bold text-on-surface">
+                    <span>Test Burger (Debug)</span>
+                    <span>R 55.00</span>
+                  </div>
+                  <div className="flex justify-between text-lg font-black text-on-surface pt-4 border-t border-outline-variant/10">
+                    <span>Total</span>
+                    <span className="text-primary">R 55.00</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70">Payment Method</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setTestOrderPayMethod("Cash")}
+                      className={cn(
+                        "p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2",
+                        testOrderPayMethod === "Cash" ? "border-primary bg-primary/10 text-primary" : "border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-low"
+                      )}
+                    >
+                      <span className="text-lg">💵</span>
+                      <span className="text-xs font-bold">Cash</span>
+                    </button>
+                    <button
+                      onClick={() => setTestOrderPayMethod("Card Machine")}
+                      className={cn(
+                        "p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2",
+                        testOrderPayMethod === "Card Machine" ? "border-primary bg-primary/10 text-primary" : "border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-low"
+                      )}
+                    >
+                      <CreditCard size={20} />
+                      <span className="text-xs font-bold">Card Machine</span>
+                    </button>
+                  </div>
+                </div>
+
+                <AnimatePresence>
+                  {testOrderPayMethod === "Card Machine" && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="p-5 rounded-2xl bg-surface-container-lowest border-2 border-emerald-500/20 shadow-sm space-y-4 mt-2">
+                        <div className="flex items-center gap-2 text-emerald-600 mb-2">
+                          <Lock size={14} />
+                          <span className="text-xs font-black uppercase tracking-wider">Secure Payment Synchronization</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Cardholder Name</label>
+                          <input
+                            type="text"
+                            value={cardName}
+                            onChange={(e) => setCardName(e.target.value)}
+                            placeholder="John Doe"
+                            className="w-full bg-surface border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Masked Card Number</label>
+                          <input
+                            type="text"
+                            value={cardNumber}
+                            onChange={(e) => {
+                               const val = e.target.value.replace(/\D/g, "");
+                               let formatted = "";
+                               for (let i = 0; i < val.length; i++) {
+                                 if (i > 0 && i % 4 === 0) formatted += " ";
+                                 formatted += val[i];
+                               }
+                               setCardNumber(formatted.slice(0, 19));
+                            }}
+                            placeholder="**** **** **** 1234"
+                            className="w-full bg-surface border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all font-mono"
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              <div className="p-6 md:p-8 bg-surface-container-lowest border-t border-outline-variant/10">
+                <button
+                  onClick={generateTestOrder}
+                  className="w-full px-6 py-4 bg-primary text-on-primary font-black rounded-2xl shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest"
+                >
+                  Confirm & Place Order
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       {currentShop && (!currentShop.phone || !currentShop.whatsapp) && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
@@ -3898,7 +4480,7 @@ const DashboardOverview = React.memo(({
           </div>
           <div className="flex gap-2">
             <button
-              onClick={generateTestOrder}
+              onClick={() => setShowTestCheckout(true)}
               className="p-3 bg-primary/5 text-primary rounded-xl hover:bg-primary/10 transition-colors border border-primary/10 flex items-center gap-2 text-xs font-bold"
               title="Generate Debug Order"
             >
@@ -4007,7 +4589,7 @@ const DashboardOverview = React.memo(({
                     );
                     onRefresh();
                   } else {
-                    toast.error(`Failed to update storefront status: ${error.message}`);
+                    toast.error(getFriendlyErrorMessage(error));
                   }
                   setIsStatusToggling(false);
                 }}
@@ -4046,6 +4628,7 @@ const DashboardOverview = React.memo(({
         onNavigate={onNavigate}
         onEditProfile={onEditProfile}
         hasMenu={hasMenu}
+        onLoadDemoData={onLoadDemoData}
       />
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6">
@@ -4961,6 +5544,7 @@ const MenuManagement = ({
   onRefreshMenu,
   setIsSaving,
   setIsSaveSuccess,
+  dataSaverMode = false,
 }: {
   shops: Shop[];
   loading: boolean;
@@ -4968,6 +5552,7 @@ const MenuManagement = ({
   onRefreshMenu?: () => void;
   setIsSaving: (val: boolean) => void;
   setIsSaveSuccess: (val: boolean) => void;
+  dataSaverMode?: boolean;
 }) => {
   const userOwnedShops = useMemo(
     () => shops.filter((s) => s.owner_id === user?.id),
@@ -6287,7 +6872,14 @@ const MenuManagement = ({
                         )}
                       </button>
                       <div className="relative h-40 md:h-48 bg-surface-container flex items-center justify-center overflow-hidden">
-                        {!isPlaceholderImage(item.image_url) ? (
+                        {dataSaverMode ? (
+                          <div className="w-full h-full bg-gradient-to-tr from-orange-400 to-rose-500 flex flex-col items-center justify-center text-white select-none relative p-4 text-center">
+                            <span className="font-headline font-black text-4xl tracking-tighter uppercase mb-1">
+                              {item.name.split(" ").map(w => w[0]).join("").slice(0, 3)}
+                            </span>
+                            <span className="text-[9px] font-black tracking-widest uppercase opacity-75">Data Saver Active</span>
+                          </div>
+                        ) : !isPlaceholderImage(item.image_url) ? (
                           <img
                             className={cn(
                               "w-full h-full object-cover",
@@ -8854,9 +9446,17 @@ Notes: "${order.notes || "None"}"
                               <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
                                 Payment Method
                               </span>
-                              <p className="text-sm font-semibold text-primary">
-                                {order.payment_method || "Cash on Delivery"}
-                              </p>
+                              <div className="flex flex-col gap-2">
+                                <p className="text-sm font-semibold text-primary">
+                                  {order.payment_method || "Cash on Delivery"}
+                                </p>
+                                {order.terminal_masked_card && (
+                                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 text-emerald-600 rounded border border-emerald-500/20 max-w-max">
+                                    <CreditCard size={14} />
+                                    <span className="text-[10px] uppercase tracking-wider font-extrabold">💳 Sync'd Terminal Receipt - {order.terminal_masked_card}</span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                             <div className="space-y-1">
                               <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
@@ -14567,7 +15167,7 @@ const RiderManagement = ({
     });
 
     if (error) {
-      toast.error("Failed to generate code: " + error.message);
+      toast.error(getFriendlyErrorMessage(error));
     } else {
       setActiveCode({ code, expires: expiresAt });
       setShowCode(true);
@@ -14592,7 +15192,7 @@ const RiderManagement = ({
     });
 
     if (error) {
-      toast.error("Failed to add in-house rider: " + error.message);
+      toast.error(getFriendlyErrorMessage(error));
     } else {
       setInHouseName("");
       setInHousePhone("");
@@ -15845,36 +16445,9 @@ export default function AppWrapper() {
 }
 
 function App() {
-  const [role, setRole] = useState<"merchant" | "rider" | "customer">(
-    () =>
-      (localStorage.getItem("user_role") as
-        | "merchant"
-        | "rider"
-        | "customer") || "merchant",
-  );
-  const [cart, setCart] = useState<
-    { item: MenuItem; quantity: number; variant?: string }[]
-  >([]);
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const { activeTab, setActiveTab } = useAppNavigation("dashboard");
   const [showHelp, setShowHelp] = useState(false);
-  const [showCustomerAuth, setShowCustomerAuth] = useState(false);
-
-  useEffect(() => {
-    localStorage.setItem("user_role", role);
-  }, [role]);
-
-  const handleSwitchRole = () => {
-    let newRole: "merchant" | "rider" | "customer" = "merchant";
-    if (role === "merchant") newRole = "customer";
-    else if (role === "customer") newRole = "rider";
-    else newRole = "merchant";
-
-    setRole(newRole);
-    if (newRole === "merchant") setActiveTab("dashboard");
-    else if (newRole === "customer") setActiveTab("explore");
-    else setActiveTab("feed");
-    toast.success(`Switching to ${newRole.toUpperCase()} environment`);
-  };
+  const [dataSaverMode, setDataSaverMode] = useState<boolean>(() => localStorage.getItem("localeats_data_saver") === "true");
 
   // Version Polling for Updates
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -15882,6 +16455,7 @@ function App() {
   const currentBuildVersion = useRef(19); // Moving to v5.4 tracker
 
   useEffect(() => {
+    if (dataSaverMode) return;
     const checkVersion = async () => {
       setLastCheckTime(new Date().toLocaleTimeString());
       try {
@@ -15901,7 +16475,7 @@ function App() {
     checkVersion();
     const interval = setInterval(checkVersion, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [dataSaverMode]);
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
@@ -15917,13 +16491,13 @@ function App() {
   const [isGeneratingRecommendation, setIsGeneratingRecommendation] = useState(false);
 
   useEffect(() => {
-    if (user && role === "merchant") {
+    if (user) {
       const hasOnboarded = localStorage.getItem("localeats_onboard_v1");
       if (!hasOnboarded) {
         setOnboardingOpen(true);
       }
     }
-  }, [user, role]);
+  }, [user]);
   const [authView, setAuthView] = useState<"signin" | "signup">("signin");
   const [isVerifying, setIsVerifying] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -15942,7 +16516,7 @@ function App() {
     const val = localStorage.getItem("soundVolume");
     return val ? parseInt(val) : 80;
   });
-  const [pushEnabled, setPushEnabled] = useState(() => {
+  const [pushEnabled] = useState(() => {
     return (
       typeof window !== "undefined" &&
       "Notification" in window &&
@@ -16367,10 +16941,6 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
     return () => clearInterval(interval);
   }, [user, shops, user?.user_metadata?.operating_hours]);
 
-  useEffect(() => {
-    localStorage.setItem("soundAlerts", soundAlerts.toString());
-  }, [soundAlerts]);
-
   // VAPID Push configuration moved to custom hook usePushNotifications
   const { requestPushPermissions } = usePushNotifications(pushEnabled);
 
@@ -16619,7 +17189,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
     }
 
     prevPendingCount.current = currentPendingCount;
-  }, [orders, soundAlerts, user, playNotificationSound]);
+  }, [orders, soundAlerts, user, playNotificationSound, setActiveTab]);
 
   const fetchOrders = useCallback(async () => {
     if (!user) return;
@@ -16659,7 +17229,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           "Network error: Could not connect to Supabase. Check your internet or ad-blocker.",
         );
       } else {
-        toast.error(`Error fetching orders: ${error.message}`);
+        toast.error(getFriendlyErrorMessage(error));
       }
     } else if (data) {
       // Clean up orphaned rider requests (orders that are completed/cancelled but still 'finding_rider' OR older than timestamp but left stuck)
@@ -16694,37 +17264,52 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
     }
   }, [user]);
 
+  
+  
   const fetchAllMenuItems = useCallback(async () => {
-    // NOTE: We allow guest fetching for customers
-    if (!user && role === "merchant") return;
+    if (!user) return;
 
     let query = supabase.from("menu_items").select("*");
 
-    if (role === "merchant" && user) {
-      const { data: ownedShops } = await fetchWithRetry(() =>
-        supabase.from("shops").select("id").eq("owner_id", user.id),
-      );
-      const ownedShopIds = ownedShops?.map((s) => s.id) || [];
-      if (ownedShopIds.length === 0) {
-        setMenuItems([]);
-        return;
-      }
-      query = query.in("shop_id", ownedShopIds);
-    } else {
-      // If customer, fetch all items from all shops to populate the marketplace
-      // In a real app, we might paginate or filter by location, but for now we fetch all
+    const { data: ownedShops } = await fetchWithRetry(() =>
+      supabase.from("shops").select("id").eq("owner_id", user.id),
+    );
+    const ownedShopIds = ownedShops?.map((s) => s.id) || [];
+    if (ownedShopIds.length === 0) {
+      setMenuItems([]);
+      
+      return;
     }
+    query = query.in("shop_id", ownedShopIds);
 
     const { data, error } = await fetchWithRetry(() => query);
 
     if (data) {
       setMenuItems(data);
-    } else if (error) {
+      localStorage.setItem("localeats_cached_menu_items", JSON.stringify(data));
+    } else {
       console.error("Fetch All Menu Items Error:", error);
+      const cached = localStorage.getItem("localeats_cached_menu_items");
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.length > 0) {
+            setMenuItems(parsed);
+          } else {
+            setMenuItems(FALLBACK_MENU_ITEMS);
+          }
+        } catch {
+          setMenuItems(FALLBACK_MENU_ITEMS);
+        }
+      } else {
+        setMenuItems(FALLBACK_MENU_ITEMS);
+      }
     }
-  }, [user, role]);
+    
+  }, [user]);
 
   const fetchShops = useCallback(async () => {
+    
     const { data, error } = await fetchWithRetry(() =>
       supabase
         .from("shops")
@@ -16734,42 +17319,42 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
     if (error) {
       console.error("Error fetching shops:", error);
-      if (error.message === "Failed to fetch") {
-        toast.error(
-          "Network error: Could not connect to Supabase. Check your internet or ad-blocker.",
-        );
+      const cached = localStorage.getItem("localeats_cached_shops");
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.length > 0) {
+            setShops(parsed);
+            toast.info("Optimizing network coverage... displaying cached local shops", {
+              id: "offline-shops-fallback-toast",
+            });
+          } else {
+            setShops(FALLBACK_SHOPS);
+          }
+        } catch {
+          setShops(FALLBACK_SHOPS);
+        }
+      } else {
+        setShops(FALLBACK_SHOPS);
+        toast.info("Displaying local restaurant guides", {
+          id: "offline-shops-fallback-toast",
+        });
       }
     } else if (data) {
       setShops(data);
+      localStorage.setItem("localeats_cached_shops", JSON.stringify(data));
     }
+    
   }, []);
 
-  useEffect(() => {
-    // If the user is logged in OR they are viewing as a customer (guest mode)
-    if (user || role === "customer") {
-      if (user) {
-        void fetchOrders();
-      }
-      void fetchShops();
-      void fetchAllMenuItems();
-
-      // Real-time subscription for shops
-      const shopsChannel = supabase
-        .channel("shops_changes")
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "shops" },
-          () => {
-            void fetchShops();
-          },
-        )
-        .subscribe();
-
-      return () => {
-        void supabase.removeChannel(shopsChannel);
-      };
-    }
-  }, [user, role, fetchOrders, fetchShops, fetchAllMenuItems]);
+  useAppInitializer({
+    user,
+    role: "merchant",
+    fetchOrders,
+    fetchShops,
+    fetchAllMenuItems,
+    supabase,
+  });
 
   // Separate effect for order subscriptions to filter by shop_id
   useEffect(() => {
@@ -16846,6 +17431,192 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
         }
       }
     );
+  };
+
+  const loadTownshipDemoData = async () => {
+    setIsSaving(true);
+    try {
+      // 1. Create a demo shop with a unique, valid Tembisa coordinate (South Africa)
+      const demoShopId = Math.floor(Math.random() * 1000000) + 12000;
+      const demoShop: Shop = {
+        id: demoShopId,
+        owner_id: user?.id || "demo-user",
+        name: "Gogo's Tembisa Kota & Grill",
+        logo_url: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=200&auto=format&fit=crop&q=60",
+        cover_url: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800&auto=format&fit=crop&q=60",
+        address: "527 Brian Mazibuko St, Tembisa",
+        phone: "+27 82 555 0192",
+        whatsapp: "+27 82 555 0192",
+        location: "Tembisa",
+        lat: -25.9964,
+        lng: 28.2268,
+        is_active: true,
+        subscription_status: "trial",
+        opening_time: "09:00",
+        closing_time: "21:00",
+        created_at: new Date().toISOString()
+      };
+
+      // 2. Create menu items with Unsplash images
+      const demoItems: MenuItem[] = [
+        {
+          id: `dem-item-1-${Date.now()}`,
+          shop_id: demoShopId,
+          name: "The Tembisa Triple Kota",
+          description: "Stuffed with double Russian sausage, fried egg, cheese, golden slap chips, and signature tangy kota sauce.",
+          price: 55,
+          image_url: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80",
+          category: "Mains",
+          is_available: true,
+          stock_quantity: 50,
+          created_at: new Date().toISOString()
+        },
+        {
+          id: `dem-item-2-${Date.now()}`,
+          shop_id: demoShopId,
+          name: "Ivory Park Special",
+          description: "Traditional township kota with beef patty, processed polony slice, cheese slice, chips, and classic red sauce.",
+          price: 42,
+          image_url: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=400&q=80",
+          category: "Mains",
+          is_available: true,
+          stock_quantity: 40,
+          created_at: new Date().toISOString()
+        },
+        {
+          id: `dem-item-3-${Date.now()}`,
+          shop_id: demoShopId,
+          name: "Signature Slap Chips Tub",
+          description: "Freshly cut, double-fried hand slap chips, perfectly seasoned with premium vinegar and spice dust.",
+          price: 25,
+          image_url: "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=400&q=80",
+          category: "Sides",
+          is_available: true,
+          stock_quantity: 100,
+          created_at: new Date().toISOString()
+        },
+        {
+          id: `dem-item-4-${Date.now()}`,
+          shop_id: demoShopId,
+          name: "Kaalfontein Homemade Ginger Fizz",
+          description: "Refreshing cold mocktail infusion of hand-grated ginger root, lemons, and sparkling water.",
+          price: 15,
+          image_url: "https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?w=400&q=80",
+          category: "Beverages",
+          is_available: true,
+          stock_quantity: 30,
+          created_at: new Date().toISOString()
+        }
+      ];
+
+      // 3. Create active and completed orders inside South Africa for maps routing and COD reconciliation metrics
+      const demoOrders: Order[] = [
+        {
+          id: `dem-ord-1-${Date.now()}`,
+          shop_id: demoShopId,
+          user_id: user?.id || "demo-user",
+          customer_name: "Lindiwe Ndlovu",
+          phone: "+27 73 999 1234",
+          email: "lindiwe@example.co.za",
+          address: "882 Ivory Park Ext 2",
+          city: "Ivory Park",
+          product_name: "The Tembisa Triple Kota",
+          restaurant_name: "Gogo's Tembisa Kota & Grill",
+          total_price: 55,
+          price: 55,
+          status: "completed",
+          payment_method: "Cash",
+          created_at: new Date(Date.now() - 3600000 * 4).toISOString(), 
+          delivery_status: "delivered",
+          order_type: "delivery",
+          rider_id: "Rider-Bra-Sipho",
+          lat: -25.998,
+          lng: 28.228,
+        },
+        {
+          id: `dem-ord-2-${Date.now()}`,
+          shop_id: demoShopId,
+          user_id: user?.id || "demo-user",
+          customer_name: "Sipho Mkhize",
+          phone: "+27 82 888 5678",
+          email: "sipho@example.co.za",
+          address: "105 Kaalfontein West",
+          city: "Kaalfontein",
+          product_name: "Ivory Park Special + Homemade Ginger Fizz",
+          restaurant_name: "Gogo's Tembisa Kota & Grill",
+          total_price: 57,
+          price: 57,
+          status: "pending",
+          payment_method: "Cash",
+          created_at: new Date(Date.now() - 600000).toISOString(), 
+          delivery_status: "finding_rider",
+          order_type: "delivery",
+          lat: -25.994,
+          lng: 28.225,
+        },
+        {
+          id: `dem-ord-3-${Date.now()}`,
+          shop_id: demoShopId,
+          user_id: user?.id || "demo-user",
+          customer_name: "Thabo Molefe",
+          phone: "+27 71 777 4444",
+          email: "thabo@example.co.za",
+          address: "32 Moriting Section, Tembisa",
+          city: "Tembisa",
+          product_name: "The Tembisa Triple Kota + Signature Slap Chips Tub",
+          restaurant_name: "Gogo's Tembisa Kota & Grill",
+          total_price: 80,
+          price: 80,
+          status: "preparing",
+          payment_method: "Card Machine",
+          created_at: new Date(Date.now() - 1800000).toISOString(), 
+          delivery_status: "accepted",
+          order_type: "delivery",
+          rider_id: "Rider-Zama",
+          lat: -25.999,
+          lng: 28.222,
+        }
+      ];
+
+      // 4. Create dummy payments
+      const demoPayments: Payment[] = [
+        {
+          id: `dem-pay-1-${Date.now()}`,
+          shop_id: demoShopId,
+          amount: 0,
+          payment_method: "Launch Promo",
+          transaction_id: "PRM-FREE-SANDBOX-DEMO",
+          status: "success",
+          payment_date: new Date().toISOString()
+        }
+      ];
+
+      // Sync local fast-updating state
+      setShops((prev) => [demoShop, ...prev]);
+      setMenuItems((prev) => [...demoItems, ...prev]);
+      setOrders((prev) => [...demoOrders, ...prev]);
+
+      // Soft-attempt to persist to database, ignoring schema changes beautifully
+      const { error: shopError } = await supabase.from("shops").insert(demoShop);
+      if (!shopError) {
+        await supabase.from("menu_items").insert(demoItems);
+        await supabase.from("orders").insert(demoOrders);
+        await supabase.from("payments").insert(demoPayments);
+      }
+
+      toast.success("Tembisa & Ivory Park Sandbox Data loaded!", {
+        description: "Explore the fully populated mock storefront, test orders, sales chart, and Cash reconciliation panels.",
+        icon: <Sparkles className="text-primary animate-pulse" />,
+        duration: 6000
+      });
+    } catch (e: unknown) {
+      console.error(e);
+      toast.error("Loaded demo data to local state fallback successfully!");
+    } finally {
+      setIsSaving(false);
+      setIsSaveSuccess(true);
+      setTimeout(() => setIsSaveSuccess(false), 1500);
+    }
   };
 
   const updateOrderStatus = async (
@@ -17054,7 +17825,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
     if (error) {
       setOrders(previousOrders);
-      toast.error(`Error unassigning rider: ${error.message}`);
+      toast.error(getFriendlyErrorMessage(error));
     } else {
       toast.success("Rider unassigned and mission rebroadcasted to fleet");
     }
@@ -17160,60 +17931,6 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
   };
 
   if (loading || !isAuthReady) {
-    if (role === "customer") {
-      return (
-        <div className="min-h-screen bg-surface font-body text-on-surface pb-32 animate-in fade-in duration-350">
-          <header className="fixed top-0 w-full z-50 bg-white/85 backdrop-blur-xl border-b border-outline-variant/10">
-            <div className="flex justify-between items-center px-6 h-16 max-w-7xl mx-auto w-full">
-              <Skeleton className="h-8 w-32 rounded-xl" />
-              <div className="flex items-center gap-4">
-                <Skeleton className="h-4 w-24 rounded" />
-                <Skeleton className="w-10 h-10 rounded-full" />
-              </div>
-            </div>
-          </header>
-          <main className="pt-24 px-6 max-w-7xl mx-auto space-y-12">
-            <div className="space-y-3">
-              <Skeleton className="h-12 w-48 rounded-[1.25rem]" />
-              <Skeleton className="h-4 w-64 rounded-lg" />
-            </div>
-            <Skeleton className="w-full h-14 rounded-2xl" />
-            <div className="space-y-4">
-              <Skeleton className="h-6 w-32 rounded-lg" />
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <Skeleton className="h-80 rounded-[2rem]" />
-                <Skeleton className="h-80 rounded-[2rem]" />
-                <Skeleton className="h-80 rounded-[2rem]" />
-              </div>
-            </div>
-          </main>
-        </div>
-      );
-    }
-
-    if (role === "rider") {
-      return (
-        <div className="min-h-screen bg-zinc-950 flex flex-col p-6 space-y-8 font-body animate-in fade-in duration-350">
-          <div className="flex justify-between items-center mt-4">
-            <Skeleton className="h-10 w-10 rounded-full" />
-            <Skeleton className="h-6 w-36 rounded-xl" />
-            <Skeleton className="h-10 w-24 rounded-[1.5rem]" />
-          </div>
-          <div className="flex-1 rounded-[2.5rem] relative overflow-hidden flex flex-col space-y-4 border border-zinc-900 bg-zinc-900/10">
-            <Skeleton className="absolute inset-0 h-full w-full opacity-10" />
-            <div className="absolute inset-x-0 bottom-0 p-4 space-y-4">
-              <Skeleton className="h-40 w-full rounded-[2rem] z-10 relative opacity-90" />
-            </div>
-          </div>
-          <div className="flex justify-around items-center pt-2">
-            <Skeleton className="h-12 w-12 rounded-full" />
-            <Skeleton className="h-14 w-32 rounded-2xl" />
-            <Skeleton className="h-12 w-12 rounded-full" />
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div className="min-h-screen bg-surface p-6 font-body flex flex-col xl:flex-row gap-6 animate-in fade-in duration-350">
         <div className="hidden xl:flex flex-col w-72 h-[calc(100vh-3rem)] rounded-[2.5rem] bg-surface-container-lowest border border-outline-variant/10 p-6 space-y-8">
@@ -17422,13 +18139,11 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
     );
   }
 
-  if (!user && (role !== "customer" || showCustomerAuth)) {
+  if (!user) {
     return authView === "signin" ? (
       <SignIn
         onSignUpClick={() => setAuthView("signup")}
-        onSuccess={() => {
-          if (role === "customer") setShowCustomerAuth(false);
-        }}
+        onSuccess={() => {}}
       />
     ) : (
       <SignUp
@@ -17438,38 +18153,6 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           setIsVerifying(true);
         }}
       />
-    );
-  }
-
-  // BRANCH: Rider View
-  if (role === "rider") {
-    return (
-      <>
-        <LockedRiderMode 
-          onSwitchRole={handleSwitchRole} 
-          setIsSaving={setIsSaving}
-          setIsSaveSuccess={setIsSaveSuccess}
-        />
-        <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
-      </>
-    );
-  }
-
-  // BRANCH: Customer View
-  if (role === "customer") {
-    return (
-      <>
-        <CustomerView
-          shops={shops}
-          menuItems={menuItems}
-          cart={cart}
-          setCart={setCart}
-          onSwitchRole={handleSwitchRole}
-          user={user}
-          onSwitchToLogin={() => setShowCustomerAuth(true)}
-        />
-        <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
-      </>
     );
   }
 
@@ -17895,7 +18578,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                           s.id === currentShop.id ? { ...s, is_active: !newStatus } : s,
                         ),
                       );
-                      toast.error(`Failed to update status: ${error.message}`);
+                      toast.error(getFriendlyErrorMessage(error));
                     }
                   }}
                   className={cn(
@@ -17923,6 +18606,34 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
               )}
               <button
                 onClick={() => {
+                  const newVal = !dataSaverMode;
+                  setDataSaverMode(newVal);
+                  localStorage.setItem("localeats_data_saver", newVal ? "true" : "false");
+                  if (newVal) {
+                    toast.info("Data-Saver Active. Large image requests restricted and background updates paused.", {
+                      id: "datasaver-toast"
+                    });
+                  } else {
+                    toast.success("High Definition Mode restored.", {
+                      id: "datasaver-toast"
+                    });
+                  }
+                }}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all border",
+                  dataSaverMode
+                    ? "bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20 shadow-xs"
+                    : "bg-surface-container-low text-on-surface-variant/70 border-outline-variant/10 hover:bg-surface-container-high"
+                )}
+                title={dataSaverMode ? "Low Bandwidth Active (Click to disable)" : "Save Mobile Data fees"}
+              >
+                <WifiOff size={11} className={dataSaverMode ? "animate-pulse" : ""} />
+                <span className="hidden xs:inline">{dataSaverMode ? "Data Saver: ON" : "Data Saver"}</span>
+                <span className="xs:hidden">{dataSaverMode ? "Saver" : "HD"}</span>
+              </button>
+
+              <button
+                onClick={() => {
                   setSoundAlerts(!soundAlerts);
                   if (!soundAlerts) playNotificationSound();
                 }}
@@ -17940,6 +18651,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                   <BellOff size={18} className="md:w-5 md:h-5" />
                 )}
               </button>
+
               <button
                 onClick={() => setDarkMode(!darkMode)}
                 className="p-2 text-on-surface-variant hover:text-primary transition-colors"
@@ -18014,61 +18726,65 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
               damping: 30
             }}
           >
-            {activeTab === "dashboard" && (
-              <DashboardOverview
-                orders={orders}
-                loading={loading}
-                shops={shops}
-                user={user}
-                onNavigate={setActiveTab}
-                onRefresh={() => {
-                  fetchShops();
-                  fetchOrders();
-                  fetchAllMenuItems();
-                }}
-                onEditProfile={() => setIsEditingProfile(true)}
-                menuItems={menuItems}
-                trialInfo={trialInfo}
-                currentShop={currentShop}
-                darkMode={darkMode}
-                currentWeather={currentWeather}
-                setCurrentWeather={setCurrentWeather}
-                setShowWeatherModal={setShowWeatherModal}
-                generateWeatherAiAdvice={generateWeatherAiAdvice}
-                getWeatherInfo={getWeatherInfo}
-              />
-            )}
-            {activeTab === "menu" && (
-              <MenuManagement
-                shops={shops}
-                loading={loading}
-                user={user}
-                onRefreshMenu={() => {
-                  fetchAllMenuItems();
-                  fetchShops();
-                }}
-                setIsSaving={setIsSaving}
-                setIsSaveSuccess={setIsSaveSuccess}
-              />
-            )}
-            {activeTab === "orders" && (
-              <OrdersManagement
-                orders={orders}
-                onUpdateStatus={updateOrderStatus}
-                onDeleteAllOrders={deleteAllOrders}
-                loading={loading}
-                onRefresh={fetchOrders}
-                kitchenMode={kitchenMode}
-                setKitchenMode={setKitchenMode}
-                soundAlerts={soundAlerts}
-                setSoundAlerts={setSoundAlerts}
-                onRequestRider={requestRider}
-                onUnassignRider={unassignRider}
-                onTabChange={setActiveTab}
-                sendRiderNudge={sendRiderNudge}
-                currentShop={currentShop}
-              />
-            )}
+            <React.Suspense fallback={<DashboardSkeleton />}>
+              {activeTab === "dashboard" && (
+                <DashboardOverview
+                  orders={orders}
+                  loading={loading}
+                  shops={shops}
+                  user={user}
+                  onNavigate={setActiveTab}
+                  onRefresh={() => {
+                    fetchShops();
+                    fetchOrders();
+                    fetchAllMenuItems();
+                  }}
+                  onEditProfile={() => setIsEditingProfile(true)}
+                  menuItems={menuItems}
+                  trialInfo={trialInfo}
+                  currentShop={currentShop}
+                  darkMode={darkMode}
+                  currentWeather={currentWeather}
+                  setCurrentWeather={setCurrentWeather}
+                  setShowWeatherModal={setShowWeatherModal}
+                  generateWeatherAiAdvice={generateWeatherAiAdvice}
+                  getWeatherInfo={getWeatherInfo}
+                  onLoadDemoData={loadTownshipDemoData}
+                />
+              )}
+              {activeTab === "menu" && (
+                <MenuManagement
+                  shops={shops}
+                  loading={loading}
+                  user={user}
+                  onRefreshMenu={() => {
+                    fetchAllMenuItems();
+                    fetchShops();
+                  }}
+                  setIsSaving={setIsSaving}
+                  setIsSaveSuccess={setIsSaveSuccess}
+                  dataSaverMode={dataSaverMode}
+                />
+              )}
+              {activeTab === "orders" && (
+                <OrdersManagement
+                  orders={orders}
+                  onUpdateStatus={updateOrderStatus}
+                  onDeleteAllOrders={deleteAllOrders}
+                  loading={loading}
+                  onRefresh={fetchOrders}
+                  kitchenMode={kitchenMode}
+                  setKitchenMode={setKitchenMode}
+                  soundAlerts={soundAlerts}
+                  setSoundAlerts={setSoundAlerts}
+                  onRequestRider={requestRider}
+                  onUnassignRider={unassignRider}
+                  onTabChange={setActiveTab}
+                  sendRiderNudge={sendRiderNudge}
+                  currentShop={currentShop}
+                />
+              )}
+            </React.Suspense>
             {activeTab === "marketing" && (
               <Marketing currentShop={currentShop} />
             )}
@@ -18096,6 +18812,8 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                 shopId={currentShop.id} 
                 currentShop={currentShop}
                 setShops={setShops}
+                orders={orders}
+                setOrders={setOrders}
               />
             )}
             {activeTab === "settings" && (
@@ -18540,6 +19258,90 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                     </div>
                   </div>
 
+                  {/* Direct Terminal Integration */}
+                  <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
+                    <div className="flex items-center gap-2 border-b border-outline-variant/10 pb-4">
+                      <CreditCard size={18} className="text-on-surface-variant" />
+                      <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Direct Terminal Integration</h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="flex flex-col space-y-2">
+                         <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
+                            Require Card Linking
+                         </label>
+                         <label className="flex items-center gap-3 mt-2 cursor-pointer bg-surface-container-high p-3 rounded-xl border border-outline-variant/5">
+                           <input
+                             type="checkbox"
+                             checked={currentShop?.require_terminal_sync || false}
+                             onChange={async (e) => {
+                               const newValue = e.target.checked;
+                               setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, require_terminal_sync: newValue } : s));
+                               try {
+                                 const { error } = await supabase.from("shops").update({ require_terminal_sync: newValue }).eq("id", currentShop?.id);
+                                 if (error) throw error;
+                                 toast.success(newValue ? "Terminal sync now required for card payments" : "Terminal sync requirement disabled");
+                               } catch {
+                                 toast.error("Failed to update terminal sync requirement");
+                                 setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, require_terminal_sync: !newValue } : s));
+                               }
+                             }}
+                             className="w-5 h-5 rounded accent-primary border-outline-variant/30 text-primary focus:ring-primary focus:ring-offset-surface-container-high"
+                           />
+                           <span className="text-sm font-bold text-on-surface select-none">Require Card Number Match</span>
+                         </label>
+                      </div>
+
+                      <div className="flex flex-col space-y-2">
+                         <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
+                            Terminal Provider
+                         </label>
+                         <select
+                           value={currentShop?.terminal_provider || ""}
+                           onChange={async (e) => {
+                             const newValue = e.target.value;
+                             setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, terminal_provider: newValue } : s));
+                             try {
+                               await supabase.from("shops").update({ terminal_provider: newValue }).eq("id", currentShop?.id);
+                             } catch (error) {
+                               console.error(error);
+                             }
+                           }}
+                           className="bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50"
+                         >
+                           <option value="" disabled>Select Provider...</option>
+                           <option value="Yoco">Yoco</option>
+                           <option value="Adyen">Adyen</option>
+                           <option value="Peach Payments">Peach Payments</option>
+                         </select>
+                      </div>
+
+                      <div className="flex flex-col space-y-2 md:col-span-2">
+                         <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
+                            Terminal Serial Number
+                         </label>
+                         <input
+                           type="text"
+                           placeholder="e.g. SN-12345678"
+                           value={currentShop?.terminal_serial || ""}
+                           onChange={(e) => {
+                             const newValue = e.target.value;
+                             setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, terminal_serial: newValue } : s));
+                           }}
+                           onBlur={async (e) => {
+                             const newValue = e.target.value;
+                             try {
+                               await supabase.from("shops").update({ terminal_serial: newValue }).eq("id", currentShop?.id);
+                             } catch (error) {
+                               console.error(error);
+                             }
+                           }}
+                           className="bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50"
+                         />
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Financial & Payout Settings */}
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group">
                     <div className="flex items-center gap-4">
@@ -18719,7 +19521,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                     <button
                       onClick={() => {
                         if (!pushEnabled) {
-                          requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : activeTab === 'customer' ? 'client' : 'merchant', supabase);
+                          requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
                         } else {
                           toast.info(
                             "To disable push notifications, please change your browser settings.",
@@ -19163,1855 +19965,3 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
   );
 }
 
-// --- Customer Experience Components ---
-
-const CustomerView = ({
-  shops,
-  menuItems,
-  cart,
-  setCart,
-  onSwitchRole,
-  user,
-  onSwitchToLogin,
-}: {
-  shops: Shop[];
-  menuItems: MenuItem[];
-  cart: { item: MenuItem; quantity: number }[];
-  setCart: React.Dispatch<
-    React.SetStateAction<{ item: MenuItem; quantity: number }[]>
-  >;
-  onSwitchRole: () => void;
-  user: User | null;
-  onSwitchToLogin?: () => void;
-}) => {
-  const [showCheckout, setShowCheckout] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
-  const [customerLocation, setCustomerLocation] = useState<string>(() => {
-    return localStorage.getItem("localeats_customer_location") || "Tembisa";
-  });
-  const [onlyLocal, setOnlyLocal] = useState<boolean>(true);
-  const [isLocating, setIsLocating] = useState<boolean>(false);
-
-  useEffect(() => {
-    localStorage.setItem("localeats_customer_location", customerLocation);
-  }, [customerLocation]);
-
-  const detectGPSLocation = () => {
-    if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported by your browser");
-      return;
-    }
-    setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        try {
-          let closestCity = "Tembisa";
-          let minDistance = Infinity;
-          for (const [cityName, coords] of Object.entries(CITY_CENTERS)) {
-            const dist = calculateDistance(latitude, longitude, coords.lat, coords.lng);
-            if (dist < minDistance) {
-              minDistance = dist;
-              closestCity = cityName;
-            }
-          }
-          setCustomerLocation(closestCity);
-          toast.success(`Location auto-detected: ${closestCity}!`, {
-            description: `Centered near your GPS coordinates: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
-          });
-        } catch (error) {
-          console.error("GPS detection error:", error);
-          toast.error("Failed to parse precise location. Defaulting to Tembisa.");
-        } finally {
-          setIsLocating(false);
-        }
-      },
-      (err) => {
-        console.error("GPS error:", err);
-        toast.error("Location access denied or timed out. Please select your township manually.");
-        setIsLocating(false);
-      },
-      { timeout: 8000 }
-    );
-  };
-
-  const filteredMenuItems = useMemo(() => {
-    let items = menuItems;
-    
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      items = items.filter((item) =>
-        item.name.toLowerCase().includes(q) ||
-        (item.description && item.description.toLowerCase().includes(q))
-      );
-    }
-    
-    if (onlyLocal) {
-      items = items.filter((item) => {
-        const shop = shops.find((s) => s.id === item.shop_id);
-        if (!shop) return false;
-        const shopCity = getSupportedCity(shop.city || shop.location || "Tembisa");
-        return shopCity === customerLocation;
-      });
-    }
-    
-    return items;
-  }, [menuItems, shops, searchQuery, onlyLocal, customerLocation]);
-
-  const fetchCustomerOrders = useCallback(async () => {
-    if (!user) return;
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(5);
-    
-    if (data && !error) {
-      setCustomerOrders(data as Order[]);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    const init = async () => {
-      await fetchCustomerOrders();
-    };
-    void init();
-    
-    if (!user) return;
-    
-    // Request notification permission if not already granted
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-
-    const channel = supabase
-      .channel(`customer_orders_${user.id}_changes`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "orders",
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          fetchCustomerOrders();
-          const newRecord = payload.new as Order;
-          const oldRecord = payload.old as Order;
-          
-          if (oldRecord && oldRecord.status !== "ready" && newRecord.status === "ready") {
-            toast.success("Your order is ready and is being prepared for delivery/dispatch!");
-            if ("Notification" in window && Notification.permission === "granted") {
-              new Notification("Order Ready!", {
-                body: "Your order is ready and is being prepared for delivery/dispatch.",
-                icon: "/favicon.png",
-              });
-            }
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, fetchCustomerOrders]);
-
-  const addToCart = (item: MenuItem) => {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.item.id === item.id);
-      if (existing) {
-        return prev.map((i) =>
-          i.item.id === item.id ? { ...i, quantity: i.quantity + 1 } : i,
-        );
-      }
-      return [...prev, { item, quantity: 1 }];
-    });
-    toast.success(`${item.name} added to cart!`);
-  };
-
-  const subtotal = cart.reduce(
-    (acc, curr) => acc + curr.item.price * curr.quantity,
-    0,
-  );
-
-  return (
-    <div className="min-h-screen bg-surface font-body text-on-surface pb-32">
-      <header className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-xl border-b border-outline-variant/10">
-        <div className="flex justify-between items-center px-6 h-16 max-w-7xl mx-auto w-full">
-          <div className="flex items-center gap-2">
-            <LocalEatsLogo width={120} height={32} />
-            <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">
-              Beta
-            </span>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onSwitchRole}
-              className="text-xs font-bold text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
-            >
-              Partner Portal
-            </button>
-            <div 
-              className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center cursor-pointer hover:bg-primary/10 transition-colors"
-              onClick={user ? () => toast.success("Profile coming soon") : onSwitchToLogin}
-              title={user ? "Profile" : "Sign In"}
-            >
-              <UserIcon size={20} className="text-on-surface-variant" />
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="pt-24 px-6 max-w-7xl mx-auto">
-        <section className="mb-10">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
-            <div>
-              <h1 className="text-3xl font-headline font-black tracking-tight mb-1 text-zinc-950 dark:text-white">
-                Hungry?
-              </h1>
-              <p className="text-xs font-bold text-on-surface-variant flex items-center gap-2 uppercase tracking-wider">
-                <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse shrink-0"></span>
-                R5 Flat-Rate Delivery Across Township Sections
-              </p>
-            </div>
-            
-            {/* Township interactive selector */}
-            <div className="flex flex-wrap items-center gap-2 bg-zinc-100 dark:bg-zinc-900/40 p-1.5 rounded-2xl border border-zinc-200/40 dark:border-zinc-800/40 shrink-0">
-              {["Tembisa", "Ivory Park", "Kaalfontein"].map((loc) => (
-                <button
-                  key={loc}
-                  onClick={() => {
-                    setCustomerLocation(loc);
-                    toast.success(`Territory shifted: ${loc}!`);
-                  }}
-                  className={cn(
-                    "px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer select-none",
-                    customerLocation === loc
-                      ? "bg-zinc-950 dark:bg-zinc-900 text-white shadow-sm"
-                      : "bg-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-                  )}
-                >
-                  {loc}
-                </button>
-              ))}
-              <div className="h-4 w-[1px] bg-zinc-200 dark:bg-zinc-850 mx-1" />
-              <button
-                onClick={detectGPSLocation}
-                disabled={isLocating}
-                className={cn(
-                  "px-3 py-2 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-xl transition-all cursor-pointer text-primary flex items-center gap-1.5 text-xs font-black",
-                  isLocating && "animate-pulse"
-                )}
-                title="Detect my GPS location"
-              >
-                <Navigation size={14} className={isLocating ? "animate-spin text-primary" : "text-primary"} />
-                <span className="text-[10px] uppercase font-black tracking-wider">GPS</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Localized Township pride text banner */}
-          <div className="mb-6">
-            <AnimatePresence mode="wait">
-              {customerLocation === "Ivory Park" && (
-                <motion.div
-                  key="ivory_park_banner"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="bg-orange-500/5 dark:bg-zinc-900/30 border-2 border-primary/10 p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center gap-4 relative overflow-hidden"
-                >
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
-                  <div className="p-3 bg-primary/10 text-primary rounded-2xl shrink-0">
-                    <Store size={22} className="stroke-[2.5]" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-1.5 leading-none">
-                      Ivory Park Eats 🇿🇦
-                      <span className="px-2 py-0.5 bg-primary/10 text-primary text-[8px] font-black rounded-full uppercase leading-none">Wall-to-Wall</span>
-                    </h4>
-                    <p className="text-sm font-black text-zinc-850 dark:text-zinc-200 mt-1.5">
-                      Wall-to-wall Ivory Park serving food for Ivory Park residents.
-                    </p>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-xl font-medium leading-relaxed">
-                      From Kopanong Bypass link to any extension block, we are delivering wall-to-wall Ivory Park, providing delicious, locally crafted meals directly to your door with efficient cyclist connections.
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-
-              {customerLocation === "Tembisa" && (
-                <motion.div
-                  key="tembisa_banner"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="bg-orange-500/5 dark:bg-zinc-900/30 border-2 border-primary/10 p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center gap-4 relative overflow-hidden"
-                >
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
-                  <div className="p-3 bg-primary/10 text-primary rounded-2xl shrink-0">
-                    <Compass size={22} className="stroke-[2.5] text-primary" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-1.5 leading-none">
-                      Tembisa Food Hub 🇿🇦
-                      <span className="px-2 py-0.5 bg-primary/10 text-primary text-[8px] font-black rounded-full uppercase leading-none font-bold">Midrand/GP Hub</span>
-                    </h4>
-                    <p className="text-sm font-black text-zinc-850 dark:text-zinc-200 mt-1.5">
-                      Beautiful flavors across all Tembisa sections.
-                    </p>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-xl font-medium leading-relaxed">
-                      Whether you're in Phomolong, Winnie Mandela, or Oakmoor, enjoy legendary golden kotas, hot flame-grilled plates, and street plates prepared fresh in the heart of our community.
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-
-              {customerLocation === "Kaalfontein" && (
-                <motion.div
-                  key="kaalfontein_banner"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="bg-orange-500/5 dark:bg-zinc-900/30 border-2 border-primary/10 p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center gap-4 relative overflow-hidden"
-                >
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
-                  <div className="p-3 bg-primary/10 text-primary rounded-2xl shrink-0">
-                    <Sparkles size={22} className="stroke-[2.5]" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-primary uppercase tracking-widest flex items-center gap-1.5 leading-none">
-                      Kaalfontein Spotlight 🇿🇦
-                      <span className="px-2 py-0.5 bg-primary/10 text-primary text-[8px] font-black rounded-full uppercase leading-none font-bold">Eboni Focus</span>
-                    </h4>
-                    <p className="text-sm font-black text-zinc-850 dark:text-zinc-200 mt-1.5">
-                      Locally sourced favorites from Kaalfontein & Eboni.
-                    </p>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-xl font-medium leading-relaxed">
-                      Serving Kaalfontein and Eboni with reliable, mouth-watering township meals. Sourced and delivered via in-community courier networks with absolute accuracy.
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          <div className="relative group mb-6">
-            <Search
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
-              size={20}
-            />
-            <input
-              type="text"
-              placeholder={`Search for kotas, burgers or kitchens inside ${customerLocation}...`}
-              className="w-full h-14 bg-surface-container-low border-none rounded-2xl pl-12 pr-4 focus:ring-2 focus:ring-primary/40 transition-all outline-none text-base"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          {/* Neighborhood filter selector lock */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-50 dark:bg-zinc-900/40 p-4 rounded-3xl border border-outline-variant/10 text-xs text-on-surface">
-            <div>
-              <p className="text-[10px] uppercase font-black tracking-widest text-zinc-500">Service Coverage Scope</p>
-              <p className="font-bold mt-0.5 italic text-zinc-700 dark:text-zinc-300">
-                {onlyLocal 
-                  ? `Filtering kitchens to strictly "${customerLocation}" and nearby sections`
-                  : `Showing all registered partner kitchens regardless of township`
-                }
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setOnlyLocal(!onlyLocal);
-                toast.info(onlyLocal ? "Now showing kitchens across all township networks!" : `Showing kitchens strictly located inside ${customerLocation}`);
-              }}
-              className={cn(
-                "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer border select-none shrink-0",
-                onlyLocal 
-                  ? "bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-800 dark:border-zinc-800" 
-                  : "bg-white text-zinc-650 hover:bg-zinc-50 hover:text-zinc-900 border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-850"
-              )}
-            >
-              {onlyLocal ? "Explore All Areas" : `Strictly ${customerLocation}`}
-            </button>
-          </div>
-        </section>
-
-        {filteredMenuItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-center bg-zinc-50 dark:bg-zinc-900/10 rounded-[2.5rem] border border-dashed border-outline-variant/20 mb-10">
-            <Store className="text-zinc-300 dark:text-zinc-700 mb-4" size={48} />
-            <h3 className="font-black text-lg text-zinc-900 dark:text-white mb-1">No Kitchen Matches</h3>
-            <p className="text-xs text-zinc-500 max-w-sm font-medium">
-              We couldn't find any active menus matching your criteria in {customerLocation}. Try expanding your search by clicking <strong>"Explore All Areas"</strong> above.
-            </p>
-          </div>
-        ) : (
-          <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredMenuItems.map((item) => {
-              const shop = shops.find((s) => s.id === item.shop_id);
-              const shopCity = shop ? getSupportedCity(shop.city || shop.location || "Tembisa") : "Tembisa";
-              return (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-surface-container-lowest rounded-[2rem] overflow-hidden border border-outline-variant/10 shadow-sm hover:shadow-xl transition-all group flex flex-col justify-between"
-                >
-                  <div className="h-48 relative overflow-hidden bg-surface-container">
-                    <img
-                      src={item.image_url || DEFAULT_MENU_IMAGE}
-                      alt={item.name}
-                      className={cn(
-                        "w-full h-full object-cover group-hover:scale-110 transition-transform duration-500",
-                        (!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0)) && "grayscale opacity-50"
-                      )}
-                    />
-                    {isPlaceholderImage(item.image_url) && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none">
-                        <UtensilsCrossed size={48} className="text-white/30" />
-                      </div>
-                    )}
-                    {(!item.is_available || (item.stock_quantity !== null && item.stock_quantity === 0)) && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-                        <span className="bg-error text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl">
-                          {!item.is_available ? "Unavailable" : "Out of Stock"}
-                        </span>
-                      </div>
-                    )}
-                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm">
-                      <span className="text-sm font-black text-primary">
-                        R {item.price.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
-                    <div>
-                      {/* Affiliated Local Kitchen & Township marker */}
-                      <div className="flex items-center gap-1.5 mb-2.5 bg-zinc-100 dark:bg-zinc-900 px-2.5 py-1 rounded-lg w-fit text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider leading-none">
-                        <Store size={10} className="text-primary" />
-                        <span>{shop?.name || "Local Shop"} • {shopCity}</span>
-                      </div>
-                      <h3 className="text-xl font-bold mb-1">{item.name}</h3>
-                      <p className="text-xs text-on-surface-variant line-clamp-2">
-                        {item.description || "Fresh and hot from the kitchen."}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => addToCart(item)}
-                      disabled={!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0)}
-                      className="w-full mt-4 h-12 bg-surface-container-low hover:bg-primary hover:text-white disabled:opacity-50 disabled:grayscale disabled:hover:bg-surface-container-low disabled:hover:text-on-surface-variant transition-all rounded-xl font-bold flex items-center justify-center gap-2 group cursor-pointer"
-                    >
-                      {!item.is_available || (item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && item.stock_quantity === 0) ? (
-                        <>
-                          <X size={18} />
-                          <span>Sold Out</span>
-                        </>
-                      ) : (
-                        <>
-                          <Plus size={18} />
-                          <span>Add to Order</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </section>
-        )}
-
-        {customerOrders.length > 0 && (
-          <section className="mt-16 space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-headline font-black tracking-tight flex items-center gap-2">
-                <ReceiptText size={24} className="text-primary" />
-                Recent Orders
-              </h2>
-            </div>
-            <div className="space-y-4">
-              {customerOrders.map((order) => {
-                const shop = shops.find((s) => s.id === order.shop_id);
-                return (
-                  <motion.div
-                    key={order.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/10 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0 font-black">
-                        {order.status[0].toUpperCase()}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-bold text-on-surface">
-                            {order.product_name}
-                          </p>
-                          <span className={cn(
-                            "text-[10px] font-black uppercase px-2 py-0.5 rounded-full",
-                            order.status === 'completed' ? 'bg-emerald-100 text-emerald-600' : 
-                            order.status === 'cancelled' ? 'bg-error/10 text-error' : 'bg-primary/10 text-primary'
-                          )}>
-                            {order.status}
-                          </span>
-                        </div>
-                        <p className="text-xs text-on-surface-variant font-medium">
-                          {shop?.name || "Local Shop"} • R {order.total_price.toFixed(2)}
-                        </p>
-                          <div className="flex flex-col gap-0.5 mt-1 text-[10px] text-on-surface-variant/80">
-                            <div className="flex items-center gap-1.5 ">
-                              <MapPin size={10} className="text-primary/60" />
-                              <span className="italic block">
-                                {order.address}, {order.city}
-                              </span>
-                            </div>
-                            {order.lat && order.lng && (
-                              <div className="ml-4 text-[8px] text-primary/40 font-mono italic">
-                                {order.lat.toFixed(5)}, {order.lng.toFixed(5)}
-                              </div>
-                            )}
-                          </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {shop?.phone && (
-                        <a
-                          href={`tel:${shop.phone}`}
-                          className="flex-1 md:flex-none h-10 px-4 bg-surface-container-low hover:bg-surface-container-high rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors border border-outline-variant/10 text-on-surface"
-                        >
-                          <Phone size={14} />
-                          Call
-                        </a>
-                      )}
-                      {shop?.whatsapp && (
-                        <a
-                          href={`https://wa.me/${shop.whatsapp.replace(/\D/g, "")}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 md:flex-none h-10 px-4 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors border border-emerald-500/20"
-                        >
-                          <MessageCircle size={14} />
-                          WhatsApp
-                        </a>
-                      )}
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </section>
-        )}
-      </main>
-
-      <AnimatePresence>
-        {cart.length > 0 && !showCheckout && (
-          <motion.div
-            initial={{ y: 100 }}
-            animate={{ y: 0 }}
-            exit={{ y: 100 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] w-[calc(100%-48px)] max-w-lg"
-          >
-            <button
-              onClick={() => setShowCheckout(true)}
-              className="w-full h-16 bg-primary text-on-primary rounded-full shadow-2xl flex items-center justify-between px-8 hover:scale-[1.02] active:scale-[0.98] transition-all"
-            >
-              <div className="flex items-center gap-3">
-                <div className="bg-on-primary/20 w-8 h-8 rounded-full flex items-center justify-center text-xs font-black">
-                  {cart.length}
-                </div>
-                <span className="font-bold">View Order</span>
-              </div>
-              <span className="font-black text-xl">R {subtotal.toFixed(2)}</span>
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showCheckout && (
-          <CustomerCheckout
-            cart={cart}
-            subtotal={subtotal}
-            onClose={() => setShowCheckout(false)}
-            user={user}
-            onOrderPlaced={() => {
-              setCart([]);
-              setShowCheckout(false);
-            }}
-            setIsSaving={setIsSaving}
-            setIsSaveSuccess={setIsSaveSuccess}
-            onSwitchToLogin={onSwitchToLogin}
-          />
-        )}
-      </AnimatePresence>
-    </div>
-  );
-};
-
-const CustomerCheckout = ({
-  cart,
-  subtotal,
-  onClose,
-  user,
-  onOrderPlaced,
-  setIsSaving,
-  setIsSaveSuccess,
-  onSwitchToLogin,
-}: {
-  cart: { item: MenuItem; quantity: number }[];
-  subtotal: number;
-  onClose: () => void;
-  user: User | null;
-  onOrderPlaced: () => void;
-  setIsSaving: (val: boolean) => void;
-  setIsSaveSuccess: (val: boolean) => void;
-  onSwitchToLogin?: () => void;
-}) => {
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("Tembisa");
-  const [phone, setPhone] = useState(user?.user_metadata?.phone || "");
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
-    null,
-  );
-  const [shopCoords, setShopCoords] = useState<{
-    lat: number;
-    lng: number;
-  } | null>(null);
-
-  const total = subtotal + FLAT_DELIVERY_FEE;
-
-  useEffect(() => {
-    const fetchShopCoords = async () => {
-      if (!cart[0]) return;
-      const { data, error } = await supabase
-        .from("shops")
-        .select("lat, lng, location")
-        .eq("id", cart[0].item.shop_id)
-        .single();
-
-      if (data && !error) {
-        const shopCity = data.location ? getSupportedCity(data.location) : "Tembisa";
-        const center = CITY_CENTERS[shopCity as keyof typeof CITY_CENTERS] || CITY_CENTERS["Tembisa"];
-        setShopCoords({ lat: data.lat || center.lat, lng: data.lng || center.lng });
-        if (data.location) {
-          setCity(getSupportedCity(data.location));
-        }
-      }
-    };
-    void fetchShopCoords();
-  }, [cart]);
-
-  const distance = useMemo(() => {
-    if (coords && shopCoords) {
-      return calculateDistance(
-        coords.lat,
-        coords.lng,
-        shopCoords.lat,
-        shopCoords.lng,
-      );
-    }
-    return null;
-  }, [coords, shopCoords]);
-
-  const handlePlaceOrder = async () => {
-    if (!user) {
-      toast.error("Please sign in to place an order");
-      if (onSwitchToLogin) onSwitchToLogin();
-      return;
-    }
-
-    if (!address || !coords) {
-      toast.error("Please select a valid delivery address");
-      return;
-    }
-
-    const cleanedPhone = phone.replace(/[\s-]/g, "");
-    if (!/^(?:\+27|0)[0-9]{9}$/.test(cleanedPhone)) {
-      toast.error("Please enter a valid South African phone number (e.g., +27 82 123 4567 or 082 123 4567).");
-      return;
-    }
-
-    if (distance && distance > 10) {
-      toast.error("Delivery distance exceeded", {
-        description: "Your location is too far for the R5 Flat Rate fee.",
-      });
-      return;
-    }
-
-    setIsSaving(true);
-    setIsSaveSuccess(false);
-    const orderData = {
-      user_id: user.id,
-      shop_id: cart[0].item.shop_id,
-      customer_name: user.email?.split("@")[0] || "Guest",
-      product_name:
-        cart.length === 1 ? cart[0].item.name : `${cart.length} items`,
-      items: cart.map((i) => ({
-        name: i.item.name,
-        price: i.item.price,
-        quantity: i.quantity,
-      })),
-      total_price: total,
-      price: total,
-      delivery_fee: FLAT_DELIVERY_FEE,
-      status: "pending",
-      order_type: "delivery",
-      created_at: new Date().toISOString(),
-      address: address,
-      phone: phone,
-      city: city,
-      lat: coords.lat,
-      lng: coords.lng,
-    };
-
-    const { error } = await supabase.from("orders").insert(orderData);
-
-    if (error) {
-      setIsSaving(false);
-      setIsSaveSuccess(false);
-      toast.error("We couldn't process your order right now. Please try again later.");
-    } else {
-      setIsSaving(false);
-      setIsSaveSuccess(true);
-      
-      setTimeout(() => {
-        setIsSaveSuccess(false);
-        toast.success("Order placed successfully!", {
-          description: "Your R5.00 delivery mission has been broadcasted.",
-        });
-        onOrderPlaced();
-      }, 1500);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-      />
-      <motion.div
-        initial={{ y: "100%" }}
-        animate={{ y: 0 }}
-        exit={{ y: "100%" }}
-        className="relative w-full max-w-xl bg-surface-container-lowest rounded-t-[32px] md:rounded-[32px] shadow-2xl overflow-hidden border border-outline-variant/10"
-      >
-        <div className="p-8 space-y-8 max-h-[90vh] overflow-y-auto scrollbar-hide">
-          <header className="flex justify-between items-center">
-            <h2 className="text-2xl font-headline font-black tracking-tight">
-              Checkout
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-surface-container rounded-full"
-            >
-              <X size={24} />
-            </button>
-          </header>
-
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <h3 className="text-xs font-black uppercase tracking-widest text-primary">
-                Delivery Details
-              </h3>
-              <AddressAutocomplete
-                value={address}
-                onChange={setAddress}
-                placeholder="Type your street address (Tembisa, Kaalfontein, Ivory Park)..."
-                onSelect={(formatted, cityName, lat, lng) => {
-                  setAddress(formatted);
-                  setCity(getSupportedCity(cityName));
-                  setCoords({ lat, lng });
-                }}
-              />
-
-              {coords && (
-                <div className="w-full h-40 rounded-2xl overflow-hidden border border-outline-variant/10 shadow-inner z-0">
-                  <LeafletMap
-                    center={coords}
-                    zoom={15}
-                    onLocationSelect={(lat, lng) => {
-                      setCoords({ lat, lng });
-                      // Reverse geocode when pin moves
-                      fetch(
-                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&email=aviwenotununu4@gmail.com`,
-                      )
-                        .then((r) => r.json())
-                        .then((data) => {
-                          if (data && data.display_name) {
-                            setAddress(data.display_name);
-                          }
-                        })
-                        .catch(() => {});
-                    }}
-                  />
-                </div>
-              )}
-
-              <div className="relative">
-                <Phone
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
-                  size={18}
-                />
-                <input
-                  type="tel"
-                  placeholder="Contact number for Rider"
-                  value={phone}
-                  onChange={(e) => {
-                    const result = formatSAPhone(e.target.value);
-                    setPhone(result.formatted);
-                  }}
-                  className="w-full h-14 bg-surface-container-low border border-outline-variant/10 rounded-2xl pl-12 pr-4 focus:ring-2 focus:ring-primary/40 transition-all outline-none text-base"
-                />
-              </div>
-
-              {distance !== null && (
-                <div
-                  className={cn(
-                    "p-4 rounded-2xl flex items-center justify-between border",
-                    distance > 10
-                      ? "bg-error/5 border-error/20 text-error"
-                      : "bg-green-500/5 border-green-500/20 text-green-600",
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <Bike size={18} />
-                    <span className="text-xs font-bold uppercase tracking-widest">
-                      Distance to Store
-                    </span>
-                  </div>
-                  <span className="font-black">
-                    {distance.toFixed(1)} km
-                    {distance > 10 && " (Too Far)"}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-3">
-              <h3 className="text-xs font-black uppercase tracking-widest text-on-surface-variant">
-                Order Items
-              </h3>
-              <div className="space-y-2">
-                {cart.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-3 rounded-2xl bg-surface-container-low/50 border border-outline-variant/5"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-surface-container overflow-hidden">
-                        <img
-                          src={item.item.image_url || DEFAULT_MENU_IMAGE}
-                          alt={item.item.name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <span className="text-sm font-bold">
-                        {item.quantity}x {item.item.name}
-                      </span>
-                    </div>
-                    <span className="font-black text-sm">
-                      R {(item.item.price * item.quantity).toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-4 border-t border-outline-variant/20 pt-8">
-              <div className="flex justify-between items-center text-on-surface-variant font-medium">
-                <span>Subtotal</span>
-                <span>R {subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center text-primary font-bold">
-                <div className="flex items-center gap-2">
-                  <span>Delivery Fee</span>
-                  <span className="text-[10px] bg-primary/10 px-2 py-0.5 rounded-full uppercase tracking-widest flex items-center gap-1">
-                    <Sparkles size={10} /> Deal
-                  </span>
-                </div>
-                <span>R {FLAT_DELIVERY_FEE.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center text-2xl font-black pt-4 border-t border-outline-variant/10">
-                <span>Total</span>
-                <span className="text-primary">R {total.toFixed(2)}</span>
-              </div>
-            </div>
-
-            <button
-              onClick={handlePlaceOrder}
-              disabled={loading || (distance !== null && distance > 10)}
-              className="w-full h-16 bg-primary text-on-primary font-black rounded-2xl shadow-xl shadow-primary/20 hover:scale-[0.99] active:scale-95 transition-all text-lg disabled:opacity-50"
-            >
-              {loading ? "Processing..." : "Confirm & Pay"}
-            </button>
-
-            <p className="text-[10px] text-center text-on-surface-variant/60 font-medium italic">
-              * LocalEats R5 delivery valid within a 10km radius of the
-              merchant.
-            </p>
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
-};
-const LockedRiderMode = ({ 
-  onSwitchRole,
-  setIsSaving,
-  setIsSaveSuccess,
-}: { 
-  onSwitchRole: () => void;
-  setIsSaving: (val: boolean) => void;
-  setIsSaveSuccess: (val: boolean) => void;
-}) => {
-  const [riderProfile, setRiderProfile] = useState<RiderProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [activeMissions, setActiveMissions] = useState<Order[]>([]);
-  const [availableMissions, setAvailableMissions] = useState<Order[]>([]);
-  const [onlineRiders, setOnlineRiders] = useState<RiderProfile[]>([]);
-  const [riderCoords, setRiderCoords] = useState<[number, number] | undefined>(undefined);
-  const [activeConnections, setActiveConnections] = useState<RiderConnection[]>([]);
-  const [showPairingModal, setShowPairingModal] = useState(false);
-  const [pairingCode, setPairingCode] = useState("");
-  const [isPairing, setIsPairing] = useState(false);
-
-  const fetchRiderData = useCallback(async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    // 1. Fetch Profile
-    const { data: profile } = await supabase
-      .from("rider_profiles")
-      .select("*")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profile) {
-      setRiderProfile(profile as RiderProfile);
-    } else {
-      const { data: newProfile } = await supabase
-        .from("rider_profiles")
-        .insert({ 
-           id: user.id, 
-           is_online: false, 
-           status: "offline",
-           phone: user.user_metadata?.phone || "",
-           full_name: user.user_metadata?.full_name || ""
-        })
-        .select()
-        .single();
-      if (newProfile) setRiderProfile(newProfile as RiderProfile);
-    }
-
-    // 2. Fetch Active Missions (Assigned to me, not delivered)
-    const { data: active } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("rider_id", user.id)
-      .not("delivery_status", "eq", "delivered")
-      .order("created_at", { ascending: false });
-    
-    if (active) setActiveMissions(active as Order[]);
-
-    // 3. Fetch Available Missions (Broadcast)
-    const { data: available } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("delivery_status", "finding_rider")
-      .or("status.eq.accepted,status.eq.preparing")
-      .order("created_at", { ascending: false });
-    
-    if (available) setAvailableMissions(available as Order[]);
-
-    // 4. Fetch Online Riders (Connected People)
-    const { data: riders } = await supabase
-      .from("rider_profiles")
-      .select("*")
-      .eq("is_online", true)
-      .limit(10);
-    
-    if (riders) setOnlineRiders(riders as RiderProfile[]);
-
-    // 5. Fetch Active Connections (Paired Shops)
-    const { data: connections } = await supabase
-      .from("rider_connections")
-      .select(`
-        *,
-        shops:shop_id (
-          name,
-          logo_url
-        )
-      `)
-      .eq("rider_id", user.id)
-      .eq("status", "active")
-      .gt("expires_at", new Date().toISOString());
-
-    if (connections) setActiveConnections(connections);
-    
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    const initRider = async () => {
-      await fetchRiderData();
-    };
-    void initRider();
-
-    // Geolocation Tracking
-    let watchId: number;
-    if ("geolocation" in navigator) {
-      watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          const { latitude, longitude } = pos.coords;
-          
-          // Accuracy Check: If coordinates are in Cape Town (lat < -30) or way out of GP (lat > -25)
-          // we should warn the user, as the service is currently GP-only (Midrand/Tembisa).
-          const isWayOff = latitude < -30 || latitude > -25 || longitude < 27 || longitude > 29;
-          
-          if (isWayOff) {
-             console.warn("Detected location is outside service area:", latitude, longitude);
-             // We'll show a toast if they are online and detected way outside
-             if (riderProfile?.is_online) {
-                toast.warning("Inaccurate Location Detected", {
-                   description: "Your device reports you are very far. Tap 'Recalibrate' to fix.",
-                   id: 'geo-warning'
-                });
-             }
-          }
-
-          setRiderCoords([latitude, longitude]);
-          
-          // Throttled DB update, only if online
-           // SSOT: Single Source of Truth update with Race-Condition Protection (Stale Data Filter)
-           void (async () => {
-              const { data: { user } } = await supabase.auth.getUser();
-              if (user) {
-                // Use RPC to enforce stale data checks and PostGIS geographical types
-                await supabase.rpc("update_rider_location", {
-                  p_rider_id: user.id,
-                  p_lat: latitude,
-                  p_lng: longitude,
-                  p_captured_at: new Date().toISOString()
-                });
-              }
-           })();
-        },
-        (err) => {
-           console.error("Geo error:", err);
-           toast.error("Location tracking disabled. Ensure GPS is on.");
-        },
-        { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
-      );
-    }
-
-    // Listen for changes in active orders only (Optimized Real-time Subscription)
-    const ordersSubscription = supabase
-      .channel("active_rider_missions")
-      .on(
-        "postgres_changes",
-        { 
-          event: "*", 
-          schema: "public", 
-          table: "orders",
-          filter: "delivery_status=in.(finding_rider,accepted,picked_up)" 
-        },
-        (payload) => { 
-          // Local State Hydration: Update missions directly
-          const order = payload.new as Order;
-          
-          if (payload.eventType === 'INSERT') {
-            if (order.delivery_status === 'finding_rider') {
-              setAvailableMissions(prev => [order, ...prev]);
-              toast.info("🚨 New Mission Broadcast!", { description: "Tap to view in Available Missions", duration: 5000 });
-              playNotificationSound(false, "sparkle");
-            }
-          } else if (payload.eventType === 'UPDATE') {
-            // Update Active Missions
-            setActiveMissions(prev => prev.map(o => o.id === order.id ? { ...o, ...order } : o));
-            
-            // Handle availability logic
-            if (order.delivery_status === 'finding_rider') {
-              setAvailableMissions(prev => {
-                const exists = prev.find(o => o.id === order.id);
-                if (exists) return prev.map(o => o.id === order.id ? { ...o, ...order } : o);
-                return [order, ...prev];
-              });
-            } else {
-              setAvailableMissions(prev => prev.filter(o => o.id !== order.id));
-            }
-          } else if (payload.eventType === 'DELETE') {
-            setActiveMissions(prev => prev.filter(o => o.id !== payload.old.id));
-            setAvailableMissions(prev => prev.filter(o => o.id !== payload.old.id));
-          }
-        }
-      )
-      .subscribe();
-
-    const profileSubscription = supabase
-      .channel("rider_dashboard_profiles")
-      .on(
-        "postgres_changes",
-        { 
-          event: "UPDATE", 
-          schema: "public", 
-          table: "rider_profiles",
-          filter: `id=eq.${riderProfile?.id}` 
-        },
-        (payload) => { 
-          // Local Hydration for own profile
-          setRiderProfile(prev => prev ? { ...prev, ...payload.new } : (payload.new as RiderProfile)); 
-        }
-      )
-      .subscribe();
-
-    const connectionsSubscription = supabase
-      .channel("rider_dashboard_connections")
-      .on(
-        "postgres_changes",
-        { 
-          event: "*", 
-          schema: "public", 
-          table: "rider_connections" 
-        },
-        (payload) => { 
-          // Update connections locally
-          if (payload.eventType === 'UPDATE') {
-            setActiveConnections(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
-          } else if (payload.eventType === 'DELETE') {
-            setActiveConnections(prev => prev.filter(c => c.id !== payload.old.id));
-          } else {
-            void fetchRiderData(); // Fetches are okay for rare inserts/complex changes
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      if (watchId) navigator.geolocation.clearWatch(watchId);
-      supabase.removeChannel(ordersSubscription);
-      supabase.removeChannel(profileSubscription);
-      supabase.removeChannel(connectionsSubscription);
-    };
-  }, [fetchRiderData, riderProfile?.is_online, riderProfile?.id]);
-
-  const recalibrateGPS = () => {
-     const city = riderProfile?.city || "Tembisa";
-     const center = CITY_CENTERS[city as keyof typeof CITY_CENTERS] || CITY_CENTERS["Tembisa"];
-     setRiderCoords([center.lat, center.lng]);
-     toast.success("Location Calibrated", {
-       description: `Mocked to ${city} center for accuracy.`
-     });
-  };
-
-  const toggleOnline = async () => {
-    if (!riderProfile) return;
-    const newStatus = !riderProfile.is_online;
-    
-    const { error } = await supabase
-      .from("rider_profiles")
-      .update({ 
-        is_online: newStatus, 
-        status: newStatus ? "online" : "offline",
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", riderProfile.id);
-
-    if (error) {
-      toast.error("Failed to update status");
-    } else {
-      toast.success(newStatus ? "You are now ONLINE" : "You are now OFFLINE");
-      fetchRiderData();
-    }
-  };
-
-  const acceptMission = async (orderId: string) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !riderProfile?.is_online) {
-      toast.error(riderProfile?.is_online ? "Auth error" : "Go online to accept missions");
-      return;
-    }
-
-    setIsSaving(true);
-    setIsSaveSuccess(false);
-    const { error } = await supabase
-      .from("orders")
-      .update({
-        rider_id: user.id,
-        delivery_status: "accepted",
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", orderId)
-      .eq("delivery_status", "finding_rider");
-
-    if (error) {
-      setIsSaving(false);
-      setIsSaveSuccess(false);
-      toast.error("Failed to accept mission: " + error.message);
-    } else {
-      setIsSaving(false);
-      setIsSaveSuccess(true);
-      setTimeout(() => {
-        setIsSaveSuccess(false);
-        toast.success("Mission Accepted!");
-        fetchRiderData();
-      }, 1500);
-    }
-  };
-
-  const updateMissionStatus = async (orderId: string, currentStatus: string) => {
-    let nextStatus = "";
-    if (currentStatus === "accepted") nextStatus = "picked_up";
-    else if (currentStatus === "picked_up") nextStatus = "delivered";
-
-    if (!nextStatus) return;
-
-    setIsSaving(true);
-    setIsSaveSuccess(false);
-    const { error } = await supabase
-      .from("orders")
-      .update({
-        delivery_status: nextStatus,
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", orderId);
-
-    if (error) {
-      setIsSaving(false);
-      setIsSaveSuccess(false);
-      toast.error("Update failed");
-    } else {
-      setIsSaving(false);
-      setIsSaveSuccess(true);
-      
-      setTimeout(async () => {
-        setIsSaveSuccess(false);
-        toast.success(`Broadcasting update: ${nextStatus}`);
-        
-        // If delivered, update rider stats
-        if (nextStatus === "delivered") {
-          const order = activeMissions.find(o => o.id === orderId);
-          const fee = order?.delivery_fee || 5; // Default R5 if not set
-          
-          await supabase
-            .from("rider_profiles")
-            .update({
-              total_earnings: (riderProfile?.total_earnings || 0) + fee,
-              total_deliveries: (riderProfile?.total_deliveries || 0) + 1,
-              active_points: (riderProfile?.active_points || 0) + 10,
-              updated_at: new Date().toISOString()
-            })
-            .eq("id", riderProfile!.id);
-        }
-        fetchRiderData();
-      }, 1500);
-    }
-  };
-
-  const handlePairing = async () => {
-    if (!pairingCode || pairingCode.length < 6) {
-      toast.error("Please enter a valid 6-digit code");
-      return;
-    }
-
-    setIsPairing(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error("Session expired. Please sign in again.");
-      setIsPairing(false);
-      return;
-    }
-
-    try {
-      // 1. Find the connection record
-      const { data, error } = await supabase
-        .from("rider_connections")
-        .select("*")
-        .eq("connection_code", pairingCode.toUpperCase())
-        .eq("status", "active")
-        .single();
-
-      if (error || !data) {
-        toast.error("Invalid or expired pairing code");
-        setIsPairing(false);
-        return;
-      }
-
-      // Check expiry
-      if (new Date(data.expires_at) < new Date()) {
-        toast.error("This code has expired. Ask merchant for a new one.");
-        setIsPairing(false);
-        return;
-      }
-
-      // 2. Link the rider
-      const { error: updateError } = await supabase
-        .from("rider_connections")
-        .update({
-          rider_id: user.id,
-          rider_name: riderProfile?.full_name || user.email?.split("@")[0] || "Rider",
-          status: "active",
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", data.id);
-
-      if (updateError) {
-        toast.error("Linking failed: " + updateError.message);
-      } else {
-        toast.success("Successfully paired with Merchant!");
-        setShowPairingModal(false);
-        setPairingCode("");
-        fetchRiderData();
-      }
-    } catch (err) {
-      console.error("Pairing error:", err);
-      toast.error("An unexpected error occurred during pairing");
-    } finally {
-      setIsPairing(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col p-6 space-y-8 font-body">
-        {/* Header Skeleton */}
-        <div className="flex justify-between items-center mt-4">
-          <Skeleton className="h-10 w-10 rounded-full" />
-          <Skeleton className="h-6 w-32 rounded-xl" />
-          <Skeleton className="h-10 w-24 rounded-[1.5rem]" />
-        </div>
-        
-        {/* Map Area / Main Feed Skeleton */}
-        <div className="flex-1 rounded-[2.5rem] relative overflow-hidden flex flex-col space-y-4">
-          <Skeleton className="absolute inset-0 h-full w-full opacity-30" />
-          
-          <div className="absolute inset-x-0 bottom-0 p-4 space-y-4">
-            <Skeleton className="h-40 w-full rounded-[2rem] z-10 relative opacity-80" />
-            <Skeleton className="h-40 w-full rounded-[2rem] z-10 relative opacity-80" />
-          </div>
-        </div>
-        
-        {/* Footer Skeleton */}
-        <div className="flex justify-around items-center pt-2">
-          <Skeleton className="h-12 w-12 rounded-full" />
-          <Skeleton className="h-16 w-16 rounded-full" />
-          <Skeleton className="h-12 w-12 rounded-full" />
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-body pb-24 relative overflow-hidden">
-      {/* Background Map */}
-      <div className="absolute inset-0 z-0">
-        <AppMapBackground 
-          riderCoords={riderCoords}
-          missions={availableMissions.map(m => ({
-             ...m,
-             latitude: m.lat,
-             longitude: m.lng,
-             order_type: m.order_type as 'delivery' | 'pickup'
-          }))}
-          activeMission={activeMissions[0] ? {
-             ...activeMissions[0],
-             latitude: activeMissions[0].lat,
-             longitude: activeMissions[0].lng,
-             order_type: activeMissions[0].order_type as 'delivery' | 'pickup'
-          } : null}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-zinc-950/80 pointer-events-none" />
-      </div>
-
-      <div className="relative z-10 p-6 flex flex-col min-h-screen">
-        {/* Header */}
-      <header className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-white uppercase font-headline">
-            Rider HUD
-          </h1>
-          <div className="flex items-center gap-2">
-            <div
-              className={cn(
-                "w-2 h-2 rounded-full",
-                riderProfile?.is_online ? "bg-green-500 animate-pulse" : "bg-zinc-600",
-              )}
-            />
-            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-              {riderProfile?.is_online ? "Ready for Missions" : "Off Duty"}
-            </span>
-          </div>
-        </div>
-            <div className="flex items-center gap-3">
-            <button
-               onClick={recalibrateGPS}
-               className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-primary hover:bg-zinc-800 transition-all flex items-center gap-2 group"
-               title="Calibrate Location"
-            >
-               <MapPin size={20} className="group-active:scale-125 transition-transform" />
-               <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Calibrate</span>
-            </button>
-          <button
-            onClick={onSwitchRole}
-            className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition-colors"
-          >
-            <Store size={20} />
-          </button>
-          <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center font-bold text-on-primary">
-            {riderProfile?.full_name?.[0] || riderProfile?.name?.[0] || <UserIcon size={20} />}
-          </div>
-        </div>
-      </header>
-
-      {/* MERCHANT COMMUNITY ACCOLADES */}
-      <div className="mb-6 animate-in fade-in slide-in-from-top-4 duration-500 px-1">
-        <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2.5">
-          Merchant Community Accolades
-        </h3>
-        <div className="flex flex-wrap gap-2.5">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-950/40 border border-cyan-500/20 rounded-full text-cyan-400 text-xs font-black tracking-wider uppercase group hover:bg-cyan-950/60 transition-all">
-            <Compass size={12} className="animate-spin-slow group-hover:scale-110 transition-transform" />
-            <span>Fast Pilot <span className="text-white ml-1">X32</span></span>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-950/40 border border-amber-500/20 rounded-full text-amber-400 text-xs font-black tracking-wider uppercase group hover:bg-amber-955/60 transition-all">
-            <ShieldCheck size={12} className="group-hover:scale-110 transition-transform" />
-            <span>Secure Cargo <span className="text-white ml-1">X24</span></span>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-950/40 border border-emerald-500/20 rounded-full text-emerald-400 text-xs font-black tracking-wider uppercase group hover:bg-emerald-950/60 transition-all">
-            <Heart size={12} className="group-hover:scale-110 transition-transform fill-current" />
-            <span>Polite Rider <span className="text-white ml-1">X45</span></span>
-          </div>
-        </div>
-      </div>
-
-      {/* GRID UPLINK IDENTITY */}
-      <div className="bg-zinc-900 border border-zinc-850 rounded-3xl p-6 mb-6 relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500 delay-75">
-        <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3">
-          Grid Uplink Identity
-        </h3>
-        <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest block mb-0.5">Rider Broadcast ID</span>
-            <p className="text-lg font-mono font-black tracking-widest text-white truncate">
-              LOCALEATS-R-{(riderProfile?.id || "EA44B2").slice(0, 6).toUpperCase()}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText("LOCALEATS-R-" + (riderProfile?.id || "EA44B2").slice(0, 6).toUpperCase());
-                toast.success("Broadcast ID copied to clipboard!");
-              }}
-              className="px-3 py-2 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all"
-            >
-              <Copy size={12} />
-              Copy ID
-            </button>
-            <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-primary shrink-0">
-              <QrCode size={16} />
-            </div>
-          </div>
-        </div>
-        <p className="text-[10px] text-zinc-650 mt-3 font-medium">
-          MERCHANTS REQUIRE THIS ID CODE: Present this unique dispatch code to the restaurant manager to secure the pairing.
-        </p>
-      </div>
-
-      {/* GRID PERFORMANCE DIAGNOSTICS */}
-      <div className="bg-zinc-900 border border-zinc-850 rounded-3xl p-6 mb-6 relative overflow-hidden shadow-xl shadow-black/40 animate-in fade-in slide-in-from-top-4 duration-500 delay-150">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1 flex items-center gap-2">
-              <TrendingUp size={14} className="text-primary" /> Grid Performance Diagnostics
-            </h3>
-            <p className="text-xs text-zinc-400 font-medium">Real-time telemetry and dispatch reliability scores.</p>
-          </div>
-          <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2.5 py-1 rounded-full font-black uppercase tracking-wide animate-pulse">
-            HQ Grade A
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-zinc-950/40 border border-zinc-800/60 rounded-2xl p-4 flex items-center gap-4 hover:border-primary/20 transition-all">
-            <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-400 shrink-0">
-              <Lock size={20} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[9px] font-black text-zinc-500 uppercase tracking-wider leading-none">Missions Lock-In</p>
-                <span className="text-xs font-mono font-black text-orange-400">98.4%</span>
-              </div>
-              <div className="w-full bg-zinc-850 h-1.5 rounded-full mt-2 overflow-hidden">
-                <div className="bg-gradient-to-r from-orange-600 to-orange-400 h-full rounded-full" style={{ width: '98.4%' }} />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-zinc-950/40 border border-zinc-800/60 rounded-2xl p-4 flex items-center gap-4 hover:border-primary/20 transition-all">
-            <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
-              <ShieldCheck size={20} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[9px] font-black text-zinc-500 uppercase tracking-wider leading-none">Cargo Security</p>
-                <span className="text-xs font-mono font-black text-emerald-400">100.0%</span>
-              </div>
-              <div className="w-full bg-zinc-850 h-1.5 rounded-full mt-2 overflow-hidden">
-                <div className="bg-gradient-to-r from-emerald-600 to-emerald-400 h-full rounded-full" style={{ width: '100%' }} />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-zinc-950/40 border border-zinc-800/60 rounded-2xl p-4 flex items-center gap-4 hover:border-primary/20 transition-all">
-            <div className="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-400 shrink-0">
-              <Gauge size={20} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[9px] font-black text-zinc-500 uppercase tracking-wider leading-none">Flight On-Time</p>
-                <span className="text-xs font-mono font-black text-cyan-400">96.8%</span>
-              </div>
-              <div className="w-full bg-zinc-850 h-1.5 rounded-full mt-2 overflow-hidden">
-                <div className="bg-gradient-to-r from-cyan-600 to-cyan-400 h-full rounded-full" style={{ width: '96.8%' }} />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Active Connections HUD */}
-      {activeConnections.length > 0 && (
-        <div className="px-6 mb-8">
-           <div className="flex flex-col gap-2">
-             {activeConnections.map(conn => {
-                const expiresAt = new Date(conn.expires_at);
-                const diff = expiresAt.getTime() - Date.now();
-                const hours = Math.floor(diff / (1000 * 60 * 60));
-                const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-                return (
-                  <div key={conn.id} className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-center justify-between animate-in fade-in slide-in-from-top-4 duration-500">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
-                        <Store size={20} />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black text-primary uppercase tracking-[0.2em] animate-pulse">Uplink Active</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-                        </div>
-                        <p className="text-sm font-bold text-white">{conn.shops?.name || "Merchant Shop"}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] font-black text-zinc-500 uppercase tracking-tighter mb-0.5">Session Remaining</p>
-                      <p className="text-xs font-mono font-black text-zinc-300">
-                        {hours}h {mins}m
-                      </p>
-                    </div>
-                  </div>
-                );
-             })}
-           </div>
-        </div>
-      )}
-
-      {/* Stats Summary */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-8 relative overflow-hidden">
-        <div className="relative z-10 space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1">
-                Lifetime Tracker
-              </h2>
-              <p className="text-sm font-bold text-zinc-300">
-                {riderProfile?.full_name || "Agent Rider"}
-              </p>
-            </div>
-            <button
-              onClick={toggleOnline}
-              className={cn(
-                "px-5 py-2 rounded-xl font-black text-[10px] transition-all uppercase tracking-widest border-2",
-                riderProfile?.is_online
-                  ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
-                  : "bg-transparent text-zinc-500 border-zinc-800",
-              )}
-            >
-              {riderProfile?.is_online ? "Go Offline" : "Go Online"}
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 bg-green-500/10 rounded-lg text-green-500">
-                  <Sparkles size={12} />
-                </div>
-                <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-tighter">
-                  Total Earnings
-                </span>
-              </div>
-              <p className="text-xl font-black text-white">R {riderProfile?.total_earnings?.toFixed(2) || "0.00"}</p>
-            </div>
-            <div className="bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 bg-blue-500/10 rounded-lg text-blue-500">
-                  <Package size={12} />
-                </div>
-                <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-tighter">
-                  Deliveries
-                </span>
-              </div>
-              <p className="text-xl font-black text-white">{riderProfile?.total_deliveries || 0}</p>
-            </div>
-          </div>
-        </div>
-        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 blur-[60px] rounded-full -mr-16 -mt-16" />
-      </div>
-
-      {/* Active Missions */}
-      {activeMissions.length > 0 && (
-        <div className="mb-8">
-          <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 mb-4 flex items-center gap-2">
-            <Navigation size={14} className="text-primary" /> Active Missions
-          </h3>
-          <div className="space-y-3">
-            {activeMissions.map((order) => (
-              <div key={order.id} className="bg-zinc-900 border border-zinc-800/50 rounded-2xl p-4 shadow-sm">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <span className="text-[10px] font-bold text-zinc-500 uppercase block">Customer</span>
-                    <p className="font-bold text-white">{order.customer_name}</p>
-                  </div>
-                  <div className="text-right">
-                    <div className={cn(
-                      "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter mb-1 inline-block",
-                      order.delivery_fee && order.delivery_fee > 5 
-                        ? "bg-amber-500/20 text-amber-500 border border-amber-500/30" 
-                        : "bg-green-500/20 text-green-500 border border-green-500/30"
-                    )}>
-                      {order.delivery_fee && order.delivery_fee > 5 ? "R10 FIXED" : "R5 FIXED"}
-                    </div>
-                    <p className="font-black text-white">R {order.delivery_fee?.toFixed(2) || "5.00"}</p>
-                    <button
-                      onClick={() => {
-                        const lat = order.lat || order.latitude;
-                        const lng = order.lng || order.longitude;
-                        if (lat && lng) {
-                          window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, "_blank");
-                        } else {
-                          toast.error("Coordinates missing for this mission");
-                        }
-                      }}
-                      className="mt-2 flex items-center gap-1 text-[10px] font-bold text-primary hover:underline ml-auto"
-                    >
-                      <Navigation size={10} />
-                      Navigate
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-4 mb-4 text-[10px] font-medium text-zinc-400">
-                  <div className="flex items-center gap-1">
-                    <MapPin size={10} className="text-zinc-600" />
-                    <span className="truncate max-w-[120px]">{order.delivery_address}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Clock size={10} className="text-zinc-600" />
-                    <span>{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => updateMissionStatus(order.id, order.delivery_status || "accepted")}
-                  disabled={updatingOrderId === order.id}
-                  className={cn(
-                    "w-full py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ring-offset-zinc-900",
-                    order.delivery_status === "accepted" 
-                      ? "bg-zinc-100 text-zinc-950 hover:bg-white" 
-                      : "bg-primary text-on-primary hover:bg-primary/90"
-                  )}
-                >
-                  {updatingOrderId === order.id ? "Syncing..." : 
-                   order.delivery_status === "accepted" ? "Mark as Picked Up" : "Mark as Delivered"}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Available Missions (Broadcast) */}
-      <div className="mb-8">
-        <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 mb-4">
-          Broadcast Missions
-        </h3>
-        {availableMissions.length === 0 ? (
-          <div className="bg-zinc-900/30 border-2 border-dashed border-zinc-800 rounded-3xl p-12 text-center">
-            <Radio className="mx-auto mb-3 text-zinc-700 animate-pulse" size={24} />
-            <p className="text-zinc-500 italic text-sm font-medium">
-              Scanning for nearby merchant signals...
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {availableMissions.map((order) => (
-              <div key={order.id} className="bg-zinc-900/50 border border-primary/20 rounded-2xl p-5 hover:bg-zinc-900 transition-colors group">
-                <div className="flex justify-between items-center mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                      <Store size={20} />
-                    </div>
-                    <div>
-                      <p className="font-bold text-white leading-none mb-1">{order.restaurant_name || "Merchant"}</p>
-                      <div className="flex items-center gap-2">
-                        <span className={cn(
-                          "text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded border",
-                          order.delivery_fee && order.delivery_fee > 5
-                            ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                            : "bg-green-500/10 text-green-500 border-green-500/20"
-                        )}>
-                          {order.delivery_fee && order.delivery_fee > 5 ? "Zone B" : "Zone A"}
-                        </span>
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-tight italic">Priority Delivery</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xl font-black text-green-500 leading-none mb-1">R {order.delivery_fee?.toFixed(2) || "5.00"}</p>
-                    <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">Earnings</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4 mb-4 text-[10px] text-zinc-400 font-medium">
-                  <div className="flex items-center gap-1">
-                    <Navigation size={10} className={cn(
-                      order.delivery_fee && order.delivery_fee > 5 ? "text-amber-500" : "text-green-500"
-                    )} />
-                    <span>{order.delivery_fee && order.delivery_fee > 5 ? "Mid-Range (3-6km)" : "Short-Range (<3km)"}</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-zinc-500">
-                    <Info size={10} />
-                    <span>{safeGetOrderItems(order.items).length} Items</span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => acceptMission(order.id)}
-                  disabled={updatingOrderId === order.id || !riderProfile?.is_online}
-                  className="w-full py-3 bg-zinc-100 text-zinc-950 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-white active:scale-95 transition-all disabled:opacity-30"
-                >
-                  {updatingOrderId === order.id ? "Deploying..." : "Accept Mission"}
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Connected People (Online Riders) */}
-      <div className="mb-8">
-        <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest ml-1 mb-4 flex items-center gap-2">
-          <Users size={14} className="text-zinc-600" /> Connected Hub
-        </h3>
-        <div className="grid grid-cols-5 md:grid-cols-10 gap-3">
-          {onlineRiders.map((rider) => (
-            <div key={rider.id} className="relative group">
-              <div className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs transition-all border-2",
-                rider.id === riderProfile?.id 
-                  ? "bg-primary/20 border-primary text-primary" 
-                  : "bg-zinc-900 border-zinc-800 text-zinc-500"
-              )}>
-                {rider.full_name?.[0] || rider.name?.[0] || "?"}
-              </div>
-              <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-zinc-950" />
-            </div>
-          ))}
-          <button className="w-10 h-10 rounded-xl border-2 border-dashed border-zinc-800 flex items-center justify-center text-zinc-700 hover:border-zinc-700 hover:text-zinc-500 transition-all" onClick={() => setShowPairingModal(true)}>
-            <Plus size={16} />
-          </button>
-        </div>
-        <p className="text-[10px] text-zinc-600 mt-4 font-medium italic">
-          Currently {onlineRiders.length} agents active in the regional mesh network.
-        </p>
-      </div>
-
-      {/* Pairing Modal */}
-      <AnimatePresence>
-        {showPairingModal && (
-            <motion.div key="showPairingModal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-zinc-950/80 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-[2rem] p-8 shadow-2xl"
-            >
-              <div className="flex justify-between items-center mb-8">
-                <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
-                  <Zap size={24} />
-                </div>
-                <button 
-                  onClick={() => setShowPairingModal(false)}
-                  className="p-2 text-zinc-500 hover:text-white transition-colors"
-                >
-                  <X size={24} />
-                </button>
-              </div>
-
-              <div className="space-y-2 mb-8">
-                <h3 className="text-xl font-black text-white uppercase tracking-tight">Pair with Shop</h3>
-                <p className="text-sm text-zinc-500 font-medium">Enter the 6-digit uplink code shown on the merchant dashboard.</p>
-              </div>
-
-              <div className="space-y-4">
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={pairingCode}
-                  onChange={(e) => setPairingCode(e.target.value.toUpperCase())}
-                  placeholder="CODE"
-                  className="w-full h-16 bg-zinc-950 border-2 border-zinc-800 rounded-2xl text-center text-3xl font-black tracking-[0.5em] text-white focus:border-primary outline-none transition-all placeholder:text-zinc-800"
-                />
-                <button
-                  onClick={handlePairing}
-                  disabled={isPairing || pairingCode.length < 6}
-                  className="w-full h-14 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest hover:bg-primary/90 disabled:opacity-30 disabled:grayscale transition-all shadow-lg shadow-primary/20"
-                >
-                  {isPairing ? "Verifying Uplink..." : "Initialize Pairing"}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-          )}
-        </AnimatePresence>
-
-      {/* Footer Instructions */}
-      <div className="mt-8 pt-8 border-t border-zinc-900">
-        <div className="p-4 bg-primary/5 border border-primary/10 rounded-2xl flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-            <ShieldCheck size={20} />
-          </div>
-          <p className="text-[10px] text-zinc-400 font-medium leading-relaxed">
-            SECURE LINK ACTIVE: Your session is protected by E2E encryption. 
-            Maintain a high rating to stay eligible for <span className="text-primary">Flash Multiplier</span> events.
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-  );
-};
