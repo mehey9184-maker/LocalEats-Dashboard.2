@@ -122,14 +122,41 @@ try {
 
   // Register unhandled error listeners
   window.addEventListener("error", (event) => {
-    const errorMsg = event.error || event.message || "";
-    if (String(errorMsg).includes("Extension") || String(event.filename || "").includes("chrome-extension")) {
+    const errorMsg = String(event.error?.message || event.message || "");
+    const filename = String(event.filename || "");
+    if (filename.includes("chrome-extension") || errorMsg.includes("Extension") || errorMsg.includes("ExtensionContext")) {
       return; // Ignore external extensions
+    }
+    if (
+      errorMsg.includes("Failed to fetch") ||
+      errorMsg.includes("network") ||
+      errorMsg.includes("NetworkError") ||
+      errorMsg.includes("Load failed") ||
+      errorMsg.includes("Failed to load") ||
+      errorMsg.includes("Script error")
+    ) {
+      console.warn("[Self-Healing] Ignored transient network/script load error:", errorMsg);
+      return;
     }
     handleGlobalCrash("unhandled error", event.error || event.message);
   });
 
   window.addEventListener("unhandledrejection", (event) => {
+    const reasonStr = event.reason ? String(event.reason.message || event.reason) : "";
+    if (
+      reasonStr.includes("Failed to fetch") ||
+      reasonStr.includes("network") ||
+      reasonStr.includes("NetworkError") ||
+      reasonStr.includes("Load failed") ||
+      reasonStr.includes("Failed to load") ||
+      reasonStr.includes("User denied Geolocation") ||
+      reasonStr.includes("Timeout expired") ||
+      reasonStr.includes("position acquisition error") ||
+      reasonStr.includes("Script error")
+    ) {
+      console.warn("[Self-Healing] Ignored transient network/api unhandled promise rejection:", reasonStr);
+      return;
+    }
     handleGlobalCrash("unhandled promise rejection", event.reason);
   });
 
