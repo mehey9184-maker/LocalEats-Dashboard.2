@@ -544,6 +544,7 @@ export interface Shop {
   require_terminal_sync?: boolean;
   terminal_provider?: string;
   terminal_serial?: string;
+  updated_at?: string;
 }
 
 export interface MenuItem {
@@ -4618,6 +4619,18 @@ const DashboardOverview = React.memo(({
               {currentShop.opening_time && currentShop.closing_time && (
                 <p className="text-[10px] font-mono font-black text-on-surface-variant/60 uppercase tracking-widest flex items-center gap-1.5 pt-1">
                   <Clock size={12} /> Standard hours: {currentShop.opening_time} - {currentShop.closing_time}
+                </p>
+              )}
+              
+              {currentShop.updated_at ? (
+                <p className="text-[10px] font-mono font-black text-emerald-500 flex items-center gap-1.5 pt-1 uppercase tracking-widest">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Heartbeat Signal: Sync OK ({new Date(currentShop.updated_at).toLocaleDateString()} {new Date(currentShop.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
+                </p>
+              ) : (
+                <p className="text-[10px] font-mono font-black text-amber-500 flex items-center gap-1.5 pt-1 uppercase tracking-widest">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500/80 animate-pulse" />
+                  Heartbeat telemetry awaiting database update (Run SQL script)
                 </p>
               )}
             </div>
@@ -16941,6 +16954,60 @@ function App() {
       nextPaymentDate: currentShop.next_payment_date || new Date(endMs).toISOString()
     };
   }, [currentShop]);
+
+  // --- Shop Live Heartbeat & Inactivity Tracker ---
+  useEffect(() => {
+    if (!user || !currentShop) return;
+
+    const syncHeartbeat = async () => {
+      try {
+        const timeNow = new Date().toISOString();
+        const lastUpdated = currentShop.updated_at ? new Date(currentShop.updated_at).getTime() : 0;
+        const oneHourMs = 60 * 60 * 1000;
+        const fourDaysMs = 4 * 24 * 60 * 60 * 1000;
+
+        // Custom welcoming alerts if they were offline or inactive for more than 4 days
+        if (currentShop.updated_at && (Date.now() - lastUpdated > fourDaysMs)) {
+          toast.warning("⚠️ Welcome Back! Dashboard Inactive for 4+ Days", {
+            description: "Because you were away, customers may have flagged your storefront to prevent empty orders. We have synchronized a live heartbeat signal now!",
+            duration: 12000,
+          });
+        }
+
+        // Defensive check: only update if current local state is outdated by at least 1 hour, to prevent excessive DB writes
+        if (Date.now() - lastUpdated < oneHourMs) {
+          return;
+        }
+
+        // Quietly update the database
+        const { error } = await supabase
+          .from("shops")
+          .update({ updated_at: timeNow })
+          .eq("id", currentShop.id);
+
+        if (error) {
+          console.warn("Telemetry warning: updated_at column is not yet provisioned in your shops table.", error.message);
+        } else {
+          // Update local state smoothly
+          setShops((prev) =>
+            prev.map((s) => (s.id === currentShop.id ? { ...s, updated_at: timeNow } : s))
+          );
+        }
+      } catch (err) {
+        console.warn("Defensive catch: Failed to push storefront heartbeat. Check internet or Supabase schema:", err);
+      }
+    };
+
+    // Trigger heartbeat check
+    void syncHeartbeat();
+
+    // Check every 10 minutes to maintain active signal in active session
+    const interval = setInterval(() => {
+      void syncHeartbeat();
+    }, 10 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [user, currentShop]);
 
   // --- Weather Demand Engine States ---
   const [currentWeather, setCurrentWeather] = useState<"Sunny" | "Rainy" | "Chilly" | "Windy">("Chilly");
