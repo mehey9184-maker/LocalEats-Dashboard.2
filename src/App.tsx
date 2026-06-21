@@ -11941,9 +11941,73 @@ Please return the content in JSON format with these exact keys:
                     </div>
                   </div>
 
+                  <div>
+                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">2. Value Benefit Presets (Instantly loads high-conversion copy)</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        {
+                          id: "skiptheline",
+                          label: "⏱️ Skip the Line",
+                          desc: "Pre-order & collect instantly",
+                          headline: "Skip the Queue & Beat the Rush!",
+                          subline: "Don't waste time standing in narrow queues. Scan our live menu to pre-order for instant collection!",
+                          cta: "Pre-order on your phone & walk straight to the counter."
+                        },
+                        {
+                          id: "fastdelivery",
+                          label: "🚴 Speedy Delivery",
+                          desc: "Eco-friendly bicycle logistics",
+                          headline: "Craving Hot Food? We Deliver!",
+                          subline: "Scan our direct storefront to order quick and local bicycle delivery straight to your house or office.",
+                          cta: "Support eco-friendly local bicycle riders."
+                        },
+                        {
+                          id: "tableordering",
+                          label: "🍽️ Order at Table",
+                          desc: "Contactless dine-in service",
+                          headline: "Scan, Order & Pay from your Table!",
+                          subline: "Bypass the counter service. Browse our digital menu, order at your table, and we will serve you immediately.",
+                          cta: "No waiting, no standing. Clean contactless dining."
+                        },
+                        {
+                          id: "cashonarrival",
+                          label: "💵 Cash on Arrival",
+                          desc: "Secure cash or OTT voucher payment",
+                          headline: "Order Online & Pay On Delivery!",
+                          subline: "Enjoy secure storefront checkout. Pay on arrival with Cash or OTT Voucher at your doorstep safely.",
+                          cta: "OTP Verification at your doorstep for maximum security."
+                        }
+                      ].map((preset) => {
+                        const isSelected = flyerHeadline === preset.headline && flyerSubline === preset.subline && flyerCTA === preset.cta;
+                        return (
+                          <button
+                            type="button"
+                            key={preset.id}
+                            onClick={() => {
+                              setFlyerHeadline(preset.headline);
+                              setFlyerSubline(preset.subline);
+                              setFlyerCTA(preset.cta);
+                              toast.info(`Preset applied: ${preset.label}`, {
+                                description: "Copy updated! Feel free to customize it further below.",
+                                duration: 3000
+                              });
+                            }}
+                            className={cn(
+                              "text-left p-2.5 rounded-xl border flex flex-col gap-0.5 transition-all duration-200 hover:scale-[1.01] active:scale-[0.99]",
+                              isSelected ? "border-orange-500 bg-orange-500/10 ring-1 ring-orange-500" : "border-outline-variant/10 bg-on-surface/[0.02] hover:bg-on-surface/5"
+                            )}
+                          >
+                            <span className="text-[11px] font-black text-on-surface flex items-center gap-1">{preset.label}</span>
+                            <span className="text-[9px] text-on-surface-variant/70 leading-tight">{preset.desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">2. Flyer Format</label>
+                      <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">3. Flyer Format</label>
                       <select
                         value={flyerSize}
                         onChange={(e) => setFlyerSize(e.target.value as "A4" | "Tent" | "Stand")}
@@ -11956,7 +12020,7 @@ Please return the content in JSON format with these exact keys:
                     </div>
 
                     <div>
-                      <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5 font-headline">3. Active Promo Coupon</label>
+                      <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5 font-headline">4. Active Memo Coupon</label>
                       <select
                         value={flyerCouponCode}
                         onChange={(e) => setFlyerCouponCode(e.target.value)}
@@ -11964,16 +12028,16 @@ Please return the content in JSON format with these exact keys:
                       >
                         <option value="">No code overlay</option>
                         {coupons.map((c) => (
-                          <option key={c.id} value={c.code}>
-                            {c.code} ({c.discount_type === "percentage" ? `${c.discount_value}% Off` : `R${c.discount_value} Off`})
-                          </option>
+                           <option key={c.id} value={c.code}>
+                             {c.code} ({c.discount_type === "percentage" ? `${c.discount_value}% Off` : `R${c.discount_value} Off`})
+                           </option>
                         ))}
                       </select>
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">4. Main Display Headline</label>
+                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">5. Main Display Headline</label>
                     <input
                       type="text"
                       value={flyerHeadline}
@@ -11984,7 +12048,7 @@ Please return the content in JSON format with these exact keys:
                   </div>
 
                   <div>
-                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5 font-headline">5. Highlight Sub-headline</label>
+                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5 font-headline">6. Highlight Sub-headline</label>
                     <input
                       type="text"
                       value={flyerSubline}
@@ -11995,7 +12059,7 @@ Please return the content in JSON format with these exact keys:
                   </div>
 
                   <div>
-                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">6. Secondary Call to Action (Footer Line)</label>
+                    <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">7. Secondary Call to Action (Footer Line)</label>
                     <input
                       type="text"
                       value={flyerCTA}
