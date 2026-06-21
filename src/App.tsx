@@ -4515,9 +4515,21 @@ const DashboardOverview = React.memo(({
       >
         <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div className="space-y-1">
-            <h1 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
-              {greeting}, Chef!
-            </h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
+                {greeting}, Chef!
+              </h1>
+              {menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length > 0 && (
+                <button
+                  onClick={() => onNavigate("menu")}
+                  className="flex items-center gap-1.5 px-3 py-1 bg-error/10 hover:bg-error/20 border border-error/20 text-error rounded-full font-bold text-[10px] uppercase tracking-wider transition-all animate-bounce active:scale-95 cursor-pointer shadow-xs shrink-0"
+                  title="Click to manage low stock menu items"
+                >
+                  <AlertTriangle size={12} className="animate-pulse" />
+                  <span>{menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length} Items Low Stock</span>
+                </button>
+              )}
+            </div>
             <p className="text-sm text-on-surface-variant font-medium">
               Here is what's happening in your kitchen today.
             </p>
@@ -8520,28 +8532,57 @@ const OrdersManagement = ({
         .join("") ||
         `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${order.product_name}</span><span>R${Number(order.total_price || 0).toFixed(2)}</span></div>`;
 
-      const widthOfText = formatOption === "58mm" ? "240px" : "320px";
+      const widthOfText = formatOption === "58mm" ? "54mm" : "76mm";
+      const printingPageSize = formatOption === "58mm" ? "58mm auto" : "80mm auto";
 
       doc.write(`
         <html>
           <head>
             <title>Receipt #LE-${order.id}</title>
             <style>
+              @page {
+                size: ${printingPageSize};
+                margin: 0;
+              }
               body {
                 font-family: 'Courier New', Courier, monospace;
                 width: ${widthOfText};
-                padding: 12px;
-                font-size: 13px;
-                line-height: 1.3;
+                padding: 4mm;
+                font-size: 12px;
+                line-height: 1.4;
                 color: #000;
                 background: #fff;
-                margin: 0;
+                margin: 0 auto;
               }
-              .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px; }
-              .total { border-top: 1px dashed #000; padding-top: 8px; margin-top: 8px; font-weight: bold; font-size: 14px; }
-              .footer { text-align: center; margin-top: 16px; font-size: 11px; border-top: 1px dashed #000; padding-top: 8px; }
+              .header { 
+                text-align: center; 
+                border-bottom: 1px dashed #000; 
+                padding-bottom: 6px; 
+                margin-bottom: 8px; 
+              }
+              .items {
+                margin: 8px 0;
+              }
+              .total { 
+                border-top: 1px dashed #000; 
+                border-bottom: 1px dashed #000;
+                padding: 6px 0; 
+                margin-top: 8px; 
+                font-weight: bold; 
+                font-size: 13px; 
+              }
+              .footer { 
+                text-align: center; 
+                margin-top: 12px; 
+                font-size: 11px; 
+                padding-top: 6px; 
+              }
               @media print {
-                body { width: 100%; padding: 0; margin: 0; }
+                body { 
+                  width: ${widthOfText}; 
+                  padding: 2mm; 
+                  margin: 0; 
+                }
               }
             </style>
           </head>
@@ -8657,6 +8698,36 @@ Notes: "${order.notes || "None"}"
 
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+
+  const setQuickRange = (preset: "this-month" | "last-month" | "this-quarter") => {
+    const now = new Date();
+    let start = new Date();
+    let end = new Date();
+    
+    if (preset === "this-month") {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    } else if (preset === "last-month") {
+      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      end = new Date(now.getFullYear(), now.getMonth(), 0);
+    } else if (preset === "this-quarter") {
+      const quarter = Math.floor(now.getMonth() / 3);
+      start = new Date(now.getFullYear(), quarter * 3, 1);
+      end = new Date(now.getFullYear(), (quarter + 1) * 3, 0);
+    }
+    
+    const formatYMD = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+    
+    setStartDate(formatYMD(start));
+    setEndDate(formatYMD(end));
+    toast.info(`Operational period set: ${formatYMD(start)} to ${formatYMD(end)}`);
+  };
+
   const [recentlyChangedOrders, setRecentlyChangedOrders] = useState<
     Record<string, boolean>
   >({});
@@ -8808,7 +8879,7 @@ Notes: "${order.notes || "None"}"
     ];
     const csvContent = [
       headers.join(","),
-      ...filteredOrders.map((o) =>
+      ...displayedOrders.map((o) =>
         [
           o.id,
           `"${o.product_name.replace(/"/g, '""')}"`,
@@ -9066,27 +9137,32 @@ Notes: "${order.notes || "None"}"
                 )}
               </div>
 
-              {viewMode === "history" && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
-                    Order History Filter:
-                  </span>
-                  <div className="flex items-center gap-2 bg-surface-container-low p-1 rounded-full border border-outline-variant/20">
-                    <span className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-widest ml-3">
-                      Completed:
+              <div className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 bg-surface-container-low/40 rounded-3xl border border-outline-variant/10 mt-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-1.5 text-xs font-black text-on-surface-variant/80 uppercase tracking-widest">
+                    <Calendar size={14} className="text-primary" />
+                    <span>Reporting Period:</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded-full border border-outline-variant/20 shadow-xs">
+                    <span className="text-[10px] font-black text-on-surface-variant/50 uppercase tracking-widest">
+                      From:
                     </span>
                     <input
                       type="date"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
-                      className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1"
+                      className="bg-transparent text-xs font-bold text-on-surface outline-none cursor-pointer"
                     />
-                    <span className="text-on-surface-variant/40">to</span>
+                    <span className="text-on-surface-variant/40 font-bold text-xs">—</span>
+                    <span className="text-[10px] font-black text-on-surface-variant/50 uppercase tracking-widest">
+                      To:
+                    </span>
                     <input
                       type="date"
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
-                      className="bg-transparent text-xs font-bold text-on-surface outline-none px-2 py-1 mr-2"
+                      className="bg-transparent text-xs font-bold text-on-surface outline-none cursor-pointer"
                     />
                     {(startDate || endDate) && (
                       <button
@@ -9094,14 +9170,39 @@ Notes: "${order.notes || "None"}"
                           setStartDate("");
                           setEndDate("");
                         }}
-                        className="p-1 hover:bg-surface-container-high rounded-full text-error transition-colors mr-1"
+                        className="p-1 hover:bg-surface-container-high rounded-full text-error transition-colors ml-1"
+                        title="Clear Period Filter"
                       >
                         <X size={14} />
                       </button>
                     )}
                   </div>
                 </div>
-              )}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-black text-on-surface-variant/40 uppercase tracking-widest">
+                    Quick Reports:
+                  </span>
+                  <button
+                    onClick={() => setQuickRange("this-month")}
+                    className="px-3 py-1.5 bg-surface-container-high hover:bg-surface-container-highest rounded-full text-[10px] font-bold text-on-surface transition-all active:scale-95 cursor-pointer"
+                  >
+                    This Month
+                  </button>
+                  <button
+                    onClick={() => setQuickRange("last-month")}
+                    className="px-3 py-1.5 bg-surface-container-high hover:bg-surface-container-highest rounded-full text-[10px] font-bold text-on-surface transition-all active:scale-95 cursor-pointer"
+                  >
+                    Last Month
+                  </button>
+                  <button
+                    onClick={() => setQuickRange("this-quarter")}
+                    className="px-3 py-1.5 bg-primary/10 hover:bg-primary/15 border border-primary/20 rounded-full text-[10px] font-bold text-primary transition-all active:scale-95 cursor-pointer"
+                  >
+                    This Quarter
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center justify-between mb-2">
@@ -9263,30 +9364,32 @@ Notes: "${order.notes || "None"}"
                   : "grid-cols-1 md:grid-cols-2",
               )}
             >
-              {displayedOrders.map((order, i) => {
-                const orderCount = customerOrderCounts[order.user_id] || 0;
-                const isReturning = orderCount > 1;
+              <AnimatePresence mode="popLayout">
+                {displayedOrders.map((order, i) => {
+                  const orderCount = customerOrderCounts[order.user_id] || 0;
+                  const isReturning = orderCount > 1;
 
-                // Timer Alert Logic: If order is pending/preparing for more than 20 mins
-                const orderTime = new Date(order.created_at).getTime();
-                const now = new Date().getTime();
-                const diffMins = Math.floor((now - orderTime) / (1000 * 60));
-                const isOverdue =
-                  diffMins >= 20 &&
-                  (order.status === "pending" || order.status === "preparing");
+                  // Timer Alert Logic: If order is pending/preparing for more than 20 mins
+                  const orderTime = new Date(order.created_at).getTime();
+                  const now = new Date().getTime();
+                  const diffMins = Math.floor((now - orderTime) / (1000 * 60));
+                  const isOverdue =
+                    diffMins >= 20 &&
+                    (order.status === "pending" || order.status === "preparing");
 
-                return (
-                  <motion.div
-                    layout
-                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    transition={{ 
-                      type: "spring", 
-                      stiffness: 260, 
-                      damping: 20,
-                      delay: Math.min(i * 0.05, 0.5) 
-                    }}
-                    key={order.id}
+                  return (
+                    <motion.div
+                      layout
+                      initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.9, y: -20, transition: { duration: 0.2 } }}
+                      transition={{ 
+                        type: "spring", 
+                        stiffness: 260, 
+                        damping: 20,
+                        delay: Math.min(i * 0.05, 0.5) 
+                      }}
+                      key={order.id}
                     className={cn(
                       "group rounded-xl p-6 shadow-sm border transition-all duration-300 cursor-pointer",
                       isOverdue
@@ -10446,6 +10549,7 @@ Notes: "${order.notes || "None"}"
                   </motion.div>
                 );
               })}
+              </AnimatePresence>
             </div>
           )}
         </div>
@@ -10840,7 +10944,7 @@ Notes: "${order.notes || "None"}"
                         {(["80mm", "58mm"] as const).map((fmt) => (
                           <button
                             key={fmt}
-                            type="button;}"
+                            type="button"
                             onClick={() => setPrintingFormat(fmt)}
                             className={cn(
                               "py-1.5 text-xs font-bold rounded-lg transition-all",
@@ -16872,6 +16976,8 @@ function App() {
     isExtreme: boolean;
   } | null>(null);
 
+  const lastToastedWeatherAlertKeyRef = useRef<string | null>(null);
+
   const generateWeatherAiAdvice = useCallback(async (selectedWeather: "Sunny" | "Rainy" | "Chilly" | "Windy") => {
     setIsGeneratingRecommendation(true);
     setAiWeatherRecommendation("");
@@ -16967,13 +17073,20 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
     }
 
     if (isExtreme) {
-      const alertId = `valert-${city}-${Date.now()}`;
-      setWeatherAlert({
-        id: alertId,
-        title,
-        message,
-        type: "warning",
-        isExtreme: true
+      const alertKey = `${city}-${title}`;
+      
+      // Update weatherAlert state only if the content actually changed to avoid infinite render loops
+      setWeatherAlert((prev) => {
+        if (prev && prev.title === title && prev.message === message) {
+          return prev;
+        }
+        return {
+          id: `valert-${alertKey}`,
+          title,
+          message,
+          type: "warning",
+          isExtreme: true
+        };
       });
 
       // Desktop Push Trigger
@@ -16988,19 +17101,26 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
         }
       }
 
-      toast.error(`⚠️ Weather Alert: ${title}`, {
-        description: message,
-        duration: 10000,
-        action: {
-          label: "Analyze",
-          onClick: () => {
-            setShowWeatherModal(true);
-            generateWeatherAiAdvice(category);
+      // Check ref first to prevent sending duplicated alerts / multiple warning bars in toast center
+      if (lastToastedWeatherAlertKeyRef.current !== alertKey) {
+        lastToastedWeatherAlertKeyRef.current = alertKey;
+
+        toast.error(`⚠️ Weather Alert: ${title}`, {
+          id: `weather-alert-${alertKey}`,
+          description: message,
+          duration: 10000,
+          action: {
+            label: "Analyze",
+            onClick: () => {
+              setShowWeatherModal(true);
+              generateWeatherAiAdvice(category);
+            }
           }
-        }
-      });
+        });
+      }
     } else {
       setWeatherAlert(null);
+      lastToastedWeatherAlertKeyRef.current = null;
     }
   }, [generateWeatherAiAdvice]);
 
