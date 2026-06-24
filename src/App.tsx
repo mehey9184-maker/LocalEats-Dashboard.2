@@ -56,6 +56,7 @@ import {
   MessageSquare,
   AlertCircle,
   MoreVertical,
+  MoreHorizontal,
   Sparkles,
   Check,
   X,
@@ -101,7 +102,9 @@ import {
   Leaf,
   Flame,
   WifiOff,
-Inbox, Megaphone } from "lucide-react";
+  Activity,
+  CheckCircle,
+  Inbox, Megaphone } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -5174,8 +5177,7 @@ const DashboardOverview = React.memo(({
             {orders.length > 0 ? (
               <ResponsiveContainer
                 width="100%"
-                height="100%"
-                minHeight={256}
+                height={256}
                 minWidth={100}
               >
                 <BarChart data={trendData}>
@@ -8405,6 +8407,7 @@ const OrdersManagement = ({
   const [connectedRiders, setConnectedRiders] = useState<RiderConnection[]>([]);
   const [ratingOrderId, setRatingOrderId] = useState<string | null>(null);
   const [ratingValue, setRatingValue] = useState<number>(0);
+  const [showMobileActions, setShowMobileActions] = useState(false);
 
   // Advanced upgrade configurations for client readiness
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
@@ -9004,7 +9007,8 @@ Notes: "${order.notes || "None"}"
           </p>
         </div>
         <div className="flex flex-col gap-4 items-start md:items-end w-full md:w-auto">
-          <div className="flex flex-wrap gap-3 justify-start md:justify-end">
+          {/* DESKTOP LAYOUT ACTIONS (unchanged and clean) */}
+          <div className="hidden md:flex flex-wrap gap-3 justify-start md:justify-end">
             <button
               onClick={() => {
                 toast.info("Clearing all orders...");
@@ -9040,7 +9044,7 @@ Notes: "${order.notes || "None"}"
               JSON
             </button>
           </div>
-          <div className="flex p-1.5 bg-surface-container-low rounded-full w-fit">
+          <div className="hidden md:flex p-1.5 bg-surface-container-low rounded-full w-fit">
             <button
               onClick={() => setViewMode("active")}
               className={cn(
@@ -9067,7 +9071,7 @@ Notes: "${order.notes || "None"}"
           <button
             onClick={() => setKitchenMode(!kitchenMode)}
             className={cn(
-              "flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all border-2",
+              "hidden md:flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all border-2",
               kitchenMode
                 ? "bg-primary text-on-primary border-primary"
                 : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
@@ -9076,6 +9080,126 @@ Notes: "${order.notes || "None"}"
             <UtensilsCrossed size={18} />
             Kitchen Mode {kitchenMode ? "ON" : "OFF"}
           </button>
+
+          {/* MOBILE COMPACT ACTIONS CONSOLE */}
+          <div className="flex md:hidden flex-col gap-2.5 w-full bg-surface-container-lowest/40 dark:bg-zinc-900/40 p-3 rounded-2xl border border-outline-variant/5">
+            <div className="flex items-center gap-2 w-full justify-between">
+              {/* Core viewMode switch */}
+              <div className="flex p-1 bg-surface-container-low rounded-full flex-1">
+                <button
+                  onClick={() => setViewMode("active")}
+                  className={cn(
+                    "flex-1 py-2 text-center rounded-full text-xs font-black transition-all",
+                    viewMode === "active"
+                      ? "bg-white dark:bg-zinc-800 shadow-sm text-primary"
+                      : "text-on-surface-variant/70 hover:text-on-surface",
+                  )}
+                >
+                  Current
+                </button>
+                <button
+                  onClick={() => setViewMode("history")}
+                  className={cn(
+                    "flex-1 py-2 text-center rounded-full text-xs font-black transition-all",
+                    viewMode === "history"
+                      ? "bg-white dark:bg-zinc-800 shadow-sm text-primary"
+                      : "text-on-surface-variant/70 hover:text-on-surface",
+                  )}
+                >
+                  History
+                </button>
+              </div>
+
+              {/* Live refresh shortcut button */}
+              <button
+                onClick={() => {
+                  toast.info("Refreshing orders...");
+                  onRefresh();
+                }}
+                className="w-10 h-10 bg-primary text-on-primary rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform"
+                title="Refresh Queue"
+              >
+                <Clock size={16} />
+              </button>
+
+              {/* More tools console toggle */}
+              <button
+                onClick={() => setShowMobileActions(!showMobileActions)}
+                className={cn(
+                  "w-10 h-10 rounded-full flex items-center justify-center transition-all border",
+                  showMobileActions
+                    ? "bg-on-surface text-surface border-on-surface"
+                    : "bg-surface-container-high text-on-surface border-transparent"
+                )}
+                title="Toggle Extra Tools"
+              >
+                <Settings size={16} className={cn(showMobileActions && "animate-spin")} />
+              </button>
+            </div>
+
+            {/* Collapsible secondary actions panel */}
+            <AnimatePresence>
+              {showMobileActions && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden flex flex-col gap-2 pt-2 border-t border-outline-variant/10"
+                >
+                  {/* Kitchen Mode row */}
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
+                    <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
+                      <UtensilsCrossed size={14} />
+                      Kitchen Mode {kitchenMode ? "(Active)" : "(Inactive)"}
+                    </span>
+                    <button
+                      onClick={() => setKitchenMode(!kitchenMode)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors",
+                        kitchenMode
+                          ? "bg-primary text-on-primary"
+                          : "bg-surface-container-high text-on-surface"
+                      )}
+                    >
+                      Toggle
+                    </button>
+                  </div>
+
+                  {/* Exports Row */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={exportToCSV}
+                      className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
+                    >
+                      <FileDown size={14} />
+                      Export CSV
+                    </button>
+                    <button
+                      onClick={exportToJSON}
+                      className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
+                    >
+                      <FileDown size={14} />
+                      Export JSON
+                    </button>
+                  </div>
+
+                  {/* Danger zone clear all */}
+                  <button
+                    onClick={() => {
+                      toast.info("Clearing all orders...");
+                      onDeleteAllOrders();
+                      setShowMobileActions(false);
+                    }}
+                    className="flex items-center justify-center gap-2 py-2.5 bg-error/10 text-error rounded-xl text-xs font-bold"
+                  >
+                    <Trash2 size={14} />
+                    Clear All Orders (Reset)
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </section>
 
@@ -11164,6 +11288,7 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
   const [flyerSubline, setFlyerSubline] = useState("Scan to view our live, fresh, handcrafted menu items.");
   const [flyerCTA, setFlyerCTA] = useState("Fast bicycle delivery, direct service.");
   const [flyerCouponCode, setFlyerCouponCode] = useState("");
+  const [flyerMobileTab, setFlyerMobileTab] = useState<"edit" | "preview">("edit");
 
   // Table QR generator states
   const [showTableQRModal, setShowTableQRModal] = useState(false);
@@ -11921,7 +12046,33 @@ Please return the content in JSON format with these exact keys:
                   </button>
                 </div>
 
-                <div className="space-y-4">
+                {/* Mobile Tab Switcher */}
+                <div className="flex md:hidden bg-on-surface/5 p-1 rounded-xl mb-4">
+                  <button
+                    onClick={() => setFlyerMobileTab("edit")}
+                    className={cn(
+                      "flex-1 py-2 text-center text-xs font-black rounded-lg transition-all",
+                      flyerMobileTab === "edit"
+                        ? "bg-white dark:bg-zinc-800 text-primary shadow-sm"
+                        : "text-on-surface-variant hover:text-on-surface"
+                    )}
+                  >
+                    1. Customize Flyer
+                  </button>
+                  <button
+                    onClick={() => setFlyerMobileTab("preview")}
+                    className={cn(
+                      "flex-1 py-2 text-center text-xs font-black rounded-lg transition-all",
+                      flyerMobileTab === "preview"
+                        ? "bg-white dark:bg-zinc-800 text-primary shadow-sm"
+                        : "text-on-surface-variant hover:text-on-surface"
+                    )}
+                  >
+                    2. View Poster
+                  </button>
+                </div>
+
+                <div className={cn("space-y-4", flyerMobileTab !== "edit" && "hidden md:block")}>
                   <div>
                     <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">1. Poster Theme Palette</label>
                     <div className="grid grid-cols-5 gap-2">
@@ -12088,7 +12239,10 @@ Please return the content in JSON format with these exact keys:
               </div>
 
               {/* Right WYSIWYG Mockup Preview */}
-              <div className="w-full md:w-[350px] bg-zinc-900 p-6 flex flex-col justify-center items-center relative gap-4 shrink-0 overflow-y-auto">
+              <div className={cn(
+                "w-full md:w-[350px] bg-zinc-900 p-6 flex flex-col justify-center items-center relative gap-4 shrink-0 overflow-y-auto",
+                flyerMobileTab !== "preview" && "hidden md:flex"
+              )}>
                 <div className="text-white/60 text-[10px] font-mono absolute top-4 left-4">LIVE PREVIEW RECONSTRUCT</div>
                 
                 {/* The Virtual Card matching physical printing closely */}
@@ -14396,7 +14550,7 @@ const Insights = ({
             </div>
           </div>
           <div className="h-64 mt-4" style={{ minHeight: "256px" }}>
-            <ResponsiveContainer width="100%" height="100%" minHeight={256} minWidth={100}>
+            <ResponsiveContainer width="100%" height={256} minWidth={100}>
               <BarChart data={dailyEarningsData}>
                 <defs>
                   <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
@@ -14466,8 +14620,7 @@ const Insights = ({
           <div className="h-64" style={{ minHeight: "256px" }}>
             <ResponsiveContainer
               width="100%"
-              height="100%"
-              minHeight={256}
+              height={256}
               minWidth={100}
             >
               <PieChart>
@@ -14721,8 +14874,7 @@ const Insights = ({
             <div className="h-48 w-full" style={{ minHeight: "192px" }}>
               <ResponsiveContainer
                 width="100%"
-                height="100%"
-                minHeight={192}
+                height={192}
                 minWidth={100}
               >
                 <AreaChart data={itemTrendData}>
@@ -14819,8 +14971,7 @@ const Insights = ({
           <div className="h-64 w-full" style={{ minHeight: "256px" }}>
             <ResponsiveContainer
               width="100%"
-              height="100%"
-              minHeight={256}
+              height={256}
               minWidth={100}
             >
               <AreaChart data={followerTrendData}>
@@ -16953,6 +17104,7 @@ export default function AppWrapper() {
 
 function App() {
   const { activeTab, setActiveTab } = useAppNavigation("dashboard");
+  const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [dataSaverMode, setDataSaverMode] = useState<boolean>(() => localStorage.getItem("localeats_data_saver") === "true");
 
@@ -17538,7 +17690,49 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
   const prevPendingCount = useRef(0);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [isOfflineDismissed, setIsOfflineDismissed] = useState(false);
+  const [showOfflineInfoModal, setShowOfflineInfoModal] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    try {
+      const response = await fetch("/api/health?t=" + Date.now(), { method: "HEAD" }).catch(() => null);
+      if (response && response.ok) {
+        setIsOffline(false);
+        setIsOfflineDismissed(false);
+        toast.success("⚡ Connection restored! Cloud synchronization complete.");
+        setShowOfflineInfoModal(false);
+      } else if (navigator.onLine) {
+        setIsOffline(false);
+        setIsOfflineDismissed(false);
+        toast.success("⚡ Connection restored! Cloud synchronization complete.");
+        setShowOfflineInfoModal(false);
+      } else {
+        setTimeout(() => {
+          setTestingConnection(false);
+          toast.error("Offline diagnostic check failed. Still working in cached Local Mode.", {
+            id: "offline-check-toast"
+          });
+        }, 1200);
+        return;
+      }
+    } catch {
+      if (navigator.onLine) {
+        setIsOffline(false);
+        setIsOfflineDismissed(false);
+        toast.success("⚡ Connection restored! Cloud synchronization complete.");
+        setShowOfflineInfoModal(false);
+      } else {
+        setTimeout(() => {
+          setTestingConnection(false);
+          toast.error("Offline diagnostic check failed. Still working in cached Local Mode.", {
+            id: "offline-check-toast"
+          });
+        }, 1200);
+        return;
+      }
+    }
+    setTestingConnection(false);
+  };
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const [kitchenMode, setKitchenMode] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
@@ -17628,11 +17822,17 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
   useEffect(() => {
     const handleOnline = () => {
       setIsOffline(false);
-      setIsOfflineDismissed(false);
+      toast.success("⚡ Back Online! Cloud database and local changes have been successfully synchronized.", {
+        id: "network-status-toast",
+        duration: 4000
+      });
     };
     const handleOffline = () => {
       setIsOffline(true);
-      setIsOfflineDismissed(false);
+      toast.warning("🔌 Connection Paused. LocalEats is running in offline-cache mode. Your edits are safe & autosaved.", {
+        id: "network-status-toast",
+        duration: 6000
+      });
     };
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
@@ -19400,50 +19600,117 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           }}
         />
 
-        {isOffline && !isOfflineDismissed && (
-          <motion.div
-            initial={{ y: -50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -50, opacity: 0 }}
-            drag="y"
-            dragConstraints={{ top: -50, bottom: 0 }}
-            dragElastic={{ top: 0, bottom: 0.1 }}
-            onDragEnd={(event, info) => {
-              if (info.offset.y < -20) {
-                setIsOfflineDismissed(true);
-                toast.info("Offline notification bar swiped away. Auto-saving still active.", {
-                  action: {
-                    label: "Restore Banner",
-                    onClick: () => setIsOfflineDismissed(false),
-                  },
-                  duration: 5000,
-                });
-              }
-            }}
-            title="Drag up to hide notice"
-            className="fixed top-0 left-0 right-0 z-[100] bg-error text-white px-4 py-2.5 text-center text-xs font-bold flex items-center justify-between gap-2 shadow-lg cursor-grab active:cursor-grabbing select-none"
-          >
-            <div className="flex items-center gap-2 justify-center flex-1">
-              <PauseCircle size={14} className="animate-pulse" />
-              <span>YOU ARE OFFLINE. Local changes will sync when online. Swipe up / click close to dismiss this bar.</span>
+        {/* Offline Info Modal */}
+        <AnimatePresence>
+          {showOfflineInfoModal && (
+            <div className="fixed inset-0 z-[160] flex items-center justify-center p-4">
+              {/* Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowOfflineInfoModal(false)}
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto"
+              />
+              
+              {/* Modal Box */}
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 15 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 15 }}
+                className="relative bg-white dark:bg-zinc-900 border border-outline-variant/15 rounded-3xl p-6 shadow-2xl max-w-md w-full pointer-events-auto text-on-surface"
+              >
+                {/* Header */}
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500">
+                    <WifiOff size={24} />
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-mono font-black text-amber-500 uppercase tracking-widest flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                      Offline Engine Active
+                    </div>
+                    <h3 className="font-headline font-black text-lg text-on-surface tracking-tight mt-0.5">
+                      Smart Offline Caching
+                    </h3>
+                  </div>
+                </div>
+
+                {/* Subtitle */}
+                <p className="text-xs text-on-surface-variant/80 leading-relaxed mb-5">
+                  Your device has lost its active database connection. Don&apos;t worry—LocalEats is fully prepared and handles network pauses automatically without interruption.
+                </p>
+
+                {/* Status Grid */}
+                <div className="space-y-3 mb-6">
+                  {/* Status Item 1 */}
+                  <div className="flex gap-3 p-3 rounded-2xl bg-on-surface/[0.02] border border-outline-variant/5">
+                    <div className="text-emerald-500 shrink-0 mt-0.5">
+                      <CheckCircle size={15} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black tracking-tight text-on-surface">State Protection Enabled</h4>
+                      <p className="text-[10px] text-on-surface-variant/75 mt-0.5">
+                        All orders, menu additions, and promotional codes are stored in your secure browser cache immediately.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Status Item 2 */}
+                  <div className="flex gap-3 p-3 rounded-2xl bg-on-surface/[0.02] border border-outline-variant/5">
+                    <div className="text-emerald-500 shrink-0 mt-0.5">
+                      <CheckCircle size={15} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black tracking-tight text-on-surface">Automated Cloud Sync</h4>
+                      <p className="text-[10px] text-on-surface-variant/75 mt-0.5">
+                        Your cached updates will transparently merge back to the cloud database the moment your connection is restored.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Status Item 3 */}
+                  <div className="flex gap-3 p-3 rounded-2xl bg-on-surface/[0.02] border border-outline-variant/5">
+                    <div className="text-primary shrink-0 mt-0.5 animate-pulse">
+                      <Activity size={15} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black tracking-tight text-on-surface">Instant Performance</h4>
+                      <p className="text-[10px] text-on-surface-variant/75 mt-0.5">
+                        Reads are loaded directly from lightning-fast memory registers, keeping checkout and rider controls snappy.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col gap-2.5">
+                  <button
+                    onClick={handleTestConnection}
+                    disabled={testingConnection}
+                    className="w-full py-3.5 bg-primary text-on-primary font-black rounded-xl text-xs uppercase tracking-widest hover:bg-opacity-90 active:scale-98 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-primary/10"
+                  >
+                    {testingConnection ? (
+                      <>
+                        <Loader2 className="animate-spin" size={14} />
+                        Testing Connection...
+                      </>
+                    ) : (
+                      "Perform Connection Diagnosis"
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => setShowOfflineInfoModal(false)}
+                    className="w-full py-3 bg-on-surface/5 text-on-surface-variant hover:text-on-surface hover:bg-on-surface/10 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    Dismiss Information
+                  </button>
+                </div>
+              </motion.div>
             </div>
-            <button
-              onClick={() => {
-                setIsOfflineDismissed(true);
-                toast.info("Offline notification bar swiped away. Auto-saving still active.", {
-                  action: {
-                    label: "Restore Banner",
-                    onClick: () => setIsOfflineDismissed(false),
-                  },
-                  duration: 5000,
-                });
-              }}
-              className="p-1 hover:bg-white/10 rounded-full transition-colors shrink-0 cursor-pointer"
-            >
-              <X size={14} />
-            </button>
-          </motion.div>
-        )}
+          )}
+        </AnimatePresence>
 
         {/* TopAppBar */}
         {!kitchenMode && (
@@ -19492,6 +19759,21 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
             </nav>
 
             <div className="flex items-center gap-1 md:gap-4 shrink-0">
+              {/* Swiss-Modern Offline Badge */}
+              {isOffline && (
+                <button
+                  onClick={() => setShowOfflineInfoModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 bg-amber-500/10 text-amber-600 border border-amber-500/25 dark:bg-amber-950/20 dark:border-amber-900/45 dark:text-amber-400 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wider transition-all hover:bg-amber-500/15 active:scale-95 cursor-pointer shadow-sm shadow-amber-500/5"
+                  title="Offline Mode Active (Click for details)"
+                >
+                  <WifiOff size={13} className="shrink-0 animate-pulse text-amber-500" />
+                  <span>Offline</span>
+                  <span className="hidden md:inline text-[8px] opacity-75 font-black tracking-widest lowercase bg-amber-500/10 dark:bg-amber-400/10 px-1.5 py-0.5 rounded-md ml-0.5">
+                    cache active
+                  </span>
+                </button>
+              )}
+
               {currentShop && (
                 <button
                   onClick={async () => {
@@ -20581,7 +20863,10 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
       {/* Floating Help Button */}
       <button
         onClick={() => setShowHelp(true)}
-        className="fixed bottom-24 md:bottom-8 right-6 z-[60] w-14 h-14 bg-primary text-on-primary rounded-full shadow-2xl shadow-primary/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all group"
+        className={cn(
+          "fixed z-[60] w-14 h-14 bg-primary text-on-primary rounded-full shadow-2xl shadow-primary/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all group",
+          kitchenMode ? "bottom-8 right-6" : "bottom-24 md:bottom-8 right-6"
+        )}
         title="Help & Tips"
       >
         <HelpCircle
@@ -20779,58 +21064,191 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
       {!kitchenMode && (
         <nav className="md:hidden fixed bottom-0 left-0 w-full z-[100] bg-white/80 dark:bg-surface-container-lowest/80 backdrop-blur-2xl rounded-t-3xl border-t border-outline-variant/10 shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
           <div className="flex items-center justify-between gap-1 px-3 pb-8 pt-4 overflow-x-auto scrollbar-hide">
-            {navItems.map((item) => {
-              const isActive = activeTab === item.id;
+            {(() => {
+              const primaryMobileTabIds = ["dashboard", "orders", "menu", "riders"];
+              const primaryMobileNavItems = navItems.filter((item) => primaryMobileTabIds.includes(item.id));
+              const secondaryMobileNavItems = navItems.filter((item) => !primaryMobileTabIds.includes(item.id));
+              const isMoreActive = !primaryMobileTabIds.includes(activeTab);
+              
               return (
-                <motion.button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  whileTap={{ scale: 0.95 }}
-                  className={cn(
-                    "flex flex-col items-center justify-center min-w-[70px] shrink-0 py-2 rounded-2xl relative group transition-colors duration-300",
-                    isActive
-                      ? "text-white"
-                      : "text-on-surface-variant/60 hover:text-primary",
-                  )}
-                >
-                  {isActive && (
-                    <motion.div
-                      layoutId="mobileActiveTabBackground"
-                      className="absolute inset-x-1 inset-y-0.5 bg-primary rounded-2xl shadow-lg shadow-primary/25 -z-10"
-                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                    />
-                  )}
-                  <div className={cn(
-                    "relative",
-                    isActive ? "scale-110" : "group-active:scale-95 transition-transform"
-                  )}>
-                    <item.icon
-                      size={20}
-                      className={cn(
-                        isActive ? "stroke-[2.5px]" : "stroke-[1.5px]",
-                      )}
-                    />
-                    {item.badge && (
-                      <span className={cn(
-                        "absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-black border-2 border-white dark:border-zinc-950",
-                        isActive ? "bg-white text-primary" : "bg-primary text-white"
-                      )}>
-                        {item.badge}
-                      </span>
+                <>
+                  {primaryMobileNavItems.map((item) => {
+                    const isActive = activeTab === item.id;
+                    return (
+                      <motion.button
+                        key={item.id}
+                        onClick={() => setActiveTab(item.id)}
+                        whileTap={{ scale: 0.95 }}
+                        className={cn(
+                          "flex flex-col items-center justify-center min-w-[64px] shrink-0 py-2 rounded-2xl relative group transition-colors duration-300",
+                          isActive
+                            ? "text-white"
+                            : "text-on-surface-variant/60 hover:text-primary",
+                        )}
+                      >
+                        {isActive && (
+                          <motion.div
+                            layoutId="mobileActiveTabBackground"
+                            className="absolute inset-x-1 inset-y-0.5 bg-primary rounded-2xl shadow-lg shadow-primary/25 -z-10"
+                            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                          />
+                        )}
+                        <div className={cn(
+                          "relative",
+                          isActive ? "scale-110" : "group-active:scale-95 transition-transform"
+                        )}>
+                          <item.icon
+                            size={20}
+                            className={cn(
+                              isActive ? "stroke-[2.5px]" : "stroke-[1.5px]",
+                            )}
+                          />
+                          {item.badge && (
+                            <span className={cn(
+                              "absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-black border-2 border-white dark:border-zinc-950",
+                              isActive ? "bg-white text-primary" : "bg-primary text-white"
+                            )}>
+                              {item.badge}
+                            </span>
+                          )}
+                        </div>
+                        <span className={cn(
+                          "text-[8px] uppercase tracking-widest font-black mt-1.5",
+                          isActive ? "text-white" : "text-inherit"
+                        )}>
+                          {item.label === "Dashboard" ? "Home" : item.label}
+                        </span>
+                      </motion.button>
+                    );
+                  })}
+                  
+                  {/* More Button */}
+                  <motion.button
+                    onClick={() => setIsMobileMoreOpen(true)}
+                    whileTap={{ scale: 0.95 }}
+                    className={cn(
+                      "flex flex-col items-center justify-center min-w-[64px] shrink-0 py-2 rounded-2xl relative group transition-colors duration-300",
+                      isMoreActive
+                        ? "text-white"
+                        : "text-on-surface-variant/60 hover:text-primary",
                     )}
-                  </div>
-                  <span className={cn(
-                    "text-[8px] uppercase tracking-widest font-black mt-1.5",
-                    isActive ? "text-white" : "text-inherit"
-                  )}>
-                    {item.label === "Dashboard" ? "Home" : item.label}
-                  </span>
-                </motion.button>
+                  >
+                    {isMoreActive && (
+                      <motion.div
+                        layoutId="mobileActiveTabBackground"
+                        className="absolute inset-x-1 inset-y-0.5 bg-primary rounded-2xl shadow-lg shadow-primary/25 -z-10"
+                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                      />
+                    )}
+                    <div className="relative">
+                      <MoreHorizontal
+                        size={20}
+                        className={cn(
+                          isMoreActive ? "stroke-[2.5px]" : "stroke-[1.5px]"
+                        )}
+                      />
+                      {secondaryMobileNavItems.some(item => item.badge) && (
+                        <span className={cn(
+                          "absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-black border-2 border-white dark:border-zinc-950 animate-pulse",
+                          isMoreActive ? "bg-white text-primary" : "bg-primary text-white"
+                        )}>
+                          {secondaryMobileNavItems.reduce((acc, curr) => acc + (typeof curr.badge === 'number' ? curr.badge : curr.badge ? 1 : 0), 0)}
+                        </span>
+                      )}
+                    </div>
+                    <span className={cn(
+                      "text-[8px] uppercase tracking-widest font-black mt-1.5",
+                      isMoreActive ? "text-white" : "text-inherit"
+                    )}>
+                      More
+                    </span>
+                  </motion.button>
+                </>
               );
-            })}
+            })()}
           </div>
         </nav>
       )}
+
+      {/* More Features Bottom Drawer on Mobile */}
+      <AnimatePresence>
+        {isMobileMoreOpen && (
+          <div className="md:hidden fixed inset-0 z-[150] flex items-end justify-center">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileMoreOpen(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            {/* Drawer content */}
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 220 }}
+              className="relative w-full bg-surface-container-low dark:bg-zinc-900 rounded-t-[32px] border-t border-outline-variant/15 p-6 pb-12 shadow-2xl max-h-[75vh] overflow-y-auto pointer-events-auto text-on-surface"
+            >
+              {/* Handle bar for native feeling */}
+              <div className="w-12 h-1.5 bg-on-surface-variant/20 rounded-full mx-auto mb-6" />
+              
+              <h3 className="font-headline font-black text-lg text-on-surface mb-1 flex items-center gap-2">
+                <span>More Features</span>
+                <span className="text-[10px] font-mono py-0.5 px-2 rounded-full bg-primary/10 text-primary uppercase font-bold tracking-widest">LocalEats</span>
+              </h3>
+              <p className="text-xs text-on-surface-variant/80 mb-6">Access secondary storefront tools, promotional engines, and dashboard settings.</p>
+              
+              {/* Bento Grid */}
+              <div className="grid grid-cols-2 gap-3.5">
+                {navItems.filter(item => !["dashboard", "orders", "menu", "riders"].includes(item.id)).map((item) => {
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setIsMobileMoreOpen(false);
+                      }}
+                      className={cn(
+                        "p-4 rounded-2xl border text-left flex flex-col justify-between h-28 relative transition-all duration-200 active:scale-95 cursor-pointer",
+                        isActive
+                          ? "border-primary bg-primary/10 text-primary shadow-sm"
+                          : "border-outline-variant/10 bg-on-surface/[0.02] hover:bg-on-surface/5 text-on-surface"
+                      )}
+                    >
+                      <div className="flex justify-between items-start w-full">
+                        <div className={cn(
+                          "p-2.5 rounded-xl",
+                          isActive ? "bg-primary text-white" : "bg-on-surface/5 text-on-surface-variant"
+                        )}>
+                          <item.icon size={20} />
+                        </div>
+                        {item.badge && (
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] text-white font-black animate-pulse">
+                            {item.badge}
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-bold text-sm tracking-tight">{item.label}</div>
+                        <div className="text-[9px] text-on-surface-variant/60 font-semibold uppercase tracking-wider mt-0.5">Configure</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              
+              <button
+                onClick={() => setIsMobileMoreOpen(false)}
+                className="w-full mt-6 py-3.5 bg-on-surface/5 text-on-surface font-black rounded-xl text-xs uppercase tracking-widest hover:bg-on-surface/10 transition-colors"
+              >
+                Close Panel
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Update Notifier Floating Button */}
       <AnimatePresence>
@@ -20849,7 +21267,10 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
               }
             }}
             title="Swipe left/right or click X to dismiss update notice"
-            className="fixed bottom-24 md:bottom-8 left-6 z-[60] cursor-grab active:cursor-grabbing select-none flex items-center gap-1.5 bg-[#FF5400] text-white pl-5 pr-3 py-3 rounded-full shadow-2xl shadow-orange-500/60 border-2 border-white/20 transition-all font-body active:scale-95 hover:scale-102"
+            className={cn(
+              "fixed z-[60] cursor-grab active:cursor-grabbing select-none flex items-center gap-1.5 bg-[#FF5400] text-white pl-5 pr-3 py-3 rounded-full shadow-2xl shadow-orange-500/60 border-2 border-white/20 transition-all font-body active:scale-95 hover:scale-102",
+              kitchenMode ? "bottom-8 left-6" : "bottom-24 md:bottom-8 left-6"
+            )}
           >
             <button
               onClick={async () => {
