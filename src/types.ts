@@ -74,3 +74,61 @@ export interface ShopConnection {
   expires_at: string;
   created_at: string;
 }
+
+export interface MenuItem {
+  id: number;
+  shop_id: number;
+  name: string;
+  price: number;
+  image_url: string;
+  is_available: boolean;
+  created_at: string;
+  category?: string;
+  description?: string;
+  stock_quantity?: number | null;
+}
+
+export interface Order {
+  id: string;
+  shop_id: number;
+  user_id: string;
+  product_name: string;
+  product_variant?: string;
+  total_price: number;
+  price?: number; // Database field
+  lat?: number;
+  lng?: number;
+  status: OrderStatus;
+  payment_method?: string;
+  country?: string;
+  created_at: string;
+  customer_name: string;
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  notes?: string;
+  acceptance_message?: string;
+  is_returning?: boolean;
+  accepted_at?: string;
+  completed_at?: string;
+  estimated_delivery_time?: string;
+  items?: (string | { name: string; price: number; quantity: number })[];
+  coupon_code?: string;
+  discount_amount?: number;
+  delivery_fee?: number;
+  rider_id?: string;
+  restaurant_name?: string;
+  delivery_status?:
+    | "finding_rider"
+    | "accepted"
+    | "picked_up"
+    | "delivered"
+    | "cancelled";
+  order_type?: "delivery" | "collection";
+  merchant_rating?: number;
+  merchant_feedback?: string;
+  terminal_masked_card?: string;
+  terminal_sync_status?: string;
+}
+
