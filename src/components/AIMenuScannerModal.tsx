@@ -518,7 +518,7 @@ Example JSON:
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div role="dialog" aria-modal="true" aria-labelledby="menu-scanner-title" className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div
         className="relative bg-surface p-6 sm:p-8 rounded-[2.5rem] shadow-[0_24px_50px_-12px_rgba(167,52,0,0.15)] border border-outline-variant/10 w-full max-w-4xl max-h-[90vh] flex flex-col justify-between overflow-hidden transform scale-100 opacity-100 transition-all duration-300"
       >

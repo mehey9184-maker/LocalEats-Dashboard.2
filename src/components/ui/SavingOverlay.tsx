@@ -17,7 +17,7 @@ export const SavingOverlay: React.FC<SavingOverlayProps> = ({
   if (!isSaving && !isSuccess) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div role="alertdialog" aria-live="assertive" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-surface-container-highest p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-6 min-w-[280px]">
         <div className="relative w-16 h-16 flex items-center justify-center">
           {isSaving && !isSuccess ? (

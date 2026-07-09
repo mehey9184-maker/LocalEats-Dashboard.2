@@ -141,6 +141,10 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import imageCompression from "browser-image-compression";
 import { LocalEatsLogo } from "./components/LocalEatsLogo";
+import { QRScanner } from "./components/QRScanner";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { LanguageSwitcher } from "./components/LanguageSwitcher";
 
 const FALLBACK_SHOPS: Shop[] = [
     {
@@ -771,6 +775,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // The official dashboard URL for LocalEats South Africa
 const DASHBOARD_URL = "https://dashboard.localeatssa.co.za";
+const APP_VERSION = "v5.4";
 
 
 /**
@@ -913,6 +918,7 @@ async function fetchWithRetry<T>(
       if (err instanceof Error) {
         lastError = { message: err.message.includes("Failed to fetch") ? "Failed to fetch" : err.message };
       } else {
+      console.log("Nudge sent");
         lastError = { message: String(err) };
       }
     }
@@ -1128,6 +1134,7 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
       if (error) {
         setError(error.message);
       } else {
+      console.log("Nudge sent");
         onSuccess();
       }
     } catch (err: unknown) {
@@ -1139,6 +1146,7 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
           'CRITICAL: You are using a Supabase SECRET key in the browser. Please update your project secrets with the public "anon" key.',
         );
       } else {
+      console.log("Nudge sent");
         setError(
           err instanceof Error ? err.message : "An unexpected error occurred.",
         );
@@ -1362,6 +1370,7 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
       } else if (data && data.user && data.session) {
         onSuccess(email);
       } else {
+      console.log("Nudge sent");
         onSuccess(email);
       }
     } catch (err: unknown) {
@@ -1653,9 +1662,11 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({
             "Email limit reached (3 per hour). Please wait an hour or contact support.",
           );
         } else {
+      console.log("Nudge sent");
           setError(error.message);
         }
       } else {
+      console.log("Nudge sent");
         setShowSuccess(true);
         setTimeout(() => {
           setShowSuccess(false);
@@ -1688,9 +1699,11 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({
             "Email limit reached (3 per hour). Please wait an hour or contact support.",
           );
         } else {
+      console.log("Nudge sent");
           setError(error.message);
         }
       } else {
+      console.log("Nudge sent");
         setTimer(59);
         setOtp(["", "", "", "", "", ""]);
         const firstInput = document.getElementById("otp-0");
@@ -2000,6 +2013,7 @@ const EditProfile: React.FC<EditProfileProps> = ({
             }));
             toast.success("Location updated successfully!");
           } else {
+      console.log("Nudge sent");
             toast.error("Could not determine address from coordinates.");
           }
         } catch {
@@ -2064,6 +2078,7 @@ const EditProfile: React.FC<EditProfileProps> = ({
 
         setFormData((prev) => ({ ...prev, avatarUrl: publicUrl }));
       } else {
+      console.log("Nudge sent");
         const {
           data: { publicUrl },
         } = supabase.storage.from("avatars").getPublicUrl(filePath);
@@ -2741,6 +2756,7 @@ const OnboardingChecklist = ({
                 } else if (task.key === "hours") {
                   onEditProfile();
                 } else {
+      console.log("Nudge sent");
                   onNavigate(task.key === "shop" ? "storefront" : "menu");
                 }
               }}
@@ -2789,7 +2805,7 @@ const OnboardingChecklist = ({
       {/* Interactive Bank Payout Linking Modal */}
       <AnimatePresence>
         {showBankModal && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-[150] flex items-center justify-center p-4">
             <motion.div
               initial={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
               animate={{ backdropFilter: "blur(4px)", backgroundColor: "rgba(0,0,0,0.4)" }}
@@ -3087,9 +3103,43 @@ const CodReconciliationView = ({
       </div>
 
       <div className="space-y-4">
-        <div>
-          <h3 className="text-lg font-bold text-on-surface">Cash Deliveries Ledger</h3>
-          <p className="text-xs text-on-surface-variant">Review and manually clear physical cash-in-hand handshakes with riders.</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-on-surface">Cash Deliveries Ledger</h3>
+            <p className="text-xs text-on-surface-variant">Review and manually clear physical cash-in-hand handshakes with riders.</p>
+          </div>
+          <button
+            onClick={() => {
+              const doc = new jsPDF();
+              doc.text("Cash Deliveries Ledger - " + currentShop.shop_name, 14, 20);
+              
+              const tableColumn = ["Order ID", "Customer", "Rider Assigned", "Total Settle", "Status"];
+              const tableRows: (string | number | undefined)[][] = [];
+              
+              codOrders.forEach(order => {
+                const orderData = [
+                  order.id.slice(0, 12),
+                  order.customer_name,
+                  order.rider_id || "Demo Rider",
+                  "R " + Number(order.total_price || 0).toFixed(2),
+                  settledCodOrders.includes(order.id) ? "Cleared" : "Pending"
+                ];
+                tableRows.push(orderData);
+              });
+
+              autoTable(doc, {
+                head: [tableColumn],
+                body: tableRows,
+                startY: 30,
+              });
+
+              doc.save("cash_deliveries_ledger.pdf");
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-xl text-xs font-bold hover:bg-primary/20 transition-all shadow-sm"
+          >
+            <Download size={14} />
+            Export PDF
+          </button>
         </div>
 
         <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] overflow-hidden shadow-xs">
@@ -3282,6 +3332,7 @@ const PaymentHistory = ({
     if (sortField === field) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
+      console.log("Nudge sent");
       setSortField(field);
       setSortDirection("desc");
     }
@@ -3337,6 +3388,7 @@ const PaymentHistory = ({
         setStepTracerMessage("✨ Authorizing cloud-native credentials and database handshake...");
         await new Promise((resolve) => setTimeout(resolve, 600));
       } else {
+      console.log("Nudge sent");
         setStepTracerMessage("🔍 Querying South African prepaid hubs (FLASH & OTT gateway)...");
         await new Promise((resolve) => setTimeout(resolve, 1200));
         
@@ -4570,6 +4622,7 @@ const DashboardOverview = React.memo(({
     if (error) {
       toast.error("We couldn't create a test order right now. Please try again.");
     } else {
+      console.log("Nudge sent");
       toast.success("Test order generated! Go to Orders to accept it.");
       setShowTestCheckout(false);
       onRefresh();
@@ -4749,7 +4802,7 @@ const DashboardOverview = React.memo(({
 
       <AnimatePresence>
         {showTestCheckout && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div
               initial={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
               animate={{ backdropFilter: "blur(4px)", backgroundColor: "rgba(0,0,0,0.4)" }}
@@ -4978,7 +5031,7 @@ const DashboardOverview = React.memo(({
               <button
                 onClick={() => {
                   onRefresh();
-                  toast.success("Dashboard refreshed");
+                  console.log("Dashboard refreshed");
                 }}
                 className="p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm"
                 title="Refresh Dashboard"
@@ -5082,6 +5135,7 @@ const DashboardOverview = React.memo(({
                     );
                     onRefresh();
                   } else {
+      console.log("Nudge sent");
                     toast.error(getFriendlyErrorMessage(error));
                   }
                   setIsStatusToggling(false);
@@ -6343,6 +6397,7 @@ const MenuManagement = ({
       );
       toast.error("We couldn't update the item's availability. Please try again.");
     } else {
+      console.log("Nudge sent");
       toast.success(
         `${item.name} is now ${!item.is_available ? "available" : "unavailable"}`,
       );
@@ -6483,12 +6538,14 @@ const MenuManagement = ({
           onRefreshMenu?.();
         }, 1500);
       } else {
+      console.log("Nudge sent");
         setIsSaving(false);
         setIsSaveSuccess(false);
         console.error("Supabase Update Error:", error);
         toast.error("We couldn't update the menu item. Please try again.");
       }
     } else {
+      console.log("Nudge sent");
       const { error } = await supabase.from("menu_items").insert([
         {
           name: formData.name,
@@ -6527,6 +6584,7 @@ const MenuManagement = ({
           onRefreshMenu?.();
         }, 1500);
       } else {
+      console.log("Nudge sent");
         setIsSaving(false);
         setIsSaveSuccess(false);
         console.error("Supabase Insert Error:", error);
@@ -6631,6 +6689,7 @@ const MenuManagement = ({
 
         toast.success("AI Image generated successfully!");
       } else {
+      console.log("Nudge sent");
         throw new Error("No image data received from AI");
       }
     } catch (error) {
@@ -6671,6 +6730,7 @@ const MenuManagement = ({
           )
         );
       } else {
+      console.log("Nudge sent");
         setItems((prev) =>
           prev.map((item) =>
             selectedItems.includes(item.id)
@@ -6696,6 +6756,7 @@ const MenuManagement = ({
           if (error) throw error;
           toast.success(`Updated category for ${selectedItems.length} items`);
         } else {
+      console.log("Nudge sent");
           const { error } = await supabase
             .from("menu_items")
             .update({ is_available: action === "available" })
@@ -6719,6 +6780,7 @@ const MenuManagement = ({
     if (selectedItems.length === filteredItems.length) {
       setSelectedItems([]);
     } else {
+      console.log("Nudge sent");
       setSelectedItems(filteredItems.map((i) => i.id));
     }
   };
@@ -6736,6 +6798,7 @@ const MenuManagement = ({
       fetchMenu();
       onRefreshMenu?.();
     } else {
+      console.log("Nudge sent");
       toast.error("We couldn't delete the item. Please try again.");
     }
   };
@@ -6758,6 +6821,7 @@ const MenuManagement = ({
       toast.error("Failed to update price in database");
       fetchMenu();
     } else {
+      console.log("Nudge sent");
       toast.success("Price updated successfully");
       onRefreshMenu?.();
     }
@@ -6781,6 +6845,7 @@ const MenuManagement = ({
       toast.error("Failed to update stock in database");
       fetchMenu();
     } else {
+      console.log("Nudge sent");
       toast.success("Stock level updated successfully");
       onRefreshMenu?.();
     }
@@ -7004,6 +7069,7 @@ const MenuManagement = ({
                         if (e.target.value === "Custom") {
                           setFormData({ ...formData, category: "" });
                         } else {
+      console.log("Nudge sent");
                           setFormData({ ...formData, category: e.target.value });
                         }
                       }}
@@ -7467,6 +7533,7 @@ const MenuManagement = ({
               ) : (
                 filteredItems.map((item, i) => {
                   const { tags: itemTags, description: baseDescription } = parseDescriptionAndTags(item.description || "");
+                  const isLowStock = item.stock_quantity !== null && item.stock_quantity !== undefined && item.stock_quantity !== -1 && (item.stock_quantity || 0) < 5;
                   return (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.95 }}
@@ -7474,9 +7541,12 @@ const MenuManagement = ({
                       transition={{ delay: i * 0.05 }}
                       key={item.id}
                       className={cn(
-                        "group relative bg-surface-container-lowest rounded-2xl md:rounded-[2rem] overflow-hidden shadow-xs hover:shadow-[0_8px_32px_-8px_rgba(167,52,0,0.12)] transition-all duration-300 border border-outline-variant/10 flex flex-col justify-between",
-                        selectedItems.includes(item.id) &&
-                          "ring-2 ring-primary ring-offset-2",
+                        "group relative bg-surface-container-lowest rounded-2xl md:rounded-[2rem] overflow-hidden shadow-xs hover:shadow-[0_8px_32px_-8px_rgba(167,52,0,0.12)] transition-all duration-300 border flex flex-col justify-between",
+                        selectedItems.includes(item.id)
+                          ? "ring-2 ring-primary ring-offset-2 border-primary/25"
+                          : isLowStock
+                            ? "border-red-500/30 bg-red-500/[0.01] shadow-md shadow-red-500/[0.02]"
+                            : "border-outline-variant/10",
                       )}
                     >
                       <button
@@ -7560,6 +7630,12 @@ const MenuManagement = ({
 
                       <div className="p-4 md:p-6 flex-1 flex flex-col justify-between space-y-3">
                         <div>
+                          {isLowStock && (
+                            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 dark:text-red-400 bg-red-500/10 px-2.5 py-1 rounded-xl w-fit mb-2 border border-red-500/20 shadow-xs">
+                              <AlertTriangle size={12} />
+                              <span>Low Stock Warning</span>
+                            </div>
+                          )}
                           <div className="flex items-center justify-between gap-2 mb-1.5">
                             <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">
                               {item.category || "General"}
@@ -7638,6 +7714,7 @@ const MenuManagement = ({
                                   if (!(item.stock_quantity === null || item.stock_quantity === undefined || item.stock_quantity === -1)) {
                                     setEditingStockId(item.id);
                                   } else {
+      console.log("Nudge sent");
                                     toast.info("Stock is set to Unlimited. Edit item to set a specific limit.");
                                   }
                                 }}
@@ -7658,6 +7735,21 @@ const MenuManagement = ({
                           </div>
 
                           <div className="flex items-center gap-1.5">
+                            {isLowStock && (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const currentStock = item.stock_quantity || 0;
+                                  const newStock = currentStock + 10;
+                                  await handleQuickStockUpdate(item.id, String(newStock));
+                                }}
+                                className="flex items-center gap-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 px-2.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border border-red-500/20 shadow-xs cursor-pointer hover:scale-[1.02] active:scale-95"
+                                title="Instantly add +10 items to stock"
+                              >
+                                <Plus size={12} />
+                                <span>+10 Stock</span>
+                              </button>
+                            )}
                             <button
                               onClick={() => toggleAvailability(item)}
                               className={cn(
@@ -7795,6 +7887,7 @@ const ShopProfile = ({
             }));
             toast.success("Location updated successfully!");
           } else {
+      console.log("Nudge sent");
             toast.error("Could not determine address from coordinates.");
           }
         } catch {
@@ -8879,6 +8972,7 @@ const OrdersManagement = ({
     if(error){
        toast.error("Failed to rate rider");
     } else {
+      console.log("Nudge sent");
        toast.success("Rider rated successfully!");
        onRefresh();
        
@@ -9248,6 +9342,25 @@ Notes: "${order.notes || "None"}"
 
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+  const [expandedNotesOrderIds, setExpandedNotesOrderIds] = useState<Record<string, boolean>>({});
+  const [kitchenNotes, setKitchenNotes] = useState<Record<string, string>>(() => {
+    try {
+      const saved = localStorage.getItem("le_kitchen_notes");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("le_kitchen_notes", JSON.stringify(kitchenNotes));
+  }, [kitchenNotes]);
+
+  const getPastDateStr = (daysAgo: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    return d.toISOString().split("T")[0];
+  };
 
   const [recentlyChangedOrders, setRecentlyChangedOrders] = useState<
     Record<string, boolean>
@@ -9415,6 +9528,7 @@ Notes: "${order.notes || "None"}"
     if (sortField === field) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
+      console.log("Nudge sent");
       setSortField(field);
       setSortDirection("desc");
     }
@@ -9546,7 +9660,7 @@ Notes: "${order.notes || "None"}"
           <div className="hidden md:flex flex-wrap gap-3 justify-start md:justify-end">
             <button
               onClick={() => {
-                toast.info("Clearing all orders...");
+                console.log("Clearing all orders...");
                 onDeleteAllOrders();
               }}
               className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-error/10 text-error rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-error/20 transition-all cursor-pointer relative z-20"
@@ -9556,7 +9670,7 @@ Notes: "${order.notes || "None"}"
             </button>
             <button
               onClick={() => {
-                toast.info("Refreshing orders...");
+                console.log("Refreshing orders...");
                 onRefresh();
               }}
               className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-primary text-on-primary rounded-full text-xs md:text-sm font-bold shadow-sm hover:scale-105 transition-all cursor-pointer relative z-20"
@@ -9678,7 +9792,7 @@ Notes: "${order.notes || "None"}"
               {/* Live refresh shortcut button */}
               <button
                 onClick={() => {
-                  toast.info("Refreshing orders...");
+                  console.log("Refreshing orders...");
                   onRefresh();
                 }}
                 className="w-10 h-10 bg-primary text-on-primary rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform"
@@ -9768,7 +9882,7 @@ Notes: "${order.notes || "None"}"
                   {/* Danger zone clear all */}
                   <button
                     onClick={() => {
-                      toast.info("Clearing all orders...");
+                      console.log("Clearing all orders...");
                       onDeleteAllOrders();
                       setShowMobileActions(false);
                     }}
@@ -9838,6 +9952,72 @@ Notes: "${order.notes || "None"}"
                 )}
               </div>
             </div>
+
+            {viewMode === "history" && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="w-full bg-surface-container-low p-5 rounded-2xl border border-outline-variant/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-2 animate-in fade-in slide-in-from-top-2 duration-300"
+              >
+                <div className="flex items-center gap-2 text-on-surface">
+                  <Calendar size={18} className="text-primary shrink-0" />
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Filter by Date Range</h4>
+                    <p className="text-[10px] text-on-surface-variant font-semibold">Analyze and filter historic orders</p>
+                  </div>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { label: "All Time", start: "", end: "" },
+                    { label: "Today", start: new Date().toISOString().split("T")[0], end: new Date().toISOString().split("T")[0] },
+                    { label: "Yesterday", start: getPastDateStr(1), end: getPastDateStr(1) },
+                    { label: "7 Days", start: getPastDateStr(7), end: new Date().toISOString().split("T")[0] },
+                    { label: "30 Days", start: getPastDateStr(30), end: new Date().toISOString().split("T")[0] },
+                  ].map((preset) => {
+                    const isSelected = startDate === preset.start && endDate === preset.end;
+                    return (
+                      <button
+                        key={preset.label}
+                        onClick={() => {
+                          setStartDate(preset.start);
+                          setEndDate(preset.end);
+                        }}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer hover:scale-[1.02] active:scale-95",
+                          isSelected 
+                            ? "bg-primary text-on-primary shadow-xs" 
+                            : "bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant"
+                        )}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant/75">From:</span>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="bg-surface-container-highest/60 text-on-surface px-2.5 py-1.5 rounded-xl border border-outline-variant/10 focus:outline-none focus:ring-1 focus:ring-primary text-[11px] font-bold text-on-surface"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant/75">To:</span>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="bg-surface-container-highest/60 text-on-surface px-2.5 py-1.5 rounded-xl border border-outline-variant/10 focus:outline-none focus:ring-1 focus:ring-primary text-[11px] font-bold text-on-surface"
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
 
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-headline text-xl font-bold flex items-center gap-2">
@@ -10046,6 +10226,7 @@ Notes: "${order.notes || "None"}"
                                 if (e.target.checked) {
                                   setSelectedPendingOrders(prev => [...prev, order.id]);
                                 } else {
+      console.log("Nudge sent");
                                   setSelectedPendingOrders(prev => prev.filter(id => id !== order.id));
                                 }
                               }}
@@ -10575,6 +10756,7 @@ Notes: "${order.notes || "None"}"
                               if (e.target.checked) {
                                 setSelectedPendingOrders(prev => [...prev, order.id]);
                               } else {
+      console.log("Nudge sent");
                                 setSelectedPendingOrders(prev => prev.filter(id => id !== order.id));
                               }
                             }}
@@ -10963,12 +11145,58 @@ Notes: "${order.notes || "None"}"
                             )}
                             {order.notes && (
                               <div className="space-y-1 sm:col-span-2">
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                                  Order Notes
-                                </span>
-                                <div className="p-3 bg-surface-container-low rounded-lg text-sm text-on-surface-variant italic">
-                                  "{order.notes}"
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                                    Customer Order Notes
+                                  </span>
+                                  <button
+                                    onClick={() => {
+                                      setExpandedNotesOrderIds(prev => ({
+                                        ...prev,
+                                        [order.id]: !prev[order.id]
+                                      }));
+                                    }}
+                                    className="flex items-center gap-1 text-[10px] text-primary hover:underline font-bold uppercase cursor-pointer"
+                                  >
+                                    {expandedNotesOrderIds[order.id] ? (
+                                      <>
+                                        <EyeOff size={12} />
+                                        <span>Hide</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Eye size={12} />
+                                        <span>View Notes ({order.notes.length > 15 ? `${order.notes.slice(0, 12)}...` : "Show"})</span>
+                                      </>
+                                    )}
+                                  </button>
                                 </div>
+                                <AnimatePresence>
+                                  {expandedNotesOrderIds[order.id] && (
+                                    <motion.div
+                                      initial={{ height: 0, opacity: 0 }}
+                                      animate={{ height: "auto", opacity: 1 }}
+                                      exit={{ height: 0, opacity: 0 }}
+                                      className="overflow-hidden mt-1.5"
+                                    >
+                                      <div className="p-3 bg-surface-container-low rounded-lg text-sm text-on-surface-variant italic">
+                                        "{order.notes}"
+                                      </div>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            )}
+
+                            {kitchenNotes[order.id] && (
+                              <div className="space-y-1 sm:col-span-2 bg-amber-500/[0.04] border border-amber-500/25 p-3.5 rounded-xl">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                                  <UtensilsCrossed size={12} />
+                                  Internal Kitchen Instruction
+                                </span>
+                                <p className="text-xs font-semibold text-on-surface mt-1 leading-relaxed">
+                                  {kitchenNotes[order.id]}
+                                </p>
                               </div>
                             )}
 
@@ -11227,6 +11455,7 @@ Notes: "${order.notes || "None"}"
                                                             rider.rider_phone || ""
                                                           );
                                                         } else {
+      console.log("Nudge sent");
                                                           onRequestRider(
                                                             order.id,
                                                             rider.rider_id || undefined,
@@ -11266,6 +11495,7 @@ Notes: "${order.notes || "None"}"
                                           if (connectedRiders.length > 0) {
                                             setShowRiderPicker(order.id);
                                           } else {
+      console.log("Nudge sent");
                                             onRequestRider(order.id);
                                           }
                                         }}
@@ -11654,6 +11884,7 @@ Notes: "${order.notes || "None"}"
                                               setRatingOrderId(null);
                                               setRatingValue(0);
                                            } else {
+      console.log("Nudge sent");
                                               setRatingOrderId(order.id);
                                               setRatingValue(5);
                                            }
@@ -11763,6 +11994,7 @@ Notes: "${order.notes || "None"}"
                             osc.stop(ctx.currentTime + 0.5);
                             toast.success("Sound test: Speaker alerts are active!");
                           } else {
+      console.log("Nudge sent");
                             toast.info("Web Audio API not supported in this browser.");
                           }
                         } catch (err) {
@@ -11940,7 +12172,7 @@ Notes: "${order.notes || "None"}"
                   />
                 </button>
                 <button
-                  onClick={() => toast.info("Opening printer settings...")}
+                  onClick={() => console.log("Opening printer settings...")}
                   className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors"
                 >
                   <div className="flex items-center gap-3">
@@ -12000,6 +12232,7 @@ Notes: "${order.notes || "None"}"
                         if (reason !== "Other (Write custom message below)") {
                           setCustomCancelExplanation(`We are sorry, but we had to cancel your order because: ${reason.toLowerCase()}`);
                         } else {
+      console.log("Nudge sent");
                           setCustomCancelExplanation("");
                         }
                       }}
@@ -12235,6 +12468,153 @@ Notes: "${order.notes || "None"}"
             </motion.div>
           )}
         </AnimatePresence>
+
+        <AnimatePresence>
+          {acceptingOrderId && (() => {
+            const orderToAccept = orders.find(o => o.id === acceptingOrderId);
+            if (!orderToAccept) return null;
+            const items = safeGetOrderItems(orderToAccept.items);
+            
+            return (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  className="bg-surface-container-lowest dark:bg-zinc-900 rounded-[2rem] w-full max-w-xl overflow-hidden border border-outline-variant/10 shadow-2xl flex flex-col max-h-[90vh]"
+                >
+                  {/* Modal Header */}
+                  <div className="p-6 border-b border-outline-variant/10 flex justify-between items-center bg-primary/[0.02]">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                        <UtensilsCrossed size={20} className="animate-pulse" />
+                      </div>
+                      <div>
+                        <h3 className="font-headline font-black text-sm uppercase tracking-wider text-on-surface">Accept Order for Kitchen</h3>
+                        <p className="text-[10px] text-on-surface-variant font-bold uppercase mt-0.5">Order ID: #{orderToAccept.id}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setAcceptingOrderId(null);
+                        setOrderNotes("");
+                      }}
+                      className="w-10 h-10 rounded-full hover:bg-surface-container-high flex items-center justify-center transition-colors text-on-surface-variant cursor-pointer"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  
+                  {/* Modal Content */}
+                  <div className="p-6 overflow-y-auto space-y-5 flex-1 text-left">
+                    {/* Customer Details */}
+                    <div className="grid grid-cols-2 gap-4 p-4 bg-surface-container-low rounded-2xl border border-outline-variant/5">
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant/60">Customer Name</span>
+                        <p className="text-sm font-extrabold text-on-surface mt-0.5">{orderToAccept.customer_name || "Guest User"}</p>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant/60">Payment Method</span>
+                        <p className="text-sm font-extrabold text-on-surface mt-0.5 flex items-center gap-1.5">
+                          <CreditCard size={14} className="text-primary" />
+                          {orderToAccept.payment_method === "cod" ? "Cash on Arrival" : "Online Paid"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Items List */}
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/60 block mb-2 text-left">Order Items ({items.length})</span>
+                      <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                        {items.map((item, idx) => {
+                          const name = typeof item === "string" ? item : item.name;
+                          const quantity = typeof item === "string" ? 1 : item.quantity;
+                          const price = typeof item === "string" ? 0 : item.price;
+                          return (
+                            <div key={idx} className="flex justify-between items-center p-3 bg-surface-container-high/40 rounded-xl border border-outline-variant/5">
+                              <div className="flex items-center gap-2">
+                                <span className="w-5 h-5 bg-primary/10 text-primary text-[10px] font-black rounded-full flex items-center justify-center">x{quantity}</span>
+                                <span className="text-xs font-bold text-on-surface">{name}</span>
+                              </div>
+                              <span className="text-xs font-black text-on-surface-variant">R {(price * quantity).toFixed(2)}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Customer Notes */}
+                    {orderToAccept.notes && (
+                      <div className="p-3.5 bg-red-500/[0.02] border border-red-500/10 rounded-2xl text-left">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-red-600 dark:text-red-400 block mb-1">Customer-Provided Notes</span>
+                        <p className="text-xs italic text-on-surface-variant font-medium">"{orderToAccept.notes}"</p>
+                      </div>
+                    )}
+
+                    {/* Kitchen Notes (Text Area for Kitchen Staff) */}
+                    <div className="space-y-1.5 text-left">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70 flex items-center gap-1.5">
+                        <UtensilsCrossed size={12} className="text-primary" />
+                        Kitchen Instructions (Internal Staff Notes)
+                      </span>
+                      <textarea
+                        value={orderNotes}
+                        onChange={(e) => setOrderNotes(e.target.value)}
+                        className="w-full px-4 py-3 text-xs bg-surface-container-low border border-outline-variant/15 rounded-xl focus:ring-1 focus:ring-primary outline-none text-on-surface font-semibold placeholder:text-on-surface-variant/40"
+                        rows={3}
+                        placeholder="e.g. Extra sauce, no onions, pack napkins separately, rush this order..."
+                        autoFocus
+                      />
+                    </div>
+
+                    {/* Customer message */}
+                    <div className="space-y-1.5 text-left">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70">Customer Notification Receipt Message</span>
+                      <input
+                        type="text"
+                        value={customMessage}
+                        onChange={(e) => setCustomMessage(e.target.value)}
+                        className="w-full px-4 py-2.5 text-xs bg-surface-container-low border border-outline-variant/15 rounded-xl focus:ring-1 focus:ring-primary outline-none text-on-surface font-semibold placeholder:text-on-surface-variant/40"
+                        placeholder="Your order has been accepted and is being prepared with care!"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Modal Footer */}
+                  <div className="p-6 border-t border-outline-variant/10 bg-surface-container-low/50 flex gap-3">
+                    <button
+                      onClick={() => {
+                        setAcceptingOrderId(null);
+                        setOrderNotes("");
+                      }}
+                      className="flex-1 py-3 bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        // Save kitchen notes locally
+                        if (orderNotes.trim()) {
+                          setKitchenNotes(prev => ({
+                            ...prev,
+                            [orderToAccept.id]: orderNotes.trim()
+                          }));
+                        }
+                        const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
+                        onUpdateStatus(orderToAccept.id, "preparing", finalMsg);
+                        setAcceptingOrderId(null);
+                        setOrderNotes("");
+                      }}
+                      className="flex-1 py-3 bg-primary text-on-primary text-xs font-black uppercase tracking-wider rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all cursor-pointer text-center"
+                    >
+                      Accept & Start Preparing
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            );
+          })()}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -12344,6 +12724,7 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
         console.error("Error parsing campaign history", err);
       }
     } else {
+      console.log("Nudge sent");
       const defaultCampaigns: Campaign[] = [
         {
           id: "cmp_1",
@@ -12414,6 +12795,7 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
     } else if (channel === "social") {
       return `Weekend plans: sorted! 🥳 Treating ourselves to ${dishPart} from ${shopName}. ${couponPart}Local ingredients, fast bicycle delivery, direct service. Support local businesses directly! #Localeats #SupportLocal #SouthAfricaFoodies ${dish ? `#${dish.replace(/\s+/g, "")}` : ""}`;
     } else {
+      console.log("Nudge sent");
       return `Dear Valued Customer,We trust you are having a fantastic day! We wanted to reach out to you from ${shopName} to bring some delicious news to your inbox.Today, we're highlighting ${dishPart} - prepared fresh, sourced locally, and delivered hot to your doorstep by our eco-friendly local cyclist fleet!${couponPart}Why order direct?- Support independent local chefs- Guaranteed faster delivery- Direct customer service${toneSlogan}Warm regards,The team at ${shopName}`;
     }
   };
@@ -13825,7 +14207,8 @@ const Coupons = ({
     if (error) {
       toast.error("Failed to create coupon");
     } else {
-      toast.success("Coupon created successfully!");
+      console.log("Nudge sent");
+      
       setShowCreateModal(false);
       setNewCoupon({
         code: "",
@@ -13882,7 +14265,8 @@ const Coupons = ({
     if (error) {
       toast.error("Failed to update coupon details");
     } else {
-      toast.success("Coupon modified successfully!");
+      console.log("Nudge sent");
+      
       setEditingCoupon(null);
       // Refresh
       const { data } = await supabase
@@ -13904,7 +14288,7 @@ const Coupons = ({
       setCoupons((prev) =>
         prev.map((c) => (c.id === id ? { ...c, is_active: !isActive } : c)),
       );
-      toast.success(`Coupon ${!isActive ? "activated" : "paused"}`);
+      
     }
   };
 
@@ -13917,9 +14301,10 @@ const Coupons = ({
     if (error) {
       toast.error("Failed to delete coupon (it may already be associated with old order transactions). Try pausing it instead.");
     } else {
+      console.log("Nudge sent");
       setCoupons((prev) => prev.filter((c) => c.id !== id));
       setShowDeleteConfirm(null);
-      toast.success("Coupon removed permanently");
+      
     }
   };
 
@@ -14094,7 +14479,7 @@ const Coupons = ({
             onDragEnd={(event, info) => {
               if (Math.abs(info.offset.x) > 60) {
                 setCouponsAlertDismissed(true);
-                toast.info("Campaign alert swiped away.");
+                
               }
             }}
             title="Swipe left/right or click X to dismiss notice"
@@ -14125,7 +14510,7 @@ const Coupons = ({
               <button
                 onClick={() => {
                   setCouponsAlertDismissed(true);
-                  toast.info("Active campaign alert dismissed.");
+                  
                 }}
                 className="p-1.5 hover:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg transition shrink-0 cursor-pointer pointer-events-auto"
                 title="Dismiss Notice"
@@ -14648,6 +15033,7 @@ const Coupons = ({
                         saved = (baseCart * Math.min(100, discountVal)) / 100;
                         customerPays = baseCart - saved;
                       } else {
+      console.log("Nudge sent");
                         saved = discountVal;
                         customerPays = Math.max(0, baseCart - saved);
                       }
@@ -14942,7 +15328,8 @@ const Insights = ({
     if (error) {
       toast.error("Failed to save response");
     } else {
-      toast.success("Response saved!");
+      console.log("Nudge sent");
+      
       setReviews((prev) =>
         prev.map((r) => (r.id === reviewId ? { ...r, response } : r)),
       );
@@ -15119,7 +15506,7 @@ const Insights = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("Report exported successfully!");
+    
   };
 
   const topSellers = useMemo(() => {
@@ -15554,7 +15941,7 @@ const Insights = ({
                 Export CSV
               </button>
               <button
-                onClick={() => toast.info("Historical data coming soon")}
+                onClick={() => console.log("Historical data coming soon")}
                 className="px-4 py-2 text-xs font-bold rounded-full bg-primary text-on-primary"
               >
                 Snapshot
@@ -15805,7 +16192,7 @@ const Insights = ({
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-semibold">Top Sellers</h2>
             <button
-              onClick={() => toast.info("Detailed sales report coming soon")}
+              onClick={() => console.log("Detailed sales report coming soon")}
               className="text-primary text-xs font-bold underline cursor-pointer bg-transparent border-none"
             >
               View All
@@ -16398,6 +16785,7 @@ const RiderManagement = ({
   const [qrUrl, setQrUrl] = useState<string>("");
   const [pairingCodeDuration, setPairingCodeDuration] = useState<"24h" | "7d" | "30d" | "never">("24h");
   const [showInHouseModal, setShowInHouseModal] = useState(false);
+  const [showQRScanner, setShowQRScanner] = useState(false);
   const [inHouseName, setInHouseName] = useState("");
   const [inHousePhone, setInHousePhone] = useState("");
   const [inHouseVehicle, setInHouseVehicle] = useState<"Road" | "Bicycle" | "Motorbike" | "Electric">("Motorbike");
@@ -16428,10 +16816,35 @@ const RiderManagement = ({
       : localVal;
   });
 
+  const settledCodOrders = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("localeats_settled_cod_orders") || "[]") as string[];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const riderCashBalances = useMemo(() => {
+    const balances: Record<string, { total: number; name: string; count: number }> = {};
+    const unsettledCashOrders = orders.filter(
+      (o) => o.status === "completed" && o.payment_method?.toLowerCase() === "cash" && !settledCodOrders.includes(o.id)
+    );
+    unsettledCashOrders.forEach(o => {
+      const riderId = o.rider_id || "Unassigned";
+      if (!balances[riderId]) {
+        balances[riderId] = { total: 0, name: o.rider_name || riderId, count: 0 };
+      }
+      balances[riderId].total += Number(o.total_price || 0);
+      balances[riderId].count += 1;
+    });
+    return Object.entries(balances).map(([id, data]) => ({ id, ...data })).sort((a,b) => b.total - a.total);
+  }, [orders, settledCodOrders]);
+
   useEffect(() => {
     if (dbCashTrust !== undefined) {
       setCashTrustEnabled(!!dbCashTrust);
     } else {
+      console.log("Nudge sent");
       const localVal = localStorage.getItem(`localeats_cash_trust_${currentShop.id}`) === "true";
       setCashTrustEnabled(localVal);
     }
@@ -16441,6 +16854,7 @@ const RiderManagement = ({
     if (dbAllowExternal !== undefined) {
       setAllowExternalRiders(!!dbAllowExternal);
     } else {
+      console.log("Nudge sent");
       const localVal = localStorage.getItem(`localeats_allow_external_${currentShop.id}`) !== "false";
       setAllowExternalRiders(localVal);
     }
@@ -16450,6 +16864,7 @@ const RiderManagement = ({
     if (dbAutoLookForRider !== undefined) {
       setAutoLookForRider(!!dbAutoLookForRider);
     } else {
+      console.log("Nudge sent");
       const localVal = localStorage.getItem(`localeats_auto_look_${currentShop.id}`) !== "false";
       setAutoLookForRider(localVal);
     }
@@ -16473,14 +16888,17 @@ const RiderManagement = ({
             description: "Saved locally. Please run the SQL migration in Supabase to sync with Client and Rider apps.",
           });
         } else {
+      console.log("Nudge sent");
           toast.info("Deactivated locally.");
         }
       } else {
+      console.log("Nudge sent");
         if (newValue) {
           toast.success("Cash on Arrival Trust Broadcast Active on Cloud! 🚀", {
             description: "First-time customers and dispatch riders will see this live globally.",
           });
         } else {
+      console.log("Nudge sent");
           toast.success("Trust-Builder Broadcast deactivated on Cloud.");
         }
       }
@@ -16489,6 +16907,7 @@ const RiderManagement = ({
       if (newValue) {
         toast.success("Cash on Arrival Trust-Builder Broadcast Active (Local-only) 🚀");
       } else {
+      console.log("Nudge sent");
         toast.info("Deactivated locally.");
       }
     }
@@ -16511,6 +16930,7 @@ const RiderManagement = ({
           description: "Saved locally. Run table migrations to sync with Cloud Database.",
         });
       } else {
+      console.log("Nudge sent");
         toast.success(newValue ? "Independent Rider Fleet enabled on Cloud! 🚀" : "Access to Independent Rider Fleet locked on Cloud.", {
           description: newValue ? "Any on-demand delivery agent can now support your orders." : "Only drivers linked with your specific code can view or handle tasks.",
         });
@@ -16538,6 +16958,7 @@ const RiderManagement = ({
           description: "Saved locally. Run table migrations to sync with Cloud Database.",
         });
       } else {
+      console.log("Nudge sent");
         toast.success(newValue ? "Auto-Find Agent Enabled on Cloud! 📡" : "Auto-Find Agent deactivated on Cloud.", {
           description: newValue ? "System will automatically broadcast orders to regional pool if you are short on drivers." : "Orders will require manual routing.",
         });
@@ -16568,6 +16989,7 @@ const RiderManagement = ({
         }).then((url) => setQrUrl(url));
       });
     } else {
+      console.log("Nudge sent");
       setQrUrl("");
     }
   }, [activeCode]);
@@ -16732,6 +17154,7 @@ const RiderManagement = ({
     if (error) {
       toast.error(getFriendlyErrorMessage(error));
     } else {
+      console.log("Nudge sent");
       setActiveCode({ code, expires: expiresAt });
       setShowCode(true);
       void fetchConnections();
@@ -16757,6 +17180,7 @@ const RiderManagement = ({
     if (error) {
       toast.error(getFriendlyErrorMessage(error));
     } else {
+      console.log("Nudge sent");
       setInHouseName("");
       setInHousePhone("");
       setShowInHouseModal(false);
@@ -16771,7 +17195,7 @@ const RiderManagement = ({
       .delete()
       .eq("id", id);
     if (!error) {
-      toast.success("Connection removed");
+      
       void fetchConnections();
     }
   };
@@ -16794,6 +17218,13 @@ const RiderManagement = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setShowQRScanner(true)}
+            className="flex items-center gap-2 px-5 py-3 bg-zinc-900 text-white border border-zinc-800 rounded-2xl font-bold hover:bg-zinc-800 hover:scale-[1.02] active:scale-[0.98] transition-all text-sm"
+          >
+            <Camera size={18} />
+            Scan Pairing QR
+          </button>
           <button
             onClick={() => setShowInHouseModal(true)}
             className="flex items-center gap-2 px-5 py-3 bg-indigo-500/10 text-indigo-600 border border-indigo-500/20 rounded-2xl font-bold hover:bg-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all text-sm"
@@ -16988,6 +17419,51 @@ const RiderManagement = ({
         </div>
       </div>
 
+      {/* RIDER CASH BALANCES VISUALIZATION */}
+      {riderCashBalances.length > 0 && (
+        <div className="bg-surface-container-low border border-outline-variant/10 rounded-[2rem] p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-on-surface">Rider Cash-on-Hand</h3>
+            <span className="text-[10px] font-black uppercase text-on-surface-variant bg-surface-container-high px-2 py-1 rounded-lg">
+              Safety Cap: R 500
+            </span>
+          </div>
+          <div className="space-y-4">
+            {riderCashBalances.map((rb) => {
+              const limit = 500;
+              const percentage = Math.min((rb.total / limit) * 100, 100);
+              const isOverLimit = rb.total > limit;
+              const isWarning = rb.total > limit * 0.8;
+              
+              return (
+                <div key={rb.id} className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span className="text-on-surface">{rb.name}</span>
+                    <span className={cn(isOverLimit ? "text-error" : isWarning ? "text-amber-500" : "text-primary")}>
+                      R {rb.total.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="h-2 bg-surface-container-highest rounded-full overflow-hidden">
+                    <div 
+                      className={cn(
+                        "h-full rounded-full transition-all duration-500",
+                        isOverLimit ? "bg-error" : isWarning ? "bg-amber-500" : "bg-primary"
+                      )}
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
+                  {isOverLimit && (
+                    <p className="text-[9px] font-black uppercase text-error tracking-wider">
+                      ! Exceeds Cash Safety Cap - Clear Immediately
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ACTIVE MISSIONS TRACKER */}
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1">
@@ -17012,81 +17488,116 @@ const RiderManagement = ({
           <div className="grid grid-cols-1 gap-3">
             {activeMissions.map((mission) => {
               const assignedRider = connections.find(c => c.rider_id === mission.rider_id);
-
               return (
                 <div
                   key={mission.id}
-                  className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/10 flex items-center justify-between group hover:border-primary/20 transition-all"
+                  className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/10 flex flex-col gap-4 group hover:border-primary/20 transition-all"
                 >
-                  <div className="flex items-center gap-4">
-                    <div
-                      className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
-                        mission.delivery_status === "finding_rider"
-                          ? "bg-amber-100 text-amber-600 animate-pulse"
-                          : mission.delivery_status === "accepted"
-                            ? "bg-blue-100 text-blue-600"
-                            : "bg-green-100 text-green-600",
-                      )}
-                    >
-                      {mission.delivery_status === "finding_rider" ? (
-                        <Zap size={18} />
-                      ) : (
-                        <Bike size={18} />
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold text-sm text-on-surface">
-                          Order #{mission.id.toString().slice(-4)}
-                        </p>
-                        <span
-                          className={cn(
-                            "text-[10px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-full",
-                            mission.delivery_status === "finding_rider"
-                              ? "bg-amber-100 text-amber-600"
-                              : mission.delivery_status === "accepted"
-                                ? "bg-blue-100 text-blue-600"
-                                : "bg-green-600 text-white",
-                          )}
-                        >
-                          {mission.delivery_status?.replace("_", " ")}
-                        </span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div
+                        className={cn(
+                          "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+                          mission.delivery_status === "finding_rider"
+                            ? "bg-amber-100 text-amber-600 animate-pulse"
+                            : mission.delivery_status === "accepted"
+                              ? "bg-blue-100 text-blue-600"
+                              : "bg-green-100 text-green-600",
+                        )}
+                      >
+                        {mission.delivery_status === "finding_rider" ? (
+                          <Zap size={18} />
+                        ) : (
+                          <Bike size={18} />
+                        )}
                       </div>
-                      <p className="text-xs text-on-surface-variant font-medium mt-0.5 line-clamp-1">
-                        {mission.address}, {mission.city} • {assignedRider?.rider_name || "Unassigned"}
-                      </p>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-sm text-on-surface">
+                            Order #{mission.id.toString().slice(-4)}
+                          </p>
+                          <span
+                            className={cn(
+                              "text-[10px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-full",
+                              mission.delivery_status === "finding_rider"
+                                ? "bg-amber-100 text-amber-600"
+                                : mission.delivery_status === "accepted"
+                                  ? "bg-blue-100 text-blue-600"
+                                  : "bg-green-600 text-white",
+                            )}
+                          >
+                            {mission.delivery_status?.replace("_", " ")}
+                          </span>
+                        </div>
+                        <p className="text-xs text-on-surface-variant font-medium mt-0.5 line-clamp-1">
+                          {mission.address}, {mission.city} • {assignedRider?.rider_name || "Unassigned"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right hidden sm:block">
+                        <p className="text-xs font-bold text-on-surface">
+                          R {mission.total_price || mission.price}
+                        </p>
+                        <p className="text-[10px] text-on-surface-variant font-medium">
+                          ETA: {mission.estimated_delivery_time || "Pending"}
+                        </p>
+                      </div>
+                      {mission.rider_id && (
+                        <button
+                          onClick={() => setSelectedTrackId(mission.rider_id!)}
+                          className="p-2 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-lg transition-colors border border-primary/20"
+                          title="Track Real-time Position"
+                        >
+                          <MapPin size={16} />
+                        </button>
+                      )}
+                      {mission.delivery_status === "finding_rider" && (
+                        <button
+                          onClick={() => onRequestRider(mission.id)}
+                          className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                          title="Retry Dispatch"
+                        >
+                          <RefreshCw size={16} />
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4">
-                    <div className="text-right hidden sm:block">
-                      <p className="text-xs font-bold text-on-surface">
-                        R {mission.total_price || mission.price}
-                      </p>
-                      <p className="text-[10px] text-on-surface-variant font-medium">
-                        ETA: {mission.estimated_delivery_time || "Pending"}
-                      </p>
+                  {assignedRider?.current_latitude && assignedRider?.current_longitude && mission.lat && mission.lng && (
+                    <div className="h-24 w-full rounded-xl overflow-hidden border border-outline-variant/10 relative z-0">
+                      <MapContainer
+                        center={[
+                          (assignedRider.current_latitude + mission.lat) / 2,
+                          (assignedRider.current_longitude + mission.lng) / 2
+                        ]}
+                        zoom={13}
+                        className="w-full h-full"
+                        zoomControl={false}
+                        dragging={false}
+                        scrollWheelZoom={false}
+                        doubleClickZoom={false}
+                      >
+                        <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+                        <Marker
+                          position={[assignedRider.current_latitude, assignedRider.current_longitude]}
+                          icon={L.icon({
+                            iconUrl: 'https://cdn-icons-png.flaticon.com/512/3195/3195868.png',
+                            iconSize: [24, 24],
+                            iconAnchor: [12, 24],
+                          })}
+                        />
+                        <Marker
+                          position={[mission.lat, mission.lng]}
+                          icon={L.icon({
+                            iconUrl: 'https://cdn-icons-png.flaticon.com/512/2776/2776067.png',
+                            iconSize: [24, 24],
+                            iconAnchor: [12, 24],
+                          })}
+                        />
+                      </MapContainer>
                     </div>
-                    {mission.rider_id && (
-                      <button
-                        onClick={() => setSelectedTrackId(mission.rider_id!)}
-                        className="p-2 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-lg transition-colors border border-primary/20"
-                        title="Track Real-time Position"
-                      >
-                        <MapPin size={16} />
-                      </button>
-                    )}
-                    {mission.delivery_status === "finding_rider" && (
-                      <button
-                        onClick={() => onRequestRider(mission.id)}
-                        className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                        title="Retry Dispatch"
-                      >
-                        <RefreshCw size={16} />
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
               );
             })}
@@ -17648,6 +18159,31 @@ const RiderManagement = ({
          )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {showQRScanner && (
+          <QRScanner 
+            onScan={async (code) => {
+              setShowQRScanner(false);
+              const { error } = await supabase.from("rider_connections").insert({
+                shop_id: currentShop.id,
+                rider_name: "Rider " + code.substring(0, 4),
+                rider_phone: "Paired via QR",
+                connection_code: code,
+                expires_at: new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000).toISOString(),
+                status: "active",
+              });
+              if (error) {
+                toast.error("Failed to pair with rider.");
+              } else {
+                toast.success("Successfully paired with rider!");
+                void fetchConnections();
+              }
+            }} 
+            onClose={() => setShowQRScanner(false)} 
+          />
+        )}
+      </AnimatePresence>
+
       {/* IN-HOUSE DRIVER REGISTRATION MODAL */}
       <AnimatePresence>
         {showInHouseModal && (
@@ -18008,6 +18544,7 @@ const NotificationCenterSidePanel = ({
   if (pendingOrdersCount > 0) {
     alerts.push({ id: 'orders', type: 'info', icon: <Inbox size={16}/>, title: 'Active Orders', message: `You have ${pendingOrdersCount} active orders needing attention.`, time: 'Just now' });
   } else {
+      console.log("Nudge sent");
     alerts.push({ id: 'orders_empty', type: 'success', icon: <ShieldCheck size={16}/>, title: 'All Caught Up', message: 'No new orders to fulfill at the moment.', time: '1m ago' });
   }
 
@@ -18217,6 +18754,7 @@ function App() {
         if (error) {
           console.warn("Telemetry warning: updated_at column is not yet provisioned in your shops table.", error.message);
         } else {
+      console.log("Nudge sent");
           // Update local state smoothly
           setShops((prev) =>
             prev.map((s) => (s.id === currentShop.id ? { ...s, updated_at: timeNow } : s))
@@ -18311,6 +18849,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 • **Marketing & Promo:** Introduce a morning "Winter Warmer" combo: a loaded breakfast Kota paired with a warm beverage.
 • **Delivery & Riders:** Sync up with riders early in the kgotla list. Provide quick hot tea for riders checking in at the shop.`;
           } else {
+      console.log("Nudge sent");
             advice = `• **Stock Prep:** Gusty dust winds require enclosed packing space. Secure extra paper bags and keep chips covered in warm holding bins.
 • **Marketing & Promo:** Distribute a "Stay Indoors & Eat" banner on local WhatsApp status boards list.
 • **Delivery & Riders:** Strong headwind slows down riders. Warn customers of an extra 5-10m transit window defensively to maintain high ratings.`;
@@ -18415,6 +18954,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
         });
       }
     } else {
+      console.log("Nudge sent");
       setWeatherAlert(null);
       lastToastedWeatherAlertKeyRef.current = null;
     }
@@ -18430,6 +18970,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
         lat = Number(currentShop.lat);
         lng = Number(currentShop.lng);
       } else {
+      console.log("Nudge sent");
         const coords = CITY_COORDINATES[city] || CITY_COORDINATES["Soweto"];
         lat = coords.lat;
         lng = coords.lng;
@@ -18469,6 +19010,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
         } else if (isWindy) {
           category = "Windy";
         } else {
+      console.log("Nudge sent");
           category = "Sunny";
         }
 
@@ -18498,6 +19040,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
             } else if (isDayWindy) {
               dayCategory = "Windy";
             } else {
+      console.log("Nudge sent");
               dayCategory = "Sunny";
             }
 
@@ -18588,6 +19131,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           { dayOffset: 4, category: "Sunny", max: 18, min: 7, wind: 10, precip: 0, affinity: "Rib Baskets" },
         ];
       } else {
+      console.log("Nudge sent");
         // Soweto / Joburg winter
         fallbackTemp = "14°C";
         fallbackCategory = "Chilly";
@@ -18749,6 +19293,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
         toast.success("⚡ Connection restored! Cloud synchronization complete.");
         setShowOfflineInfoModal(false);
       } else {
+      console.log("Nudge sent");
         setTimeout(() => {
           setTestingConnection(false);
           toast.error("Offline diagnostic check failed. Still working in cached Local Mode.", {
@@ -18764,6 +19309,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
         toast.success("⚡ Connection restored! Cloud synchronization complete.");
         setShowOfflineInfoModal(false);
       } else {
+      console.log("Nudge sent");
         setTimeout(() => {
           setTestingConnection(false);
           toast.error("Offline diagnostic check failed. Still working in cached Local Mode.", {
@@ -18943,6 +19489,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
       document.documentElement.classList.add("dark");
       localStorage.setItem("darkMode", "true");
     } else {
+      console.log("Nudge sent");
       document.documentElement.classList.remove("dark");
       localStorage.setItem("darkMode", "false");
     }
@@ -19365,6 +19912,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           "Network error: Could not connect to Supabase. Check your internet or ad-blocker.",
         );
       } else {
+      console.log("Nudge sent");
         toast.error(getFriendlyErrorMessage(error));
       }
     } else if (data) {
@@ -19425,6 +19973,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
       setMenuItems(data);
       localStorage.setItem("localeats_cached_menu_items", JSON.stringify(data));
     } else {
+      console.log("Nudge sent");
       console.error("Fetch All Menu Items Error:", error);
       const cached = localStorage.getItem("localeats_cached_menu_items");
       if (cached) {
@@ -19433,12 +19982,14 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           if (parsed && parsed.length > 0) {
             setMenuItems(parsed);
           } else {
+      console.log("Nudge sent");
             setMenuItems(FALLBACK_MENU_ITEMS);
           }
         } catch {
           setMenuItems(FALLBACK_MENU_ITEMS);
         }
       } else {
+      console.log("Nudge sent");
         setMenuItems(FALLBACK_MENU_ITEMS);
       }
     }
@@ -19466,12 +20017,14 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
               id: "offline-shops-fallback-toast",
             });
           } else {
+      console.log("Nudge sent");
             setShops(FALLBACK_SHOPS);
           }
         } catch {
           setShops(FALLBACK_SHOPS);
         }
       } else {
+      console.log("Nudge sent");
         setShops(FALLBACK_SHOPS);
         toast.info("Displaying local restaurant guides", {
           id: "offline-shops-fallback-toast",
@@ -19563,7 +20116,8 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           console.error("Delete All Orders Error:", error);
           toast.error("We couldn't delete these orders right now. Please try again.");
         } else {
-          toast.success("All orders have been deleted.");
+      console.log("Nudge sent");
+          
           fetchOrders();
         }
       }
@@ -19766,11 +20320,8 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
     fetchOrders,
   });
 
-  const sendRiderNudge = async (riderId: string, message: string) => {
-    toast.info("Sending nudge to rider...", {
-      icon: <MessageSquare size={16} />,
-    });
 
+    const sendRiderNudge = async (riderId: string, message: string) => {
     const { error } = await supabase.rpc("nudge_rider", {
       rider_id: riderId,
       message,
@@ -19782,7 +20333,8 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
         "Failed to nudge rider. Connection issue.",
       );
     } else {
-      toast.success("Nudge sent via secure gateway!");
+      console.log("Nudge sent");
+      
     }
   };
 
@@ -19871,7 +20423,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
     setIsSaving(true);
     setIsSaveSuccess(false);
     try {
-      const { error } = await supabase.auth.updateUser({
+      const { data: updateRes, error } = await supabase.auth.updateUser({
         data: {
           full_name: data.fullName,
           phone: data.phone,
@@ -19887,6 +20439,9 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
       });
 
       if (error) throw error;
+      if (updateRes?.user) {
+        setUser(updateRes.user);
+      }
 
       // Sync to rider profile if they have one
       if (user) {
@@ -19943,7 +20498,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
       setTimeout(() => {
         setIsSaveSuccess(false);
         setIsEditingProfile(false);
-        toast.success("Profile updated successfully!");
+        
       }, 1500);
       
     } catch (error: unknown) {
@@ -20127,6 +20682,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                           if (nextVal) {
                             setCurrentWeather(currentWeather); // Toggling triggers update or we just rely on simulated/auto sync
                           } else {
+      console.log("Nudge sent");
                             toast.info("Manual simulated overrides enabled.");
                           }
                         }}
@@ -20368,7 +20924,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
         {/* Offline Info Modal */}
         <AnimatePresence>
           {showOfflineInfoModal && (
-            <div className="fixed inset-0 z-[160] flex items-center justify-center p-4">
+            <div role="dialog" aria-modal="true" className="fixed inset-0 z-[160] flex items-center justify-center p-4">
               {/* Backdrop */}
               <motion.div
                 initial={{ opacity: 0 }}
@@ -20484,7 +21040,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
             <div className="flex items-center gap-2 md:gap-3 shrink-0">
               <LocalEatsLogo width={160} height={42} />
               <span className="text-[8px] font-bold text-primary/20 mt-4">
-                v5.4
+                {APP_VERSION}
               </span>
             </div>
 
@@ -20495,6 +21051,8 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                   <motion.button
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
+                    aria-label={item.label}
+                    aria-current={isActive ? "page" : undefined}
                     whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.97 }}
                     className={cn(
@@ -20562,6 +21120,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                         `Shop is now ${newStatus ? "Open" : "Closed"}`,
                       );
                     } else {
+      console.log("Nudge sent");
                       // Rollback on error
                       setShops((prev) =>
                         prev.map((s) =>
@@ -20606,6 +21165,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                         id: "kitchen-busy-toast"
                       });
                     } else {
+      console.log("Nudge sent");
                       toast.success("Standard kitchen pacing restored.", {
                         id: "kitchen-busy-toast"
                       });
@@ -20641,6 +21201,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                       id: "datasaver-toast"
                     });
                   } else {
+      console.log("Nudge sent");
                     toast.success("High Definition Mode restored.", {
                       id: "datasaver-toast"
                     });
@@ -20860,7 +21421,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                       Settings
                     </h2>
                     <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">
-                      v2.1
+                {APP_VERSION}
                     </span>
                   </div>
                   <p className="text-sm text-on-surface-variant font-medium">
@@ -21086,7 +21647,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                                key={statusOption}
                                onClick={() => {
                                  setStoreStatus(statusOption);
-                                 toast.success(`Store status updated to ${labels[statusOption]}`);
+                                 
                                }}
                                className={cn(
                                  "px-4 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all",
@@ -21155,7 +21716,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                                 : d
                             );
                             setOperatingHours(newHours);
-                            toast.success("Monday's hours copied to all weekdays.");
+                            
                           }}
                           className="text-xs font-black uppercase text-primary hover:bg-primary/5 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
                         >
@@ -21213,7 +21774,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                       ))}
                       <div className="flex justify-end pt-2">
                         <button 
-                          onClick={() => toast.success("Operating hours saved successfully.")}
+                          onClick={() => {}}
                           className="px-4 py-2 bg-primary text-on-primary rounded-xl text-xs font-bold shadow-sm"
                         >
                           Save Hours
@@ -21319,7 +21880,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                         </div>
                         <button
                           onClick={() => {
-                            toast.success("Pickup settings updated!");
+                            
                           }}
                           className={cn(
                             "w-12 h-6 rounded-full transition-all relative shrink-0 bg-primary",
@@ -21717,7 +22278,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                                 <button
                                   onClick={() => {
                                     localStorage.setItem("localeats_billing_details", JSON.stringify(billingDetails));
-                                    toast.success("Billing details updated and saved successfully!");
+                                    
                                   }}
                                   className="w-full bg-primary/10 text-primary py-2.5 rounded-xl text-xs font-black uppercase hover:bg-primary/20 transition-colors"
                                 >
@@ -21769,7 +22330,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                                       };
                                       setBillingDetails(cleared);
                                       localStorage.setItem("localeats_billing_details", JSON.stringify(cleared));
-                                      toast.info("Payment card removed from vault.");
+                                      
                                     }}
                                     className="text-[10px] font-bold text-error/80 hover:text-error hover:bg-error/5 px-2.5 py-1.5 rounded-lg transition-all"
                                   >
@@ -22049,6 +22610,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                         if (!pushEnabled) {
                           requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
                         } else {
+      console.log("Nudge sent");
                           toast.info(
                             "To disable push notifications, please change your browser settings.",
                           );
@@ -22100,6 +22662,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
                     {settingsCategory === "account" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300 mt-8">
+                  <div className="w-full p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10"><LanguageSwitcher /></div>
                   <button
                     onClick={handleSignOut}
                     className="w-full flex items-center justify-between p-5 bg-error/5 hover:bg-error/10 rounded-2xl transition-all border border-error/10 group"
@@ -22123,7 +22686,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                 </div>
 
                 {selectedInvoice && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+                  <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/70 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-surface-container rounded-2xl max-w-md w-full overflow-hidden border border-outline-variant/10 shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
                       {/* Header */}
                       <div className="p-4 border-b border-outline-variant/10 flex items-center justify-between bg-surface-container-high">
@@ -22472,6 +23035,8 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                       <motion.button
                         key={item.id}
                         onClick={() => setActiveTab(item.id)}
+                    aria-label={item.label}
+                    aria-current={isActive ? "page" : undefined}
                         whileTap={{ scale: 0.95 }}
                         className={cn(
                           "flex flex-col items-center justify-center min-w-[64px] shrink-0 py-2 rounded-2xl relative group transition-colors duration-300",
@@ -22658,7 +23223,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
             onDragEnd={(event, info) => {
               if (Math.abs(info.offset.x) > 50) {
                 setUpdateDismissed(true);
-                toast.info("Update notification swiped away. You can refresh manually anytime.");
+                
               }
             }}
             title="Swipe left/right or click X to dismiss update notice"
@@ -22718,7 +23283,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
             <button
               onClick={() => {
                 setUpdateDismissed(true);
-                toast.info("Update notice swiped away. Refresh manually when convenient.");
+                
               }}
               className="p-1 hover:bg-white/10 rounded-full transition-colors shrink-0 cursor-pointer"
               title="Dismiss list"

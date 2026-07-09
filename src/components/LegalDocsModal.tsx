@@ -10,7 +10,7 @@ export const LegalDocsModal: React.FC<LegalDocsModalProps> = ({ isOpen, onClose 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" aria-labelledby="legal-docs-title" className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div 
         className="bg-zinc-950 border border-zinc-800 rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl relative overflow-hidden animate-in zoom-in-95 duration-200"
       >
@@ -22,7 +22,7 @@ export const LegalDocsModal: React.FC<LegalDocsModalProps> = ({ isOpen, onClose 
               <Shield size={22} className="stroke-2" />
             </div>
             <div>
-              <h2 className="text-xl font-bold font-headline text-white tracking-tight">Legal & Privacy (POPIA)</h2>
+              <h2 id="legal-docs-title" className="text-xl font-bold font-headline text-white tracking-tight">Legal & Privacy (POPIA)</h2>
               <p className="text-xs font-medium text-zinc-400 mt-0.5">South African Legal Compliance & Terms</p>
             </div>
           </div>
