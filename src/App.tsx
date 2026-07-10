@@ -14,7 +14,7 @@ import { useOrderWorkflow } from "./hooks/useOrderWorkflow";
 import { OnboardingTour } from "./components/OnboardingTour";
 import AIMenuScannerModal from "./components/AIMenuScannerModal";
 import { LegalDocsModal } from "./components/LegalDocsModal";
-import { parseAndNormalizeZAAddress, formatSAPhone, getSupportedCity } from "./utils";
+import { parseAndNormalizeZAAddress, formatSAPhone, getSupportedCity, isOrderDelivery } from "./utils";
 import { GoogleGenAI } from "@google/genai";
 import {
   LayoutDashboard,
@@ -106,7 +106,7 @@ import {
   WifiOff,
   Activity,
   CheckCircle,
-  Inbox, Megaphone, Landmark, Pizza, List, LayoutGrid } from "lucide-react";
+  Inbox, Megaphone, Landmark, Pizza, List, LayoutGrid, Camera, Filter, ShoppingBag, ChevronLeft, Database } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -1954,6 +1954,7 @@ const EditProfile: React.FC<EditProfileProps> = ({
   });
 
   const [uploading, setUploading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [showMapPinConfirm, setShowMapPinConfirm] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2035,14 +2036,10 @@ const EditProfile: React.FC<EditProfileProps> = ({
     );
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const uploadShopPhoto = async (file: File) => {
     const validation = validateImageFile(file);
     if (!validation.isValid) {
       toast.error(validation.error || "Invalid image file");
-      e.target.value = "";
       return;
     }
 
@@ -2095,6 +2092,13 @@ const EditProfile: React.FC<EditProfileProps> = ({
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await uploadShopPhoto(file);
+    e.target.value = "";
   };
 
   const [operatingHours, setOperatingHours] = useState({
@@ -2151,8 +2155,26 @@ const EditProfile: React.FC<EditProfileProps> = ({
 
       <main className="pt-24 px-6 max-w-2xl mx-auto space-y-10">
         <section className="flex flex-col items-center">
-          <div className="relative group">
-            <div className="w-32 h-32 rounded-full overflow-hidden ring-4 ring-surface-container-lowest shadow-lg bg-surface-container-low flex items-center justify-center">
+          <div
+            className={cn(
+              "relative group rounded-full p-1.5 transition-all duration-300",
+              isDragOver ? "ring-4 ring-primary ring-offset-4 dark:ring-offset-zinc-950 scale-105 bg-primary/10" : ""
+            )}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragOver(true);
+            }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={async (e) => {
+              e.preventDefault();
+              setIsDragOver(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) {
+                await uploadShopPhoto(file);
+              }
+            }}
+          >
+            <div className="w-32 h-32 rounded-full overflow-hidden ring-4 ring-surface-container-lowest shadow-lg bg-surface-container-low flex items-center justify-center relative">
               {uploading ? (
                 <RefreshCw className="animate-spin text-primary" size={32} />
               ) : formData.avatarUrl ? (
@@ -2176,6 +2198,12 @@ const EditProfile: React.FC<EditProfileProps> = ({
                   />
                 </div>
               )}
+              {isDragOver && (
+                <div className="absolute inset-0 bg-primary/80 flex flex-col items-center justify-center text-white text-[10px] font-bold text-center p-2 backdrop-blur-xs">
+                  <Upload size={20} className="mb-1 animate-bounce" />
+                  Drop to upload
+                </div>
+              )}
             </div>
             <input
               type="file"
@@ -2187,13 +2215,13 @@ const EditProfile: React.FC<EditProfileProps> = ({
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="absolute bottom-0 right-0 bg-gradient-to-br from-primary to-primary-container p-2.5 rounded-full text-on-primary shadow-lg active:scale-95 transition-transform disabled:opacity-50"
+              className="absolute bottom-1 right-1 bg-gradient-to-br from-primary to-primary-container p-2.5 rounded-full text-on-primary shadow-lg active:scale-95 transition-transform disabled:opacity-50"
             >
               <Edit2 size={16} />
             </button>
           </div>
-          <p className="mt-4 font-headline font-bold text-on-surface-variant tracking-tight">
-            Change Photo
+          <p className="mt-4 font-headline font-bold text-on-surface-variant tracking-tight text-xs flex items-center gap-1.5">
+            {isDragOver ? "Drop image now" : "Change Photo (Drag & Drop or Click)"}
           </p>
         </section>
 
@@ -2623,6 +2651,416 @@ const StatCard = React.memo(({
 
 // --- Components ---
 
+interface ConnectionsSliderProps {
+  onNavigate: (tab: string) => void;
+  setShowWeatherModal: (show: boolean) => void;
+  generateWeatherAiAdvice: (selectedWeather: "Sunny" | "Rainy" | "Chilly" | "Windy") => void;
+  currentWeather: "Sunny" | "Rainy" | "Chilly" | "Windy";
+}
+
+const ConnectionsSlider = ({
+  onNavigate,
+  setShowWeatherModal,
+  generateWeatherAiAdvice,
+  currentWeather,
+}: ConnectionsSliderProps) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [pingingDb, setPingingDb] = useState(false);
+  const [validatingGps, setValidatingGps] = useState(false);
+  const [autoAccept, setAutoAccept] = useState(() => {
+    return localStorage.getItem("localeats_auto_accept") === "true";
+  });
+
+  useEffect(() => {
+    const handleAutoAcceptChange = () => {
+      setAutoAccept(localStorage.getItem("localeats_auto_accept") === "true");
+    };
+    window.addEventListener("localeats_auto_accept_changed", handleAutoAcceptChange);
+    return () => window.removeEventListener("localeats_auto_accept_changed", handleAutoAcceptChange);
+  }, []);
+
+  const handleScroll = (direction: "left" | "right") => {
+    if (scrollRef.current) {
+      const scrollAmount = 350;
+      scrollRef.current.scrollBy({
+        left: direction === "left" ? -scrollAmount : scrollAmount,
+        behavior: "smooth"
+      });
+    }
+  };
+
+  const handlePingDatabase = () => {
+    setPingingDb(true);
+    setTimeout(() => {
+      setPingingDb(false);
+      toast.success("Your secure cloud connection is active and backed up!", {
+        description: "All menu customizations, active dispatches, and coupons are safe and synced instantly in real-time.",
+      });
+    }, 1200);
+  };
+
+  const handleValidateGps = () => {
+    setValidatingGps(true);
+    setTimeout(() => {
+      setValidatingGps(false);
+      toast.success("Google Maps dispatch system is active!", {
+        description: "Precise delivery locations are verified automatically for your riders.",
+      });
+    }, 1000);
+  };
+
+  const handleToggleAutoAccept = () => {
+    const newVal = !autoAccept;
+    setAutoAccept(newVal);
+    localStorage.setItem("localeats_auto_accept", String(newVal));
+    window.dispatchEvent(new Event("localeats_auto_accept_changed"));
+    if (newVal) {
+      toast.success("Automated Auto-Accept Enabled from Connection Hub!", {
+        description: "Incoming orders bypass manual review to save kitchen turnaround time.",
+      });
+    } else {
+      toast.info("Auto-Accept Disabled.", {
+        description: "Orders must now be manually approved from the pending list.",
+      });
+    }
+  };
+
+  const handleDemandCoach = () => {
+    setShowWeatherModal(true);
+    generateWeatherAiAdvice(currentWeather);
+    toast.success("Demand Coach playbook loaded successfully!");
+  };
+
+  return (
+    <div className="bg-surface-container-low/70 border border-outline-variant/10 rounded-[2.5rem] p-6 md:p-8 mb-8 relative overflow-hidden shadow-xs">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-1.5 font-semibold">
+            <Radio size={14} className="text-primary animate-pulse" />
+            Integrations & Connection Slider
+          </span>
+          <h2 className="text-xl md:text-2xl font-headline font-black text-on-surface tracking-tight mt-1">
+            Recommending Connections
+          </h2>
+          <p className="text-xs text-on-surface-variant font-medium mt-0.5">
+            Slide through recommended settings & connections to manage your digital kitchen optimally and unlock key advantages.
+          </p>
+        </div>
+        
+        {/* Navigation buttons */}
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <button
+            onClick={() => handleScroll("left")}
+            className="w-10 h-10 rounded-full border border-outline-variant/15 hover:bg-surface-container-high text-on-surface-variant flex items-center justify-center transition-colors cursor-pointer"
+            title="Slide left"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <button
+            onClick={() => handleScroll("right")}
+            className="w-10 h-10 rounded-full border border-outline-variant/15 hover:bg-surface-container-high text-on-surface-variant flex items-center justify-center transition-colors cursor-pointer"
+            title="Slide right"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      </div>
+
+      {/* Sliding row container */}
+      <div
+        ref={scrollRef}
+        className="flex overflow-x-auto gap-5 pb-2 snap-x snap-mandatory scrollbar-hide hide-scrollbar scroll-smooth"
+      >
+        {/* Card 1: Supabase */}
+        <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-[2rem] p-6 w-[88vw] sm:w-[330px] shrink-0 snap-center flex flex-col justify-between transition-all hover:border-primary/20 shadow-xs">
+          <div className="space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="p-3 bg-blue-500/10 text-blue-500 rounded-2xl">
+                <Database size={22} />
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
+                  ● CLOUD ACTIVE
+                </span>
+                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400">
+                  ✓ SAVED & SYNCED
+                </span>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-headline font-black text-on-surface">
+                Secure Cloud Backup
+              </h3>
+              <p className="text-[10px] text-on-surface-variant/80 font-medium leading-relaxed mt-1">
+                Real-time automatic cloud backup linking your active shop menu across all customer and driver sessions.
+              </p>
+            </div>
+            
+            <div className="space-y-2 border-t border-outline-variant/10 pt-3">
+              <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
+              <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
+                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <span className="text-emerald-500 text-xs font-bold">✓</span> Prevents loss of custom dishes & active menus
+                </li>
+                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <span className="text-emerald-500 text-xs font-bold">✓</span> Instantly syncs incoming orders and rider dispatches
+                </li>
+              </ul>
+            </div>
+          </div>
+          
+          <div className="mt-5 pt-3 border-t border-outline-variant/5">
+            <div className="bg-blue-500/[0.03] p-2 rounded-xl border border-blue-500/10 mb-3 text-[9px] font-medium text-blue-600 dark:text-blue-400">
+              💡 Keep cloud connection active to ensure instant sync across customer app.
+            </div>
+            <button
+              onClick={handlePingDatabase}
+              disabled={pingingDb}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              {pingingDb ? (
+                <>
+                  <Loader2 size={12} className="animate-spin" /> Verifying connection...
+                </>
+              ) : (
+                <>
+                  Test Cloud Connection
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Card 2: Google Maps */}
+        <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-[2rem] p-6 w-[88vw] sm:w-[330px] shrink-0 snap-center flex flex-col justify-between transition-all hover:border-primary/20 shadow-xs">
+          <div className="space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-2xl">
+                <Navigation size={22} />
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
+                  ● ACTIVE MAPS
+                </span>
+                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400">
+                  ★ MAP PLATFORM
+                </span>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-headline font-black text-on-surface">
+                Google Maps Integration
+              </h3>
+              <p className="text-[10px] text-on-surface-variant/80 font-medium leading-relaxed mt-1">
+                Converts customer delivery addresses into precise coordinates for automatic rider route mapping.
+              </p>
+            </div>
+            
+            <div className="space-y-2 border-t border-outline-variant/10 pt-3">
+              <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
+              <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
+                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <span className="text-emerald-500 text-xs font-bold">✓</span> Eliminates delivery guesswork or lost riders
+                </li>
+                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <span className="text-emerald-500 text-xs font-bold">✓</span> Enables accurate instant rider matching
+                </li>
+              </ul>
+            </div>
+          </div>
+          
+          <div className="mt-5 pt-3 border-t border-outline-variant/5">
+            <div className="bg-emerald-500/[0.03] p-2 rounded-xl border border-emerald-500/10 mb-3 text-[9px] font-medium text-emerald-600 dark:text-emerald-400">
+              💡 Active mapping ensures drivers get precise directions directly to customer doorsteps.
+            </div>
+            <button
+              onClick={handleValidateGps}
+              disabled={validatingGps}
+              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              {validatingGps ? (
+                <>
+                  <Loader2 size={12} className="animate-spin" /> Verifying maps...
+                </>
+              ) : (
+                <>
+                  Verify Map Services
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Card 3: Automated Auto-Accept */}
+        <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-[2rem] p-6 w-[88vw] sm:w-[330px] shrink-0 snap-center flex flex-col justify-between transition-all hover:border-primary/20 shadow-xs">
+          <div className="space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="p-3 bg-amber-500/10 text-amber-500 rounded-2xl">
+                <Zap size={22} className={autoAccept ? "animate-pulse" : ""} />
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <span className={cn(
+                  "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter",
+                  autoAccept ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400" : "bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-400"
+                )}>
+                  {autoAccept ? "● BYPASSED" : "● MANUAL MODE"}
+                </span>
+                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-400">
+                  ⚡ INSTANT FLOW
+                </span>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-headline font-black text-on-surface">
+                Automated Auto-Accept
+              </h3>
+              <p className="text-[10px] text-on-surface-variant/80 font-medium leading-relaxed mt-1">
+                Auto-accept simplifies your workflow by automatically approving incoming orders for faster kitchen prep.
+              </p>
+            </div>
+            
+            <div className="space-y-2 border-t border-outline-variant/10 pt-3">
+              <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
+              <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
+                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <span className="text-emerald-500 text-xs font-bold">✓</span> Saves 5+ minutes of kitchen preparation time per order
+                </li>
+                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <span className="text-emerald-500 text-xs font-bold">✓</span> Enables hands-free kitchen operations
+                </li>
+              </ul>
+            </div>
+          </div>
+          
+          <div className="mt-5 pt-3 border-t border-outline-variant/5">
+            <div className="bg-amber-500/[0.03] p-2 rounded-xl border border-amber-500/10 mb-3 text-[9px] font-medium text-amber-600 dark:text-amber-400">
+              💡 Highly recommended during busy hours to speed up customer deliveries.
+            </div>
+            <button
+              onClick={handleToggleAutoAccept}
+              className={cn(
+                "w-full py-2.5 active:scale-95 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer",
+                autoAccept 
+                  ? "bg-zinc-800 text-white hover:bg-zinc-700" 
+                  : "bg-primary text-on-primary hover:bg-primary/95 shadow-primary/25"
+              )}
+            >
+              {autoAccept ? "Disable Auto-Accept" : "Enable Auto-Accept"}
+            </button>
+          </div>
+        </div>
+
+        {/* Card 4: Local Rider Handshake */}
+        <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-[2rem] p-6 w-[88vw] sm:w-[330px] shrink-0 snap-center flex flex-col justify-between transition-all hover:border-primary/20 shadow-xs">
+          <div className="space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="p-3 bg-blue-500/10 text-blue-500 rounded-2xl">
+                <Bike size={22} />
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-cyan-100 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-400">
+                  ✓ SECURE HANDOFF
+                </span>
+                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-violet-100 text-violet-800 dark:bg-violet-950/40 dark:text-violet-400">
+                  ● 24H PAIRING
+                </span>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-headline font-black text-on-surface">
+                Local Delivery Network
+              </h3>
+              <p className="text-[10px] text-on-surface-variant/80 font-medium leading-relaxed mt-1">
+                Link your own trusted local delivery drivers to dispatch pipelines and coordinate handoffs.
+              </p>
+            </div>
+            
+            <div className="space-y-2 border-t border-outline-variant/10 pt-3">
+              <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
+              <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
+                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <span className="text-emerald-500 text-xs font-bold">✓</span> Save on expensive delivery app commission fees
+                </li>
+                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <span className="text-emerald-500 text-xs font-bold">✓</span> Match orders to nearby drivers in real-time
+                </li>
+              </ul>
+            </div>
+          </div>
+          
+          <div className="mt-5 pt-3 border-t border-outline-variant/5">
+            <div className="bg-cyan-500/[0.03] p-2 rounded-xl border border-cyan-500/10 mb-3 text-[9px] font-medium text-cyan-600 dark:text-cyan-400">
+              💡 Perfect for shops and local restaurants that employ their own delivery drivers.
+            </div>
+            <button
+              onClick={() => {
+                onNavigate("riders");
+                toast.success("Rider pairing module loaded.");
+              }}
+              className="w-full py-2.5 bg-cyan-700 hover:bg-cyan-650 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              Manage Delivery Riders
+            </button>
+          </div>
+        </div>
+
+        {/* Card 5: AI Demand Coach */}
+        <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-[2rem] p-6 w-[88vw] sm:w-[330px] shrink-0 snap-center flex flex-col justify-between transition-all hover:border-primary/20 shadow-xs">
+          <div className="space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="p-3 bg-pink-500/10 text-pink-500 rounded-2xl">
+                <Sparkles size={22} />
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-pink-100 text-pink-800 dark:bg-pink-950/40 dark:text-pink-400">
+                  ★ PREDICTIVE AI
+                </span>
+                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400">
+                  ● DYNAMIC SYNC
+                </span>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-headline font-black text-on-surface">
+                AI Sales & Weather Assistant
+              </h3>
+              <p className="text-[10px] text-on-surface-variant/80 font-medium leading-relaxed mt-1">
+                Analyzes current local weather forecasts to predict busy hours and recommend popular items.
+              </p>
+            </div>
+            
+            <div className="space-y-2 border-t border-outline-variant/10 pt-3">
+              <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
+              <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
+                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <span className="text-emerald-500 text-xs font-bold">✓</span> Reduces raw food and ingredient waste by up to 25%
+                </li>
+                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                  <span className="text-emerald-500 text-xs font-bold">✓</span> Recommends custom promotions for rainy or cold days
+                </li>
+              </ul>
+            </div>
+          </div>
+          
+          <div className="mt-5 pt-3 border-t border-outline-variant/5">
+            <div className="bg-pink-500/[0.03] p-2 rounded-xl border border-pink-500/10 mb-3 text-[9px] font-medium text-pink-600 dark:text-pink-400">
+              💡 Analyzes live local weather patterns to optimize your menu preparation.
+            </div>
+            <button
+              onClick={handleDemandCoach}
+              className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-md shadow-primary/10 cursor-pointer hover:scale-[1.02]"
+            >
+              Get Live Recommendations
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Components ---
+
 const OnboardingChecklist = ({
   shops,
   user,
@@ -3001,7 +3439,7 @@ const CodReconciliationView = ({
           <div className="flex items-center gap-2">
             <ShieldCheck className="text-primary animate-pulse" size={24} />
             <h4 className="font-headline font-black text-sm tracking-widest text-primary uppercase">
-              Rider Cash Pairing Cipher (Safe Handshake)
+              Rider Cash Safety Handover
             </h4>
           </div>
           <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
@@ -3385,7 +3823,7 @@ const PaymentHistory = ({
         setStepTracerMessage(`⚡ Routing free ${selectedPlan.name} credentials...`);
         await new Promise((resolve) => setTimeout(resolve, 800));
         
-        setStepTracerMessage("✨ Authorizing cloud-native credentials and database handshake...");
+        setStepTracerMessage("✨ Securely establishing your shop's connection and preparing your account...");
         await new Promise((resolve) => setTimeout(resolve, 600));
       } else {
       console.log("Nudge sent");
@@ -3395,7 +3833,7 @@ const PaymentHistory = ({
         setStepTracerMessage(`💳 Settling R ${selectedPlan.price.toFixed(2)} premium contract ledger...`);
         await new Promise((resolve) => setTimeout(resolve, 1200));
         
-        setStepTracerMessage("✨ Authorizing cloud-native credentials and database handshake...");
+        setStepTracerMessage("✨ Securely establishing your shop's connection and preparing your account...");
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
       
@@ -4169,7 +4607,7 @@ function getWeatherInfo(type: "Sunny" | "Rainy" | "Chilly" | "Windy") {
         bg: "bg-gradient-to-br from-blue-50 to-indigo-50/50 dark:from-blue-950/20 dark:to-indigo-950/10",
         badge: "bg-blue-600 text-white",
         desc: "Heavy winter rain, slippery main roads & misty conditions.",
-        predictedDemand: "Massive surge in home deliveries (+65%). Handshake cipher pairing recommended.",
+        predictedDemand: "Massive surge in home deliveries (+65%). Coordinating with local delivery drivers is highly recommended.",
         productAffinities: [
           { name: "Supreme Loaded Kota (Mago-style)", index: 98 },
           { name: "Spicy Chips & Hot Gravy", index: 92 },
@@ -5102,12 +5540,12 @@ const DashboardOverview = React.memo(({
               {currentShop.updated_at ? (
                 <p className="text-[10px] font-mono font-black text-emerald-500 flex items-center gap-1.5 pt-1 uppercase tracking-widest">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Heartbeat Signal: Sync OK ({new Date(currentShop.updated_at).toLocaleDateString()} {new Date(currentShop.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
+                  Cloud Sync Status: Saved ({new Date(currentShop.updated_at).toLocaleDateString()} {new Date(currentShop.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
                 </p>
               ) : (
                 <p className="text-[10px] font-mono font-black text-amber-500 flex items-center gap-1.5 pt-1 uppercase tracking-widest">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500/80 animate-pulse" />
-                  Heartbeat telemetry awaiting database update (Run SQL script)
+                  Cloud Sync Status: Local Fallback Cache Active
                 </p>
               )}
             </div>
@@ -5176,6 +5614,13 @@ const DashboardOverview = React.memo(({
         onEditProfile={onEditProfile}
         hasMenu={hasMenu}
         onLoadDemoData={onLoadDemoData}
+      />
+
+      <ConnectionsSlider
+        onNavigate={onNavigate}
+        setShowWeatherModal={setShowWeatherModal}
+        generateWeatherAiAdvice={generateWeatherAiAdvice}
+        currentWeather={currentWeather}
       />
 
       {layoutMode === "advanced" && (
@@ -6224,6 +6669,7 @@ const MenuManagement = ({
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -6404,22 +6850,29 @@ const MenuManagement = ({
     }
   };
 
+  const handleImageSelection = (file: File) => {
+    const validation = validateImageFile(file);
+    if (!validation.isValid) {
+      toast.error(validation.error || "Invalid image file");
+      return false;
+    }
+
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    return true;
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const validation = validateImageFile(file);
-      if (!validation.isValid) {
-        toast.error(validation.error || "Invalid image file");
+      const isOk = handleImageSelection(file);
+      if (!isOk) {
         e.target.value = "";
-        return;
       }
-
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
     }
   };
 
@@ -7176,17 +7629,34 @@ const MenuManagement = ({
                       <label
                         className={cn(
                           "flex-1 flex flex-col items-center justify-center h-32 border-2 border-dashed rounded-xl cursor-pointer transition-all",
-                          imageFile
-                            ? "border-primary/40 bg-primary/5"
-                            : "border-outline-variant/30 hover:border-primary/40 hover:bg-primary/5",
+                          isDragOver
+                            ? "border-primary bg-primary/15 scale-[1.02]"
+                            : imageFile
+                              ? "border-primary/40 bg-primary/5"
+                              : "border-outline-variant/30 hover:border-primary/40 hover:bg-primary/5",
                         )}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setIsDragOver(true);
+                        }}
+                        onDragLeave={() => setIsDragOver(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setIsDragOver(false);
+                          const file = e.dataTransfer.files?.[0];
+                          if (file) {
+                            handleImageSelection(file);
+                          }
+                        }}
                       >
                         <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                          <Upload className="w-8 h-8 mb-2 text-on-surface-variant/40" />
+                          <Upload className={cn("w-8 h-8 mb-2 transition-transform", isDragOver ? "text-primary scale-110 animate-bounce" : "text-on-surface-variant/40")} />
                           <p className="text-xs text-on-surface-variant/60 font-medium">
-                            {imageFile
-                              ? imageFile.name
-                              : "Click to upload image"}
+                            {isDragOver
+                              ? "Drop to upload"
+                              : imageFile
+                                ? imageFile.name
+                                : "Click or Drag & Drop image"}
                           </p>
                         </div>
                         <input
@@ -8847,6 +9317,8 @@ const OrdersManagement = ({
   onTabChange,
   sendRiderNudge,
   currentShop,
+  printingFormat: propPrintingFormat,
+  setPrintingFormat: propSetPrintingFormat,
 }: {
   orders: Order[];
   onUpdateStatus: (id: string, status: OrderStatus, message?: string, estimatedTime?: string) => Promise<void> | void;
@@ -8862,6 +9334,8 @@ const OrdersManagement = ({
   onTabChange: (tab: string) => void;
   sendRiderNudge: (riderId: string, message: string) => Promise<void>;
   currentShop: Shop | undefined;
+  printingFormat?: "80mm" | "58mm";
+  setPrintingFormat?: (fmt: "80mm" | "58mm") => void;
 }) => {
   const [viewMode, setViewMode] = useState<"active" | "history">("active");
   const [layoutMode, setLayoutMode] = useState<"list" | "kanban">("kanban");
@@ -8885,8 +9359,16 @@ const OrdersManagement = ({
 
   // Advanced upgrade configurations for client readiness
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
-  const [printingFormat, setPrintingFormat] = useState<"80mm" | "58mm">((localStorage.getItem("printingFormat") as "80mm" | "58mm") || "80mm");
-  useEffect(() => { localStorage.setItem("printingFormat", printingFormat); }, [printingFormat]);
+  const [localPrintingFormat, setLocalPrintingFormat] = useState<"80mm" | "58mm">((localStorage.getItem("printingFormat") as "80mm" | "58mm") || "80mm");
+  const printingFormat = propPrintingFormat || localPrintingFormat;
+  const setPrintingFormat = (fmt: "80mm" | "58mm") => {
+    if (propSetPrintingFormat) {
+      propSetPrintingFormat(fmt);
+    } else {
+      setLocalPrintingFormat(fmt);
+      localStorage.setItem("printingFormat", fmt);
+    }
+  };
   const [printingIncludeAddr, setPrintingIncludeAddr] = useState<boolean>(true);
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
   const [cancelReasonPreset, setCancelReasonPreset] = useState<string>("Out of ingredients / Items unavailable");
@@ -9084,7 +9566,7 @@ const OrdersManagement = ({
               <p style="margin: 2px 0; font-size: 11px;">EATS WITH LOCAL ROOTS</p>
               <p style="margin: 4px 0 2px 0;">Order ID: #LE-${order.id}</p>
               <p style="margin: 2px 0;">${new Date(order.created_at).toLocaleString()}</p>
-              <p style="margin: 2px 0; font-weight: bold; text-transform: uppercase;">Fulfillment: ${order.order_type === "collection" ? "COLLECTION" : "DELIVERY"}</p>
+              <p style="margin: 2px 0; font-weight: bold; text-transform: uppercase;">Fulfillment: ${!isOrderDelivery(order) ? "COLLECTION" : "DELIVERY"}</p>
             </div>
             <div class="items">
               ${formattedItems}
@@ -9167,7 +9649,7 @@ const OrdersManagement = ({
               <p style="margin: 2px 0; font-size: 11px;">EATS WITH LOCAL ROOTS</p>
               <p style="margin: 4px 0 2px 0;">Order ID: #LE-${order.id}</p>
               <p style="margin: 2px 0;">${new Date(order.created_at).toLocaleString()}</p>
-              <p style="margin: 2px 0; font-weight: bold; text-transform: uppercase;">Fulfillment: ${order.order_type === "collection" ? "COLLECTION" : "DELIVERY"}</p>
+              <p style="margin: 2px 0; font-weight: bold; text-transform: uppercase;">Fulfillment: ${!isOrderDelivery(order) ? "COLLECTION" : "DELIVERY"}</p>
             </div>
 
             <div class="items">
@@ -9293,7 +9775,7 @@ const OrdersManagement = ({
            LOCALEATS ORDER
 Order ID: #LE-${order.id}
 Date: ${new Date(order.created_at).toLocaleString()}
-Type: ${order.order_type === "collection" ? "COLLECTION" : "DELIVERY"}
+Type: ${!isOrderDelivery(order) ? "COLLECTION" : "DELIVERY"}
 ----------------------------------------
 ${itemsText}
 ----------------------------------------
@@ -9932,6 +10414,29 @@ Notes: "${order.notes || "None"}"
                 ))}
               </div>
 
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
+                  Status Dropdown:
+                </span>
+                <div className="relative">
+                  <select
+                    id="status-filter-select"
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value as OrderStatus | "All")}
+                    className="appearance-none bg-surface-container-low text-on-surface text-xs font-bold pl-4 pr-10 py-2 rounded-xl border border-outline-variant/20 focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer shadow-xs transition-all"
+                  >
+                    <option value="All">All Statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="preparing">Preparing</option>
+                    <option value="ready">Ready</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant">
+                    <Filter size={12} />
+                  </div>
+                </div>
+              </div>
+
               <div className="flex flex-wrap items-center gap-2 mt-2">
                 {(filterStatus !== "All" || orderTypeFilter !== "All" || startDate || endDate || searchTerm || customerSearch || phoneSearch) && (
                   <button
@@ -10264,9 +10769,9 @@ Notes: "${order.notes || "None"}"
                         <div className="mt-2 flex items-center justify-between gap-1.5 text-[10px] text-on-surface-variant">
                           <span className={cn(
                             "px-2 py-0.5 rounded-full font-bold uppercase text-[8px]",
-                            order.order_type === "pickup" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                            !isOrderDelivery(order) ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
                           )}>
-                            {order.order_type || "delivery"}
+                            {!isOrderDelivery(order) ? "collection" : "delivery"}
                           </span>
                           <span className="truncate max-w-[130px] font-medium" title={order.address}>
                             {order.address}
@@ -10361,7 +10866,7 @@ Notes: "${order.notes || "None"}"
                   <AnimatePresence mode="popLayout">
                   {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").map((order) => {
                     const items = safeGetOrderItems(order.items);
-                    const isDelivery = order.order_type === "delivery" || !order.order_type;
+                    const isDelivery = isOrderDelivery(order);
                     const needsRiderRequest = isDelivery && !order.delivery_status;
 
                     return (
@@ -11047,7 +11552,7 @@ Notes: "${order.notes || "None"}"
                                 Fulfillment
                               </span>
                               <div className="inline-flex items-center px-2 py-1 rounded bg-secondary/10 text-secondary text-xs font-black uppercase tracking-widest">
-                                {order.order_type === "collection"
+                                {!isOrderDelivery(order)
                                   ? "Customer Collection"
                                   : "Delivery"}
                               </div>
@@ -11200,8 +11705,9 @@ Notes: "${order.notes || "None"}"
                               </div>
                             )}
 
-                            <div className="space-y-4 sm:col-span-2 border-t border-outline-variant/10 pt-6 mt-2">
-                              <div className="flex items-center justify-between">
+                            {isOrderDelivery(order) && (
+                              <div className="space-y-4 sm:col-span-2 border-t border-outline-variant/10 pt-6 mt-2">
+                                <div className="flex items-center justify-between">
                                 <span className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
                                   <Zap size={14} />
                                   Delivery Ecosystem
@@ -11331,9 +11837,30 @@ Notes: "${order.notes || "None"}"
                                 </div>
                               )}
 
-                              {!order.delivery_status &&
-                                order.status !== "completed" &&
-                                order.order_type !== "collection" && (
+                              {!isOrderDelivery(order) && (
+                                <div className="space-y-4 sm:col-span-2 border-t border-outline-variant/10 pt-6 mt-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                                      <ShoppingBag size={14} />
+                                      Fulfillment Status
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-blue-100 text-blue-700">
+                                      {order.order_type === "pickup" ? "Counter Pickup" : "Collection"}
+                                    </span>
+                                  </div>
+                                  <div className="bg-surface-container p-4 rounded-xl border border-outline-variant/5">
+                                    <p className="text-xs font-semibold text-on-surface-variant">
+                                      This order has been selected for <strong className="text-primary">{order.order_type === "pickup" ? "Counter Pickup" : "Collection"}</strong>.
+                                    </p>
+                                    <p className="text-[10px] text-on-surface-variant/70 mt-1">
+                                      No rider assignment is required. The customer will pick up this order directly from your store.
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {isOrderDelivery(order) && !order.delivery_status &&
+                                order.status !== "completed" && (
                                   <div className="space-y-2">
                                     {showRiderPicker === order.id ? (
                                       <div className="bg-surface-container p-4 rounded-xl border-2 border-primary/20 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -11513,6 +12040,7 @@ Notes: "${order.notes || "None"}"
                                   </div>
                                 )}
                             </div>
+                            )}
                           </div>
                         </motion.div>
                       )}
@@ -11526,8 +12054,7 @@ Notes: "${order.notes || "None"}"
                         <div className="flex items-center gap-3">
                           {order.status === "pending" && (
                             <div className="flex-1 flex flex-col gap-2">
-                              {(order.order_type === "delivery" ||
-                                !order.order_type) &&
+                              {isOrderDelivery(order) &&
                                 !order.delivery_status && (
                                   <button
                                     onClick={(e) => {
@@ -11627,8 +12154,7 @@ Notes: "${order.notes || "None"}"
                           {(order.status === "preparing" ||
                             order.status === "accepted") && (
                             <div className="flex-1 flex flex-col gap-2">
-                              {(order.order_type === "delivery" ||
-                                !order.order_type) &&
+                              {isOrderDelivery(order) &&
                                 !order.delivery_status && (
                                   <button
                                     onClick={(e) => {
@@ -12415,8 +12941,8 @@ Notes: "${order.notes || "None"}"
                       <p className="text-[9px] text-stone-500 m-1">EATS WITH LOCAL ROOTS</p>
                       <div className="border-b border-dashed border-stone-400 my-2"></div>
                       <p className="m-1">Order #LE-{printingOrder.id}</p>
-                      <p className="text-[10px] text-stone-500 m-1 font-medium">{new Date(printingOrder.created_at).toLocaleString()}</p>
-                      <p className="m-1 uppercase font-extrabold text-[10px] bg-stone-200 rounded px-1.5 py-0.5 inline-block mt-1">Fulfillment: {printingOrder.order_type === "collection" ? "Collection" : "Delivery"}</p>
+                      <p className="m-1 text-[10px] text-stone-500 m-1 font-medium">{new Date(printingOrder.created_at).toLocaleString()}</p>
+                      <p className="m-1 uppercase font-extrabold text-[10px] bg-stone-200 rounded px-1.5 py-0.5 inline-block mt-1">Fulfillment: {!isOrderDelivery(printingOrder) ? "Collection" : "Delivery"}</p>
                     </div>
 
                     <div className="space-y-2 my-4">
@@ -12551,11 +13077,11 @@ Notes: "${order.notes || "None"}"
                       </div>
                     )}
 
-                    {/* Kitchen Notes (Text Area for Kitchen Staff) */}
+                    {/* Internal Notes (Text Area for Vendors) */}
                     <div className="space-y-1.5 text-left">
                       <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70 flex items-center gap-1.5">
                         <UtensilsCrossed size={12} className="text-primary" />
-                        Kitchen Instructions (Internal Staff Notes)
+                        Internal Notes
                       </span>
                       <textarea
                         value={orderNotes}
@@ -16885,7 +17411,7 @@ const RiderManagement = ({
         console.warn("Could not sync cash_trust_enabled to shops table. Fallback to localStorage active.", error);
         if (newValue) {
           toast.success("Cash on Arrival Trust-Builder Broadcast Active! 🚀", {
-            description: "Saved locally. Please run the SQL migration in Supabase to sync with Client and Rider apps.",
+            description: "Saved locally on this device. Connect with your delivery and customer apps to synchronize live!",
           });
         } else {
       console.log("Nudge sent");
@@ -16927,7 +17453,7 @@ const RiderManagement = ({
       if (error) {
         console.warn("Could not sync allow_external_riders to shops table. Fallback active.", error);
         toast.success(newValue ? "Granted Independent Rider Fleet access! 🚀" : "Limited storefront to In-house Drivers.", {
-          description: "Saved locally. Run table migrations to sync with Cloud Database.",
+          description: "Saved locally. Connect with your delivery and customer apps to synchronize live across devices!",
         });
       } else {
       console.log("Nudge sent");
@@ -16955,7 +17481,7 @@ const RiderManagement = ({
       if (error) {
         console.warn("Could not sync auto_look_for_rider to shops table. Fallback active.", error);
         toast.success(newValue ? "On-Demand Search Auto-Activation enabled!" : "Auto-Search deactivated.", {
-          description: "Saved locally. Run table migrations to sync with Cloud Database.",
+          description: "Saved locally. Connect with your delivery and customer apps to synchronize live across devices!",
         });
       } else {
       console.log("Nudge sent");
@@ -18661,6 +19187,7 @@ function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [lastCheckTime, setLastCheckTime] = useState<string>("");
   const currentBuildVersion = useRef(19); // Moving to v5.4 tracker
+  const topNavScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (dataSaverMode) return;
@@ -18735,7 +19262,7 @@ function App() {
         // Custom welcoming alerts if they were offline or inactive for more than 4 days
         if (currentShop.updated_at && (Date.now() - lastUpdated > fourDaysMs)) {
           toast.warning("⚠️ Welcome Back! Dashboard Inactive for 4+ Days", {
-            description: "Because you were away, customers may have flagged your storefront to prevent empty orders. We have synchronized a live heartbeat signal now!",
+            description: "We've synchronized your cloud connection status and verified that your online storefront is active and ready for orders!",
             duration: 12000,
           });
         }
@@ -19228,6 +19755,10 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
   const [storeStatus, setStoreStatus] = useState<"open" | "busy" | "closed">("open");
   const [prepTime, setPrepTime] = useState(15);
   const [autoPrint, setAutoPrint] = useState(false);
+  const [printingFormat, setPrintingFormat] = useState<"80mm" | "58mm">((localStorage.getItem("printingFormat") as "80mm" | "58mm") || "80mm");
+  useEffect(() => {
+    localStorage.setItem("printingFormat", printingFormat);
+  }, [printingFormat]);
   const [deliverySettings, setDeliverySettings] = useState({
     type: "fixed",
     baseFee: 25,
@@ -19323,6 +19854,22 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
   };
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const [kitchenMode, setKitchenMode] = useState(false);
+  const [autoAcceptOrders, setAutoAcceptOrders] = useState(() => {
+    return localStorage.getItem("localeats_auto_accept") === "true";
+  });
+  const [showAutoAcceptModal, setShowAutoAcceptModal] = useState(false);
+  
+  useEffect(() => {
+    localStorage.setItem("localeats_auto_accept", String(autoAcceptOrders));
+  }, [autoAcceptOrders]);
+
+  useEffect(() => {
+    const handleAutoAcceptChange = () => {
+      setAutoAcceptOrders(localStorage.getItem("localeats_auto_accept") === "true");
+    };
+    window.addEventListener("localeats_auto_accept_changed", handleAutoAcceptChange);
+    return () => window.removeEventListener("localeats_auto_accept_changed", handleAutoAcceptChange);
+  }, []);
   const [darkMode, setDarkMode] = useState(() => {
     return localStorage.getItem("darkMode") === "true";
   });
@@ -20320,6 +20867,23 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
     fetchOrders,
   });
 
+  useEffect(() => {
+    if (!autoAcceptOrders || orders.length === 0) return;
+    
+    // Automatically accept any "pending" orders that aren't yet handled
+    const pendingOrders = orders.filter(o => o.status === "pending");
+    if (pendingOrders.length > 0) {
+      pendingOrders.forEach(async (order) => {
+        try {
+          console.log(`Auto-accepting order ${order.id}`);
+          await updateOrderStatus(order.id, "preparing", "Auto-Accepted by system.");
+        } catch (e) {
+          console.warn("Auto-accept failed for order", order.id, e);
+        }
+      });
+    }
+  }, [orders, autoAcceptOrders, updateOrderStatus]);
+
 
     const sendRiderNudge = async (riderId: string, message: string) => {
     const { error } = await supabase.rpc("nudge_rider", {
@@ -20375,7 +20939,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
     );
   }
 
-  // Configuration check for Supabase Uplink
+  // Configuration check for live connection setup
   if (!supabaseUrl || !supabaseAnonKey) {
     return (
       <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-8 text-center bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-black">
@@ -20383,32 +20947,24 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           <AlertCircle size={40} className="text-red-500" />
         </div>
         <h1 className="text-2xl font-black text-white mb-2 tracking-tight uppercase tracking-widest font-headline">
-          Infrastructure Offline
+          Database Connection Setup Needed
         </h1>
         <p className="text-zinc-400 max-w-sm mb-8 font-medium leading-relaxed font-body text-sm">
-          The Supabase Uplink is missing credentials. Please configure{" "}
-          <span className="text-white font-mono bg-zinc-800 px-2 py-0.5 rounded">
-            VITE_SUPABASE_URL
-          </span>{" "}
-          and{" "}
-          <span className="text-white font-mono bg-zinc-800 px-2 py-0.5 rounded">
-            VITE_SUPABASE_ANON_KEY
-          </span>{" "}
-          in your project secrets.
+          Your live database connection is missing configuration details. Please verify your connection keys in your project secrets under settings.
         </p>
         <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-2xl w-full max-w-md text-left">
           <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3 ml-1">
-            Debugging Intel
+            Connection Details
           </p>
           <div className="space-y-1 font-mono text-xs">
             <div className="flex justify-between p-2 bg-black/30 rounded-lg">
-              <span className="text-zinc-600">URL Status:</span>
+              <span className="text-zinc-600">Service Endpoint:</span>
               <span className={supabaseUrl ? "text-green-500" : "text-red-500"}>
                 {supabaseUrl ? "DETECTED" : "MISSING"}
               </span>
             </div>
             <div className="flex justify-between p-2 bg-black/30 rounded-lg">
-              <span className="text-zinc-600">Key Status:</span>
+              <span className="text-zinc-600">Security Token:</span>
               <span className={supabaseAnonKey ? "text-green-500" : "text-red-500"}>
                 {supabaseAnonKey ? "DETECTED" : "MISSING"}
               </span>
@@ -20673,7 +21229,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
                     {/* Live Weather Switcher */}
                     <div className="flex items-center gap-2.5 bg-white dark:bg-zinc-800/40 p-1.5 px-3.5 rounded-2xl border border-zinc-200/50 dark:border-zinc-700/50">
-                      <span className="text-xs font-black text-zinc-600 dark:text-zinc-300">Live Telemetry Feed</span>
+                      <span className="text-xs font-black text-zinc-600 dark:text-zinc-300">Live Weather Feed</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -21033,6 +21589,22 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           )}
         </AnimatePresence>
 
+        {/* Auto-Accept Orders Confirm Modal */}
+        <ConfirmModal
+          isOpen={showAutoAcceptModal}
+          title="Enable Automated Auto-Accept?"
+          message="Enabling Auto-Accept will cause all incoming orders to instantly bypass manual review and move directly into your Preparing queue. Customer notes will not be shown before accepting, and you will not have the chance to adjust delivery estimated times. Please ensure you are ready to fulfill all incoming orders."
+          confirmText="Yes, Enable Auto-Accept"
+          cancelText="Cancel"
+          onConfirm={() => {
+            setAutoAcceptOrders(true);
+            setShowAutoAcceptModal(false);
+            toast.success("Automated Auto-Accept Enabled.");
+          }}
+          onCancel={() => setShowAutoAcceptModal(false)}
+          isDestructive={false}
+        />
+
         {/* TopAppBar */}
         {!kitchenMode && (
           <header className="fixed top-0 w-full z-50 bg-white/70 dark:bg-surface-container-lowest/70 backdrop-blur-xl shadow-sm shadow-orange-900/5">
@@ -21042,44 +21614,78 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
               <span className="text-[8px] font-bold text-primary/20 mt-4">
                 {APP_VERSION}
               </span>
+              {autoAcceptOrders && (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-primary/10 border border-primary/20 animate-fade-in hidden md:flex">
+                  <Zap size={10} className="text-primary animate-pulse" />
+                  <span className="text-[9px] font-black uppercase tracking-wider text-primary">Auto-Accept On</span>
+                </div>
+              )}
             </div>
 
-            <nav className="hidden md:flex flex-1 items-center justify-start gap-2.5 overflow-x-auto hide-scrollbar px-4 whitespace-nowrap scroll-smooth mx-2">
-              {navItems.map((item) => {
-                const isActive = activeTab === item.id;
-                return (
-                  <motion.button
-                    key={item.id}
-                    onClick={() => setActiveTab(item.id)}
-                    aria-label={item.label}
-                    aria-current={isActive ? "page" : undefined}
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
-                    className={cn(
-                      "px-5 py-3 rounded-2xl transition-all font-bold text-xs flex items-center gap-2.5 relative shrink-0 overflow-hidden cursor-pointer",
-                      isActive
-                        ? "text-primary font-black shadow-xs"
-                        : "text-on-surface/60 hover:text-on-surface hover:bg-surface-container-low/50 dark:hover:bg-surface-container-high/50",
-                    )}
-                  >
-                    {isActive && (
-                      <motion.div
-                        layoutId="activeTabBackgroundMain"
-                        className="absolute inset-0 bg-primary/10 dark:bg-primary/20 rounded-2xl -z-10"
-                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                      />
-                    )}
-                    <item.icon size={16} className={cn(isActive ? "stroke-[2.5px]" : "stroke-[1.8px]")} />
-                    {item.label}
-                    {item.badge && (
-                      <span className="relative flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white animate-pulse shrink-0 ml-0.5 font-bold">
-                        {item.badge}
-                      </span>
-                    )}
-                  </motion.button>
-                );
-              })}
-            </nav>
+
+
+            {/* Scrollable Tab Container with Arrow Buttons */}
+            <div className="hidden md:flex items-center flex-1 min-w-0 relative mx-2 group">
+              {/* Left Arrow Button */}
+              <button
+                type="button"
+                onClick={() => topNavScrollRef.current?.scrollBy({ left: -160, behavior: 'smooth' })}
+                className="absolute left-0 z-10 w-7 h-7 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
+                title="Scroll Tabs Left"
+              >
+                <ChevronLeft size={14} className="stroke-[2.5px]" />
+              </button>
+
+              <nav
+                ref={topNavScrollRef}
+                className="flex-1 flex items-center justify-start gap-2 overflow-x-auto hide-scrollbar px-7 whitespace-nowrap scroll-smooth"
+              >
+                {navItems.map((item) => {
+                  const isActive = activeTab === item.id;
+                  return (
+                    <motion.button
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id)}
+                      aria-label={item.label}
+                      aria-current={isActive ? "page" : undefined}
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.97 }}
+                      className={cn(
+                        "px-4 py-2.5 rounded-2xl transition-all font-bold text-xs flex items-center gap-2 relative shrink-0 overflow-hidden cursor-pointer",
+                        isActive
+                          ? "text-primary font-black shadow-xs"
+                          : "text-on-surface/60 hover:text-on-surface hover:bg-surface-container-low/50 dark:hover:bg-surface-container-high/50",
+                      )}
+                    >
+                      {isActive && (
+                        <motion.div
+                          layoutId="activeTabBackgroundMain"
+                          className="absolute inset-0 bg-primary/10 dark:bg-primary/20 rounded-2xl -z-10"
+                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                        />
+                      )}
+                      <item.icon size={15} className={cn(isActive ? "stroke-[2.5px]" : "stroke-[1.8px]")} />
+                      {item.label}
+                      {item.badge && (
+                        <span className="relative flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white animate-pulse shrink-0 ml-0.5 font-bold">
+                          {item.badge}
+                        </span>
+                      )}
+                    </motion.button>
+                  );
+                })}
+              </nav>
+
+              {/* Right Arrow Button */}
+              <button
+                type="button"
+                onClick={() => topNavScrollRef.current?.scrollBy({ left: 160, behavior: 'smooth' })}
+                className="absolute right-0 z-10 w-7 h-7 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
+                title="Scroll Tabs Right"
+              >
+                <ChevronRight size={14} className="stroke-[2.5px]" />
+              </button>
+            </div>
 
             <div className="flex items-center gap-1 md:gap-4 shrink-0">
               {/* Swiss-Modern Offline Badge */}
@@ -21379,6 +21985,8 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                   onTabChange={setActiveTab}
                   sendRiderNudge={sendRiderNudge}
                   currentShop={currentShop}
+                  printingFormat={printingFormat}
+                  setPrintingFormat={setPrintingFormat}
                 />
               )}
             </React.Suspense>
@@ -21983,6 +22591,37 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                            className="bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50"
                          />
                       </div>
+                    </div>
+                  
+                    {/* Auto-Accept Orders */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6 mt-6 border-t border-outline-variant/10">
+                      <div className="text-left">
+                         <p className="font-bold text-on-surface flex items-center gap-2">
+                           Automated Auto-Accept <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Fast</span>
+                         </p>
+                         <p className="text-xs text-on-surface-variant">Automatically accept incoming orders into your "Preparing" queue instantly without manual review.</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (!autoAcceptOrders) {
+                            setShowAutoAcceptModal(true);
+                          } else {
+                            setAutoAcceptOrders(false);
+                            toast.success("Auto-Accept disabled.");
+                          }
+                        }}
+                        className={cn(
+                          "w-12 h-6 rounded-full transition-all relative shrink-0",
+                          autoAcceptOrders ? "bg-primary" : "bg-outline-variant",
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
+                            autoAcceptOrders ? "left-7" : "left-1",
+                          )}
+                        />
+                      </button>
                     </div>
                   
                     {/* Auto-print Receipts */}

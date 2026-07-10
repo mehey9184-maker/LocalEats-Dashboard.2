@@ -124,6 +124,16 @@ export const safeStripOrderColumns = async (
   return cleaned;
 };
 
+export const isOrderDelivery = (order: Partial<Order>) => {
+  return (
+    (order.order_type === "delivery" || !order.order_type) &&
+    order.order_type !== "collection" &&
+    order.order_type !== "pickup" &&
+    order.delivery_fee !== 0 &&
+    order.delivery_fee !== 0.00
+  );
+};
+
 export const getOrderTransitionData = (
   order: Order,
   newStatus: OrderStatus,
@@ -139,7 +149,7 @@ export const getOrderTransitionData = (
     updateData.completed_at = new Date().toISOString();
   }
 
-  const isDelivery = order.order_type === "delivery" || !order.order_type;
+  const isDelivery = isOrderDelivery(order);
   const isTransitioningToActive = newStatus === "preparing" || newStatus === "ready" || newStatus === "accepted";
 
   if (isTransitioningToActive && isDelivery && !order.delivery_status) {
