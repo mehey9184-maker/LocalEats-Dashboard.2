@@ -61,15 +61,16 @@ export const useOrderWorkflow = ({
 
     const cleanedUpdateData = await safeStripOrderColumns(supabase, transitionData);
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("orders")
       .update(cleanedUpdateData)
-      .eq("id", id);
+      .eq("id", id)
+      .select();
 
-    if (error) {
-      console.error("Update Order Status Error:", error);
+    if (error || !data || data.length === 0) {
+      console.error("Update Order Status Error:", error || "RLS Policy blocked the update (0 rows affected)");
       setOrders(previousOrders);
-      toast.error("We couldn't update the order status. Please try again later.");
+      toast.error("We couldn't update the order status. You may not have permission.");
     } else {
       toast.success(`Order marked as ${status}`);
 
@@ -185,15 +186,16 @@ export const useOrderWorkflow = ({
     
     const cleanedRequestData = await safeStripOrderColumns(supabase, updateData);
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("orders")
       .update(cleanedRequestData)
-      .eq("id", id);
+      .eq("id", id)
+      .select();
 
-    if (error) {
-      console.error("Request Rider Error:", error);
+    if (error || !data || data.length === 0) {
+      console.error("Request Rider Error:", error || "RLS Policy blocked the update (0 rows affected)");
       setOrders(previousOrders);
-      toast.error(`We couldn't request a rider right now: ${error.message || JSON.stringify(error)}`);
+      toast.error(`We couldn't request a rider right now. You may not have permission.`);
     } else {
       if (isManualInHouse) {
         toast.success(`Order assigned instantly to ${targetRiderName}!`);
