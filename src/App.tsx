@@ -140,6 +140,52 @@ import L from "leaflet";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import imageCompression from "browser-image-compression";
+import Cropper from "react-easy-crop";
+
+const getCroppedImg = async (
+  imageSrc: string,
+  pixelCrop: { x: number; y: number; width: number; height: number }
+): Promise<Blob> => {
+  const image = new Image();
+  image.src = imageSrc;
+  image.crossOrigin = "anonymous";
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = reject;
+  });
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) {
+    throw new Error("No 2d context");
+  }
+
+  canvas.width = pixelCrop.width;
+  canvas.height = pixelCrop.height;
+
+  ctx.drawImage(
+    image,
+    pixelCrop.x,
+    pixelCrop.y,
+    pixelCrop.width,
+    pixelCrop.height,
+    0,
+    0,
+    pixelCrop.width,
+    pixelCrop.height
+  );
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Canvas is empty"));
+        return;
+      }
+      resolve(blob);
+    }, "image/jpeg", 0.85);
+  });
+};
 import { LocalEatsLogo } from "./components/LocalEatsLogo";
 import { QRScanner } from "./components/QRScanner";
 import jsPDF from "jspdf";
@@ -2668,7 +2714,8 @@ const ConnectionsSlider = ({
   const [pingingDb, setPingingDb] = useState(false);
   const [validatingGps, setValidatingGps] = useState(false);
   const [autoAccept, setAutoAccept] = useState(() => {
-    return localStorage.getItem("localeats_auto_accept") === "true";
+    const val = localStorage.getItem("localeats_auto_accept");
+    return val === null ? true : val === "true";
   });
 
   useEffect(() => {
@@ -5039,6 +5086,8 @@ const DashboardOverview = React.memo(({
       email: "debug@example.com",
       address: currentShop.address || "123 Default St",
       city: currentShop.location ? getSupportedCity(currentShop.location) : "Tembisa",
+      lat: currentShop.lat ? currentShop.lat + 0.005 : -25.9964,
+      lng: currentShop.lng ? currentShop.lng + 0.005 : 28.2268,
       product_name: "Test Burger (Debug)",
       restaurant_name: currentShop.name,
       total_price: 55,
@@ -6670,6 +6719,15 @@ const MenuManagement = ({
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+
+  // Cropper states
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [isCropperOpen, setIsCropperOpen] = useState(false);
+  const [tempCroppingFileName, setTempCroppingFileName] = useState("");
+
   const [uploading, setUploading] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -6850,6 +6908,30 @@ const MenuManagement = ({
     }
   };
 
+  const handleSaveCrop = async () => {
+    if (!cropImageSrc || !croppedAreaPixels) return;
+    try {
+      toast.loading("Processing and cropping image...", { id: "cropper-toast" });
+      const croppedBlob = await getCroppedImg(cropImageSrc, croppedAreaPixels);
+      const file = new File([croppedBlob], tempCroppingFileName || "cropped-item.jpg", {
+        type: "image/jpeg",
+      });
+      setImageFile(file);
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+        toast.success("Image cropped and aspect-corrected successfully!", { id: "cropper-toast" });
+        setIsCropperOpen(false);
+        setCropImageSrc(null);
+      };
+      reader.readAsDataURL(file);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to crop image. Please try again.", { id: "cropper-toast" });
+    }
+  };
+
   const handleImageSelection = (file: File) => {
     const validation = validateImageFile(file);
     if (!validation.isValid) {
@@ -6857,10 +6939,13 @@ const MenuManagement = ({
       return false;
     }
 
-    setImageFile(file);
+    setTempCroppingFileName(file.name);
     const reader = new FileReader();
     reader.onloadend = () => {
-      setImagePreview(reader.result as string);
+      setCropImageSrc(reader.result as string);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setIsCropperOpen(true);
     };
     reader.readAsDataURL(file);
     return true;
@@ -7927,28 +8012,24 @@ const MenuManagement = ({
                       onClick={() => handleBulkAction("delete")}
                       className="px-4 py-2 bg-error/10 text-error font-bold text-xs rounded-full hover:bg-error hover:text-on-error transition-all flex items-center gap-1.5"
                     >
-                      <Trash2 size={14} /> Delete
+                      <Trash2 size={14} /> Delete Selected
                     </button>
                   </div>
                 </motion.div>
               )}
 
-              <div className="flex items-center justify-between px-2">
-                <button
-                  onClick={toggleSelectAll}
-                  className="text-xs font-bold text-primary flex items-center gap-2 hover:underline"
-                >
-                  {selectedItems.length === filteredItems.length &&
-                  filteredItems.length > 0 ? (
-                    <>
-                      <CheckSquare size={16} /> Deselect All
-                    </>
-                  ) : (
-                    <>
-                      <Square size={16} /> Select All Visible
-                    </>
-                  )}
-                </button>
+              <div className="flex items-center justify-between px-3 bg-surface-container-low/40 py-2.5 rounded-2xl border border-outline-variant/5">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={selectedItems.length === filteredItems.length && filteredItems.length > 0}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 text-primary bg-stone-100 border-stone-300 rounded focus:ring-primary dark:focus:ring-primary dark:ring-offset-stone-800 focus:ring-2 dark:bg-stone-700 dark:border-stone-600 cursor-pointer"
+                  />
+                  <span className="text-xs font-bold text-on-surface-variant/80">
+                    {selectedItems.length === filteredItems.length && filteredItems.length > 0 ? "Deselect All Items" : "Select All Items"}
+                  </span>
+                </label>
                 <div className="text-[10px] font-bold text-on-surface-variant/40 uppercase tracking-widest">
                   Showing {filteredItems.length} of {items.length} items
                 </div>
@@ -8269,6 +8350,85 @@ const MenuManagement = ({
             </div>
           </section>
         </div>
+      </div>
+    )}
+
+    {/* Client-Side Image Cropping Modal */}
+    {isCropperOpen && cropImageSrc && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-md select-none">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="w-full max-w-xl bg-surface-container-low rounded-[2rem] border border-outline-variant/10 shadow-2xl overflow-hidden p-6 space-y-6"
+        >
+          <div className="flex items-center justify-between border-b border-outline-variant/10 pb-4">
+            <div>
+              <h3 className="text-lg font-black text-on-surface font-headline uppercase tracking-wide">Crop Menu Photo</h3>
+              <p className="text-xs text-on-surface-variant/70 mt-1">Aspect ratio is locked to 4:3 for optimal storefront consistency.</p>
+            </div>
+            <button
+              onClick={() => {
+                setIsCropperOpen(false);
+                setCropImageSrc(null);
+              }}
+              className="p-1.5 rounded-full hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* Cropper Container */}
+          <div className="relative w-full h-80 bg-zinc-950 rounded-2xl overflow-hidden border border-outline-variant/10">
+            <Cropper
+              image={cropImageSrc}
+              crop={crop}
+              zoom={zoom}
+              aspect={4 / 3}
+              onCropChange={setCrop}
+              onCropComplete={(_croppedArea, croppedAreaPixels) => setCroppedAreaPixels(croppedAreaPixels)}
+              onZoomChange={setZoom}
+            />
+          </div>
+
+          {/* Zoom Slider Control */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold text-on-surface-variant">
+              <span>ZOOM LEVEL</span>
+              <span className="font-mono">{zoom.toFixed(1)}x</span>
+            </div>
+            <input
+              type="range"
+              value={zoom}
+              min={1}
+              max={3}
+              step={0.1}
+              aria-label="Zoom"
+              onChange={(e) => setZoom(Number(e.target.value))}
+              className="w-full accent-primary h-1.5 bg-surface-container-high rounded-lg appearance-none cursor-pointer"
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 border-t border-outline-variant/10 pt-4">
+            <button
+              type="button"
+              onClick={() => {
+                setIsCropperOpen(false);
+                setCropImageSrc(null);
+              }}
+              className="flex-1 py-3 bg-surface-container text-on-surface text-xs font-bold rounded-xl hover:bg-surface-container-high transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveCrop}
+              className="flex-1 py-3 bg-primary text-on-primary text-xs font-bold rounded-xl hover:opacity-90 active:scale-98 transition-all shadow-lg cursor-pointer"
+            >
+              Apply Crop
+            </button>
+          </div>
+        </motion.div>
       </div>
     )}
     </div>
@@ -9356,6 +9516,56 @@ const OrdersManagement = ({
   const [ratingOrderId, setRatingOrderId] = useState<string | null>(null);
   const [ratingValue, setRatingValue] = useState<number>(0);
   const [showMobileActions, setShowMobileActions] = useState(false);
+
+  const [orderTags, setOrderTags] = useState<Record<string, string[]>>(() => {
+    const tags: Record<string, string[]> = {};
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("order_tags_")) {
+          const orderId = key.replace("order_tags_", "");
+          const val = JSON.parse(localStorage.getItem(key) || "[]");
+          tags[orderId] = val;
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return tags;
+  });
+
+  const toggleOrderTag = (orderId: string, tag: string) => {
+    setOrderTags((prev) => {
+      const current = prev[orderId] || [];
+      const updated = current.includes(tag)
+        ? current.filter((t) => t !== tag)
+        : [...current, tag];
+      localStorage.setItem(`order_tags_${orderId}`, JSON.stringify(updated));
+      return { ...prev, [orderId]: updated };
+    });
+  };
+
+  const getOrderTags = (order: Order): string[] => {
+    const manualTags = orderTags[order.id] || [];
+    const autoTags: string[] = [];
+    
+    // Auto large order tag
+    const items = safeGetOrderItems(order.items);
+    const hasManyItems = items.length > 3;
+    const hasHighPrice = Number(order.total_price) > 300;
+    if (hasManyItems || hasHighPrice) {
+      autoTags.push("Large Order");
+    }
+    
+    // Auto rush order tag
+    const notesLower = (order.notes || "").toLowerCase();
+    if (notesLower.includes("urgent") || notesLower.includes("fast") || notesLower.includes("asap") || notesLower.includes("rush") || notesLower.includes("quick")) {
+      autoTags.push("Rush");
+    }
+
+    // Merge manual and auto tags, ensuring no duplicates
+    return Array.from(new Set([...manualTags, ...autoTags]));
+  };
 
   // Advanced upgrade configurations for client readiness
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
@@ -10709,7 +10919,7 @@ Notes: "${order.notes || "None"}"
                     const isSelected = selectedPendingOrders.includes(order.id);
                     return (
                       <motion.div
-                        layout
+                        layoutId={order.id}
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
@@ -10742,6 +10952,28 @@ Notes: "${order.notes || "None"}"
                                 #{order.id.slice(-4).toUpperCase()}
                               </span>
                               <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
+                              {/* Custom Tags display */}
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {getOrderTags(order).map((tag) => {
+                                  const colors: Record<string, string> = {
+                                    "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+                                    "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+                                    "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
+                                    "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
+                                  };
+                                  return (
+                                    <span
+                                      key={tag}
+                                      className={cn(
+                                        "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
+                                        colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
+                                      )}
+                                    >
+                                      {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
+                                    </span>
+                                  );
+                                })}
+                              </div>
                             </div>
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
@@ -10840,6 +11072,39 @@ Notes: "${order.notes || "None"}"
                             </div>
                           </div>
                         )}
+
+                        {/* Quick Tag Toggles */}
+                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
+                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
+                          <div className="flex items-center gap-1">
+                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
+                              const isActive = (orderTags[order.id] || []).includes(tag);
+                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
+                              return (
+                                <button
+                                  key={tag}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleOrderTag(order.id, tag);
+                                  }}
+                                  title={`Toggle ${tag}`}
+                                  className={cn(
+                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
+                                    isActive
+                                      ? tag === "Rush"
+                                        ? "bg-rose-500 text-white"
+                                        : tag === "VIP"
+                                          ? "bg-amber-500 text-white"
+                                          : "bg-teal-500 text-white"
+                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
+                                  )}
+                                >
+                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </motion.div>
                     );
                   })}
@@ -10871,7 +11136,7 @@ Notes: "${order.notes || "None"}"
 
                     return (
                       <motion.div
-                        layout
+                        layoutId={order.id}
                         key={order.id}
                         className="bg-white dark:bg-zinc-900 border border-outline-variant/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group"
                         whileHover={{ y: -2 }}
@@ -10883,6 +11148,28 @@ Notes: "${order.notes || "None"}"
                               #{order.id.slice(-4).toUpperCase()}
                             </span>
                             <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
+                            {/* Custom Tags display */}
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {getOrderTags(order).map((tag) => {
+                                const colors: Record<string, string> = {
+                                  "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+                                  "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+                                  "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
+                                  "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
+                                };
+                                return (
+                                  <span
+                                    key={tag}
+                                    className={cn(
+                                      "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
+                                      colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
+                                    )}
+                                  >
+                                    {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
+                                  </span>
+                                );
+                              })}
+                            </div>
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
                             {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -11010,6 +11297,39 @@ Notes: "${order.notes || "None"}"
                             </div>
                           )
                         )}
+
+                        {/* Quick Tag Toggles */}
+                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
+                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
+                          <div className="flex items-center gap-1">
+                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
+                              const isActive = (orderTags[order.id] || []).includes(tag);
+                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
+                              return (
+                                <button
+                                  key={tag}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleOrderTag(order.id, tag);
+                                  }}
+                                  title={`Toggle ${tag}`}
+                                  className={cn(
+                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
+                                    isActive
+                                      ? tag === "Rush"
+                                        ? "bg-rose-500 text-white"
+                                        : tag === "VIP"
+                                          ? "bg-amber-500 text-white"
+                                          : "bg-teal-500 text-white"
+                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
+                                  )}
+                                >
+                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </motion.div>
                     );
                   })}
@@ -11040,7 +11360,7 @@ Notes: "${order.notes || "None"}"
 
                     return (
                       <motion.div
-                        layout
+                        layoutId={order.id}
                         key={order.id}
                         className="bg-white dark:bg-zinc-900 border border-outline-variant/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group"
                         whileHover={{ y: -2 }}
@@ -11052,6 +11372,28 @@ Notes: "${order.notes || "None"}"
                               #{order.id.slice(-4).toUpperCase()}
                             </span>
                             <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
+                            {/* Custom Tags display */}
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {getOrderTags(order).map((tag) => {
+                                const colors: Record<string, string> = {
+                                  "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+                                  "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+                                  "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
+                                  "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
+                                };
+                                return (
+                                  <span
+                                    key={tag}
+                                    className={cn(
+                                      "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
+                                      colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
+                                    )}
+                                  >
+                                    {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
+                                  </span>
+                                );
+                              })}
+                            </div>
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
                             {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -11101,6 +11443,39 @@ Notes: "${order.notes || "None"}"
                             Complete
                           </button>
                         </div>
+
+                        {/* Quick Tag Toggles */}
+                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
+                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
+                          <div className="flex items-center gap-1">
+                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
+                              const isActive = (orderTags[order.id] || []).includes(tag);
+                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
+                              return (
+                                <button
+                                  key={tag}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleOrderTag(order.id, tag);
+                                  }}
+                                  title={`Toggle ${tag}`}
+                                  className={cn(
+                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
+                                    isActive
+                                      ? tag === "Rush"
+                                        ? "bg-rose-500 text-white"
+                                        : tag === "VIP"
+                                          ? "bg-amber-500 text-white"
+                                          : "bg-teal-500 text-white"
+                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
+                                  )}
+                                >
+                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </motion.div>
                     );
                   })}
@@ -11129,7 +11504,7 @@ Notes: "${order.notes || "None"}"
                     const items = safeGetOrderItems(order.items);
                     return (
                       <motion.div
-                        layout
+                        layoutId={order.id}
                         key={order.id}
                         className="bg-white dark:bg-zinc-900 border border-outline-variant/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group opacity-75"
                       >
@@ -11139,6 +11514,28 @@ Notes: "${order.notes || "None"}"
                               #{order.id.slice(-4).toUpperCase()}
                             </span>
                             <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
+                            {/* Custom Tags display */}
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {getOrderTags(order).map((tag) => {
+                                const colors: Record<string, string> = {
+                                  "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+                                  "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+                                  "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
+                                  "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
+                                };
+                                return (
+                                  <span
+                                    key={tag}
+                                    className={cn(
+                                      "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
+                                      colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
+                                    )}
+                                  >
+                                    {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
+                                  </span>
+                                );
+                              })}
+                            </div>
                           </div>
                           <span className={cn(
                             "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md",
@@ -11167,6 +11564,39 @@ Notes: "${order.notes || "None"}"
                         <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between">
                           <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
                           <span className="text-[9px] font-bold text-zinc-500 font-mono uppercase">Done</span>
+                        </div>
+
+                        {/* Quick Tag Toggles */}
+                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
+                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
+                          <div className="flex items-center gap-1">
+                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
+                              const isActive = (orderTags[order.id] || []).includes(tag);
+                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
+                              return (
+                                <button
+                                  key={tag}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleOrderTag(order.id, tag);
+                                  }}
+                                  title={`Toggle ${tag}`}
+                                  className={cn(
+                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
+                                    isActive
+                                      ? tag === "Rush"
+                                        ? "bg-rose-500 text-white"
+                                        : tag === "VIP"
+                                          ? "bg-amber-500 text-white"
+                                          : "bg-teal-500 text-white"
+                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
+                                  )}
+                                >
+                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       </motion.div>
                     );
@@ -11215,6 +11645,7 @@ Notes: "${order.notes || "None"}"
                   const isOverdue =
                     diffMins >= 20 &&
                     (order.status === "pending" || order.status === "preparing");
+                  const isSelected = selectedPendingOrders.includes(order.id);
 
                   return (
                     <motion.div
@@ -15813,7 +16244,15 @@ const Insights = ({
   const [followerTrendData, setFollowerTrendData] = useState<
     { name: string; value: number }[]
   >([]);
-  const [timeFilter, setTimeFilter] = useState<"today" | "7d" | "30d" | "all">("7d");
+  const [timeFilter, setTimeFilter] = useState<"today" | "7d" | "30d" | "all" | "custom">("7d");
+  const [customStartDate, setCustomStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split("T")[0];
+  });
+  const [customEndDate, setCustomEndDate] = useState<string>(() => {
+    return new Date().toISOString().split("T")[0];
+  });
 
   const filteredOrdersForInsights = useMemo(() => {
     const now = new Date();
@@ -15827,9 +16266,20 @@ const Insights = ({
     } else if (timeFilter === "30d") {
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       return orders.filter((o) => new Date(o.created_at) >= thirtyDaysAgo);
+    } else if (timeFilter === "custom") {
+      const start = customStartDate ? new Date(customStartDate) : null;
+      if (start) start.setHours(0, 0, 0, 0);
+      const end = customEndDate ? new Date(customEndDate) : null;
+      if (end) end.setHours(23, 59, 59, 999);
+      return orders.filter((o) => {
+        const d = new Date(o.created_at);
+        if (start && d < start) return false;
+        if (end && d > end) return false;
+        return true;
+      });
     }
     return orders;
-  }, [orders, timeFilter]);
+  }, [orders, timeFilter, customStartDate, customEndDate]);
 
   useEffect(() => {
     const fetchReviews = async () => {
@@ -16139,9 +16589,23 @@ const Insights = ({
       return slots;
     }
 
-    const daysToShow = timeFilter === "30d" ? 30 : timeFilter === "all" ? 60 : 7;
+    let daysToShow = 7;
+    let baseDate = new Date();
+    if (timeFilter === "custom" && customStartDate && customEndDate) {
+      const start = new Date(customStartDate);
+      const end = new Date(customEndDate);
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      daysToShow = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      if (daysToShow > 365) daysToShow = 365; // Cap at 1 year
+      baseDate = end;
+    } else if (timeFilter === "30d") {
+      daysToShow = 30;
+    } else if (timeFilter === "all") {
+      daysToShow = 60;
+    }
+
     const daysArray = Array.from({ length: daysToShow }, (_, index) => {
-      const d = new Date();
+      const d = new Date(baseDate);
       d.setDate(d.getDate() - index);
       return {
         date: d.toISOString().split("T")[0],
@@ -16166,7 +16630,7 @@ const Insights = ({
       });
 
     return daysArray.map((d) => ({ name: d.dayName, earnings: d.earnings }));
-  }, [filteredOrdersForInsights, timeFilter]);
+  }, [filteredOrdersForInsights, timeFilter, customStartDate, customEndDate]);
 
   const couponPerformance = useMemo(() => {
     const couponOrders = filteredOrdersForInsights.filter((o) => o.coupon_code);
@@ -16333,30 +16797,60 @@ const Insights = ({
         </div>
 
         {/* Segmented Time Filter Control */}
-        <div className="flex bg-surface-container-high p-1 rounded-2xl border border-outline-variant/5 self-stretch sm:self-auto select-none" id="insights_time_segmented_filter">
-          {(["today", "7d", "30d", "all"] as const).map((filter) => {
-            const isActive = timeFilter === filter;
-            const labels = {
-              today: "Today",
-              "7d": "7 Days",
-              "30d": "30 Days",
-              all: "All Time",
-            };
-            return (
-              <button
-                key={filter}
-                onClick={() => setTimeFilter(filter)}
-                className={cn(
-                  "flex-1 sm:flex-initial px-4 py-2 text-xs font-black uppercase tracking-wider rounded-xl transition-all",
-                  isActive
-                    ? "bg-primary text-on-primary shadow-sm scale-102"
-                    : "text-on-surface-variant/70 hover:text-on-surface hover:bg-surface-container-highest"
-                )}
-              >
-                {labels[filter]}
-              </button>
-            );
-          })}
+        <div className="flex flex-col lg:flex-row lg:items-center gap-4 w-full sm:w-auto">
+          <div className="flex bg-surface-container-high p-1 rounded-2xl border border-outline-variant/5 self-stretch sm:self-auto select-none overflow-x-auto hide-scrollbar" id="insights_time_segmented_filter">
+            {(["today", "7d", "30d", "all", "custom"] as const).map((filter) => {
+              const isActive = timeFilter === filter;
+              const labels = {
+                today: "Today",
+                "7d": "7 Days",
+                "30d": "30 Days",
+                all: "All Time",
+                custom: "Custom Range",
+              };
+              return (
+                <button
+                  key={filter}
+                  onClick={() => setTimeFilter(filter)}
+                  className={cn(
+                    "flex-1 sm:flex-initial px-4 py-2 text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer whitespace-nowrap",
+                    isActive
+                      ? "bg-primary text-on-primary shadow-sm scale-102"
+                      : "text-on-surface-variant/70 hover:text-on-surface hover:bg-surface-container-highest"
+                  )}
+                >
+                  {labels[filter]}
+                </button>
+              );
+            })}
+          </div>
+
+          {timeFilter === "custom" && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="flex flex-wrap items-center gap-3 bg-surface-container-high p-2 rounded-2xl border border-outline-variant/10 self-stretch sm:self-auto"
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-black text-on-surface-variant/60 uppercase tracking-widest pl-1.5">From</span>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="px-3 py-1.5 bg-surface-container-lowest border border-outline-variant/10 rounded-xl text-xs font-bold text-on-surface focus:outline-hidden focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-black text-on-surface-variant/60 uppercase tracking-widest">To</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="px-3 py-1.5 bg-surface-container-lowest border border-outline-variant/10 rounded-xl text-xs font-bold text-on-surface focus:outline-hidden focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            </motion.div>
+          )}
         </div>
       </motion.section>
 
@@ -19855,7 +20349,8 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const [kitchenMode, setKitchenMode] = useState(false);
   const [autoAcceptOrders, setAutoAcceptOrders] = useState(() => {
-    return localStorage.getItem("localeats_auto_accept") === "true";
+    const val = localStorage.getItem("localeats_auto_accept");
+    return val === null ? true : val === "true";
   });
   const [showAutoAcceptModal, setShowAutoAcceptModal] = useState(false);
   
@@ -21610,7 +22105,13 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           <header className="fixed top-0 w-full z-50 bg-white/70 dark:bg-surface-container-lowest/70 backdrop-blur-xl shadow-sm shadow-orange-900/5">
           <div className="flex justify-between items-center px-4 md:px-6 h-16 max-w-7xl mx-auto">
             <div className="flex items-center gap-2 md:gap-3 shrink-0">
-              <LocalEatsLogo width={160} height={42} />
+              <button
+                onClick={() => setActiveTab("dashboard")}
+                className="focus:outline-none cursor-pointer hover:opacity-85 active:scale-95 transition-all duration-200 flex items-center"
+                title="Go to Dashboard"
+              >
+                <LocalEatsLogo width={160} height={42} />
+              </button>
               <span className="text-[8px] font-bold text-primary/20 mt-4">
                 {APP_VERSION}
               </span>
@@ -21692,7 +22193,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
               {isOffline && (
                 <button
                   onClick={() => setShowOfflineInfoModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 bg-amber-500/10 text-amber-600 border border-amber-500/25 dark:bg-amber-950/20 dark:border-amber-900/45 dark:text-amber-400 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wider transition-all hover:bg-amber-500/15 active:scale-95 cursor-pointer shadow-sm shadow-amber-500/5"
+                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 bg-amber-500/10 text-amber-600 border border-amber-500/25 dark:bg-amber-950/20 dark:border-amber-900/45 dark:text-amber-400 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wider transition-all hover:bg-amber-500/15 active:scale-95 cursor-pointer shadow-sm shadow-amber-500/5"
                   title="Offline Mode Active (Click for details)"
                 >
                   <WifiOff size={13} className="shrink-0 animate-pulse text-amber-500" />
@@ -21737,7 +22238,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                     }
                   }}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs font-bold transition-all border",
+                    "hidden sm:flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs font-bold transition-all border",
                     currentShop.is_active
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800"
                       : "bg-error/10 text-error border-error/20 hover:bg-error/20 shadow-lg shadow-error/10",
@@ -21858,20 +22359,6 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                 ) : (
                   <Moon size={18} className="md:w-5 md:h-5" />
                 )}
-              </button>
-              <button
-                onClick={() => setIsEditingProfile(true)}
-                className="p-2 text-on-surface-variant hover:text-primary transition-colors"
-                title="Edit Profile"
-              >
-                <UserIcon size={18} className="md:w-5 md:h-5" />
-              </button>
-              <button
-                onClick={handleSignOut}
-                className="p-2 text-on-surface-variant hover:text-primary transition-colors"
-                title="Sign Out"
-              >
-                <LogOut size={18} className="md:w-5 md:h-5" />
               </button>
               <div className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center overflow-hidden border-2 border-primary/10 shadow-sm">
                 {user?.user_metadata?.avatar_url ? (

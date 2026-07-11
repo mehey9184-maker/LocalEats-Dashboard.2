@@ -124,14 +124,46 @@ export const safeStripOrderColumns = async (
   return cleaned;
 };
 
-export const isOrderDelivery = (order: Partial<Order>) => {
-  return (
-    (order.order_type === "delivery" || !order.order_type) &&
-    order.order_type !== "collection" &&
-    order.order_type !== "pickup" &&
-    order.delivery_fee !== 0 &&
-    order.delivery_fee !== 0.00
-  );
+export const isOrderDelivery = (order: Partial<Order>): boolean => {
+  if (!order) return false;
+  
+  // If explicitly set to collection or pickup, it is not a delivery
+  if (
+    order.order_type === "collection" ||
+    order.order_type === "pickup"
+  ) {
+    return false;
+  }
+  
+  // If explicitly set to delivery, it is definitely a delivery
+  if (order.order_type === "delivery") {
+    return true;
+  }
+  
+  // If not explicitly set, check delivery fee or address
+  if (
+    order.delivery_fee !== undefined &&
+    order.delivery_fee !== null &&
+    Number(order.delivery_fee) > 0
+  ) {
+    return true;
+  }
+  
+  // Check address keywords to see if it is a delivery address
+  if (order.address) {
+    const addr = order.address.toLowerCase().trim();
+    if (
+      addr !== "" &&
+      addr !== "collection" &&
+      addr !== "pickup" &&
+      addr !== "in-store" &&
+      addr !== "instore"
+    ) {
+      return true;
+    }
+  }
+  
+  return false;
 };
 
 export const getOrderTransitionData = (
