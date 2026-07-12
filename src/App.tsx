@@ -2827,7 +2827,7 @@ const ConnectionsSlider = ({
               </div>
               <div className="flex flex-col items-end gap-1">
                 <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
-                  ● CLOUD ACTIVE
+                  ● LIVE CONNECTION
                 </span>
                 <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400">
                   ✓ SAVED & SYNCED
@@ -2836,10 +2836,10 @@ const ConnectionsSlider = ({
             </div>
             <div>
               <h3 className="text-sm font-headline font-black text-on-surface">
-                Secure Cloud Backup
+                Live Store Sync
               </h3>
               <p className="text-[10px] text-on-surface-variant/80 font-medium leading-relaxed mt-1">
-                Real-time automatic cloud backup linking your active shop menu across all customer and driver sessions.
+                Real-time automatic backup and synchronization linking your active shop menu across all customer and driver sessions.
               </p>
             </div>
             
@@ -2858,7 +2858,7 @@ const ConnectionsSlider = ({
           
           <div className="mt-5 pt-3 border-t border-outline-variant/5">
             <div className="bg-blue-500/[0.03] p-2 rounded-xl border border-blue-500/10 mb-3 text-[9px] font-medium text-blue-600 dark:text-blue-400">
-              💡 Keep cloud connection active to ensure instant sync across customer app.
+              💡 Keep connection active to ensure instant sync across customer app.
             </div>
             <button
               onClick={handlePingDatabase}
@@ -2871,7 +2871,7 @@ const ConnectionsSlider = ({
                 </>
               ) : (
                 <>
-                  Test Cloud Connection
+                  Verify Store Sync
                 </>
               )}
             </button>
@@ -5081,20 +5081,20 @@ const DashboardOverview = React.memo(({
     const testOrder = {
       shop_id: currentShop.id,
       user_id: user?.id || null,
-      customer_name: "Debug Customer",
+      customer_name: "Sample Customer",
       phone: "000 000 0000",
-      email: "debug@example.com",
+      email: "sample@example.com",
       address: currentShop.address || "123 Default St",
       city: currentShop.location ? getSupportedCity(currentShop.location) : "Tembisa",
       lat: currentShop.lat ? currentShop.lat + 0.005 : -25.9964,
       lng: currentShop.lng ? currentShop.lng + 0.005 : 28.2268,
-      product_name: "Test Burger (Debug)",
+      product_name: "Delicious Meal (Sample)",
       restaurant_name: currentShop.name,
       total_price: 55,
       price: 55,
       status: "pending",
       order_type: "delivery",
-      items: ["Test Burger (Debug)"],
+      items: ["Delicious Meal (Sample)"],
       payment_method: testOrderPayMethod,
       terminal_masked_card: testOrderPayMethod === "Card Machine" ? `**** **** **** ${cardNumber.slice(-4)}` : null,
       terminal_sync_status: testOrderPayMethod === "Card Machine" ? "synced" : null,
@@ -5107,10 +5107,10 @@ const DashboardOverview = React.memo(({
       .select()
       .single();
     if (error) {
-      toast.error("We couldn't create a test order right now. Please try again.");
+      toast.error("We couldn't create a sample order right now. Please try again.");
     } else {
       console.log("Nudge sent");
-      toast.success("Test order generated! Go to Orders to accept it.");
+      toast.success("Sample order created! View it in the Orders tab.");
       setShowTestCheckout(false);
       onRefresh();
     }
@@ -5193,6 +5193,57 @@ const DashboardOverview = React.memo(({
 
   return (
     <div className="space-y-8 md:space-y-12">
+      {/* Emergency All-Shops Shutdown */}
+      {shops.length > 0 && (
+        <div className="bg-error/5 border border-error/20 rounded-3xl p-4 md:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-error/10 text-error rounded-full shrink-0">
+              <Activity size={24} className={shops.some(s => s.is_active) ? "animate-pulse" : ""} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">Emergency Operations</h3>
+              <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
+                Instantly toggle the visibility of all your registered storefronts across the entire platform. Overrides individual shop settings.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              const anyActive = shops.some(s => s.is_active);
+              const newStatus = !anyActive;
+              
+              shops.forEach(s => {
+                localStorage.setItem(`localeats_manual_status_override_${s.id}`, JSON.stringify({ status: newStatus, timestamp: Date.now() }));
+                if (newStatus) {
+                  localStorage.removeItem(`localeats_holiday_mode_${s.id}`);
+                }
+              });
+
+              toast.loading(`Turning all shops ${newStatus ? "Online" : "Offline"}...`, { id: "emergency-toggle" });
+              const { error } = await supabase
+                .from("shops")
+                .update({ is_active: newStatus })
+                .in("id", shops.map(s => s.id));
+
+              if (!error) {
+                toast.success(`All shops are now ${newStatus ? "Online" : "Offline"}!`, { id: "emergency-toggle" });
+                onRefresh();
+              } else {
+                toast.error("Failed to execute emergency toggle. Check connection.", { id: "emergency-toggle" });
+              }
+            }}
+            className={cn(
+              "px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all duration-300 w-full md:w-auto shrink-0 shadow-md flex items-center justify-center gap-2",
+              shops.some(s => s.is_active)
+                ? "bg-error text-white hover:bg-error/90 shadow-error/20"
+                : "bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20"
+            )}
+          >
+            {shops.some(s => s.is_active) ? "Shutdown All Shops" : "Re-activate All Shops"}
+          </button>
+        </div>
+      )}
+
       {/* "At a Glance" Top Status Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {/* Today's Orders Card */}
@@ -5305,13 +5356,13 @@ const DashboardOverview = React.memo(({
             >
               <div className="p-6 md:p-8 space-y-6 flex-1 overflow-y-auto">
                 <div>
-                  <h2 className="text-2xl font-headline font-black text-on-surface">Customer Checkout</h2>
-                  <p className="text-xs text-on-surface-variant font-medium mt-1">This simulates the checkout panel a customer sees on your live storefront.</p>
+                  <h2 className="text-2xl font-headline font-black text-on-surface">Simulate Storefront Order</h2>
+                  <p className="text-xs text-on-surface-variant font-medium mt-1">Simulate a customer order to test your notifications and kitchen receipt workflow.</p>
                 </div>
                 
                 <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 space-y-2">
                   <div className="flex justify-between text-sm font-bold text-on-surface">
-                    <span>Test Burger (Debug)</span>
+                    <span>Delicious Meal (Sample)</span>
                     <span>R 55.00</span>
                   </div>
                   <div className="flex justify-between text-lg font-black text-on-surface pt-4 border-t border-outline-variant/10">
@@ -5502,10 +5553,10 @@ const DashboardOverview = React.memo(({
               <button
                 onClick={() => setShowTestCheckout(true)}
                 className="p-3 bg-primary/5 text-primary rounded-xl hover:bg-primary/10 transition-colors border border-primary/10 flex items-center gap-2 text-xs font-bold"
-                title="Generate Debug Order"
+                title="Simulate Customer Order"
               >
                 <Plus size={18} />
-                <span className="hidden sm:inline">Test Order</span>
+                <span className="hidden sm:inline">Simulate Order</span>
               </button>
               <button
                 onClick={exportWeeklyCSV}
@@ -5589,12 +5640,12 @@ const DashboardOverview = React.memo(({
               {currentShop.updated_at ? (
                 <p className="text-[10px] font-mono font-black text-emerald-500 flex items-center gap-1.5 pt-1 uppercase tracking-widest">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Cloud Sync Status: Saved ({new Date(currentShop.updated_at).toLocaleDateString()} {new Date(currentShop.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
+                  Store Status: Synced & Saved ({new Date(currentShop.updated_at).toLocaleDateString()} {new Date(currentShop.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
                 </p>
               ) : (
                 <p className="text-[10px] font-mono font-black text-amber-500 flex items-center gap-1.5 pt-1 uppercase tracking-widest">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500/80 animate-pulse" />
-                  Cloud Sync Status: Local Fallback Cache Active
+                  Store Status: Saved Offline (Automatic Fallback Active)
                 </p>
               )}
             </div>
@@ -5603,13 +5654,25 @@ const DashboardOverview = React.memo(({
           <div className="flex flex-col sm:flex-row md:flex-col lg:flex-row items-center gap-3 justify-center shrink-0 min-w-[200px] relative z-10 border-t md:border-t-0 md:border-l border-outline-variant/10 pt-4 md:pt-0 md:pl-6">
             <div className="text-center md:text-right lg:text-center w-full">
               <span className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest block mb-1.5">
-                Command Dispatch
+                Shop Status Control
               </span>
               <button
                 disabled={isStatusToggling}
                 onClick={async () => {
                   setIsStatusToggling(true);
                   const newStatus = !currentShop.is_active;
+                  
+                  localStorage.setItem(`localeats_manual_status_override_${currentShop.id}`, JSON.stringify({ status: newStatus, timestamp: Date.now() }));
+                  if (newStatus) {
+                    localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
+                  }
+
+                  // Optimistic update
+                  setShops((prev) =>
+                    prev.map((s) =>
+                      s.id === currentShop.id ? { ...s, is_active: newStatus } : s,
+                    ),
+                  );
                   
                   const { error } = await supabase
                     .from("shops")
@@ -5620,9 +5683,13 @@ const DashboardOverview = React.memo(({
                     toast.success(
                       `Storefront is now ${newStatus ? "Open & Live" : "Closed & Offline"}!`
                     );
-                    onRefresh();
                   } else {
-      console.log("Nudge sent");
+                    // Rollback
+                    setShops((prev) =>
+                      prev.map((s) =>
+                        s.id === currentShop.id ? { ...s, is_active: !newStatus } : s,
+                      ),
+                    );
                     toast.error(getFriendlyErrorMessage(error));
                   }
                   setIsStatusToggling(false);
@@ -10263,7 +10330,7 @@ Notes: "${order.notes || "None"}"
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("Orders exported as CSV for Accounting!");
+    toast.success("Orders exported as Spreadsheet for Accounting!");
   };
 
   const exportToJSON = () => {
@@ -10274,13 +10341,13 @@ Notes: "${order.notes || "None"}"
     link.setAttribute("href", url);
     link.setAttribute(
       "download",
-      `orders_export_${format(new Date(), "yyyyMMdd_HHmmss")}.json`,
+      `orders_backup_${format(new Date(), "yyyyMMdd_HHmmss")}.json`,
     );
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("Orders exported as JSON!");
+    toast.success("Orders backup file downloaded!");
   };
 
   const orderStatuses: (OrderStatus | "All")[] = [
@@ -10375,14 +10442,14 @@ Notes: "${order.notes || "None"}"
               className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
             >
               <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              CSV
+              Spreadsheet
             </button>
             <button
               onClick={exportToJSON}
               className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
             >
               <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              JSON
+              Backup Data
             </button>
           </div>
           <div className="hidden md:flex p-1.5 bg-surface-container-low rounded-full w-fit">
@@ -10560,14 +10627,14 @@ Notes: "${order.notes || "None"}"
                       className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
                     >
                       <FileDown size={14} />
-                      Export CSV
+                      Export Spreadsheet
                     </button>
                     <button
                       onClick={exportToJSON}
                       className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
                     >
                       <FileDown size={14} />
-                      Export JSON
+                      Backup Data
                     </button>
                   </div>
 
@@ -10912,7 +10979,7 @@ Notes: "${order.notes || "None"}"
                   </div>
                 </div>
                 
-                <div className="flex flex-col gap-3 overflow-y-auto max-h-[70vh] hide-scrollbar">
+                <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
                   <AnimatePresence mode="popLayout">
                   {displayedOrders.filter(o => o.status === "pending").map((order) => {
                     const items = safeGetOrderItems(order.items);
@@ -10926,7 +10993,7 @@ Notes: "${order.notes || "None"}"
                         transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         key={order.id}
                         className={cn(
-                          "bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300",
+                          "order-card bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300",
                           isSelected ? "border-primary ring-1 ring-primary/30" : "border-outline-variant/10"
                         )}
                         whileHover={{ y: -2 }}
@@ -11062,8 +11129,14 @@ Notes: "${order.notes || "None"}"
                               )}
                               <button
                                 disabled={isLimitReached}
-                                onClick={() => {
+                                onClick={(e) => {
                                   setAcceptingOrderId(order.id);
+                                  const card = e.currentTarget.closest(".order-card");
+                                  if (card) {
+                                    setTimeout(() => {
+                                      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                                    }, 100);
+                                  }
                                 }}
                                 className="px-3 py-1.5 bg-primary text-on-primary text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none w-full text-center"
                               >
@@ -11127,7 +11200,7 @@ Notes: "${order.notes || "None"}"
                   </span>
                 </div>
 
-                <div className="flex flex-col gap-3 overflow-y-auto max-h-[70vh] hide-scrollbar">
+                <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
                   <AnimatePresence mode="popLayout">
                   {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").map((order) => {
                     const items = safeGetOrderItems(order.items);
@@ -11138,7 +11211,7 @@ Notes: "${order.notes || "None"}"
                       <motion.div
                         layoutId={order.id}
                         key={order.id}
-                        className="bg-white dark:bg-zinc-900 border border-outline-variant/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group"
+                        className="order-card bg-white dark:bg-zinc-900 border border-outline-variant/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group"
                         whileHover={{ y: -2 }}
                       >
                         {/* Top info */}
@@ -11248,7 +11321,15 @@ Notes: "${order.notes || "None"}"
                             <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
                               <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
                               <button
-                                onClick={() => setPreparingOrderId(order.id)}
+                                onClick={(e) => {
+                                  setPreparingOrderId(order.id);
+                                  const card = e.currentTarget.closest(".order-card");
+                                  if (card) {
+                                    setTimeout(() => {
+                                      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                                    }, 100);
+                                  }
+                                }}
                                 className="px-3 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-95 active:scale-95 transition-all cursor-pointer flex-1 text-center"
                               >
                                 Start Preparing
@@ -11289,7 +11370,15 @@ Notes: "${order.notes || "None"}"
                             <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
                               <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
                               <button
-                                onClick={() => setReadyOrderId(order.id)}
+                                onClick={(e) => {
+                                  setReadyOrderId(order.id);
+                                  const card = e.currentTarget.closest(".order-card");
+                                  if (card) {
+                                    setTimeout(() => {
+                                      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                                    }, 100);
+                                  }
+                                }}
                                 className="px-3 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer flex-1 text-center"
                               >
                                 Mark Ready
@@ -11352,7 +11441,7 @@ Notes: "${order.notes || "None"}"
                   </span>
                 </div>
 
-                <div className="flex flex-col gap-3 overflow-y-auto max-h-[70vh] hide-scrollbar">
+                <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
                   <AnimatePresence mode="popLayout">
                   {displayedOrders.filter(o => o.status === "ready").map((order) => {
                     const items = safeGetOrderItems(order.items);
@@ -11362,7 +11451,7 @@ Notes: "${order.notes || "None"}"
                       <motion.div
                         layoutId={order.id}
                         key={order.id}
-                        className="bg-white dark:bg-zinc-900 border border-outline-variant/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group"
+                        className="order-card bg-white dark:bg-zinc-900 border border-outline-variant/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group"
                         whileHover={{ y: -2 }}
                       >
                         {/* Top info */}
@@ -11498,7 +11587,7 @@ Notes: "${order.notes || "None"}"
                   </span>
                 </div>
 
-                <div className="flex flex-col gap-3 overflow-y-auto max-h-[70vh] hide-scrollbar">
+                <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
                   <AnimatePresence mode="popLayout">
                   {fulfilledOrdersToday.map((order) => {
                     const items = safeGetOrderItems(order.items);
@@ -11506,7 +11595,7 @@ Notes: "${order.notes || "None"}"
                       <motion.div
                         layoutId={order.id}
                         key={order.id}
-                        className="bg-white dark:bg-zinc-900 border border-outline-variant/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group opacity-75"
+                        className="order-card bg-white dark:bg-zinc-900 border border-outline-variant/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group opacity-75"
                       >
                         <div className="flex justify-between items-start gap-2">
                           <div>
@@ -15329,7 +15418,7 @@ const Coupons = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("Coupon performance CSV report downloaded successfully!");
+    toast.success("Coupon performance report downloaded successfully!");
   };
 
   // Filter & Search logic
@@ -15495,7 +15584,7 @@ const Coupons = ({
             id="coupons_export_csv_btn"
           >
             <FileDown size={14} />
-            CSV Report
+            Export Spreadsheet
           </button>
           <button
             onClick={() => setShowCreateModal(true)}
@@ -16482,7 +16571,7 @@ const Insights = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+    toast.success("Sales report spreadsheet downloaded successfully!");
   };
 
   const topSellers = useMemo(() => {
@@ -16958,7 +17047,7 @@ const Insights = ({
                 className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors"
               >
                 <Download size={14} />
-                Export CSV
+                Export Spreadsheet
               </button>
               <button
                 onClick={() => console.log("Historical data coming soon")}
@@ -20620,14 +20709,48 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
       const now = new Date();
       const currentTime = format(now, "HH:mm");
 
-      // Determine if shop should be open
-      const isOpen =
+      // Determine if shop should be open based on time
+      let isOpen =
         currentTime >= operatingHours.open &&
         currentTime <= operatingHours.close;
+
+      // Force offline if within scheduled Holiday Mode range
+      const holidaySchedule = user.user_metadata?.holiday_schedule;
+      if (holidaySchedule && holidaySchedule.start && holidaySchedule.end) {
+        const startDate = new Date(holidaySchedule.start);
+        const endDate = new Date(holidaySchedule.end);
+        endDate.setHours(23, 59, 59, 999); // Inclusive of the end day
+        if (now >= startDate && now <= endDate) {
+          isOpen = false;
+        }
+      }
 
       // Check each shop owned by the user
       for (const shop of shops) {
         if (shop.owner_id === user.id && shop.is_active !== isOpen) {
+          
+          const overrideData = localStorage.getItem(`localeats_manual_status_override_${shop.id}`);
+          if (overrideData) {
+            try {
+              const { status: manualStatus, timestamp } = JSON.parse(overrideData);
+              if (Date.now() - timestamp < 12 * 60 * 60 * 1000) {
+                if (manualStatus !== isOpen) {
+                   continue; // Respect the manual override, skip auto-toggle
+                } else {
+                   // If they align now, we can clear the override
+                   localStorage.removeItem(`localeats_manual_status_override_${shop.id}`);
+                }
+              }
+            } catch {
+              // Ignore invalid JSON parsing of override data
+            }
+          }
+          
+          const holidayMode = localStorage.getItem(`localeats_holiday_mode_${shop.id}`);
+          if (isOpen && holidayMode === "true") {
+             continue; // Do not auto open if in manual holiday mode
+          }
+
           console.log(
             `Auto-toggling shop ${shop.name} to ${isOpen ? "Open" : "Closed"}`,
           );
@@ -22210,6 +22333,11 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                     if (!currentShop) return;
                     const newStatus = !currentShop.is_active;
                     
+                    localStorage.setItem(`localeats_manual_status_override_${currentShop.id}`, JSON.stringify({ status: newStatus, timestamp: Date.now() }));
+                    if (newStatus) {
+                      localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
+                    }
+                    
                     // Optimistic update
                     setShops((prev) =>
                       prev.map((s) =>
@@ -22227,7 +22355,6 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                         `Shop is now ${newStatus ? "Open" : "Closed"}`,
                       );
                     } else {
-      console.log("Nudge sent");
                       // Rollback on error
                       setShops((prev) =>
                         prev.map((s) =>
@@ -22242,6 +22369,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                     currentShop.is_active
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800"
                       : "bg-error/10 text-error border-error/20 hover:bg-error/20 shadow-lg shadow-error/10",
+                    localStorage.getItem(`localeats_holiday_mode_${currentShop.id}`) === "true" && "animate-pulse ring-2 ring-error/50 ring-offset-2 ring-offset-surface"
                   )}
                 >
                   <div
@@ -22779,24 +22907,121 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
                   {/* Operational Hours */}
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
-                    <div className="flex items-center justify-between border-b border-outline-variant/10 pb-4">
-                      <div className="flex items-center gap-2">
-                        <Clock size={18} className="text-on-surface-variant" />
-                        <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Operating Hours</h3>
+                    <div className="flex flex-col gap-4 border-b border-outline-variant/10 pb-4">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-2">
+                          <Clock size={18} className="text-on-surface-variant" />
+                          <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Operating Hours</h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                           <span className="text-xs font-bold text-on-surface-variant">Manual Holiday Mode</span>
+                           <button
+                              onClick={async () => {
+                                if (!currentShop) return;
+                                const newStatus = !currentShop.is_active; // If we're toggling, newStatus is the opposite of currentShop.is_active
+                                
+                                localStorage.removeItem(`localeats_manual_status_override_${currentShop.id}`);
+                                if (!newStatus) {
+                                  localStorage.setItem(`localeats_holiday_mode_${currentShop.id}`, "true");
+                                } else {
+                                  localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
+                                }
+                                
+                                // Optimistic update
+                                setShops((prev) =>
+                                  prev.map((s) =>
+                                    s.id === currentShop.id ? { ...s, is_active: newStatus } : s,
+                                  ),
+                                );
+                                
+                                const { error } = await supabase
+                                  .from("shops")
+                                  .update({ is_active: newStatus })
+                                  .eq("id", currentShop.id);
+                                  
+                                if (!error) {
+                                  toast.success(
+                                    newStatus 
+                                      ? "Holiday Mode disabled. Your store is now accepting orders." 
+                                      : "Holiday Mode enabled. Your store is now temporarily closed.",
+                                    { icon: <PauseCircle className="text-primary"/> }
+                                  );
+                                } else {
+                                  setShops((prev) =>
+                                    prev.map((s) =>
+                                      s.id === currentShop.id ? { ...s, is_active: !newStatus } : s,
+                                    ),
+                                  );
+                                  toast.error("Failed to toggle Holiday Mode.");
+                                }
+                              }}
+                              className={cn(
+                                "w-10 h-5 rounded-full transition-all relative shrink-0",
+                                !currentShop?.is_active ? "bg-primary" : "bg-outline-variant/40"
+                              )}
+                            >
+                              <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-all", !currentShop?.is_active ? "translate-x-5" : "translate-x-0")} />
+                            </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                         <span className="text-xs font-bold text-on-surface-variant">Holiday Mode</span>
-                         <button
-                            onClick={() => {
-                              toast.info("Holiday Mode toggled. Your store is now temporarily closed until you turn this off.", { icon: <PauseCircle className="text-primary"/> });
-                            }}
-                            className={cn(
-                              "w-10 h-5 rounded-full transition-all relative shrink-0",
-                              "bg-outline-variant/40"
-                            )}
-                          >
-                            <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-all" />
-                          </button>
+
+                      {/* Scheduled Holiday Range */}
+                      <div className="flex flex-col gap-2 bg-surface-container-highest/20 p-3.5 rounded-xl border border-outline-variant/5">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Scheduled Holiday Range</label>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                           <input 
+                              type="date" 
+                              className="bg-surface-container-low text-xs border border-outline-variant/20 rounded-lg px-3 py-2 focus:outline-none focus:border-primary/50 font-mono"
+                              value={user?.user_metadata?.holiday_schedule?.start || ''} 
+                              onChange={async (e) => {
+                                const currentSchedule = user?.user_metadata?.holiday_schedule || {};
+                                const { data, error } = await supabase.auth.updateUser({
+                                  data: { holiday_schedule: { ...currentSchedule, start: e.target.value } }
+                                });
+                                if (data?.user) {
+                                  setUser(data.user);
+                                  toast.success("Holiday start date saved.");
+                                } else if (error) {
+                                  toast.error("Failed to save start date.");
+                                }
+                              }} 
+                           />
+                           <span className="text-xs font-bold text-on-surface-variant text-center sm:text-left">to</span>
+                           <input 
+                              type="date" 
+                              className="bg-surface-container-low text-xs border border-outline-variant/20 rounded-lg px-3 py-2 focus:outline-none focus:border-primary/50 font-mono"
+                              value={user?.user_metadata?.holiday_schedule?.end || ''} 
+                              onChange={async (e) => {
+                                const currentSchedule = user?.user_metadata?.holiday_schedule || {};
+                                const { data, error } = await supabase.auth.updateUser({
+                                  data: { holiday_schedule: { ...currentSchedule, end: e.target.value } }
+                                });
+                                if (data?.user) {
+                                  setUser(data.user);
+                                  toast.success("Holiday end date saved.");
+                                } else if (error) {
+                                  toast.error("Failed to save end date.");
+                                }
+                              }} 
+                           />
+                           {(user?.user_metadata?.holiday_schedule?.start || user?.user_metadata?.holiday_schedule?.end) && (
+                             <button 
+                               onClick={async () => {
+                                 const { data, error } = await supabase.auth.updateUser({
+                                   data: { holiday_schedule: null }
+                                 });
+                                 if (error) console.error(error);
+                                 if (data?.user) {
+                                   setUser(data.user);
+                                   toast.success("Holiday schedule cleared.");
+                                 }
+                               }} 
+                               className="text-xs text-error hover:underline mt-2 sm:mt-0 font-bold tracking-wide"
+                             >
+                               Clear Schedule
+                             </button>
+                           )}
+                        </div>
                       </div>
                     </div>
                     
