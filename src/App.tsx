@@ -18967,6 +18967,7 @@ function App() {
       badge: pendingOrdersCount > 0 ? pendingOrdersCount : null,
     },
     { id: "riders", label: "Riders", icon: Bike },
+    { id: "marketing", label: "Marketing", icon: Megaphone },
     { id: "payments", label: "Payments", icon: CreditCard },
     { id: "settings", label: "Settings", icon: Settings },
   ];
