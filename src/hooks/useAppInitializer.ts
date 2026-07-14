@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { SupabaseClient, User } from "@supabase/supabase-js";
+import { isSupabaseMocked } from "../lib/supabase";
 
 interface UseAppInitializerProps {
   user: User | null;
@@ -26,6 +27,10 @@ export const useAppInitializer = ({
       }
       void fetchShops();
       void fetchAllMenuItems();
+
+      if (isSupabaseMocked()) {
+        return;
+      }
 
       // Real-time subscription for shops
       const shopsChannel = supabase

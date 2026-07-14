@@ -14,6 +14,7 @@ import { useOrderWorkflow } from "./hooks/useOrderWorkflow";
 import { OnboardingTour } from "./components/OnboardingTour";
 import AIMenuScannerModal from "./components/AIMenuScannerModal";
 import { LegalDocsModal } from "./components/LegalDocsModal";
+import { RiderManagement } from "./components/RiderManagement";
 import { parseAndNormalizeZAAddress, formatSAPhone, getSupportedCity, isOrderDelivery } from "./utils";
 import { GoogleGenAI } from "@google/genai";
 import {
@@ -41,9 +42,9 @@ import {
   Upload,
   RefreshCw,
   Sun,
-  CloudRain,
-  Thermometer,
-  Wind,
+
+
+
   Moon,
   Calendar,
   Download,
@@ -90,7 +91,7 @@ import {
   ShieldCheck,
   Timer,
   Loader2,
-  ThermometerSnowflake,
+
   AlertTriangle,
   Truck,
   Wallet,
@@ -98,15 +99,14 @@ import {
   Volume1,
   Volume2,
   Copy,
-  
-  
-  Compass,
+
+
   Leaf,
   Flame,
   WifiOff,
   Activity,
   CheckCircle,
-  Inbox, Megaphone, Landmark, Pizza, List, LayoutGrid, Camera, Filter, ShoppingBag, ChevronLeft, Database } from "lucide-react";
+  Inbox, Megaphone, Landmark, Pizza, List, LayoutGrid, Filter, ShoppingBag, ChevronLeft, Database } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -126,14 +126,14 @@ import { format } from "date-fns";
 import { SavingOverlay } from "./components/ui/SavingOverlay";
 import { ConfirmModal } from "./components/ui/ConfirmModal";
 import { Skeleton } from "./components/ui/Skeleton";
-import { createClient, User } from "@supabase/supabase-js";
+import { User } from "@supabase/supabase-js";
+import { supabase } from "./lib/supabase";
 import {
   MapContainer,
   TileLayer,
   Marker,
   useMap,
   useMapEvents,
-  Polyline,
   Tooltip,
 } from "react-leaflet";
 import L from "leaflet";
@@ -187,7 +187,6 @@ const getCroppedImg = async (
   });
 };
 import { LocalEatsLogo } from "./components/LocalEatsLogo";
-import { QRScanner } from "./components/QRScanner";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
@@ -290,55 +289,6 @@ const DEFAULT_MENU_IMAGE = "https://images.unsplash.com/photo-1546069901-ba9599a
 const DEFAULT_SHOP_LOGO = "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&q=80&w=800";
 
 
-
-/**
- * 🚲 Smooth Location Interpolation (Lerp)
- * Prevents pins from jumping visually when new coordinates arrive.
- */
-function useSmoothLocation(lat?: number, lng?: number) {
-  const [smoothLat, setSmoothLat] = useState<number | undefined>(lat);
-  const [smoothLng, setSmoothLng] = useState<number | undefined>(lng);
-  const requestRef = useRef<number>(undefined);
-  const targetRef = useRef({ lat, lng });
-  const animateRef = useRef<() => void>(undefined);
-
-  useEffect(() => {
-    targetRef.current = { lat, lng };
-  }, [lat, lng]);
-
-  const animate = useCallback(() => {
-    if (targetRef.current.lat !== undefined && targetRef.current.lng !== undefined) {
-      setSmoothLat((prev) => {
-        if (prev === undefined) return targetRef.current.lat;
-        const diff = targetRef.current.lat! - prev;
-        if (Math.abs(diff) < 0.000001) return targetRef.current.lat!;
-        return prev + diff * 0.1; // Lerp factor for ultra-smooth easing
-      });
-      setSmoothLng((prev) => {
-        if (prev === undefined) return targetRef.current.lng;
-        const diff = targetRef.current.lng! - prev;
-        if (Math.abs(diff) < 0.000001) return targetRef.current.lng!;
-        return prev + diff * 0.1;
-      });
-    }
-    if (animateRef.current) {
-      requestRef.current = requestAnimationFrame(animateRef.current);
-    }
-  }, []);
-
-  useEffect(() => {
-    animateRef.current = animate;
-  });
-
-  useEffect(() => {
-    requestRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
-    };
-  }, [animate]);
-
-  return { lat: smoothLat, lng: smoothLng };
-}
 
 const LeafletMap = ({
   center,
@@ -466,7 +416,7 @@ const AddressAutocomplete = ({
       async (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
         console.log(`Captured GPS: ${latitude}, ${longitude} (Precision: ${accuracy}m)`);
-        
+
         try {
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1`,
@@ -821,7 +771,6 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // The official dashboard URL for LocalEats South Africa
 const DASHBOARD_URL = "https://dashboard.localeatssa.co.za";
-const APP_VERSION = "v5.4";
 
 
 /**
@@ -854,40 +803,7 @@ const handleGoogleSignIn = async () => {
   });
 };
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error(
-    "Supabase URL or Anon Key is missing. Please check your environment variables.",
-  );
-}
 
-const isSecretKey = supabaseAnonKey?.startsWith("sb_secret_");
-const isProbablyNotSupabaseKey =
-  supabaseAnonKey?.length &&
-  supabaseAnonKey.length < 50 &&
-  !supabaseAnonKey.startsWith("eyJ");
-
-if (isSecretKey) {
-  const msg =
-    'CRITICAL SECURITY ERROR: You are using a Supabase SECRET key (service_role) in the browser. This is forbidden and will cause the app to crash. Please replace VITE_SUPABASE_ANON_KEY with the public "anon" key in your project secrets.';
-  console.error(msg);
-  if (typeof window !== "undefined") {
-    console.log(
-      "%c" + msg,
-      "color: white; background: red; font-size: 20px; padding: 10px; border-radius: 5px;",
-    );
-  }
-}
-
-if (isProbablyNotSupabaseKey) {
-  const msg =
-    'WARNING: The Supabase Anon Key looks incorrect. It should be a long JWT string starting with "eyJ". Please check your Supabase dashboard.';
-  console.warn(msg);
-}
-
-console.log(
-  "Supabase initialized with URL:",
-  supabaseUrl ? `${supabaseUrl.substring(0, 10)}...` : "MISSING",
-);
 
 export interface Review {
   id: string;
@@ -930,8 +846,6 @@ export interface Message {
   content: string;
   created_at: string;
 }
-
-const supabase = createClient(supabaseUrl || "", supabaseAnonKey || "");
 
 /**
  * Global fetch wrapper with retry logic to handle intermittent "Failed to fetch" errors.
@@ -994,31 +908,31 @@ const Pagination = ({
 
   const getPageNumbers = () => {
     const pages: (number | "ellipsis")[] = [];
-    
+
     // Always show page 1
     pages.push(1);
-    
+
     if (currentPage > 3) {
       pages.push("ellipsis");
     }
-    
+
     // Show pages around currentPage
     const start = Math.max(2, currentPage - 1);
     const end = Math.min(totalPages - 1, currentPage + 1);
-    
+
     for (let i = start; i <= end; i++) {
       pages.push(i);
     }
-    
+
     if (currentPage < totalPages - 2) {
       pages.push("ellipsis");
     }
-    
+
     // Always show last page
     if (totalPages > 1) {
       pages.push(totalPages);
     }
-    
+
     return pages;
   };
 
@@ -2160,10 +2074,10 @@ const EditProfile: React.FC<EditProfileProps> = ({
   const handleSave = () => {
     const phoneCleaned = formData.phone.replace(/[\s-]/g, "");
     const whatsappCleaned = (formData.whatsapp || "").replace(/[\s-]/g, "");
-    
+
     // SA Phone Validation: +27XXXXXXXXX or 0XXXXXXXXX (10 or 11 digits total depending on format)
     const saRegex = /^(?:\+27|0)[0-9]{9}$/;
-    
+
     if (!saRegex.test(phoneCleaned)) {
       toast.error("Please enter a valid South African phone number for calls (e.g., +27 82 123 4567 or 082 123 4567).");
       return;
@@ -2553,8 +2467,7 @@ const EditProfile: React.FC<EditProfileProps> = ({
             disabled={isSaving || isSuccess}
             className={cn(
               "w-full text-on-primary font-headline font-extrabold text-lg py-5 rounded-full shadow-lg transition-all flex items-center justify-center gap-3",
-              isSuccess 
-                ? "bg-emerald-500 shadow-emerald-500/20 active:scale-[0.98]"
+              isSuccess ? "bg-emerald-500 shadow-emerald-500/20 active:scale-[0.98]"
                 : isSaving 
                   ? "bg-surface-container-highest cursor-not-allowed text-on-surface-variant shadow-none" 
                   : "bg-gradient-to-br from-primary to-primary-container shadow-primary/20 active:scale-[0.98]"
@@ -2699,16 +2612,10 @@ const StatCard = React.memo(({
 
 interface ConnectionsSliderProps {
   onNavigate: (tab: string) => void;
-  setShowWeatherModal: (show: boolean) => void;
-  generateWeatherAiAdvice: (selectedWeather: "Sunny" | "Rainy" | "Chilly" | "Windy") => void;
-  currentWeather: "Sunny" | "Rainy" | "Chilly" | "Windy";
 }
 
 const ConnectionsSlider = ({
   onNavigate,
-  setShowWeatherModal,
-  generateWeatherAiAdvice,
-  currentWeather,
 }: ConnectionsSliderProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pingingDb, setPingingDb] = useState(false);
@@ -2773,8 +2680,6 @@ const ConnectionsSlider = ({
   };
 
   const handleDemandCoach = () => {
-    setShowWeatherModal(true);
-    generateWeatherAiAdvice(currentWeather);
     toast.success("Demand Coach playbook loaded successfully!");
   };
 
@@ -2793,7 +2698,7 @@ const ConnectionsSlider = ({
             Slide through recommended settings & connections to manage your digital kitchen optimally and unlock key advantages.
           </p>
         </div>
-        
+
         {/* Navigation buttons */}
         <div className="flex items-center gap-2 self-end sm:self-auto">
           <button
@@ -2842,7 +2747,7 @@ const ConnectionsSlider = ({
                 Real-time automatic backup and synchronization linking your active shop menu across all customer and driver sessions.
               </p>
             </div>
-            
+
             <div className="space-y-2 border-t border-outline-variant/10 pt-3">
               <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
               <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
@@ -2855,7 +2760,7 @@ const ConnectionsSlider = ({
               </ul>
             </div>
           </div>
-          
+
           <div className="mt-5 pt-3 border-t border-outline-variant/5">
             <div className="bg-blue-500/[0.03] p-2 rounded-xl border border-blue-500/10 mb-3 text-[9px] font-medium text-blue-600 dark:text-blue-400">
               💡 Keep connection active to ensure instant sync across customer app.
@@ -2902,7 +2807,7 @@ const ConnectionsSlider = ({
                 Converts customer delivery addresses into precise coordinates for automatic rider route mapping.
               </p>
             </div>
-            
+
             <div className="space-y-2 border-t border-outline-variant/10 pt-3">
               <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
               <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
@@ -2915,7 +2820,7 @@ const ConnectionsSlider = ({
               </ul>
             </div>
           </div>
-          
+
           <div className="mt-5 pt-3 border-t border-outline-variant/5">
             <div className="bg-emerald-500/[0.03] p-2 rounded-xl border border-emerald-500/10 mb-3 text-[9px] font-medium text-emerald-600 dark:text-emerald-400">
               💡 Active mapping ensures drivers get precise directions directly to customer doorsteps.
@@ -2965,7 +2870,7 @@ const ConnectionsSlider = ({
                 Auto-accept simplifies your workflow by automatically approving incoming orders for faster kitchen prep.
               </p>
             </div>
-            
+
             <div className="space-y-2 border-t border-outline-variant/10 pt-3">
               <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
               <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
@@ -2978,7 +2883,7 @@ const ConnectionsSlider = ({
               </ul>
             </div>
           </div>
-          
+
           <div className="mt-5 pt-3 border-t border-outline-variant/5">
             <div className="bg-amber-500/[0.03] p-2 rounded-xl border border-amber-500/10 mb-3 text-[9px] font-medium text-amber-600 dark:text-amber-400">
               💡 Highly recommended during busy hours to speed up customer deliveries.
@@ -3021,7 +2926,7 @@ const ConnectionsSlider = ({
                 Link your own trusted local delivery drivers to dispatch pipelines and coordinate handoffs.
               </p>
             </div>
-            
+
             <div className="space-y-2 border-t border-outline-variant/10 pt-3">
               <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
               <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
@@ -3034,7 +2939,7 @@ const ConnectionsSlider = ({
               </ul>
             </div>
           </div>
-          
+
           <div className="mt-5 pt-3 border-t border-outline-variant/5">
             <div className="bg-cyan-500/[0.03] p-2 rounded-xl border border-cyan-500/10 mb-3 text-[9px] font-medium text-cyan-600 dark:text-cyan-400">
               💡 Perfect for shops and local restaurants that employ their own delivery drivers.
@@ -3069,13 +2974,11 @@ const ConnectionsSlider = ({
             </div>
             <div>
               <h3 className="text-sm font-headline font-black text-on-surface">
-                AI Sales & Weather Assistant
               </h3>
               <p className="text-[10px] text-on-surface-variant/80 font-medium leading-relaxed mt-1">
-                Analyzes current local weather forecasts to predict busy hours and recommend popular items.
               </p>
             </div>
-            
+
             <div className="space-y-2 border-t border-outline-variant/10 pt-3">
               <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
               <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
@@ -3088,10 +2991,9 @@ const ConnectionsSlider = ({
               </ul>
             </div>
           </div>
-          
+
           <div className="mt-5 pt-3 border-t border-outline-variant/5">
             <div className="bg-pink-500/[0.03] p-2 rounded-xl border border-pink-500/10 mb-3 text-[9px] font-medium text-pink-600 dark:text-pink-400">
-              💡 Analyzes live local weather patterns to optimize your menu preparation.
             </div>
             <button
               onClick={handleDemandCoach}
@@ -3196,7 +3098,7 @@ const OnboardingChecklist = ({
             )}
           </div>
         </div>
-        
+
         <div className="flex items-center gap-4 bg-white/60 dark:bg-zinc-900/60 backdrop-blur-md px-5 py-3 rounded-3xl border border-primary/10 shrink-0 self-start lg:self-auto shadow-sm">
           <div className="relative w-12 h-12 shrink-0">
             <svg className="w-full h-full rotate-[-90deg]">
@@ -3231,7 +3133,7 @@ const OnboardingChecklist = ({
         {tasks.map((task) => {
           const IconComponent = task.icon;
           const isCompleted = task.completed;
-          
+
           return (
             <button
               key={task.key}
@@ -3248,7 +3150,7 @@ const OnboardingChecklist = ({
               className={cn(
                 "flex items-center justify-between p-5 rounded-2xl border transition-all text-left group cursor-pointer hover:scale-[1.01] active:scale-[0.99]",
                 isCompleted
-                  ? "bg-emerald-500/[0.04] border-emerald-500/20 text-emerald-700 dark:text-emerald-400 dark:bg-emerald-500/[0.02]"
+? "bg-emerald-500/[0.04] border-emerald-500/20 text-emerald-700 dark:text-emerald-400 dark:bg-emerald-500/[0.02]"
                   : "bg-white dark:bg-zinc-900 border-outline-variant/10 hover:border-primary/50 text-on-surface-variant"
               )}
             >
@@ -3257,7 +3159,7 @@ const OnboardingChecklist = ({
                   className={cn(
                     "w-11 h-11 rounded-xl flex items-center justify-center transition-colors shrink-0",
                     isCompleted
-                      ? "bg-emerald-500/10 text-emerald-500"
+? "bg-emerald-500/10 text-emerald-500"
                       : "bg-surface-container-high dark:bg-zinc-800 text-on-surface-variant group-hover:bg-primary/10 group-hover:text-primary",
                   )}
                 >
@@ -3569,7 +3471,7 @@ const CodReconciliationView = ({
                       ></div>
                     </div>
                   </div>
-                  
+
                   {isOverLimit && (
                     <div className="text-[10px] text-error font-bold bg-error/5 p-2.5 rounded-xl border border-error/10 flex items-center gap-1.5">
                       <Lock size={12} />
@@ -3597,10 +3499,10 @@ const CodReconciliationView = ({
             onClick={() => {
               const doc = new jsPDF();
               doc.text("Cash Deliveries Ledger - " + currentShop.shop_name, 14, 20);
-              
+
               const tableColumn = ["Order ID", "Customer", "Rider Assigned", "Total Settle", "Status"];
               const tableRows: (string | number | undefined)[][] = [];
-              
+
               codOrders.forEach(order => {
                 const orderData = [
                   order.id.slice(0, 12),
@@ -3679,7 +3581,7 @@ const CodReconciliationView = ({
                               className={cn(
                                 "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all border flex items-center gap-1.5 active:scale-[0.98]",
                                 isSettled
-                                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/20"
+? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/20"
                                   : "bg-amber-500 text-white border-amber-600 hover:bg-amber-600 shadow-xs shadow-amber-500/10"
                               )}
                             >
@@ -3742,7 +3644,7 @@ const PaymentHistory = ({
       const isSettled = prev.includes(orderId);
       const next = isSettled ? prev.filter(id => id !== orderId) : [...prev, orderId];
       localStorage.setItem("localeats_settled_cod_orders", JSON.stringify(next));
-      
+
       toast.success(isSettled ? "Changed status back to Pending Handover" : "Marked Cash Handover Settled & Cleared!", {
         description: `Order ${orderId.slice(0, 8)} handshake confirmed.`,
         icon: isSettled ? <ShieldAlert size={16} className="text-amber-500" /> : <ShieldCheck size={16} className="text-emerald-500" />
@@ -3845,9 +3747,9 @@ const PaymentHistory = ({
   const handleRedeem = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage("");
-    
+
     const pinDigits = voucherPin.replace(/\D/g, "");
-    
+
     if (payMethod === "1Voucher") {
       if (pinDigits.length !== 16) {
         setErrorMessage("Invalid 1Voucher PIN format. Must be a 16-digit numeric PIN.");
@@ -3859,40 +3761,40 @@ const PaymentHistory = ({
         return;
       }
     }
-    
+
     setCheckoutStep("verifying");
-    
+
     try {
       if (payMethod === "Launch Promo") {
         setStepTracerMessage("🎁 Initiating 100% Free Launch Promotion upgrade...");
         await new Promise((resolve) => setTimeout(resolve, 800));
-        
+
         setStepTracerMessage(`⚡ Routing free ${selectedPlan.name} credentials...`);
         await new Promise((resolve) => setTimeout(resolve, 800));
-        
+
         setStepTracerMessage("✨ Securely establishing your shop's connection and preparing your account...");
         await new Promise((resolve) => setTimeout(resolve, 600));
       } else {
       console.log("Nudge sent");
         setStepTracerMessage("🔍 Querying South African prepaid hubs (FLASH & OTT gateway)...");
         await new Promise((resolve) => setTimeout(resolve, 1200));
-        
+
         setStepTracerMessage(`💳 Settling R ${selectedPlan.price.toFixed(2)} premium contract ledger...`);
         await new Promise((resolve) => setTimeout(resolve, 1200));
-        
+
         setStepTracerMessage("✨ Securely establishing your shop's connection and preparing your account...");
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
-      
+
       const referenceId = payMethod === "Launch Promo"
         ? `PRM-FREE-${selectedPlan.id.toUpperCase()}-${Math.floor(Math.random() * 9000 + 1000)}`
         : `VCH-${pinDigits.slice(0,4)}-${pinDigits.slice(4,8)}-${Math.floor(Math.random() * 9000 + 1000)}`;
-      
+
       const thirtyDays = new Date();
       thirtyDays.setDate(thirtyDays.getDate() + 30);
       const nextDate = thirtyDays.toISOString();
       const lastDate = new Date().toISOString();
-      
+
       const { error: payError } = await supabase
         .from("payments")
         .insert({
@@ -3905,7 +3807,7 @@ const PaymentHistory = ({
         });
 
       if (payError) throw payError;
-      
+
       const { data: shopData, error: shopError } = await supabase
         .from("shops")
         .update({
@@ -3915,19 +3817,19 @@ const PaymentHistory = ({
         })
         .eq("id", shopId)
         .select();
-        
+
       if (shopError) throw shopError;
-      
+
       if (setShops && shopData && shopData[0]) {
         setShops((prev) =>
           prev.map((s) => (s.id === shopId ? { ...s, ...shopData[0] } : s))
         );
       }
-      
+
       setCheckoutStep("success");
       setVoucherPin("");
       setRefreshKey((prev) => prev + 1);
-      
+
       toast.success(`${selectedPlan.name} Activated!`, {
         description: payMethod === "Launch Promo"
           ? `Successfully activated ${selectedPlan.name} with Free Launch Promo!`
@@ -3935,7 +3837,7 @@ const PaymentHistory = ({
         icon: <ShieldCheck className="text-emerald-500" />,
         duration: 5000
       });
-      
+
     } catch (err: unknown) {
       console.error("Redemption error:", err);
       const msg = err instanceof Error ? err.message : "Internal voucher clearing failed. Connection timed out.";
@@ -4092,7 +3994,7 @@ const PaymentHistory = ({
                 {currentPlanName}
               </p>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
                 <Timer size={20} />
@@ -4153,7 +4055,7 @@ const PaymentHistory = ({
                     Recommended
                   </span>
                 )}
-                
+
                 <div className="space-y-2">
                   <h4 className="font-bold text-sm text-on-surface">{plan.name}</h4>
                   <p className="text-[10px] text-on-surface-variant/75 leading-tight">
@@ -4175,7 +4077,7 @@ const PaymentHistory = ({
               </button>
             ))}
           </div>
-          
+
           <div className="bg-surface-container-low/60 p-4 rounded-2xl border border-outline-variant/5">
             <h5 className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/80 mb-2">
               Includes with {selectedPlan.name}:
@@ -4208,7 +4110,7 @@ const PaymentHistory = ({
                   Upgrading to <span className="text-primary font-bold">{selectedPlan.name} (R {selectedPlan.price.toFixed(2)}/mo)</span>. Select your activation method.
                 </p>
               </div>
-              
+
               <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/10 self-stretch md:self-auto shrink-0 z-0 select-none overflow-x-auto">
                 {(["Launch Promo", "1Voucher", "OTT"] as const).map((method) => (
                   <button
@@ -4318,7 +4220,7 @@ const PaymentHistory = ({
               </div>
             )}
 
-            
+
 
             {errorMessage && (
               <p className="text-xs text-rose-500 font-bold flex items-center gap-1.5 bg-rose-50 p-3 rounded-xl border border-rose-100 max-w-md">
@@ -4436,7 +4338,7 @@ const PaymentHistory = ({
             <h3 className="text-lg font-bold text-on-surface">Voucher Audit Trail</h3>
             <p className="text-xs text-on-surface-variant">Historical list of credits loaded into this merchant account.</p>
           </div>
-          
+
           <div className="flex flex-col md:flex-row gap-3 items-center w-full md:w-auto">
             <div className="relative w-full md:w-72">
               <Search
@@ -4568,7 +4470,7 @@ const PaymentHistory = ({
                             className={cn(
                               "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
                               payment.status === "success"
-                                ? "bg-emerald-100 text-emerald-700"
+? "bg-emerald-100 text-emerald-700"
                                 : payment.status === "pending"
                                   ? "bg-amber-100 text-amber-700"
                                   : "bg-rose-100 text-rose-700",
@@ -4619,83 +4521,6 @@ const PaymentHistory = ({
   );
 };
 
-const CITY_COORDINATES: Record<string, { lat: number; lng: number }> = {
-  "Soweto": { lat: -26.2678, lng: 27.8585 },
-  "Johannesburg": { lat: -26.2041, lng: 28.0473 },
-  "Cape Town": { lat: -33.9249, lng: 18.4241 },
-  "Durban": { lat: -29.8587, lng: 31.0218 },
-  "Pretoria": { lat: -25.7479, lng: 28.2293 },
-};
-
-function getWeatherInfo(type: "Sunny" | "Rainy" | "Chilly" | "Windy") {
-  switch (type) {
-    case "Sunny":
-      return {
-        label: "Sunny & Warm",
-        temp: "24°C",
-        icon: Sun,
-        color: "text-amber-500 bg-amber-500/10 border-amber-500/20",
-        bg: "bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-amber-950/20 dark:to-orange-950/10",
-        badge: "bg-amber-500 text-white",
-        desc: "Mild and clear, perfect for kwaito vibes & outdoor lunches.",
-        predictedDemand: "Higher pickup rates. High demand for cold drinks, light snacks, and combos.",
-        productAffinities: [
-          { name: "Cold Cola & Juices", index: 95 },
-          { name: "Single Patty Kota Wrap", index: 82 },
-          { name: "Standard Chips Parcel", index: 68 }
-        ]
-      };
-    case "Rainy":
-      return {
-        label: "Heavy Rainy",
-        temp: "11°C",
-        icon: CloudRain,
-        color: "text-blue-500 bg-blue-500/10 border-blue-500/20",
-        bg: "bg-gradient-to-br from-blue-50 to-indigo-50/50 dark:from-blue-950/20 dark:to-indigo-950/10",
-        badge: "bg-blue-600 text-white",
-        desc: "Heavy winter rain, slippery main roads & misty conditions.",
-        predictedDemand: "Massive surge in home deliveries (+65%). Coordinating with local delivery drivers is highly recommended.",
-        productAffinities: [
-          { name: "Supreme Loaded Kota (Mago-style)", index: 98 },
-          { name: "Spicy Chips & Hot Gravy", index: 92 },
-          { name: "Double Cheese & Polony Kota", index: 85 }
-        ]
-      };
-    case "Chilly":
-      return {
-        label: "Winter Chilly",
-        temp: "8°C",
-        icon: Thermometer,
-        color: "text-cyan-500 bg-cyan-500/10 border-cyan-500/20",
-        bg: "bg-gradient-to-br from-cyan-50 to-emerald-50/50 dark:from-cyan-950/20 dark:to-emerald-950/10",
-        badge: "bg-cyan-600 text-white",
-        desc: "Frosty mornings, typical South African dry winter cold.",
-        predictedDemand: "Steady dinner delivery. Massive craving for steaming hot Kotas & hot beverages.",
-        productAffinities: [
-          { name: "Standard Russian & Atchar Kota", index: 91 },
-          { name: "Mago-style Jumbo Platter", index: 84 },
-          { name: "Steaming Hot Rooibos Tea", index: 78 }
-        ]
-      };
-    case "Windy":
-      return {
-        label: "Overcast / Windy",
-        temp: "15°C",
-        icon: Wind,
-        color: "text-teal-500 bg-teal-500/10 border-teal-500/20",
-        bg: "bg-gradient-to-br from-teal-50 to-zinc-50/50 dark:from-teal-950/20 dark:to-zinc-950/10",
-        badge: "bg-teal-600 text-white",
-        desc: "Gusty dust, windy streets in local parts.",
-        predictedDemand: "Riders face heavy headwind. Delivery transit times slightly higher by 5m.",
-        productAffinities: [
-          { name: "Full House Kota Triple-Deck", index: 85 },
-          { name: "Large Shared Chip Tub", index: 72 },
-          { name: "Water & Smoothies", index: 35 }
-        ]
-      };
-  }
-};
-
 const DashboardOverview = React.memo(({
   orders,
   loading,
@@ -4708,21 +4533,7 @@ const DashboardOverview = React.memo(({
   trialInfo,
   currentShop,
   darkMode,
-  currentWeather,
-  setCurrentWeather,
-  setShowWeatherModal,
-  generateWeatherAiAdvice,
-  getWeatherInfo,
   onLoadDemoData,
-  isLiveWeather,
-  setIsLiveWeather,
-  liveWeatherTemp,
-  weatherCity,
-  liveWeatherLoading,
-  liveWindSpeed,
-  livePrecipitation,
-  weatherForecast,
-  weatherAlert,
 }: {
   orders: Order[];
   loading: boolean;
@@ -4735,47 +4546,7 @@ const DashboardOverview = React.memo(({
   trialInfo: { daysRemaining: number; isExpired: boolean } | null;
   currentShop: Shop | undefined;
   darkMode: boolean;
-  currentWeather: "Sunny" | "Rainy" | "Chilly" | "Windy";
-  setCurrentWeather: (w: "Sunny" | "Rainy" | "Chilly" | "Windy") => void;
-  setShowWeatherModal: (show: boolean) => void;
-  generateWeatherAiAdvice: (selectedWeather: "Sunny" | "Rainy" | "Chilly" | "Windy") => void;
-  getWeatherInfo: (type: "Sunny" | "Rainy" | "Chilly" | "Windy") => {
-    label: string;
-    temp: string;
-    icon: React.ElementType;
-    color: string;
-    bg: string;
-    badge: string;
-    desc: string;
-    predictedDemand: string;
-    productAffinities: { name: string; index: number }[];
-  };
   onLoadDemoData?: () => void;
-  isLiveWeather: boolean;
-  setIsLiveWeather: (val: boolean) => void;
-  liveWeatherTemp: string | null;
-  weatherCity: string;
-  liveWeatherLoading?: boolean;
-  liveWindSpeed?: number | null;
-  livePrecipitation?: number | null;
-  weatherForecast?: Array<{
-    date: string;
-    dayName: string;
-    tempMax: string;
-    tempMin: string;
-    category: "Sunny" | "Rainy" | "Chilly" | "Windy";
-    windMax: number;
-    precipSum: number;
-    demandImpact: string;
-    productAffinity: string;
-  }> | null;
-  weatherAlert?: {
-    id: string;
-    title: string;
-    message: string;
-    type: "warning" | "info";
-    isExtreme: boolean;
-  } | null;
 }) => {
   const [followerCount, setFollowerCount] = useState<number | string>("--");
   const [followerTrend, setFollowerTrend] = useState<string>("0");
@@ -4877,7 +4648,7 @@ const DashboardOverview = React.memo(({
       .from("rider_connections")
       .select("*")
       .eq("shop_id", currentShop.id);
-    
+
     if (!error && data) {
       setConnections(data);
     }
@@ -5193,17 +4964,17 @@ const DashboardOverview = React.memo(({
 
   return (
     <div className="space-y-8 md:space-y-12">
-      {/* Emergency All-Shops Shutdown */}
+      {/* Bulk Storefront Status Switch */}
       {shops.length > 0 && (
-        <div className="bg-error/5 border border-error/20 rounded-3xl p-4 md:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-error/10 text-error rounded-full shrink-0">
+            <div className="p-3 bg-primary/10 text-primary rounded-full shrink-0">
               <Activity size={24} className={shops.some(s => s.is_active) ? "animate-pulse" : ""} />
             </div>
             <div>
-              <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">Emergency Operations</h3>
+              <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">Bulk Storefront Switch</h3>
               <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
-                Instantly toggle the visibility of all your registered storefronts across the entire platform. Overrides individual shop settings.
+                Instantly toggle the online availability of all your registered storefronts with a single click.
               </p>
             </div>
           </div>
@@ -5211,7 +4982,7 @@ const DashboardOverview = React.memo(({
             onClick={async () => {
               const anyActive = shops.some(s => s.is_active);
               const newStatus = !anyActive;
-              
+
               shops.forEach(s => {
                 localStorage.setItem(`localeats_manual_status_override_${s.id}`, JSON.stringify({ status: newStatus, timestamp: Date.now() }));
                 if (newStatus) {
@@ -5219,27 +4990,27 @@ const DashboardOverview = React.memo(({
                 }
               });
 
-              toast.loading(`Turning all shops ${newStatus ? "Online" : "Offline"}...`, { id: "emergency-toggle" });
+              toast.loading(`Setting all storefronts to ${newStatus ? "Online" : "Offline"}...`, { id: "bulk-status-toggle" });
               const { error } = await supabase
                 .from("shops")
                 .update({ is_active: newStatus })
                 .in("id", shops.map(s => s.id));
 
               if (!error) {
-                toast.success(`All shops are now ${newStatus ? "Online" : "Offline"}!`, { id: "emergency-toggle" });
+                toast.success(`All storefronts are now ${newStatus ? "Online" : "Offline"}!`, { id: "bulk-status-toggle" });
                 onRefresh();
               } else {
-                toast.error("Failed to execute emergency toggle. Check connection.", { id: "emergency-toggle" });
+                toast.error("Failed to update status. Please check your connection.", { id: "bulk-status-toggle" });
               }
             }}
             className={cn(
               "px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all duration-300 w-full md:w-auto shrink-0 shadow-md flex items-center justify-center gap-2",
               shops.some(s => s.is_active)
-                ? "bg-error text-white hover:bg-error/90 shadow-error/20"
+                ? "bg-primary text-white hover:bg-primary/90 shadow-primary/20"
                 : "bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20"
             )}
           >
-            {shops.some(s => s.is_active) ? "Shutdown All Shops" : "Re-activate All Shops"}
+            {shops.some(s => s.is_active) ? "Set All Offline" : "Set All Online"}
           </button>
         </div>
       )}
@@ -5359,7 +5130,7 @@ const DashboardOverview = React.memo(({
                   <h2 className="text-2xl font-headline font-black text-on-surface">Simulate Storefront Order</h2>
                   <p className="text-xs text-on-surface-variant font-medium mt-1">Simulate a customer order to test your notifications and kitchen receipt workflow.</p>
                 </div>
-                
+
                 <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 space-y-2">
                   <div className="flex justify-between text-sm font-bold text-on-surface">
                     <span>Delicious Meal (Sample)</span>
@@ -5511,7 +5282,7 @@ const DashboardOverview = React.memo(({
               Here is what's happening in your kitchen today.
             </p>
           </div>
-          
+
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
             {/* View layout mode switcher to adjust visual complexity & cognitive load */}
             <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/10 shadow-xs justify-center sm:justify-start">
@@ -5595,17 +5366,17 @@ const DashboardOverview = React.memo(({
           <div className="absolute top-0 right-0 p-8 opacity-[0.02] pointer-events-none">
             <Store size={140} />
           </div>
-          
+
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 relative z-10 flex-1">
             <div className={cn(
               "w-16 h-16 rounded-3xl flex items-center justify-center shrink-0 transition-all duration-500",
               currentShop.is_active
-                ? "bg-emerald-500/10 text-emerald-500 shadow-xl shadow-emerald-500/10"
+? "bg-emerald-500/10 text-emerald-500 shadow-xl shadow-emerald-500/10"
                 : "bg-error/10 text-error shadow-xl shadow-error/10"
             )}>
               <Store size={28} />
             </div>
-            
+
             <div className="space-y-1 flex-1">
               <div className="flex items-center flex-wrap gap-2.5">
                 <h3 className="text-lg md:text-xl font-headline font-black text-on-surface tracking-tight">
@@ -5614,7 +5385,7 @@ const DashboardOverview = React.memo(({
                 <span className={cn(
                   "px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5",
                   currentShop.is_active
-                    ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
                     : "bg-error/10 text-error border border-error/20"
                 )}>
                   <span className={cn(
@@ -5624,19 +5395,19 @@ const DashboardOverview = React.memo(({
                   {currentShop.is_active ? "Live & Accepting Orders" : "Offline / Paused"}
                 </span>
               </div>
-              
+
               <p className="text-xs md:text-sm text-on-surface-variant font-medium leading-relaxed max-w-xl">
                 {currentShop.is_active
                   ? "Your storefront is fully active on the LocalEats map. Customers can place orders, view items, and pairing requests from nearby riders will automatically dispatch."
                   : "Your storefront is currently hidden from the customer feed. Toggle below to open your virtual kitchen and go live."}
               </p>
-              
+
               {currentShop.opening_time && currentShop.closing_time && (
                 <p className="text-[10px] font-mono font-black text-on-surface-variant/60 uppercase tracking-widest flex items-center gap-1.5 pt-1">
                   <Clock size={12} /> Standard hours: {currentShop.opening_time} - {currentShop.closing_time}
                 </p>
               )}
-              
+
               {currentShop.updated_at ? (
                 <p className="text-[10px] font-mono font-black text-emerald-500 flex items-center gap-1.5 pt-1 uppercase tracking-widest">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -5661,7 +5432,7 @@ const DashboardOverview = React.memo(({
                 onClick={async () => {
                   setIsStatusToggling(true);
                   const newStatus = !currentShop.is_active;
-                  
+
                   localStorage.setItem(`localeats_manual_status_override_${currentShop.id}`, JSON.stringify({ status: newStatus, timestamp: Date.now() }));
                   if (newStatus) {
                     localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
@@ -5673,12 +5444,12 @@ const DashboardOverview = React.memo(({
                       s.id === currentShop.id ? { ...s, is_active: newStatus } : s,
                     ),
                   );
-                  
+
                   const { error } = await supabase
                     .from("shops")
                     .update({ is_active: newStatus })
                     .eq("id", currentShop.id);
-                    
+
                   if (!error) {
                     toast.success(
                       `Storefront is now ${newStatus ? "Open & Live" : "Closed & Offline"}!`
@@ -5734,9 +5505,6 @@ const DashboardOverview = React.memo(({
 
       <ConnectionsSlider
         onNavigate={onNavigate}
-        setShowWeatherModal={setShowWeatherModal}
-        generateWeatherAiAdvice={generateWeatherAiAdvice}
-        currentWeather={currentWeather}
       />
 
       {layoutMode === "advanced" && (
@@ -5794,245 +5562,6 @@ const DashboardOverview = React.memo(({
             />
           </motion.div>
 
-        {/* Weather Status & Forward Demand Forecast Center (Responsive Full Width Bento row) */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.55 }}
-          className="col-span-2 md:col-span-3 lg:col-span-4"
-        >
-          <div
-            className="p-6 md:p-8 rounded-[2rem] border border-outline-variant/10 shadow-sm bg-surface-container-lowest hover:shadow-xl hover:shadow-primary/5 transition-all duration-500 overflow-hidden"
-          >
-            {/* Header of Weather Hub */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pb-5 border-b border-zinc-100 dark:border-zinc-800/60">
-              <div>
-                <h4 className="text-sm font-black text-on-surface-variant/70 uppercase tracking-widest flex items-center gap-1.5">
-                  <span className="flex h-2 w-2 relative">
-                    <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", isLiveWeather ? "bg-emerald-400" : "bg-zinc-400")}></span>
-                    <span className={cn("relative inline-flex rounded-full h-2 w-2", isLiveWeather ? "bg-emerald-500" : "bg-zinc-500")}></span>
-                  </span>
-                  Weather Demand Sync Hub
-                </h4>
-                <p className="text-xs text-on-surface-variant flex items-center gap-1 mt-0.5">
-                  Managing supply preparations for <span className="font-bold text-on-surface">{weatherCity === "My Shop" ? (currentShop?.name || "your area") : weatherCity}</span> territory
-                </p>
-              </div>
-
-              {/* Controls and Selectors */}
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Mode Selector */}
-                <span className="text-[10px] uppercase font-black tracking-wider text-zinc-400">Mode:</span>
-                <button
-                  type="button"
-                  onClick={() => setIsLiveWeather(!isLiveWeather)}
-                  className={cn(
-                    "px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
-                    isLiveWeather
-                      ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border border-zinc-200 dark:border-zinc-700"
-                  )}
-                >
-                  {isLiveWeather ? "Live API" : "Simulated"}
-                </button>
-
-                {/* Manual Override choices */}
-                <div className="flex gap-1 bg-surface-container-low p-1 rounded-xl">
-                  {(["Sunny", "Rainy", "Chilly", "Windy"] as const).map((w) => (
-                    <button
-                      key={w}
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsLiveWeather(false);
-                        setCurrentWeather(w);
-                        toast.info(`Manual Override: Set current state to ${w}`);
-                      }}
-                      title={`Simulate ${w}`}
-                      className={cn(
-                        "w-6 h-6 rounded-lg text-xs font-bold flex items-center justify-center transition-all cursor-pointer",
-                        currentWeather === w
-                          ? "bg-primary text-on-primary scale-110 shadow-sm"
-                          : "hover:bg-surface-container-high text-on-surface-variant/80",
-                      )}
-                    >
-                      {w === "Sunny" ? "☀️" : w === "Rainy" ? "🌧️" : w === "Chilly" ? "❄️" : "💨"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Main content grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Column: Active Climate Metrics */}
-              <div className="lg:col-span-4 space-y-4">
-                <div className="relative p-5 rounded-3xl bg-surface-container-low border border-outline-variant/10 min-h-[140px] flex flex-col justify-between overflow-hidden">
-                  {/* Loading spinner overlay */}
-                  {liveWeatherLoading && (
-                    <div className="absolute inset-0 bg-surface/75 backdrop-blur-xs flex flex-col items-center justify-center z-10 transition-opacity duration-300">
-                      <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                      <span className="text-[10px] font-black tracking-widest uppercase text-primary mt-2">Fetching live feeds...</span>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <span className="text-[10px] font-black uppercase text-zinc-400 tracking-wider">Current Air Status</span>
-                      <h3 className="text-3xl font-black text-on-surface flex items-baseline gap-1 mt-0.5">
-                        {isLiveWeather && liveWeatherTemp ? liveWeatherTemp : getWeatherInfo(currentWeather).temp}
-                        <span className="text-xs font-semibold text-zinc-500 ml-1.5">
-                          ({getWeatherInfo(currentWeather).label})
-                        </span>
-                      </h3>
-                    </div>
-                    
-                    <div className="p-2.5 rounded-2xl bg-primary/10 text-primary">
-                      {(() => {
-                        const info = getWeatherInfo(currentWeather);
-                        const WeatherIcon = info.icon;
-                        return <WeatherIcon size={22} className="stroke-[2.5]" />;
-                      })()}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 pt-3 border-t border-outline-variant/20 mt-4">
-                    <div>
-                      <span className="text-[9px] uppercase font-bold text-zinc-400">Wind Velocity</span>
-                      <p className="text-xs font-black text-on-surface flex items-center gap-1 mt-0.5">
-                        <Wind size={12} className="text-zinc-400" />
-                        {liveWindSpeed !== null ? `${liveWindSpeed} km/h` : "12 km/h"}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-[9px] uppercase font-bold text-zinc-400">Precipitation</span>
-                      <p className="text-xs font-black text-on-surface flex items-center gap-1 mt-0.5">
-                        <CloudRain size={12} className="text-zinc-400" />
-                        {livePrecipitation !== null ? `${livePrecipitation} mm` : "0 mm"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Quick demand analysis actions */}
-                <div className="flex gap-2">
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowWeatherModal(true);
-                      generateWeatherAiAdvice(currentWeather);
-                    }}
-                    className="flex-1 py-3 bg-on-surface hover:opacity-90 border border-outline text-surface font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5 tracking-wide transition-all duration-300 active:scale-95 shadow-sm cursor-pointer"
-                  >
-                    <Sparkles size={12} className="text-primary fill-primary animate-pulse" />
-                    Demand Coach AI
-                  </button>
-                </div>
-              </div>
-
-              {/* Right Column: 5-Day Forecast & Preparation Planner */}
-              <div className="lg:col-span-8 flex flex-col h-full justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-3 px-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                      <Calendar size={12} className="text-primary" />
-                      5-Day Supply Planner & Forecast
-                    </span>
-                    <span className="text-[9px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                      Business Guidance
-                    </span>
-                  </div>
-
-                  {/* Extreme weather warning banner nested here if any */}
-                  {weatherAlert && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="mb-4 p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-700 dark:text-red-400 flex items-start gap-2.5 shadow-xs"
-                    >
-                      <AlertTriangle size={16} className="shrink-0 mt-0.5 text-primary fill-primary" />
-                      <div className="text-left">
-                        <font className="text-xs font-black uppercase tracking-wider block">⚠️ {weatherAlert.title}</font>
-                        <span className="text-[10px] font-semibold block leading-relaxed mt-0.5 text-red-650 dark:text-red-300">
-                          {weatherAlert.message}
-                        </span>
-                      </div>
-                    </motion.div>
-                  )}
-
-                  {/* 5-day columns */}
-                  <div className="flex overflow-x-auto pb-3 md:pb-0 md:grid md:grid-cols-5 gap-2.5 hide-scrollbar">
-                    {(weatherForecast || []).map((day, dIdx) => {
-                      let DayIcon = Sun;
-                      let iconColor = "text-amber-500";
-                      let iconBg = "bg-amber-500/10";
-
-                      if (day.category === "Rainy") {
-                        DayIcon = CloudRain;
-                        iconColor = "text-sky-500";
-                        iconBg = "bg-sky-500/10";
-                      } else if (day.category === "Chilly") {
-                        DayIcon = ThermometerSnowflake;
-                        iconColor = "text-indigo-500";
-                        iconBg = "bg-indigo-500/10";
-                      } else if (day.category === "Windy") {
-                        DayIcon = Wind;
-                        iconColor = "text-emerald-500";
-                        iconBg = "bg-emerald-500/10";
-                      }
-
-                      return (
-                        <div 
-                          key={dIdx} 
-                          className={cn(
-                            "p-3 rounded-2xl border flex flex-col justify-between items-center text-center transition-all group shrink-0 w-[105px] md:w-auto",
-                            dIdx === 0 
-                              ? "bg-primary/5 border-primary/20 shadow-xs" 
-                              : "bg-surface-container-low border-outline-variant/10 hover:bg-surface-container-high"
-                          )}
-                        >
-                          <div>
-                            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500 group-hover:text-zinc-800 block">
-                              {day.dayName}
-                            </span>
-                            
-                            {/* Icon block */}
-                            <div className={cn("p-2 rounded-xl my-2 mx-auto inline-block", iconBg)}>
-                              <DayIcon size={14} className={cn("stroke-[2.5]", iconColor)} />
-                            </div>
-
-                            <p className="text-xs font-black text-on-surface">
-                              {day.tempMax}
-                            </p>
-                            <p className="text-[9px] font-semibold text-zinc-400">
-                              {day.tempMin}
-                            </p>
-                          </div>
-
-                          <div className="w-full pt-2 border-t border-outline-variant/15 mt-2.5">
-                            <span className={cn(
-                              "text-[8px] font-black block uppercase tracking-tight",
-                              day.category === "Rainy" ? "text-sky-500" :
-                              day.category === "Chilly" ? "text-indigo-500" :
-                              day.category === "Windy" ? "text-emerald-500" : "text-amber-500"
-                            )}>
-                              {day.category === "Rainy" ? "🌧️ +35%" :
-                               day.category === "Chilly" ? "❄️ +45%" :
-                               day.category === "Windy" ? "💨 +15%" : "☀️ Stable"}
-                            </span>
-                            <span className="text-[8px] font-bold text-zinc-400 block line-clamp-1 truncate leading-tight mt-0.5" title={day.productAffinity}>
-                              {day.productAffinity}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
       </div>
       )}
 
@@ -6275,7 +5804,6 @@ const DashboardOverview = React.memo(({
             <div>
               <h3 className="text-sm font-bold text-on-surface">Compact View Active</h3>
               <p className="text-xs text-on-surface-variant max-w-xl mt-0.5 leading-relaxed">
-                We've simplified your control bureau to keep you focused on hot kitchen orders. Switch to <strong>Advanced</strong> mode at the top anytime to view detailed revenue charts, follower metrics, and AI weather demand forecasts.
               </p>
             </div>
           </div>
@@ -6398,7 +5926,7 @@ const DashboardOverview = React.memo(({
                     className={cn(
                       "w-11 h-11 rounded-full flex items-center justify-center border-2 border-transparent group-hover:border-primary/10 transition-all shadow-sm",
                       order.status === "completed"
-                        ? "bg-emerald-100/50 text-emerald-600 shadow-emerald-500/5"
+? "bg-emerald-100/50 text-emerald-600 shadow-emerald-500/5"
                         : order.status === "pending"
                           ? "bg-primary/10 text-primary"
                           : "bg-blue-100/50 text-blue-600 shadow-blue-500/5",
@@ -6561,10 +6089,10 @@ const CreateShop = ({
       });
 
       if (error) throw error;
-      
+
       setIsSaving(false);
       setIsSaveSuccess(true);
-      
+
       setTimeout(() => {
         setIsSaveSuccess(false);
         toast.success("Shop created successfully!");
@@ -6984,7 +6512,7 @@ const MenuManagement = ({
         type: "image/jpeg",
       });
       setImageFile(file);
-      
+
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
@@ -7169,7 +6697,7 @@ const MenuManagement = ({
       if (!error) {
         setIsSaving(false);
         setIsSaveSuccess(true);
-        
+
         setTimeout(() => {
           setIsSaveSuccess(false);
           toast.success("Menu item added successfully");
@@ -8182,7 +7710,7 @@ const MenuManagement = ({
                           <Square size={18} />
                         )}
                       </button>
-                      
+
                       <div className="relative h-40 md:h-48 bg-surface-container flex items-center justify-center overflow-hidden shrink-0">
                         {dataSaverMode ? (
                           <div className="w-full h-full bg-gradient-to-tr from-orange-400 to-rose-500 flex flex-col items-center justify-center text-white select-none relative p-4 text-center">
@@ -8268,11 +7796,11 @@ const MenuManagement = ({
                               </span>
                             )}
                           </div>
-                          
+
                           <h4 className="font-headline font-bold text-base md:text-lg text-on-surface leading-snug tracking-tight">
                             {item.name}
                           </h4>
-                          
+
                           {itemTags.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1.5">
                               {itemTags.map((tag) => {
@@ -8298,7 +7826,7 @@ const MenuManagement = ({
                               })}
                             </div>
                           )}
-                          
+
                           <p className="text-on-surface-variant text-[11px] md:text-xs mt-2 line-clamp-2 leading-relaxed text-on-surface-variant/80">
                             {baseDescription || "No description provided."}
                           </p>
@@ -8382,7 +7910,7 @@ const MenuManagement = ({
                                 <ToggleLeft size={20} />
                               )}
                             </button>
-                            
+
                             <button
                               onClick={() => handleEdit(item)}
                               className="p-1.5 rounded-lg text-on-surface-variant/60 hover:text-primary hover:bg-primary/10 transition-colors"
@@ -8390,7 +7918,7 @@ const MenuManagement = ({
                             >
                               <Edit2 size={16} />
                             </button>
-                            
+
                             <button
                               onClick={() => {
                                 confirmAction(
@@ -8625,7 +8153,7 @@ const ShopProfile = ({
     setIsSaving(true);
     setIsSaveSuccess(false);
     const payload: Record<string, unknown> = { ...formData };
-    
+
     try {
       // First attempt
       let { error } = await supabase
@@ -8643,7 +8171,7 @@ const ShopProfile = ({
              delete payload[col];
           }
         }
-        
+
         // Let's just strip all the new fields if there is ANY column error, to be safe and ensure the basic update goes through
         delete payload.whatsapp;
         delete payload.instagram;
@@ -8656,7 +8184,7 @@ const ShopProfile = ({
           .from("shops")
           .update(payload)
           .eq("id", shop.id);
-          
+
         error = retry.error as unknown as typeof error;
       }
 
@@ -8685,7 +8213,7 @@ const ShopProfile = ({
 
       setIsSaving(false);
       setIsSaveSuccess(true);
-      
+
       setTimeout(() => {
         setIsSaveSuccess(false);
         toast.success("Shop profile updated successfully!");
@@ -8776,7 +8304,7 @@ const ShopProfile = ({
             className={cn(
               "px-3 md:px-4 py-1.5 md:py-2 rounded-2xl text-[10px] md:text-xs font-bold uppercase tracking-widest flex items-center gap-2",
               shop.is_active
-                ? "bg-emerald-100 text-emerald-600"
+? "bg-emerald-100 text-emerald-600"
                 : "bg-error/10 text-error",
             )}
           >
@@ -9615,7 +9143,7 @@ const OrdersManagement = ({
   const getOrderTags = (order: Order): string[] => {
     const manualTags = orderTags[order.id] || [];
     const autoTags: string[] = [];
-    
+
     // Auto large order tag
     const items = safeGetOrderItems(order.items);
     const hasManyItems = items.length > 3;
@@ -9623,7 +9151,7 @@ const OrdersManagement = ({
     if (hasManyItems || hasHighPrice) {
       autoTags.push("Large Order");
     }
-    
+
     // Auto rush order tag
     const notesLower = (order.notes || "").toLowerCase();
     if (notesLower.includes("urgent") || notesLower.includes("fast") || notesLower.includes("asap") || notesLower.includes("rush") || notesLower.includes("quick")) {
@@ -9734,14 +9262,14 @@ const OrdersManagement = ({
       console.log("Nudge sent");
        toast.success("Rider rated successfully!");
        onRefresh();
-       
+
        // Calculate new average rating
        const { data: ratingsData } = await supabase
          .from('orders')
          .select('merchant_rating')
          .eq('rider_id', riderId)
          .not('merchant_rating', 'is', null);
-         
+
        if (ratingsData && ratingsData.length > 0) {
           const avgRating = ratingsData.reduce((acc, curr) => acc + (curr.merchant_rating || 0), 0) / ratingsData.length;
           await supabase.from('rider_profiles').update({ rating: avgRating }).eq('id', riderId);
@@ -10074,7 +9602,7 @@ Notes: "${order.notes || "None"}"
     if (!order.rider_id || !order.lat || !order.lng || order.delivery_status === "delivered") {
        return order.estimated_delivery_time || "20-30 mins";
     }
-    
+
     const assignedRider = connectedRiders.find((r) => r.rider_id === order.rider_id) as RiderConnection & { current_latitude?: number, current_longitude?: number };
     if (!assignedRider || !assignedRider.current_latitude || !assignedRider.current_longitude) {
        return order.estimated_delivery_time || "20-30 mins";
@@ -10091,7 +9619,7 @@ Notes: "${order.notes || "None"}"
     const d = R * c;
 
     const timeMinutes = Math.max(5, Math.round(d * 4)); // 15km/h avg
-    
+
     if (order.delivery_status === "finding_rider" || order.delivery_status === "accepted") {
         return `${Math.round(timeMinutes + Number(avgPrepTime))} mins`;
     }
@@ -10211,7 +9739,7 @@ Notes: "${order.notes || "None"}"
 
       let matchesDate = true;
       const dateToCheck = (viewMode === "history" && o.completed_at) ? o.completed_at : o.created_at;
-      
+
       if (startDate) {
         matchesDate =
           matchesDate && new Date(dateToCheck) >= new Date(startDate);
@@ -10263,7 +9791,7 @@ Notes: "${order.notes || "None"}"
     return orders.filter((o) => {
       const isFulfilled = o.status === "completed" || o.status === "cancelled";
       const isToday = o.created_at && o.created_at.startsWith(todayStr);
-      
+
       const matchesSearch =
         o.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         o.id.toString().includes(searchTerm);
@@ -10271,7 +9799,7 @@ Notes: "${order.notes || "None"}"
         !customerSearch ||
         o.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
       const matchesPhone = !phoneSearch || o.phone?.includes(phoneSearch);
-      
+
       return isFulfilled && isToday && matchesSearch && matchesCustomer && matchesPhone;
     });
   }, [orders, searchTerm, customerSearch, phoneSearch]);
@@ -10748,7 +10276,7 @@ Notes: "${order.notes || "None"}"
                     <p className="text-[10px] text-on-surface-variant font-semibold">Analyze and filter historic orders</p>
                   </div>
                 </div>
-                
+
                 <div className="flex flex-wrap items-center gap-1.5">
                   {[
                     { label: "All Time", start: "", end: "" },
@@ -10978,7 +10506,7 @@ Notes: "${order.notes || "None"}"
                     </span>
                   </div>
                 </div>
-                
+
                 <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
                   <AnimatePresence mode="popLayout">
                   {displayedOrders.filter(o => o.status === "pending").map((order) => {
@@ -12320,21 +11848,21 @@ Notes: "${order.notes || "None"}"
                                       </button>
                                     ))}
                                   </div>
-                                  
+
                                   {order.delivery_status === "picked_up" && (
                                     <div className="w-full h-32 bg-stone-100 dark:bg-stone-900 rounded-xl overflow-hidden relative border border-outline-variant/10 mt-4 flex items-center justify-center">
                                        <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] mix-blend-overlay"></div>
-                                       
+
                                        {/* Mock Map Route */}
                                        <div className="absolute top-1/2 left-1/4 right-1/4 h-1 border-t-2 border-dashed border-primary/40 -translate-y-1/2"></div>
-                                       
+
                                        <div className="absolute left-1/4 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-full p-1 shadow-md z-10">
                                          <Store size={14} className="text-secondary" />
                                        </div>
                                        <div className="absolute right-1/4 top-1/2 translate-x-1/2 -translate-y-1/2 bg-white rounded-full p-1 shadow-md z-10">
                                           <MapPin size={14} className="text-primary" />
                                        </div>
-                                       
+
                                        {/* Moving Rider */}
                                        <motion.div 
                                          animate={{ x: ["0%", "100%", "0%"] }}
@@ -13439,7 +12967,7 @@ Notes: "${order.notes || "None"}"
                   <span className="text-[9px] font-black tracking-widest text-white/40 uppercase">
                     Hardware Virtualizer Mockup
                   </span>
-                  
+
                   {/* Visual Thermal paper preview */}
                   <div 
                     className={cn(
@@ -13520,7 +13048,7 @@ Notes: "${order.notes || "None"}"
             const orderToAccept = orders.find(o => o.id === acceptingOrderId);
             if (!orderToAccept) return null;
             const items = safeGetOrderItems(orderToAccept.items);
-            
+
             return (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
                 <motion.div
@@ -13550,7 +13078,7 @@ Notes: "${order.notes || "None"}"
                       <X size={20} />
                     </button>
                   </div>
-                  
+
                   {/* Modal Content */}
                   <div className="p-6 overflow-y-auto space-y-5 flex-1 text-left">
                     {/* Customer Details */}
@@ -13850,7 +13378,7 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
     setIsGenerating(true);
     const dishContext = selectedDishName ? `highlighting our special dish: "${selectedDishName}"` : "";
     const couponContext = selectedCouponCode ? `using promo code "${selectedCouponCode}"` : "";
-    
+
     const systemPrompt = `You are an elite, highly persuasive restaurant marketing copywriter in South Africa. You are writing marketing copies for "${currentShop?.name || 'our shop'}", a food establishment.`;
 
     const userPrompt = `Create a marketing campaign for the channel "${campaignType}".
@@ -13884,7 +13412,7 @@ Please return the content in JSON format with these exact keys:
 
       const resText = response.text?.trim() || "{}";
       const parsed = JSON.parse(resText);
-      
+
       setGeneratedCopy({
         subject: parsed.subject || "",
         message: parsed.message || ""
@@ -13895,7 +13423,7 @@ Please return the content in JSON format with these exact keys:
       console.log("Gemini API generation failed, falling back to rule generator", err);
       const fallbackSubject = getFallbackSubject(campaignObjective, currentShop?.name || "LocalEats", selectedDishName, selectedCouponCode);
       const fallbackMessage = getFallbackMessage(campaignType, campaignObjective, tone, currentShop?.name || "LocalEats", selectedDishName, selectedCouponCode);
-      
+
       setGeneratedCopy({
         subject: fallbackSubject,
         message: fallbackMessage
@@ -13967,7 +13495,7 @@ Please return the content in JSON format with these exact keys:
 
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
-      
+
       const palette = BRAND_PALETTES[flyerTheme];
       const hexToRgb = (hex: string) => {
         const bigint = parseInt(hex.replace("#", ""), 16);
@@ -14169,7 +13697,7 @@ Please return the content in JSON format with these exact keys:
     const totalConversions = sent.reduce((sum, c) => sum + (c.stats?.conversions || 0), 0);
     const totalRevenue = sent.reduce((sum, c) => sum + (c.stats?.revenue || 0), 0);
     const avgCtr = totalReach > 0 ? ((totalClicks / totalReach) * 100).toFixed(1) : "0.0";
-    
+
     return {
       active: campaignsHistory.filter(c => c.status === "Scheduled").length,
       reach: totalReach,
@@ -14684,13 +14212,13 @@ Please return the content in JSON format with these exact keys:
                 flyerMobileTab !== "preview" && "hidden md:flex"
               )}>
                 <div className="text-white/60 text-[10px] font-mono absolute top-4 left-4">LIVE PREVIEW RECONSTRUCT</div>
-                
+
                 {/* The Virtual Card matching physical printing closely */}
                 <div className="w-[240px] aspect-[1/1.414] bg-[#FFFDF9] border border-white/10 rounded-xl p-5 shadow-2xl relative flex flex-col justify-between items-center text-zinc-900 select-none overflow-hidden">
                   {/* Decorative Thin borders */}
                   <div className={cn("absolute inset-2 border rounded-lg pointer-events-none", BRAND_PALETTES[flyerTheme].border)} />
                   <div className={cn("absolute inset-2.5 border border-dashed rounded-lg pointer-events-none opacity-40", BRAND_PALETTES[flyerTheme].border)} />
-                  
+
                   {/* LocalEats header logo */}
                   <div className={cn("font-headline font-black text-lg text-center mt-2", BRAND_PALETTES[flyerTheme].text)}>
                     LocalEats
@@ -14844,7 +14372,7 @@ Please return the content in JSON format with these exact keys:
                 <div className="w-[200px] border border-white/5 rounded-2xl bg-[#FFFDF9] py-6 px-5 text-slate-800 shadow-2xl relative flex flex-col items-center justify-between text-center overflow-hidden h-[300px]">
                   {/* Decorative Frame */}
                   <div className="absolute inset-2 border border-slate-300 rounded-xl" />
-                  
+
                   {/* Table Label Badge */}
                   <div className="z-10 bg-slate-800 text-white font-bold px-3 py-1 rounded-full text-xs uppercase tracking-wider leading-none mt-1">
                     Table {tableCountStart || 1}
@@ -15005,7 +14533,7 @@ Please return the content in JSON format with these exact keys:
                 {generatedCopy.message && (
                   <div className="space-y-3 bg-on-surface/5 p-4 rounded-2xl border border-outline-variant/10">
                     <p className="text-[10px] font-black text-primary uppercase">Draft Editor Board</p>
-                    
+
                     {campaignType === "email" && (
                       <div>
                         <label className="block text-[10px] font-black text-on-surface-variant/60 uppercase mb-1">Subject Line</label>
@@ -15254,7 +14782,7 @@ const Coupons = ({
       toast.error("Failed to create coupon");
     } else {
       console.log("Nudge sent");
-      
+
       setShowCreateModal(false);
       setNewCoupon({
         code: "",
@@ -15312,7 +14840,7 @@ const Coupons = ({
       toast.error("Failed to update coupon details");
     } else {
       console.log("Nudge sent");
-      
+
       setEditingCoupon(null);
       // Refresh
       const { data } = await supabase
@@ -15334,7 +14862,7 @@ const Coupons = ({
       setCoupons((prev) =>
         prev.map((c) => (c.id === id ? { ...c, is_active: !isActive } : c)),
       );
-      
+
     }
   };
 
@@ -15350,7 +14878,7 @@ const Coupons = ({
       console.log("Nudge sent");
       setCoupons((prev) => prev.filter((c) => c.id !== id));
       setShowDeleteConfirm(null);
-      
+
     }
   };
 
@@ -15389,7 +14917,7 @@ const Coupons = ({
     }
 
     const headers = ["ID", "Code", "Type", "Value", "Min Order Value (R)", "Status", "Expiry Date", "Redemptions", "Saved Value (R)", "Sales Value (R)"];
-    
+
     const rows = coupons.map((c) => {
       const perf = getPerformance(c.code);
       const isExpired = c.expiry_date && new Date(c.expiry_date) < new Date();
@@ -15525,7 +15053,7 @@ const Coupons = ({
             onDragEnd={(event, info) => {
               if (Math.abs(info.offset.x) > 60) {
                 setCouponsAlertDismissed(true);
-                
+
               }
             }}
             title="Swipe left/right or click X to dismiss notice"
@@ -15556,7 +15084,7 @@ const Coupons = ({
               <button
                 onClick={() => {
                   setCouponsAlertDismissed(true);
-                  
+
                 }}
                 className="p-1.5 hover:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg transition shrink-0 cursor-pointer pointer-events-auto"
                 title="Dismiss Notice"
@@ -15701,7 +15229,7 @@ const Coupons = ({
           {filteredCoupons.map((coupon) => {
             const perf = getPerformance(coupon.code);
             const isExpired = coupon.expiry_date && new Date(coupon.expiry_date) < new Date();
-            
+
             // Calculate if expiring in less than 48 hours for urgent warning
             let isExpiringSoon = false;
             let expiryString = "";
@@ -15737,7 +15265,7 @@ const Coupons = ({
                             isExpired
                               ? "bg-red-500/10 text-red-600"
                               : coupon.is_active
-                                ? "bg-emerald-500/10 text-emerald-600"
+? "bg-emerald-500/10 text-emerald-600"
                                 : "bg-zinc-500/10 text-zinc-500",
                           )}
                         >
@@ -16394,7 +15922,7 @@ const Insights = ({
       toast.error("Failed to save response");
     } else {
       console.log("Nudge sent");
-      
+
       setReviews((prev) =>
         prev.map((r) => (r.id === reviewId ? { ...r, response } : r)),
       );
@@ -17754,1747 +17282,6 @@ const Insights = ({
   );
 };
 
-// --- Subscription Components ---
-
-interface TrafficBottleneck {
-  id: string;
-  name: string;
-  latlng: [number, number];
-  delay: string;
-  cause: string;
-  color: "red" | "orange" | "green";
-}
-
-interface TrafficCorridor {
-  id: string;
-  name: string;
-  path: [number, number][];
-  color: "red" | "orange" | "green";
-}
-
-const TRAFFIC_BOTTLENECKS: TrafficBottleneck[] = [
-  {
-    id: "allandale-n1",
-    name: "Allandale Road N1 Interchange (Midrand)",
-    latlng: [-26.013, 28.124],
-    delay: "+15 mins",
-    cause: "Ongoing lane rehabilitation northbound",
-    color: "red",
-  },
-  {
-    id: "new-rd-n1",
-    name: "New Road N1 Exit (Midrand)",
-    latlng: [-25.984, 28.129],
-    delay: "+7 mins",
-    cause: "Peak-hour high exit ramp volumes",
-    color: "orange",
-  },
-  {
-    id: "mall-tembisa-r562",
-    name: "Mall of Tembisa Intersection (R562)",
-    latlng: [-25.968, 28.204],
-    delay: "+11 mins",
-    cause: "Intense shopping district entry queuing",
-    color: "red",
-  },
-  {
-    id: "esangweni-taxi",
-    name: "Esangweni Junction (Andrew Mapheto Dr)",
-    latlng: [-25.993, 28.224],
-    delay: "+14 mins",
-    cause: "Minibus taxi transfer activity & heavy pedestrian crowds",
-    color: "red",
-  },
-  {
-    id: "clayville-corridor",
-    name: "Clayville Industrial Linkage (Clayville)",
-    latlng: [-25.961, 28.165],
-    delay: "+6 mins",
-    cause: "Freight logistics & supply truck offloading cue",
-    color: "orange",
-  },
-];
-
-const TRAFFIC_CORRIDORS: TrafficCorridor[] = [
-  {
-    id: "n1-expressway",
-    name: "N1 Midrand Expressway",
-    path: [
-      [-26.02, 28.12],
-      [-26.00, 28.125],
-      [-25.98, 28.13],
-      [-25.95, 28.138],
-    ],
-    color: "red",
-  },
-  {
-    id: "r562-corridor",
-    name: "R562 Olifantsfontein Corridor",
-    path: [
-      [-25.95, 28.138],
-      [-25.96, 28.18],
-      [-25.97, 28.22],
-    ],
-    color: "orange",
-  },
-  {
-    id: "andrew-mapheto-dr",
-    name: "Andrew Mapheto Drive Corridor",
-    path: [
-      [-25.97, 28.22],
-      [-25.99, 28.225],
-      [-26.01, 28.221],
-      [-26.03, 28.212],
-    ],
-    color: "red",
-  },
-  {
-    id: "kopanong-link",
-    name: "Ivory Park Kopanong Link Bypass",
-    path: [
-      [-25.99, 28.135],
-      [-26.00, 28.16],
-      [-26.01, 28.19],
-    ],
-    color: "green",
-  },
-];
-
-const MapViewRefocus = ({ center, zoom }: { center: [number, number]; zoom: number }) => {
-  const map = useMap();
-  useEffect(() => {
-    map.setView(center, zoom);
-  }, [center, zoom, map]);
-  return null;
-};
-
-const RiderManagement = ({
-  currentShop,
-  orders,
-  onRequestRider,
-  sendRiderNudge,
-}: {
-  currentShop: Shop;
-  orders: Order[];
-  onRequestRider: (id: string, riderId?: string, riderName?: string, riderPhone?: string) => void;
-  sendRiderNudge: (riderId: string, message: string) => Promise<void>;
-}) => {
-  const [connections, setConnections] = useState<RiderConnection[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
-  const [showTrafficLayer, setShowTrafficLayer] = useState(false);
-  const [mapCenterOverride, setMapCenterOverride] = useState<[number, number] | null>(null);
-  const [mapZoomOverride, setMapZoomOverride] = useState<number | null>(null);
-  const [showCode, setShowCode] = useState(false);
-  const [activeCode, setActiveCode] = useState<{
-    code: string;
-    expires: string;
-  } | null>(null);
-
-  const [qrUrl, setQrUrl] = useState<string>("");
-  const [pairingCodeDuration, setPairingCodeDuration] = useState<"24h" | "7d" | "30d" | "never">("24h");
-  const [showInHouseModal, setShowInHouseModal] = useState(false);
-  const [showQRScanner, setShowQRScanner] = useState(false);
-  const [inHouseName, setInHouseName] = useState("");
-  const [inHousePhone, setInHousePhone] = useState("");
-  const [inHouseVehicle, setInHouseVehicle] = useState<"Road" | "Bicycle" | "Motorbike" | "Electric">("Motorbike");
-  const [nudgingRider, setNudgingRider] = useState<RiderConnection | null>(null);
-  const [customNudgeText, setCustomNudgeText] = useState("");
-  const dbCashTrust = currentShop.cash_trust_enabled;
-  const dbAllowExternal = currentShop.allow_external_riders;
-  const dbAutoLookForRider = currentShop.auto_look_for_rider;
-
-  const [cashTrustEnabled, setCashTrustEnabled] = useState(() => {
-    const localVal = localStorage.getItem(`localeats_cash_trust_${currentShop.id}`) === "true";
-    return dbCashTrust !== undefined
-      ? !!dbCashTrust
-      : localVal;
-  });
-
-  const [allowExternalRiders, setAllowExternalRiders] = useState(() => {
-    const localVal = localStorage.getItem(`localeats_allow_external_${currentShop.id}`) !== "false";
-    return dbAllowExternal !== undefined
-      ? !!dbAllowExternal
-      : localVal;
-  });
-
-  const [autoLookForRider, setAutoLookForRider] = useState(() => {
-    const localVal = localStorage.getItem(`localeats_auto_look_${currentShop.id}`) !== "false";
-    return dbAutoLookForRider !== undefined
-      ? !!dbAutoLookForRider
-      : localVal;
-  });
-
-  const settledCodOrders = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("localeats_settled_cod_orders") || "[]") as string[];
-    } catch {
-      return [];
-    }
-  }, []);
-
-  const riderCashBalances = useMemo(() => {
-    const balances: Record<string, { total: number; name: string; count: number }> = {};
-    const unsettledCashOrders = orders.filter(
-      (o) => o.status === "completed" && o.payment_method?.toLowerCase() === "cash" && !settledCodOrders.includes(o.id)
-    );
-    unsettledCashOrders.forEach(o => {
-      const riderId = o.rider_id || "Unassigned";
-      if (!balances[riderId]) {
-        balances[riderId] = { total: 0, name: o.rider_name || riderId, count: 0 };
-      }
-      balances[riderId].total += Number(o.total_price || 0);
-      balances[riderId].count += 1;
-    });
-    return Object.entries(balances).map(([id, data]) => ({ id, ...data })).sort((a,b) => b.total - a.total);
-  }, [orders, settledCodOrders]);
-
-  useEffect(() => {
-    if (dbCashTrust !== undefined) {
-      setCashTrustEnabled(!!dbCashTrust);
-    } else {
-      console.log("Nudge sent");
-      const localVal = localStorage.getItem(`localeats_cash_trust_${currentShop.id}`) === "true";
-      setCashTrustEnabled(localVal);
-    }
-  }, [currentShop.id, dbCashTrust]);
-
-  useEffect(() => {
-    if (dbAllowExternal !== undefined) {
-      setAllowExternalRiders(!!dbAllowExternal);
-    } else {
-      console.log("Nudge sent");
-      const localVal = localStorage.getItem(`localeats_allow_external_${currentShop.id}`) !== "false";
-      setAllowExternalRiders(localVal);
-    }
-  }, [currentShop.id, dbAllowExternal]);
-
-  useEffect(() => {
-    if (dbAutoLookForRider !== undefined) {
-      setAutoLookForRider(!!dbAutoLookForRider);
-    } else {
-      console.log("Nudge sent");
-      const localVal = localStorage.getItem(`localeats_auto_look_${currentShop.id}`) !== "false";
-      setAutoLookForRider(localVal);
-    }
-  }, [currentShop.id, dbAutoLookForRider]);
-
-  const toggleCashTrust = async () => {
-    const newValue = !cashTrustEnabled;
-    setCashTrustEnabled(newValue);
-    localStorage.setItem(`localeats_cash_trust_${currentShop.id}`, String(newValue));
-    
-    try {
-      const { error } = await supabase
-        .from("shops")
-        .update({ cash_trust_enabled: newValue })
-        .eq("id", currentShop.id);
-        
-      if (error) {
-        console.warn("Could not sync cash_trust_enabled to shops table. Fallback to localStorage active.", error);
-        if (newValue) {
-          toast.success("Cash on Arrival Trust-Builder Broadcast Active! 🚀", {
-            description: "Saved locally on this device. Connect with your delivery and customer apps to synchronize live!",
-          });
-        } else {
-      console.log("Nudge sent");
-          toast.info("Deactivated locally.");
-        }
-      } else {
-      console.log("Nudge sent");
-        if (newValue) {
-          toast.success("Cash on Arrival Trust Broadcast Active on Cloud! 🚀", {
-            description: "First-time customers and dispatch riders will see this live globally.",
-          });
-        } else {
-      console.log("Nudge sent");
-          toast.success("Trust-Builder Broadcast deactivated on Cloud.");
-        }
-      }
-    } catch (err) {
-      console.warn("Failed to update shop's cash trust status in DB. Fallback active.", err);
-      if (newValue) {
-        toast.success("Cash on Arrival Trust-Builder Broadcast Active (Local-only) 🚀");
-      } else {
-      console.log("Nudge sent");
-        toast.info("Deactivated locally.");
-      }
-    }
-  };
-
-  const toggleAllowExternalRiders = async () => {
-    const newValue = !allowExternalRiders;
-    setAllowExternalRiders(newValue);
-    localStorage.setItem(`localeats_allow_external_${currentShop.id}`, String(newValue));
-    
-    try {
-      const { error } = await supabase
-        .from("shops")
-        .update({ allow_external_riders: newValue })
-        .eq("id", currentShop.id);
-        
-      if (error) {
-        console.warn("Could not sync allow_external_riders to shops table. Fallback active.", error);
-        toast.success(newValue ? "Granted Independent Rider Fleet access! 🚀" : "Limited storefront to In-house Drivers.", {
-          description: "Saved locally. Connect with your delivery and customer apps to synchronize live across devices!",
-        });
-      } else {
-      console.log("Nudge sent");
-        toast.success(newValue ? "Independent Rider Fleet enabled on Cloud! 🚀" : "Access to Independent Rider Fleet locked on Cloud.", {
-          description: newValue ? "Any on-demand delivery agent can now support your orders." : "Only drivers linked with your specific code can view or handle tasks.",
-        });
-      }
-    } catch (err) {
-      console.warn("Error updating search configuration.", err);
-      toast.success(newValue ? "Granted Independent Rider Fleet access! 🚀" : "Limited storefront to In-house Drivers.");
-    }
-  };
-
-  const toggleAutoLookForRider = async () => {
-    const newValue = !autoLookForRider;
-    setAutoLookForRider(newValue);
-    localStorage.setItem(`localeats_auto_look_${currentShop.id}`, String(newValue));
-    
-    try {
-      const { error } = await supabase
-        .from("shops")
-        .update({ auto_look_for_rider: newValue })
-        .eq("id", currentShop.id);
-        
-      if (error) {
-        console.warn("Could not sync auto_look_for_rider to shops table. Fallback active.", error);
-        toast.success(newValue ? "On-Demand Search Auto-Activation enabled!" : "Auto-Search deactivated.", {
-          description: "Saved locally. Connect with your delivery and customer apps to synchronize live across devices!",
-        });
-      } else {
-      console.log("Nudge sent");
-        toast.success(newValue ? "Auto-Find Agent Enabled on Cloud! 📡" : "Auto-Find Agent deactivated on Cloud.", {
-          description: newValue ? "System will automatically broadcast orders to regional pool if you are short on drivers." : "Orders will require manual routing.",
-        });
-      }
-    } catch (err) {
-      console.warn("Error updating search configuration.", err);
-      toast.success(newValue ? "On-Demand Search Auto-Activation enabled!" : "Auto-Search deactivated.");
-    }
-  };
-
-  const trackedRider = useMemo(() => 
-    connections.find(c => c.rider_id === selectedTrackId),
-  [connections, selectedTrackId]);
-
-  // SSOT: Single Source of Truth for smoothed location
-  const { lat: smoothLat, lng: smoothLng } = useSmoothLocation(
-    trackedRider?.latitude, 
-    trackedRider?.longitude
-  );
-
-  useEffect(() => {
-    if (activeCode) {
-      import("qrcode").then((QRCode) => {
-        QRCode.toDataURL(activeCode.code, {
-          margin: 0,
-          scale: 10,
-          color: { dark: "#000000", light: "#ffffff" },
-        }).then((url) => setQrUrl(url));
-      });
-    } else {
-      console.log("Nudge sent");
-      setQrUrl("");
-    }
-  }, [activeCode]);
-
-  const activeMissions = orders.filter(
-    (o) =>
-      o.delivery_status &&
-      o.delivery_status !== "delivered" &&
-      o.status !== "cancelled",
-  );
-
-  const fetchConnections = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("rider_connections")
-      .select(`
-        *,
-        rider_profiles:rider_id (
-          is_online,
-          full_name,
-          phone,
-          status,
-          vehicle_type,
-          rating,
-          total_deliveries,
-          total_earnings,
-          current_latitude,
-          current_longitude,
-          updated_at
-        )
-      `)
-      .eq("shop_id", currentShop.id)
-      .order("created_at", { ascending: false });
-
-    if (!error && data) {
-      const processed = (data as (RiderConnection & { rider_profiles: RiderProfile | null })[]).map((item) => {
-        const conn = item as RiderConnection;
-        const profile = item.rider_profiles;
-        const isInHouse = conn.connection_code === "IN-HOUSE";
-        return {
-          ...conn,
-          is_online: profile?.is_online || (isInHouse ? true : false),
-          rider_name: profile?.full_name || conn.rider_name,
-          rider_phone: profile?.phone || conn.rider_phone,
-          status: profile?.status || (new Date(conn.expires_at) < new Date() ? "expired" : (isInHouse ? "idle" : conn.status)),
-          vehicle_type: profile?.vehicle_type || "Road",
-          rating: profile?.rating || 5.0,
-          total_deliveries: profile?.total_deliveries || 0,
-          total_earnings: profile?.total_earnings || 0,
-          current_latitude: profile?.current_latitude,
-          current_longitude: profile?.current_longitude,
-          last_seen: profile?.updated_at,
-        };
-      });
-      setConnections(processed);
-    }
-    setLoading(false);
-  }, [currentShop.id]);
-
-  const activeConnectionsCount = connections.filter(
-    (c) => (c.rider_id || c.connection_code === "IN-HOUSE") && new Date(c.expires_at) >= new Date(),
-  ).length;
-
-  const availableCodesCount = connections.filter(
-    (c) => !c.rider_id && c.connection_code !== "IN-HOUSE" && new Date(c.expires_at) >= new Date(),
-  ).length;
-
-  useEffect(() => {
-    fetchConnections();
-    
-    // Subscribe to real-time changes
-    const channel = supabase
-      .channel(`rider_connections_sync_${currentShop.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'rider_connections',
-          filter: `shop_id=eq.${currentShop.id}`
-        },
-        (payload) => {
-          // Local State Hydration: Update connections directly for simple connection changes
-          if (payload.eventType === 'UPDATE') {
-            setConnections(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
-          } else if (payload.eventType === 'INSERT') {
-             // For inserts, we still fetch to get the profile join if it exists
-             void fetchConnections();
-          } else if (payload.eventType === 'DELETE') {
-            setConnections(prev => prev.filter(c => c.id !== payload.old.id));
-          }
-        }
-      )
-      .subscribe();
-
-    // Targeted tracking for the selected rider (Smooth SSOT)
-    let profileSub: ReturnType<typeof supabase.channel> | null = null;
-    if (selectedTrackId) {
-      // Idempotent Subscriptions: Ensure any previous selector sub is cleared before creating new one
-      profileSub = supabase
-        .channel(`track_rider_${selectedTrackId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'rider_profiles',
-            filter: `id=eq.${selectedTrackId}`
-          },
-          (payload) => {
-            // Local State Hydration: Update coordinates and status directly without full re-fetch
-            const newProfile = payload.new as RiderProfile;
-            setConnections(prev => prev.map(c => {
-               if (c.rider_id === selectedTrackId) {
-                 return {
-                   ...c,
-                   current_latitude: newProfile.current_latitude,
-                   current_longitude: newProfile.current_longitude,
-                   is_online: newProfile.is_online,
-                   status: newProfile.status,
-                   last_seen: newProfile.updated_at
-                 };
-               }
-               return c;
-            }));
-          }
-        )
-        .subscribe();
-    }
-
-    return () => {
-      void supabase.removeChannel(channel);
-      if (profileSub) void supabase.removeChannel(profileSub);
-    };
-  }, [fetchConnections, currentShop.id, selectedTrackId]);
-
-  const generateCode = async () => {
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    
-    let offsetMs = 24 * 60 * 60 * 1000; // 24h default
-    let durationLabel = "24 hours";
-    if (pairingCodeDuration === "7d") {
-      offsetMs = 7 * 24 * 60 * 60 * 1000;
-      durationLabel = "7 days";
-    } else if (pairingCodeDuration === "30d") {
-      offsetMs = 30 * 24 * 60 * 60 * 1000;
-      durationLabel = "30 days";
-    } else if (pairingCodeDuration === "never") {
-      offsetMs = 5 * 365 * 24 * 60 * 60 * 1000; // 5 years
-      durationLabel = "5 years";
-    }
-
-    const expiresAt = new Date(Date.now() + offsetMs).toISOString();
-
-    const { error } = await supabase.from("rider_connections").insert({
-      shop_id: currentShop.id,
-      connection_code: code,
-      expires_at: expiresAt,
-      status: "active",
-    });
-
-    if (error) {
-      toast.error(getFriendlyErrorMessage(error));
-    } else {
-      console.log("Nudge sent");
-      setActiveCode({ code, expires: expiresAt });
-      setShowCode(true);
-      void fetchConnections();
-      toast.success(`Pairing code generated! Valid for ${durationLabel}.`);
-    }
-  };
-
-  const addInHouseRider = async () => {
-    if (!inHouseName.trim() || !inHousePhone.trim()) {
-      toast.error("Please fill in Rider Name and Phone Number");
-      return;
-    }
-
-    const { error } = await supabase.from("rider_connections").insert({
-      shop_id: currentShop.id,
-      rider_name: inHouseName.trim(),
-      rider_phone: inHousePhone.trim(),
-      connection_code: "IN-HOUSE",
-      expires_at: new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000).toISOString(), // 5 years
-      status: "active",
-    });
-
-    if (error) {
-      toast.error(getFriendlyErrorMessage(error));
-    } else {
-      console.log("Nudge sent");
-      setInHouseName("");
-      setInHousePhone("");
-      setShowInHouseModal(false);
-      void fetchConnections();
-      toast.success("In-house driver registered successfully! Ready for direct assignment.");
-    }
-  };
-
-  const deleteConnection = async (id: string) => {
-    const { error } = await supabase
-      .from("rider_connections")
-      .delete()
-      .eq("id", id);
-    if (!error) {
-      
-      void fetchConnections();
-    }
-  };
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-12">
-      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
-              Rider Fleet
-            </h2>
-            <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">
-              v1.1
-            </span>
-          </div>
-          <p className="text-sm text-on-surface-variant font-medium">
-            Manage your delivery partners and track active pairings.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => setShowQRScanner(true)}
-            className="flex items-center gap-2 px-5 py-3 bg-zinc-900 text-white border border-zinc-800 rounded-2xl font-bold hover:bg-zinc-800 hover:scale-[1.02] active:scale-[0.98] transition-all text-sm"
-          >
-            <Camera size={18} />
-            Scan Pairing QR
-          </button>
-          <button
-            onClick={() => setShowInHouseModal(true)}
-            className="flex items-center gap-2 px-5 py-3 bg-indigo-500/10 text-indigo-600 border border-indigo-500/20 rounded-2xl font-bold hover:bg-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all text-sm"
-          >
-            <Users size={18} />
-            + In-House Driver
-          </button>
-
-          <div className="flex items-center bg-primary/5 border border-primary/20 rounded-2xl px-3 py-1.5 gap-2">
-            <span className="text-[10px] font-black uppercase text-primary/70 tracking-wider">Expiry:</span>
-            <select
-              value={pairingCodeDuration}
-              onChange={(e) => setPairingCodeDuration(e.target.value as "24h" | "7d" | "30d" | "never")}
-              className="bg-transparent border-0 text-xs font-bold text-primary focus:ring-0 focus:outline-none pr-8 cursor-pointer"
-            >
-              <option value="24h">24 Hours</option>
-              <option value="7d">7 Days</option>
-              <option value="30d">30 Days</option>
-              <option value="never">Never Expire</option>
-            </select>
-            <button
-              onClick={generateCode}
-              className="flex items-center gap-1.5 px-4 py-2 bg-primary text-on-primary rounded-xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-md shadow-primary/10 text-xs"
-            >
-              <Plus size={14} />
-              Gen Code
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* NO RIDER / CASH ON ARRIVAL TRUST BOOSTER BANNER */}
-      <div className="bg-gradient-to-br from-primary/5 via-surface-container-low to-primary/10 rounded-[2rem] p-6 md:p-8 border-2 border-primary/10 shadow-sm space-y-6">
-        <div className="flex flex-col md:flex-row items-start justify-between gap-6">
-          <div className="space-y-3 max-w-2xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-500/10 text-amber-600 border border-amber-500/20">
-                <Wallet size={12} />
-                No Rider? Cash-on-Arrival Ready! 💵
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-primary/10 text-primary border border-primary/20">
-                <Bike size={12} />
-                Promote Rider App Jobs 🚴
-              </span>
-            </div>
-            
-            <h3 className="text-xl md:text-2xl font-headline font-black text-on-surface tracking-tight">
-              Build Local Trust & Access the On-Demand Rider Fleet
-            </h3>
-            
-            <p className="text-sm text-on-surface-variant font-medium leading-relaxed">
-              If your shop doesn't have a linked rider, don't worry! You can announce to first-time local customers that they can pay with <strong>Cash on Arrival</strong>. This eliminates initial friction, builds community trust, and gets your food into hands.
-            </p>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-              <div className="flex gap-2.5">
-                <div className="w-6 h-6 rounded-lg bg-green-500/10 text-green-600 flex items-center justify-center shrink-0 mt-0.5">
-                  <ShieldCheck size={14} />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-on-surface">Boost Local Trust</p>
-                  <p className="text-[11px] text-on-surface-variant font-medium">Paying at arrival proves to customers that your operations are authentic and safe.</p>
-                </div>
-              </div>
-              <div className="flex gap-2.5">
-                <div className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
-                  <Zap size={14} />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-on-surface">Regional Rider Pool</p>
-                  <p className="text-[11px] text-on-surface-variant font-medium">Orders are broadcasted straight to our <strong>Rider App</strong> where on-demand riders pick up jobs on arrival!</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-surface-container/60 rounded-[1.75rem] p-5 md:p-6 border border-outline-variant/10 space-y-5 shrink-0 w-full md:w-80">
-            <div>
-              <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider mb-3">
-                Storefront Courier Settings
-              </p>
-              
-              {/* Courier Toggle 1: Allow External Riders */}
-              <div className="p-3 bg-surface-container-low rounded-2xl border border-outline-variant/5 hover:border-primary/5 transition-all space-y-2 mb-3 text-left">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Bike size={16} className={cn("transition-colors", allowExternalRiders ? "text-primary" : "text-on-surface-variant/40")} />
-                    <span className="text-xs font-bold text-on-surface">Allow External Riders</span>
-                  </div>
-                  
-                  {/* Premium iOS style switch */}
-                  <button
-                    onClick={toggleAllowExternalRiders}
-                    className={cn(
-                      "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
-                      allowExternalRiders ? "bg-primary" : "bg-outline-variant/50"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                        allowExternalRiders ? "translate-x-5" : "translate-x-0"
-                      )}
-                    />
-                  </button>
-                </div>
-                <p className="text-[10px] text-on-surface-variant/80 font-medium leading-normal">
-                  Toggle off to lock delivery jobs to your linked in-house list and ignore the regional public pool.
-                </p>
-              </div>
-
-              {/* Courier Toggle 2: Auto-Look for Rider */}
-              <div className="p-3 bg-surface-container-low rounded-2xl border border-outline-variant/5 hover:border-primary/5 transition-all space-y-2 text-left">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Radio size={16} className={cn("transition-colors", autoLookForRider && allowExternalRiders ? "text-amber-500" : "text-on-surface-variant/40")} />
-                    <span className="text-xs font-bold text-on-surface">Auto-Find On-Demand</span>
-                  </div>
-                  
-                  {/* Premium iOS style switch */}
-                  <button
-                    disabled={!allowExternalRiders}
-                    onClick={toggleAutoLookForRider}
-                    className={cn(
-                      "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
-                      autoLookForRider && allowExternalRiders ? "bg-amber-500" : "bg-outline-variant/50",
-                      !allowExternalRiders && "opacity-40 cursor-not-allowed"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                        autoLookForRider && allowExternalRiders ? "translate-x-5" : "translate-x-0"
-                      )}
-                    />
-                  </button>
-                </div>
-                <p className="text-[10px] text-on-surface-variant/80 font-medium leading-normal">
-                  Automatically broadcast a task to the nearby pool when no linked driver has accepted the item.
-                </p>
-                {connections.length === 0 && (
-                  <div className="mt-2 p-1.5 bg-amber-500/10 border border-amber-500/15 rounded-lg text-[9px] font-bold text-amber-600 flex items-center gap-1">
-                    <AlertCircle size={10} className="shrink-0" />
-                    <span>No linked in-house drivers active!</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="border-t border-outline-variant/10 pt-4 space-y-3">
-              <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider text-left">
-                Trust Booster Broadcast
-              </p>
-              
-              <button
-                onClick={toggleCashTrust}
-                className={cn(
-                  "w-full py-2.5 px-4 font-bold rounded-xl text-[11px] transition-all flex items-center justify-center gap-2 border shadow-sm cursor-pointer",
-                  cashTrustEnabled
-                    ? "bg-green-600 text-white border-green-700 hover:bg-green-700"
-                    : "bg-surface text-on-surface border-outline-variant/20 hover:bg-surface-container"
-                )}
-              >
-                {cashTrustEnabled ? (
-                  <>
-                    <Check size={14} className="stroke-[2.5px]" />
-                    Announcing Cash On Arrival
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle size={14} />
-                    Enable Cash Trust Banner
-                  </>
-                )}
-              </button>
-
-              <a
-                href="https://rider.localeatssa.co.za/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-2 px-3 bg-outline-variant/10 hover:bg-outline-variant/20 text-on-surface-variant font-bold rounded-xl text-[10px] transition-all flex items-center justify-center gap-1.5 border border-outline-variant/5 text-center"
-              >
-                <span>Verify Rider App Jobs</span>
-                <ExternalLink size={10} />
-              </a>
-              
-              <p className="text-[9px] text-on-surface-variant/70 italic font-medium leading-normal text-center">
-                If an on-demand rider is rejected or inactive, they can still navigate to your storefront and accept manually!
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* RIDER CASH BALANCES VISUALIZATION */}
-      {riderCashBalances.length > 0 && (
-        <div className="bg-surface-container-low border border-outline-variant/10 rounded-[2rem] p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-on-surface">Rider Cash-on-Hand</h3>
-            <span className="text-[10px] font-black uppercase text-on-surface-variant bg-surface-container-high px-2 py-1 rounded-lg">
-              Safety Cap: R 500
-            </span>
-          </div>
-          <div className="space-y-4">
-            {riderCashBalances.map((rb) => {
-              const limit = 500;
-              const percentage = Math.min((rb.total / limit) * 100, 100);
-              const isOverLimit = rb.total > limit;
-              const isWarning = rb.total > limit * 0.8;
-              
-              return (
-                <div key={rb.id} className="space-y-1.5">
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span className="text-on-surface">{rb.name}</span>
-                    <span className={cn(isOverLimit ? "text-error" : isWarning ? "text-amber-500" : "text-primary")}>
-                      R {rb.total.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="h-2 bg-surface-container-highest rounded-full overflow-hidden">
-                    <div 
-                      className={cn(
-                        "h-full rounded-full transition-all duration-500",
-                        isOverLimit ? "bg-error" : isWarning ? "bg-amber-500" : "bg-primary"
-                      )}
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
-                  {isOverLimit && (
-                    <p className="text-[9px] font-black uppercase text-error tracking-wider">
-                      ! Exceeds Cash Safety Cap - Clear Immediately
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ACTIVE MISSIONS TRACKER */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-xs font-black text-on-surface-variant uppercase tracking-widest">
-            Live Missions Track ({activeMissions.length})
-          </h3>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            <span className="text-[10px] font-bold text-green-600 uppercase tracking-tight">
-              Real-time Sync
-            </span>
-          </div>
-        </div>
-
-        {activeMissions.length === 0 ? (
-          <div className="bg-surface-container-low/30 rounded-3xl p-8 text-center border border-outline-variant/10">
-            <p className="text-sm text-on-surface-variant/40 font-medium italic">
-              No active delivery missions at the moment.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-3">
-            {activeMissions.map((mission) => {
-              const assignedRider = connections.find(c => c.rider_id === mission.rider_id);
-              return (
-                <div
-                  key={mission.id}
-                  className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/10 flex flex-col gap-4 group hover:border-primary/20 transition-all"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div
-                        className={cn(
-                          "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
-                          mission.delivery_status === "finding_rider"
-                            ? "bg-amber-100 text-amber-600 animate-pulse"
-                            : mission.delivery_status === "accepted"
-                              ? "bg-blue-100 text-blue-600"
-                              : "bg-green-100 text-green-600",
-                        )}
-                      >
-                        {mission.delivery_status === "finding_rider" ? (
-                          <Zap size={18} />
-                        ) : (
-                          <Bike size={18} />
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-bold text-sm text-on-surface">
-                            Order #{mission.id.toString().slice(-4)}
-                          </p>
-                          <span
-                            className={cn(
-                              "text-[10px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-full",
-                              mission.delivery_status === "finding_rider"
-                                ? "bg-amber-100 text-amber-600"
-                                : mission.delivery_status === "accepted"
-                                  ? "bg-blue-100 text-blue-600"
-                                  : "bg-green-600 text-white",
-                            )}
-                          >
-                            {mission.delivery_status?.replace("_", " ")}
-                          </span>
-                        </div>
-                        <p className="text-xs text-on-surface-variant font-medium mt-0.5 line-clamp-1">
-                          {mission.address}, {mission.city} • {assignedRider?.rider_name || "Unassigned"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right hidden sm:block">
-                        <p className="text-xs font-bold text-on-surface">
-                          R {mission.total_price || mission.price}
-                        </p>
-                        <p className="text-[10px] text-on-surface-variant font-medium">
-                          ETA: {mission.estimated_delivery_time || "Pending"}
-                        </p>
-                      </div>
-                      {mission.rider_id && (
-                        <button
-                          onClick={() => setSelectedTrackId(mission.rider_id!)}
-                          className="p-2 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-lg transition-colors border border-primary/20"
-                          title="Track Real-time Position"
-                        >
-                          <MapPin size={16} />
-                        </button>
-                      )}
-                      {mission.delivery_status === "finding_rider" && (
-                        <button
-                          onClick={() => onRequestRider(mission.id)}
-                          className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                          title="Retry Dispatch"
-                        >
-                          <RefreshCw size={16} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {assignedRider?.current_latitude && assignedRider?.current_longitude && mission.lat && mission.lng && (
-                    <div className="h-24 w-full rounded-xl overflow-hidden border border-outline-variant/10 relative z-0">
-                      <MapContainer
-                        center={[
-                          (assignedRider.current_latitude + mission.lat) / 2,
-                          (assignedRider.current_longitude + mission.lng) / 2
-                        ]}
-                        zoom={13}
-                        className="w-full h-full"
-                        zoomControl={false}
-                        dragging={false}
-                        scrollWheelZoom={false}
-                        doubleClickZoom={false}
-                      >
-                        <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
-                        <Marker
-                          position={[assignedRider.current_latitude, assignedRider.current_longitude]}
-                          icon={L.icon({
-                            iconUrl: 'https://cdn-icons-png.flaticon.com/512/3195/3195868.png',
-                            iconSize: [24, 24],
-                            iconAnchor: [12, 24],
-                          })}
-                        />
-                        <Marker
-                          position={[mission.lat, mission.lng]}
-                          icon={L.icon({
-                            iconUrl: 'https://cdn-icons-png.flaticon.com/512/2776/2776067.png',
-                            iconSize: [24, 24],
-                            iconAnchor: [12, 24],
-                          })}
-                        />
-                      </MapContainer>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {showCode && activeCode && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-primary/5 border-2 border-primary/20 rounded-3xl p-8 text-center space-y-6 relative overflow-hidden"
-        >
-          <div className="absolute top-0 right-0 p-4">
-            <button
-              onClick={() => setShowCode(false)}
-              className="text-on-surface-variant/40 hover:text-on-surface transition-colors p-2"
-            >
-              <X size={24} />
-            </button>
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs font-black text-primary uppercase tracking-[0.3em]">
-              Share with Rider
-            </p>
-            <h3 className="text-6xl font-headline font-black tracking-widest text-on-surface select-all">
-              {activeCode.code}
-            </h3>
-            <p className="text-xs text-on-surface-variant/60 font-medium">
-              Expires in 24 hours
-            </p>
-          </div>
-          <div className="flex justify-center">
-            <div className="bg-white p-6 rounded-3xl shadow-2xl border border-outline-variant/10 group cursor-pointer active:scale-95 transition-transform">
-              {qrUrl ? (
-                <img src={qrUrl} alt="Pairing QR" className="w-44 h-44" />
-              ) : (
-                <QrCode size={180} className="text-black" />
-              )}
-            </div>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm font-bold text-on-surface">
-              Ready to connect
-            </p>
-            <p className="text-xs text-on-surface-variant italic">
-              Riders scan this to connect instantly to {currentShop.name}
-            </p>
-          </div>
-        </motion.div>
-      )}
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-4">
-            <h3 className="text-xs font-black text-on-surface-variant uppercase tracking-widest">
-              Active Pairings ({activeConnectionsCount})
-            </h3>
-            <button 
-              onClick={() => void fetchConnections()}
-              className="p-1 hover:bg-on-surface/5 rounded-lg text-primary transition-all"
-              title="Refresh Connections"
-            >
-              <RefreshCw size={12} className={cn(loading && "animate-spin")} />
-            </button>
-          </div>
-          <span className="text-[10px] font-bold text-on-surface-variant/40 uppercase tracking-widest">
-            {availableCodesCount} Available Codes
-          </span>
-        </div>
-
-        {loading && connections.length === 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[1, 2].map((i) => (
-              <div
-                key={i}
-                className="h-32 bg-surface-container-low rounded-3xl animate-pulse"
-              />
-            ))}
-          </div>
-        ) : connections.length === 0 ? (
-          <div className="bg-surface-container-low rounded-[2rem] p-12 md:p-20 text-center border-2 border-dashed border-outline-variant/10">
-            <div className="w-16 h-16 bg-surface-container-high rounded-full flex items-center justify-center mx-auto mb-4 text-on-surface-variant/20">
-              <Bike size={32} />
-            </div>
-            <p className="text-on-surface-variant font-bold text-lg leading-tight mb-1">
-              No active rider connections
-            </p>
-            <p className="text-sm text-on-surface-variant/60 max-w-xs mx-auto mb-6">
-              Generate a pairing code to allow riders to join your delivery
-              network.
-            </p>
-            <button
-              onClick={generateCode}
-              className="flex items-center gap-2 px-8 py-4 bg-primary text-on-primary rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/20 mx-auto"
-            >
-              <Plus size={20} />
-              Generate First Pairing Code
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {connections.map((conn) => {
-              const expirationTime = new Date(conn.expires_at).getTime();
-              const now = Date.now();
-              const isExpired = expirationTime < now;
-
-              return (
-                <div
-                  key={conn.id}
-                  className={cn(
-                    "bg-surface-container-low rounded-3xl p-5 border border-outline-variant/10 flex flex-col gap-4 group transition-all",
-                    isExpired
-                      ? "opacity-60 bg-error-container/5 border-error/10"
-                      : "hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5 shadow-sm",
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-4 overflow-hidden">
-                      <div
-                        className={cn(
-                          "w-12 h-12 rounded-2xl flex items-center justify-center transition-all shrink-0",
-                          isExpired
-                            ? "bg-error/10 text-error"
-                            : "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-on-primary",
-                        )}
-                      >
-                        <Bike size={24} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-bold text-on-surface truncate">
-                            {conn.rider_name || "Awaiting Rider..."}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {conn.rider_id && (
-                             <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 rounded-full text-amber-600 border border-amber-100 shrink-0">
-                                <Star size={10} className="fill-current" />
-                                <span className="text-[10px] font-bold">{conn.rating?.toFixed(1) || '5.0'}</span>
-                             </div>
-                          )}
-                          {conn.rider_id && (
-                             <div className="flex items-center gap-1 px-1.5 py-0.5 bg-surface-container-highest rounded-full text-on-surface-variant shrink-0">
-                                <span className="text-[10px] font-bold">{(conn as unknown as RiderProfile).vehicle_type || 'Road'}</span>
-                             </div>
-                          )}
-                          <span className={cn(
-                            "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-lg uppercase tracking-tight",
-                            conn.is_online 
-                               ? (conn.status === 'busy' ? "bg-amber-50 text-amber-700" : conn.status === 'paused' ? "bg-blue-50 text-blue-700" : "bg-green-50 text-green-700") 
-                               : "bg-surface-container-highest text-on-surface-variant"
-                          )}>
-                            {conn.rider_id ? (conn.is_online ? conn.status : (conn.last_seen ? `Offline - ${new Date(conn.last_seen).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'Offline')) : conn.connection_code}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {conn.rider_id && (
-                        <button
-                          onClick={() => setSelectedTrackId(conn.rider_id!)}
-                          className="w-10 h-10 flex items-center justify-center bg-surface-container-highest text-on-surface rounded-xl hover:bg-primary hover:text-white transition-all shadow-sm"
-                          title="View Live map"
-                        >
-                          <Navigation size={18} />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => deleteConnection(conn.id)}
-                        className="w-10 h-10 flex items-center justify-center text-on-surface-variant/40 hover:text-error hover:bg-error/5 rounded-xl transition-colors"
-                        title="Disconnect Rider"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Rider performance KPIs */}
-                  {conn.rider_id && (
-                    <div className="space-y-3 pt-4 border-t border-outline-variant/10">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="bg-surface-container-low px-3 py-2 rounded-xl border border-outline-variant/10">
-                           <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest leading-none mb-1">Missions</p>
-                           <p className="text-sm font-black text-on-surface">{(conn as unknown as RiderProfile).total_deliveries || 0}</p>
-                        </div>
-                        <div className="bg-surface-container-low px-3 py-2 rounded-xl border border-outline-variant/10">
-                           <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest leading-none mb-1">Earnings</p>
-                           <p className="text-sm font-black text-on-surface text-green-600">R {((conn as unknown as RiderProfile).total_earnings || 0).toFixed(2)}</p>
-                        </div>
-                      </div>
-
-                      {/* Rider community accolades & performance diagnostics badge */}
-                      <div className="flex flex-wrap gap-1.5">
-                        <div className="flex items-center gap-1 px-2 py-0.5 bg-cyan-50 dark:bg-cyan-950/20 border border-cyan-100/50 dark:border-cyan-900/30 rounded-lg text-cyan-600 dark:text-cyan-400 text-[8px] font-black uppercase tracking-wider">
-                          <Compass size={8} className="animate-spin-slow" />
-                          <span>Pilot X32</span>
-                        </div>
-                        <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-100/50 dark:border-amber-900/30 rounded-lg text-amber-600 dark:text-amber-400 text-[8px] font-black uppercase tracking-wider">
-                          <ShieldCheck size={8} />
-                          <span>Cargo X24</span>
-                        </div>
-                        <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100/50 dark:border-emerald-900/30 rounded-lg text-emerald-600 dark:text-emerald-400 text-[8px] font-black uppercase tracking-wider">
-                          <Heart size={8} className="fill-current" />
-                          <span>Polite X45</span>
-                        </div>
-                      </div>
-
-                      {/* Diagnostics Score ticker */}
-                      <div className="flex items-center justify-between text-[8px] font-black text-on-surface-variant/60 uppercase tracking-widest bg-on-surface/5 px-2 py-1.5 rounded-lg border border-outline-variant/5">
-                        <span>Lock-In: 98%</span>
-                        <span>Cargo: 100%</span>
-                        <span>Flight: 96%</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {!isExpired && conn.rider_id && !conn.is_online && (
-                    <button
-                      onClick={() => {
-                        setNudgingRider(conn);
-                        setCustomNudgeText("⚠️ Dispatcher is nudging you to go online!");
-                      }}
-                      className="w-full py-2.5 bg-amber-500/10 text-amber-600 text-[10px] font-black rounded-xl uppercase hover:bg-amber-500/20 transition-all border border-amber-500/10 flex items-center justify-center gap-2"
-                    >
-                      <Zap size={12} />
-                      Wake Rider
-                    </button>
-                  )}
-
-                  {isExpired && (
-                    <button
-                      onClick={generateCode}
-                      className="w-full py-2.5 bg-error text-white text-[10px] font-black rounded-xl uppercase hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-error/20"
-                    >
-                      Code expired. Re-pair
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* TRACKER MODAL */}
-      <AnimatePresence>
-         {selectedTrackId && trackedRider && (
-            <motion.div
-               key="tracker-overlay"
-               initial={{ opacity: 0 }}
-               animate={{ opacity: 1 }}
-               exit={{ opacity: 0 }}
-               className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-10 pointer-events-none"
-            >
-               <motion.div 
-                 initial={{ opacity: 0 }}
-                 animate={{ opacity: 1 }}
-                 exit={{ opacity: 0 }}
-                 className="absolute inset-0 bg-zinc-950/80 backdrop-blur-md pointer-events-auto"
-                 onClick={() => setSelectedTrackId(null)}
-               />
-               <motion.div 
-                 initial={{ scale: 0.9, opacity: 0, y: 40 }}
-                 animate={{ scale: 1, opacity: 1, y: 0 }}
-                 exit={{ scale: 0.9, opacity: 0, y: 40 }}
-                 className="w-full max-w-5xl h-full max-h-[80vh] bg-surface-container-low rounded-[2.5rem] border border-outline-variant/20 shadow-2xl overflow-hidden relative flex flex-col pointer-events-auto"
-               >
-                  <div className="p-6 md:p-8 flex items-center justify-between border-b border-outline-variant/10 bg-surface-container-low">
-                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                           <Bike size={24} />
-                        </div>
-                        <div>
-                           <h2 className="text-xl font-headline font-bold text-on-surface">{trackedRider.rider_name}</h2>
-                           <p className="text-xs font-medium text-on-surface-variant/60 flex items-center gap-1.5">
-                              <span className={cn("w-2 h-2 rounded-full", trackedRider.is_online ? "bg-green-500 animate-pulse" : "bg-zinc-300")} />
-                              {trackedRider.is_online ? 'Live tracking active' : 'Last known location'}
-                           </p>
-                        </div>
-                     </div>
-                     <button 
-                       onClick={() => setSelectedTrackId(null)}
-                       className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-on-surface/5 transition-colors"
-                     >
-                        <X size={24} />
-                     </button>
-                  </div>
-
-                  <div className="flex-1 relative bg-surface-container-highest">
-                     {smoothLat && smoothLng ? (
-                        <>
-                          <MapContainer
-                            center={[smoothLat, smoothLng]}
-                            zoom={15}
-                            className="w-full h-full"
-                            zoomControl={false}
-                          >
-                            <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
-                            <Marker 
-                              position={[smoothLat, smoothLng]}
-                              icon={L.icon({
-                                iconUrl: 'https://cdn-icons-png.flaticon.com/512/3195/3195868.png',
-                                iconSize: [40, 40],
-                                iconAnchor: [20, 40],
-                              })}
-                            />
-
-                            {/* Programmatic refocus animation helper */}
-                            {mapCenterOverride && mapZoomOverride && (
-                              <MapViewRefocus center={mapCenterOverride} zoom={mapZoomOverride} />
-                            )}
-
-                            {/* Traffic Layer Overlays */}
-                            {showTrafficLayer && (
-                              <>
-                                {TRAFFIC_CORRIDORS.map((corridor) => (
-                                  <React.Fragment key={corridor.id}>
-                                    {/* Glow shadow layer */}
-                                    <Polyline
-                                      positions={corridor.path}
-                                      pathOptions={{
-                                        color: corridor.color === "red" ? "#f87171" : corridor.color === "orange" ? "#fb923c" : "#4ade80",
-                                        weight: 10,
-                                        opacity: 0.3,
-                                      }}
-                                    />
-                                    {/* Solid route highway layer */}
-                                    <Polyline
-                                      positions={corridor.path}
-                                      pathOptions={{
-                                        color: corridor.color === "red" ? "#dc2626" : corridor.color === "orange" ? "#ea580c" : "#16a34a",
-                                        weight: 5,
-                                        opacity: 0.85,
-                                      }}
-                                    >
-                                      <Tooltip sticky>
-                                        <div className="px-2 py-1 font-bold text-xs bg-zinc-900 text-white rounded-lg select-none">
-                                          {corridor.name} ({corridor.color === "red" ? "Severe" : corridor.color === "orange" ? "Moderate" : "Smooth"})
-                                        </div>
-                                      </Tooltip>
-                                    </Polyline>
-                                  </React.Fragment>
-                                ))}
-
-                                {TRAFFIC_BOTTLENECKS.map((btn) => (
-                                  <Marker
-                                    key={btn.id}
-                                    position={btn.latlng}
-                                    icon={L.divIcon({
-                                      className: "custom-traffic-icon",
-                                      html: `<div class="relative flex items-center justify-center animate-bounce" style="animation-duration: 2.2s">
-                                               <div class="absolute w-8 h-8 rounded-full ${btn.color === 'red' ? 'bg-rose-500/35' : 'bg-amber-500/35'} animate-ping" style="animation-duration: 1.8s"></div>
-                                               <div class="w-6.5 h-6.5 rounded-full ${btn.color === 'red' ? 'bg-rose-600' : 'bg-amber-500'} flex items-center justify-center shadow-lg text-white font-extrabold border-2 border-white text-[11px]">
-                                                 ⚠️
-                                               </div>
-                                             </div>`,
-                                      iconSize: [36, 36],
-                                      iconAnchor: [18, 18],
-                                    })}
-                                  >
-                                    <Tooltip direction="top" offset={[0, -12]} opacity={1}>
-                                      <div className="p-3 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl space-y-1.5 max-w-[240px] text-left">
-                                        <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-rose-500">
-                                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-                                          <span>Bottleneck Alert</span>
-                                        </div>
-                                        <h5 className="text-xs font-bold font-headline text-zinc-900 dark:text-white leading-tight">
-                                          {btn.name}
-                                        </h5>
-                                        <div className="flex items-center gap-1.5 mt-1 bg-rose-500/5 dark:bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/10">
-                                          <span className="text-[10px] font-black text-rose-600 dark:text-rose-400">
-                                            {btn.delay} Delay
-                                          </span>
-                                        </div>
-                                        <p className="text-[9px] text-zinc-500 dark:text-zinc-400 leading-normal">
-                                          {btn.cause}
-                                        </p>
-                                      </div>
-                                    </Tooltip>
-                                  </Marker>
-                                ))}
-                              </>
-                            )}
-                          </MapContainer>
-
-                          {/* Floating Traffic Control Panel */}
-                          <div className="absolute top-4 right-4 z-[1000] bg-zinc-950/90 backdrop-blur-md border border-zinc-800 rounded-2xl p-4 w-72 shadow-2xl space-y-3 pointer-events-auto text-left">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="flex h-2 w-2 relative">
-                                  <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", showTrafficLayer ? "bg-rose-400" : "bg-zinc-400")} />
-                                  <span className={cn("relative inline-flex rounded-full h-2 w-2", showTrafficLayer ? "bg-rose-500" : "bg-zinc-500")} />
-                                </span>
-                                <h3 className="text-[10px] font-black uppercase tracking-wider text-white">Grid Traffic Layer</h3>
-                              </div>
-                              
-                              <button
-                                onClick={() => setShowTrafficLayer(!showTrafficLayer)}
-                                className={cn(
-                                  "px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition-all border cursor-pointer",
-                                  showTrafficLayer 
-                                    ? "bg-rose-500/20 text-rose-400 border-rose-500/30 font-extrabold" 
-                                    : "bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700 font-medium"
-                                )}
-                              >
-                                {showTrafficLayer ? "ACTIVE" : "OFF"}
-                              </button>
-                            </div>
-
-                            {showTrafficLayer && (
-                              <div className="space-y-3 border-t border-zinc-900 pt-3">
-                                <p className="text-[10px] text-zinc-400 leading-relaxed">
-                                  Select a hotspot to zoom/align and review custom alternative route details:
-                                </p>
-                                
-                                <div className="space-y-1.5 max-h-[180px] overflow-y-auto pr-1">
-                                  {TRAFFIC_BOTTLENECKS.map((btn) => (
-                                    <button
-                                      key={btn.id}
-                                      onClick={() => {
-                                        setMapCenterOverride(btn.latlng);
-                                        setMapZoomOverride(15);
-                                        setTimeout(() => {
-                                          setMapCenterOverride(null);
-                                          setMapZoomOverride(null);
-                                        }, 1000);
-                                      }}
-                                      className="w-full text-left p-2 rounded-xl bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-900 hover:border-zinc-800 transition-all flex items-start gap-2.5 group cursor-pointer"
-                                    >
-                                      <span className={cn(
-                                        "text-xs mt-0.5",
-                                        btn.color === "red" ? "text-rose-500" : "text-amber-500"
-                                      )}>
-                                        ⚠️
-                                      </span>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between gap-1">
-                                          <p className="text-[10px] font-bold text-white truncate group-hover:text-primary transition-colors">
-                                            {btn.name.split(" (")[0]}
-                                          </p>
-                                          <span className={cn(
-                                            "text-[8px] font-black px-1.5 py-0.5 rounded uppercase flex-shrink-0",
-                                            btn.color === "red" 
-                                              ? "bg-rose-500/10 text-rose-400 border border-rose-500/20" 
-                                              : "bg-amber-500/10 text-amber-400 border border-amber-400/20"
-                                          )}>
-                                            {btn.delay}
-                                          </span>
-                                        </div>
-                                        <p className="text-[9px] text-zinc-500 truncate leading-normal">
-                                          {btn.cause}
-                                        </p>
-                                      </div>
-                                    </button>
-                                  ))}
-                                </div>
-                                
-                                <div className="flex items-center justify-between text-[8px] text-zinc-500 border-t border-zinc-900 pt-2">
-                                  <span className="flex items-center gap-1 font-medium">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Severe ({TRAFFIC_BOTTLENECKS.filter(b => b.color === 'red').length})
-                                  </span>
-                                  <span className="flex items-center gap-1 font-medium">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Moderate ({TRAFFIC_BOTTLENECKS.filter(b => b.color === 'orange').length})
-                                  </span>
-                                  <button
-                                    onClick={() => {
-                                      if (smoothLat && smoothLng) {
-                                        setMapCenterOverride([smoothLat, smoothLng]);
-                                        setMapZoomOverride(15);
-                                        setTimeout(() => {
-                                          setMapCenterOverride(null);
-                                          setMapZoomOverride(null);
-                                        }, 1000);
-                                      }
-                                    }}
-                                    className="text-primary hover:underline font-black uppercase tracking-wider text-[8px] cursor-pointer"
-                                  >
-                                    RE-CENTER
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </>
-                     ) : (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8">
-                           <Navigation size={48} className="text-on-surface-variant/20 mb-4 animate-bounce" />
-                           <h3 className="font-bold text-lg mb-2">Location Signal Missing</h3>
-                           <p className="text-sm text-on-surface-variant/60 max-w-xs">
-                              We haven't received GPS coordinates for this rider yet. Ensure their app is open and location services are enabled.
-                           </p>
-                        </div>
-                     )}
-                  </div>
-
-                  <div className="p-6 bg-surface-container-low border-t border-outline-variant/10 space-y-6">
-                     <div className="grid grid-cols-3 gap-4">
-                        <div className="text-center">
-                           <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest mb-1">Missions</p>
-                           <p className="text-xl font-black text-on-surface">{trackedRider.total_deliveries || 0}</p>
-                        </div>
-                        <div className="text-center">
-                           <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest mb-1">Rating</p>
-                           <p className="text-xl font-black text-primary flex items-center justify-center gap-1">
-                              <Star size={16} className="fill-current" />
-                              {trackedRider.rating?.toFixed(1) || '5.0'}
-                           </p>
-                        </div>
-                        <div className="text-center">
-                           <p className="text-[9px] font-black text-on-surface-variant/40 uppercase tracking-widest mb-1">Status</p>
-                           <p className={cn("text-sm font-black uppercase tracking-tighter mt-1", trackedRider.is_online ? (trackedRider.status === 'busy' ? "text-amber-600" : trackedRider.status === 'paused' ? "text-blue-600" : "text-green-600") : "text-on-surface-variant")}>
-                              {trackedRider.is_online ? trackedRider.status : 'Offline'}
-                           </p>
-                        </div>
-                     </div>
-
-                     {/* Grid Performance Diagnostics Scorecard */}
-                     <div className="border-t border-outline-variant/10 pt-6">
-                        <h4 className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/60 mb-3 flex items-center gap-2">
-                           <TrendingUp size={12} className="text-primary" /> Grid Performance Diagnostics
-                        </h4>
-                        <div className="grid grid-cols-3 gap-3">
-                           <div className="bg-on-surface/5 border border-outline-variant/5 rounded-xl p-3">
-                              <p className="text-[8px] font-black text-on-surface-variant/40 uppercase tracking-wider mb-1">Missions Lock-In</p>
-                              <p className="text-sm font-black text-on-surface">98.4%</p>
-                           </div>
-                           <div className="bg-on-surface/5 border border-outline-variant/5 rounded-xl p-3">
-                              <p className="text-[8px] font-black text-on-surface-variant/40 uppercase tracking-wider mb-1">Cargo Security</p>
-                              <p className="text-sm font-black text-emerald-500">100%</p>
-                           </div>
-                           <div className="bg-on-surface/5 border border-outline-variant/5 rounded-xl p-3">
-                              <p className="text-[8px] font-black text-on-surface-variant/40 uppercase tracking-wider mb-1">Flight On-Time</p>
-                              <p className="text-sm font-black text-cyan-500">96.8%</p>
-                           </div>
-                        </div>
-                     </div>
-
-                     {/* Community Accolades badges */}
-                     <div className="border-t border-outline-variant/10 pt-4 flex flex-wrap gap-2 items-center">
-                        <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant/60 mr-1">Rider Accolades:</span>
-                        <div className="flex items-center gap-1 px-2.5 py-1 bg-cyan-50 dark:bg-cyan-950/20 border border-cyan-100/50 dark:border-cyan-900/30 rounded-lg text-cyan-600 dark:text-cyan-400 text-[9px] font-black uppercase tracking-wider">
-                           <Compass size={10} className="animate-spin-slow" />
-                           <span>Pilot X32</span>
-                        </div>
-                        <div className="flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/20 border border-amber-100/50 dark:border-amber-900/30 rounded-lg text-amber-600 dark:text-amber-400 text-[9px] font-black uppercase tracking-wider">
-                           <ShieldCheck size={10} />
-                           <span>Cargo X24</span>
-                        </div>
-                        <div className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100/50 dark:border-emerald-900/30 rounded-lg text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-wider">
-                           <Heart size={10} className="fill-current" />
-                           <span>Polite X45</span>
-                        </div>
-                     </div>
-                  </div>
-               </motion.div>
-            </motion.div>
-         )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showQRScanner && (
-          <QRScanner 
-            onScan={async (code) => {
-              setShowQRScanner(false);
-              const { error } = await supabase.from("rider_connections").insert({
-                shop_id: currentShop.id,
-                rider_name: "Rider " + code.substring(0, 4),
-                rider_phone: "Paired via QR",
-                connection_code: code,
-                expires_at: new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000).toISOString(),
-                status: "active",
-              });
-              if (error) {
-                toast.error("Failed to pair with rider.");
-              } else {
-                toast.success("Successfully paired with rider!");
-                void fetchConnections();
-              }
-            }} 
-            onClose={() => setShowQRScanner(false)} 
-          />
-        )}
-      </AnimatePresence>
-
-      {/* IN-HOUSE DRIVER REGISTRATION MODAL */}
-      <AnimatePresence>
-        {showInHouseModal && (
-            <motion.div key="showInHouseModal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm pointer-events-auto"
-              onClick={() => setShowInHouseModal(false)}
-            />
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="w-full max-w-md bg-surface-container-low rounded-3xl border border-outline-variant/20 shadow-2xl relative flex flex-col pointer-events-auto overflow-hidden text-on-surface"
-            >
-              <div className="p-6 border-b border-outline-variant/10 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
-                    <Users size={20} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg">Add In-House Driver</h3>
-                    <p className="text-[10px] text-on-surface-variant/60 font-medium">Bypass pairing code registration</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowInHouseModal(false)}
-                  className="w-8 h-8 rounded-full hover:bg-on-surface/5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface transition-colors"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5 font-headline">Driver Name</label>
-                  <input
-                    type="text"
-                    value={inHouseName}
-                    onChange={(e) => setInHouseName(e.target.value)}
-                    placeholder="e.g. Sipho Nkosi"
-                    className="w-full px-4 py-3 bg-on-surface/5 border border-outline-variant/10 rounded-xl text-sm focus:ring-1 focus:ring-primary focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5 font-headline">Phone Number</label>
-                  <input
-                    type="text"
-                    value={inHousePhone}
-                    onChange={(e) => setInHousePhone(e.target.value)}
-                    placeholder="e.g. +27 71 234 5678"
-                    className="w-full px-4 py-3 bg-on-surface/5 border border-outline-variant/10 rounded-xl text-sm focus:ring-1 focus:ring-primary focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5 font-headline">Vehicle Type</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(["Road", "Bicycle", "Motorbike", "Electric"] as const).map((v) => (
-                      <button
-                        key={v}
-                        onClick={() => setInHouseVehicle(v)}
-                        className={cn(
-                          "py-2 px-3 text-xs font-bold rounded-xl border transition-all text-center uppercase tracking-tight",
-                          inHouseVehicle === v
-                            ? "bg-indigo-500 text-white border-indigo-500"
-                            : "bg-on-surface/5 text-on-surface-variant/70 border-outline-variant/10 hover:bg-on-surface/10"
-                        )}
-                      >
-                        {v}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6 bg-on-surface/5 border-t border-outline-variant/10 flex gap-3">
-                <button
-                  onClick={() => setShowInHouseModal(false)}
-                  className="flex-1 py-3 bg-transparent border border-outline-variant/20 rounded-xl text-sm font-bold hover:bg-on-surface/5"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={addInHouseRider}
-                  className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition"
-                >
-                  Register Driver
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-          )}
-        </AnimatePresence>
-
-      {/* INTERACTIVE DRIVER NUDGE DIALOG */}
-      <AnimatePresence>
-        {nudgingRider && (
-            <motion.div key="nudgingRider-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm pointer-events-auto"
-              onClick={() => setNudgingRider(null)}
-            />
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="w-full max-w-md bg-surface-container-low rounded-3xl border border-outline-variant/20 shadow-2xl relative flex flex-col pointer-events-auto overflow-hidden text-on-surface animate-in fade-in-50 zoom-in-95"
-            >
-              <div className="p-6 border-b border-outline-variant/10 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-                    <Zap size={20} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg">Nudge Rider Profile</h3>
-                    <p className="text-[10px] text-on-surface-variant/60 font-medium font-mono">Send secure push notification</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setNudgingRider(null)}
-                  className="w-8 h-8 rounded-full hover:bg-on-surface/5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface transition-colors"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <div className="bg-surface px-4 py-3 rounded-2xl border border-outline-variant/10 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                    <Bike size={20} />
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm text-on-surface">{nudgingRider.rider_name}</p>
-                    <p className="text-xs text-on-surface-variant/60 uppercase font-mono">{nudgingRider.connection_code}</p>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">Quick Templates</label>
-                  <div className="space-y-2">
-                    {[
-                      "⚠️ Rush hour load! Go online now.",
-                      "⚡ Tip value increased by 20% in your zone!",
-                      "📦 High priority order awaits prompt dispatch.",
-                      "🚦 Weather surges active - earn extra per delivery!"
-                    ].map((tpl) => (
-                      <button
-                        key={tpl}
-                        onClick={() => setCustomNudgeText(tpl)}
-                        className="w-full p-2.5 bg-on-surface/5 hover:bg-on-surface/10 rounded-xl border border-outline-variant/5 text-xs text-left font-semibold text-on-surface-variant hover:text-on-surface transition-colors"
-                      >
-                        {tpl}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">Custom Dispatch Note</label>
-                  <textarea
-                    rows={3}
-                    value={customNudgeText}
-                    onChange={(e) => setCustomNudgeText(e.target.value)}
-                    placeholder="Describe specific instruction..."
-                    className="w-full px-4 py-3 bg-on-surface/5 border border-outline-variant/10 rounded-xl text-sm focus:ring-1 focus:ring-primary focus:outline-none resize-none"
-                  />
-                </div>
-              </div>
-
-              <div className="p-6 bg-on-surface/5 border-t border-outline-variant/10 flex gap-3">
-                <button
-                  onClick={() => setNudgingRider(null)}
-                  className="flex-1 py-3 bg-transparent border border-outline-variant/20 rounded-xl text-sm font-bold hover:bg-on-surface/5"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={() => {
-                    const msg = customNudgeText.trim() || "⚠️ Real-time status update notification";
-                    void sendRiderNudge(nudgingRider.rider_id || nudgingRider.id, msg);
-                    setNudgingRider(null);
-                    setCustomNudgeText("");
-                  }}
-                  className="flex-1 py-3 bg-amber-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition"
-                >
-                  Send Signal Nudge
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-          )}
-        </AnimatePresence>
-    </div>
-  );
-};
 
 // --- Subscription Components ---
 
@@ -19576,7 +17363,7 @@ class ErrorBoundary extends React.Component<
                 <line x1="12" y1="17" x2="12.01" y2="17"/>
               </svg>
             </div>
-            
+
             <h1 className="text-xl font-bold tracking-tight mb-2 uppercase font-sans text-white">Self-Healing Shelter</h1>
             <p className="text-sm text-zinc-400 mb-6 font-sans leading-relaxed">
               We intercepted a runtime crash:
@@ -19601,7 +17388,7 @@ class ErrorBoundary extends React.Component<
               >
                 Soft Repair & Reload
               </button>
-              
+
               <button
                 className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs uppercase tracking-widest rounded-xl transition-colors border border-zinc-750"
                 onClick={() => {
@@ -19647,9 +17434,9 @@ const NotificationCenterSidePanel = ({
 }) => {
   const pendingOrdersCount = orders.filter(o => o.status === "pending" || o.status === "accepted").length;
   const lowStockItems = menuItems.filter(m => typeof m.stock_count === "number" && m.stock_count < 5);
-  
+
   const alerts = [];
-  
+
   if (pendingOrdersCount > 0) {
     alerts.push({ id: 'orders', type: 'info', icon: <Inbox size={16}/>, title: 'Active Orders', message: `You have ${pendingOrdersCount} active orders needing attention.`, time: 'Just now' });
   } else {
@@ -19660,8 +17447,7 @@ const NotificationCenterSidePanel = ({
   if (lowStockItems.length > 0) {
     alerts.push({ id: 'inventory', type: 'warning', icon: <AlertTriangle size={16}/>, title: 'Low Inventory', message: `${lowStockItems.length} items are running low on stock. Please restock soon.`, time: '5m ago' });
   }
-  
-  // adding a generic system alert for weather/announcements
+
   alerts.push({ id: 'sys', type: 'info', icon: <Megaphone size={16}/>, title: 'System Notification', message: 'Your storefront is fully active and connecting to nearby riders.', time: '1h ago' });
 
   return (
@@ -19697,7 +17483,7 @@ const NotificationCenterSidePanel = ({
                 <X size={20} />
               </button>
             </div>
-            
+
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {alerts.length === 0 ? (
                  <div className="text-center p-8 mt-10">
@@ -19713,7 +17499,7 @@ const NotificationCenterSidePanel = ({
                      {alert.type === 'warning' && <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>}
                      {alert.type === 'info' && <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>}
                      {alert.type === 'success' && <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>}
-                     
+
                      <div className="flex items-start gap-3">
                        <div className={cn("p-2 rounded-xl shrink-0 text-white", 
                          alert.type === 'warning' ? "bg-amber-500" : 
@@ -19761,16 +17547,68 @@ export default function AppWrapper() {
 }
 
 function App() {
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [authView, setAuthView] = useState<"signin" | "signup">("signin");
+  const [isVerifying, setIsVerifying] = useState<boolean>(false);
+  const [signupEmail, setSignupEmail] = useState<string>("");
+  const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isSaveSuccess, setIsSaveSuccess] = useState<boolean>(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
   const { activeTab, setActiveTab } = useAppNavigation("dashboard");
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [dataSaverMode, setDataSaverMode] = useState<boolean>(() => localStorage.getItem("localeats_data_saver") === "true");
+  const [darkMode, setDarkMode] = useState<boolean>(() => localStorage.getItem("darkMode") === "true");
+  const [showOfflineInfoModal, setShowOfflineInfoModal] = useState<boolean>(false);
+  const [isOffline, setIsOffline] = useState<boolean>(() => typeof navigator !== "undefined" ? !navigator.onLine : false);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+  const [showAutoAcceptModal, setShowAutoAcceptModal] = useState<boolean>(false);
+  const [soundAlerts, setSoundAlerts] = useState<boolean>(() => localStorage.getItem("soundAlerts") !== "false");
+  const [soundStyle, setSoundStyle] = useState<string>(() => localStorage.getItem("soundStyle") || "modern");
+  const [soundVolume, setSoundVolume] = useState<number>(() => Number(localStorage.getItem("soundVolume") || "70"));
+  const [autoAcceptOrders, setAutoAcceptOrders] = useState<boolean>(() => localStorage.getItem("autoAcceptOrders") === "true");
+  const [autoPrint, setAutoPrint] = useState<boolean>(() => localStorage.getItem("autoPrint") === "true");
+  const [printingFormat, setPrintingFormat] = useState<"80mm" | "58mm">(() => (localStorage.getItem("printingFormat") as "80mm" | "58mm") || "80mm");
+  const [deliverySettings, setDeliverySettings] = useState({ type: "fixed", baseFee: 15, freeDeliveryOver: 200, minOrderAmount: 0, maxDistanceKm: 15 });
+  const [kitchenMode, setKitchenMode] = useState<boolean>(() => localStorage.getItem("localeats_kitchen_mode") === "true");
+
+  useEffect(() => {
+    localStorage.setItem("localeats_kitchen_mode", kitchenMode ? "true" : "false");
+  }, [kitchenMode]);
+
 
   // Version Polling for Updates
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [lastCheckTime, setLastCheckTime] = useState<string>("");
   const currentBuildVersion = useRef(19); // Moving to v5.4 tracker
   const topNavScrollRef = useRef<HTMLDivElement>(null);
+  const shopsRef = useRef<Shop[]>([]);
+  const prevPendingCount = useRef<number>(0);
 
   useEffect(() => {
     if (dataSaverMode) return;
@@ -19810,25 +17648,94 @@ function App() {
 
   const trialInfo = useMemo(() => {
     if (!currentShop) return null;
-    
+
     const status = currentShop.subscription_status || "trial";
-    
+
     // Default to a 30-day trial based on creation date or trial_start_date
     const startDate = currentShop.trial_start_date || currentShop.created_at || new Date().toISOString();
     const startMs = new Date(startDate).getTime();
     const trialDurationMs = 30 * 24 * 60 * 60 * 1000; // 30 days
     const endMs = startMs + trialDurationMs;
     const nowMs = Date.now();
-    
+
     const daysRemaining = Math.max(0, Math.ceil((endMs - nowMs) / (1000 * 60 * 60 * 24)));
     const isExpired = status === "expired" || status === "past_due" || (status === "trial" && daysRemaining <= 0);
-    
+
     return {
       status,
       daysRemaining,
       isExpired,
       nextPaymentDate: currentShop.next_payment_date || new Date(endMs).toISOString()
     };
+  }, [currentShop]);
+
+  const [settingsCategory, setSettingsCategory] = useState<string>("account");
+  const [storeStatus, setStoreStatus] = useState<"open" | "busy" | "closed">("open");
+  const [prepTime, setPrepTime] = useState<number>(20);
+  const [operatingHours, setOperatingHours] = useState<Array<{ day: string; open: string; close: string; active: boolean }>>([
+    { day: "Mon", open: "08:00", close: "17:00", active: true },
+    { day: "Tue", open: "08:00", close: "17:00", active: true },
+    { day: "Wed", open: "08:00", close: "17:00", active: true },
+    { day: "Thu", open: "08:00", close: "17:00", active: true },
+    { day: "Fri", open: "08:00", close: "17:00", active: true },
+    { day: "Sat", open: "08:00", close: "17:00", active: true },
+    { day: "Sun", open: "08:00", close: "17:00", active: false },
+  ]);
+
+  const [billingDetails, setBillingDetails] = useState<{
+    companyName: string;
+    taxNumber: string;
+    billingEmail: string;
+    cardNumber: string;
+    expiryDate: string;
+    cvv: string;
+    cardholderName: string;
+    isCardSaved: boolean;
+  }>(() => {
+    try {
+      const saved = localStorage.getItem("localeats_billing_details");
+      return saved ? JSON.parse(saved) : {
+        companyName: "",
+        taxNumber: "",
+        billingEmail: "",
+        cardNumber: "",
+        expiryDate: "",
+        cvv: "",
+        cardholderName: "",
+        isCardSaved: false
+      };
+    } catch {
+      return {
+        companyName: "",
+        taxNumber: "",
+        billingEmail: "",
+        cardNumber: "",
+        expiryDate: "",
+        cvv: "",
+        cardholderName: "",
+        isCardSaved: false
+      };
+    }
+  });
+
+  const [selectedInvoice, setSelectedInvoice] = useState<{
+    id: string;
+    date: string;
+    amount: string;
+  } | null>(null);
+
+  const [updateDismissed, setUpdateDismissed] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (user?.user_metadata?.weekly_operating_hours) {
+      setOperatingHours(user.user_metadata.weekly_operating_hours);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (currentShop) {
+      setStoreStatus(currentShop.is_active ? "open" : "closed");
+    }
   }, [currentShop]);
 
   // --- Shop Live Heartbeat & Inactivity Tracker ---
@@ -19886,708 +17793,9 @@ function App() {
     return () => clearInterval(interval);
   }, [user, currentShop]);
 
-  // --- Weather Demand Engine States ---
-  const [currentWeather, setCurrentWeather] = useState<"Sunny" | "Rainy" | "Chilly" | "Windy">("Chilly");
-  const [showWeatherModal, setShowWeatherModal] = useState(false);
-  const [weatherCity, setWeatherCity] = useState("Soweto");
-  const [aiWeatherRecommendation, setAiWeatherRecommendation] = useState<string>("");
-  const [isGeneratingRecommendation, setIsGeneratingRecommendation] = useState(false);
 
-  // Live Weather Tracking additions
-  const [isLiveWeather, setIsLiveWeather] = useState<boolean>(true);
-  const [liveWeatherLoading, setLiveWeatherLoading] = useState<boolean>(false);
-  const [liveWeatherTemp, setLiveWeatherTemp] = useState<string | null>(null);
-  const [liveWindSpeed, setLiveWindSpeed] = useState<number | null>(null);
-  const [livePrecipitation, setLivePrecipitation] = useState<number | null>(null);
-
-  const [weatherForecast, setWeatherForecast] = useState<Array<{
-    date: string;
-    dayName: string;
-    tempMax: string;
-    tempMin: string;
-    category: "Sunny" | "Rainy" | "Chilly" | "Windy";
-    windMax: number;
-    precipSum: number;
-    demandImpact: string;
-    productAffinity: string;
-  }> | null>(null);
-
-  const [weatherAlert, setWeatherAlert] = useState<{
-    id: string;
-    title: string;
-    message: string;
-    type: "warning" | "info";
-    isExtreme: boolean;
-  } | null>(null);
-
-  const lastToastedWeatherAlertKeyRef = useRef<string | null>(null);
-
-  const generateWeatherAiAdvice = useCallback(async (selectedWeather: "Sunny" | "Rainy" | "Chilly" | "Windy") => {
-    setIsGeneratingRecommendation(true);
-    setAiWeatherRecommendation("");
-    
-    const weatherLabel = selectedWeather === "Sunny" ? "Sunny & Warm" : selectedWeather === "Rainy" ? "Heavy Rainy" : selectedWeather === "Chilly" ? "Winter Chilly" : "Overcast / Windy";
-    const shopName = currentShop?.name || "My-Kota";
-    const itemsList = menuItems.slice(0, 10).map(i => i.name).join(", ");
-    
-    const systemPrompt = "You are the LocalEats AI Operational Coach, a brilliant retail restaurant strategist for local eateries in South Africa. Speak in a sharp, actionable, friendly, and business-focused tone, using local township friendly flavor. Avoid raw developer code or telemetry.";
-    
-    const userPrompt = `Context:
-- Shop Name: ${shopName}
-- Current Weather: ${weatherLabel}
-- Menu Items: ${itemsList || "Kotas, Chips, Cool Drinks"}
-- Target: South Africa local market & riders
-
-Task:
-Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep, 1 for Marketing/Promo, 1 for Delivery/Riders) to maximize profit for today. Keep each bullet under 2 sentences. Highlight key dishes.`;
-
-    try {
-      if (!import.meta.env.VITE_GEMINI_API_KEY) {
-        // High fidelity fallback matching the exact selected weather
-        setTimeout(() => {
-          let advice = "";
-          if (selectedWeather === "Sunny") {
-            advice = `• **Stock Prep:** Promote high-margin chilled beverage lines and standard Kota wraps. Keep coolers running cold to satisfy heat cravings.
-• **Marketing & Promo:** Run a midday WhatsApp special: standard chips parcel with a free ice-cold beverage.
-• **Delivery & Riders:** Expect higher pickup rates. Keep the collection area clear and provide riders with cold water.`;
-          } else if (selectedWeather === "Rainy") {
-            advice = `• **Stock Prep:** Heavy downpours boost cravings for high-calorie comfort foods. Prep extra bacon, melted cheese, and beef patties for your best-seller Kotas.
-• **Marketing & Promo:** Deploy a rain-triggered delivery discount coupon like "RAINYDELIVERY" offering 15% off cart value.
-• **Delivery & Riders:** Delivery demand is off the scales. Ensure E-Bike rider handshakes are brief and utilize insulated double-wrapping to keep chips steaming hot.`;
-          } else if (selectedWeather === "Chilly") {
-            advice = `• **Stock Prep:** Dry South African winter cold drives high demand for hot fillings, spicy atchar, and extra russians. Prep your chips hot and fresh.
-• **Marketing & Promo:** Introduce a morning "Winter Warmer" combo: a loaded breakfast Kota paired with a warm beverage.
-• **Delivery & Riders:** Sync up with riders early in the kgotla list. Provide quick hot tea for riders checking in at the shop.`;
-          } else {
-      console.log("Nudge sent");
-            advice = `• **Stock Prep:** Gusty dust winds require enclosed packing space. Secure extra paper bags and keep chips covered in warm holding bins.
-• **Marketing & Promo:** Distribute a "Stay Indoors & Eat" banner on local WhatsApp status boards list.
-• **Delivery & Riders:** Strong headwind slows down riders. Warn customers of an extra 5-10m transit window defensively to maintain high ratings.`;
-          }
-          setAiWeatherRecommendation(advice);
-          setIsGeneratingRecommendation(false);
-        }, 800);
-        return;
-      }
-
-      const ai = new GoogleGenAI({
-        apiKey: import.meta.env.VITE_GEMINI_API_KEY,
-      });
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: userPrompt,
-        config: {
-          systemInstruction: systemPrompt,
-        },
-      });
-
-      setAiWeatherRecommendation(response.text || "No recommendations generated.");
-    } catch (error) {
-      console.error("Error generating weather recommendations:", error);
-      setAiWeatherRecommendation("• **System Status:** Highly recommended to check ingredient inventory. Cozy comfort meals perform exceptionally well in current conditions. Enhance rider sync!");
-    } finally {
-      setIsGeneratingRecommendation(false);
-    }
-  }, [currentShop, menuItems]);
-
-  const checkExtremeWeatherAlert = useCallback((
-    city: string,
-    category: "Sunny" | "Rainy" | "Chilly" | "Windy",
-    tempDigit: number,
-    windSpeed: number,
-    precipitation: number,
-    forecastDays: Array<{ category: "Sunny" | "Rainy" | "Chilly" | "Windy"; windMax: number; precipSum: number; tempMax: string; }>
-  ) => {
-    let isExtreme = false;
-    let title = "";
-    let message = "";
-
-    if (category === "Rainy" || precipitation > 2.0 || forecastDays.some(d => d.category === "Rainy" && d.precipSum > 3.0)) {
-      isExtreme = true;
-      title = "Precipitation Warning";
-      message = `Downpours and wet roads ahead in ${city}. Client delivery demand will spike ~35% but road speeds decrease. Adapt prep times and notify riders.`;
-    } else if (windSpeed > 20 || forecastDays.some(d => d.category === "Windy" && d.windMax > 22)) {
-      isExtreme = true;
-      title = "High Winds Advisory";
-      message = `Elevated gust velocities (${windSpeed} km/h) tracked in ${city}. Bike delivery riders faces risk. Check in on rider connections.`;
-    } else if (tempDigit < 12 || forecastDays.some(d => d.category === "Chilly" && parseInt(d.tempMax) < 11)) {
-      isExtreme = true;
-      title = "Thermal Cold Snap Alert";
-      message = `Sub-12°C chilling weather (${tempDigit}°C) detected in ${city}. Comfort Warm Stews, Soups, and Coffee demand will surge +45%.`;
-    }
-
-    if (isExtreme) {
-      const alertKey = `${city}-${title}`;
-      
-      // Update weatherAlert state only if the content actually changed to avoid infinite render loops
-      setWeatherAlert((prev) => {
-        if (prev && prev.title === title && prev.message === message) {
-          return prev;
-        }
-        return {
-          id: `valert-${alertKey}`,
-          title,
-          message,
-          type: "warning",
-          isExtreme: true
-        };
-      });
-
-      // Desktop Push Trigger
-      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-        try {
-          new Notification(`LocalEats Alert: ${title}`, {
-            body: message,
-            icon: "/favicon.ico"
-          });
-        } catch (e) {
-          console.warn("[Push] Standard browser notification blocked in frame:", e);
-        }
-      }
-
-      // Check ref first to prevent sending duplicated alerts / multiple warning bars in toast center
-      if (lastToastedWeatherAlertKeyRef.current !== alertKey) {
-        lastToastedWeatherAlertKeyRef.current = alertKey;
-
-        toast.error(`⚠️ Weather Alert: ${title}`, {
-          id: `weather-alert-${alertKey}`,
-          description: message,
-          duration: 10000,
-          action: {
-            label: "Analyze",
-            onClick: () => {
-              setShowWeatherModal(true);
-              generateWeatherAiAdvice(category);
-            }
-          }
-        });
-      }
-    } else {
-      console.log("Nudge sent");
-      setWeatherAlert(null);
-      lastToastedWeatherAlertKeyRef.current = null;
-    }
-  }, [generateWeatherAiAdvice]);
-
-  const fetchLiveWeatherInfo = useCallback(async (city: string) => {
-    setLiveWeatherLoading(true);
-    try {
-      let lat = -26.2678;
-      let lng = 27.8585;
-
-      if (city === "My Shop" && currentShop && currentShop.lat && currentShop.lng) {
-        lat = Number(currentShop.lat);
-        lng = Number(currentShop.lng);
-      } else {
-      console.log("Nudge sent");
-        const coords = CITY_COORDINATES[city] || CITY_COORDINATES["Soweto"];
-        lat = coords.lat;
-        lng = coords.lng;
-      }
-
-      console.log(`Fetching Open-Meteo Weather with Forecast for: ${city} @ latitude=${lat}, longitude=${lng}`);
-      const response = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,showers,snowfall,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,precipitation_sum&timezone=auto`
-      );
-      if (!response.ok) {
-        throw new Error("Weather api returned error status");
-      }
-      const data = await response.json();
-      const current = data?.current;
-      const daily = data?.daily;
-
-      if (current) {
-        const temp = Math.round(current.temperature_2m);
-        const wmoCode = current.weather_code;
-        const wind = current.wind_speed_10m;
-        const precip = current.precipitation || 0;
-
-        setLiveWeatherTemp(`${temp}°C`);
-        setLiveWindSpeed(wind);
-        setLivePrecipitation(precip);
-
-        // Map WMO code to Sunny | Rainy | Chilly | Windy
-        let category: "Sunny" | "Rainy" | "Chilly" | "Windy" = "Sunny";
-        const isRainy = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99].includes(wmoCode) || precip > 1.0;
-        const isChilly = temp < 14 || [71, 73, 75, 77, 85, 86].includes(wmoCode);
-        const isWindy = wind > 18 || [3, 45, 48].includes(wmoCode);
-
-        if (isRainy) {
-          category = "Rainy";
-        } else if (isChilly) {
-          category = "Chilly";
-        } else if (isWindy) {
-          category = "Windy";
-        } else {
-      console.log("Nudge sent");
-          category = "Sunny";
-        }
-
-        setCurrentWeather(category);
-
-        // Parse 5-day forecast
-        if (daily && daily.time) {
-          const forecastList = daily.time.slice(0, 5).map((timeStr: string, idx: number) => {
-            const tempM = Math.round(daily.temperature_2m_max[idx]);
-            const tempMinVal = Math.round(daily.temperature_2m_min[idx]);
-            const code = daily.weather_code[idx];
-            const wMax = daily.wind_speed_10m_max ? daily.wind_speed_10m_max[idx] : 10;
-            const pSum = daily.precipitation_sum ? daily.precipitation_sum[idx] : 0;
-
-            const dateObj = new Date(timeStr);
-            const dayName = dateObj.toLocaleDateString("en-US", { weekday: "short" });
-
-            let dayCategory: "Sunny" | "Rainy" | "Chilly" | "Windy" = "Sunny";
-            const isDayRainy = [51, 53, 52, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99].includes(code) || pSum > 1.0;
-            const isDayChilly = tempM < 15 || [71, 73, 75, 77, 85, 86].includes(code);
-            const isDayWindy = wMax > 18 || [3, 45, 48].includes(code);
-
-            if (isDayRainy) {
-              dayCategory = "Rainy";
-            } else if (isDayChilly) {
-              dayCategory = "Chilly";
-            } else if (isDayWindy) {
-              dayCategory = "Windy";
-            } else {
-      console.log("Nudge sent");
-              dayCategory = "Sunny";
-            }
-
-            let demandImpact = "Baseline (100%)";
-            let productAffinity = "Regular Menu";
-            if (dayCategory === "Rainy") {
-              demandImpact = "Surge (+35% delivery)";
-              productAffinity = "Warm Stews & Soup";
-            } else if (dayCategory === "Chilly") {
-              demandImpact = "High Demand (+45%)";
-              productAffinity = "Kota Specials & Tea";
-            } else if (dayCategory === "Windy") {
-              demandImpact = "Moderate (+15%)";
-              productAffinity = "Comfort Pies";
-            } else if (dayCategory === "Sunny") {
-              demandImpact = "Stable (100%)";
-              productAffinity = "Cold Sodas & Juice";
-            }
-
-            return {
-              date: timeStr,
-              dayName: idx === 0 ? "Today" : idx === 1 ? "Tomorrow" : dayName,
-              tempMax: `${tempM}°C`,
-              tempMin: `${tempMinVal}°C`,
-              category: dayCategory,
-              windMax: wMax,
-              precipSum: pSum,
-              demandImpact,
-              productAffinity,
-            };
-          });
-
-          setWeatherForecast(forecastList);
-
-          // Evaluate warnings
-          checkExtremeWeatherAlert(city, category, temp, wind, precip, forecastList);
-        }
-      }
-    } catch (err) {
-      console.log("Using cached/estimated telemetries to bypass network blocks:", err);
-      // Fallback generator for South African winter weather climates (June)
-      let fallbackTemp = "15°C";
-      let fallbackCategory: "Sunny" | "Rainy" | "Chilly" | "Windy" = "Chilly";
-      let fallbackWind = 12;
-      let fallbackPrecip = 0;
-
-      const cleanCity = city.toLowerCase();
-      let forecastList: Array<{ dayOffset: number; category: "Sunny" | "Rainy" | "Chilly" | "Windy"; max: number; min: number; wind: number; precip: number; affinity: string }> = [];
-      const baseDate = new Date();
-
-      if (cleanCity.includes("cape") || cleanCity.includes("town")) {
-        fallbackTemp = "13°C";
-        fallbackCategory = "Rainy";
-        fallbackWind = 24;
-        fallbackPrecip = 4.2;
-
-        forecastList = [
-          { dayOffset: 0, category: "Rainy", max: 13, min: 8, wind: 24, precip: 4.2, affinity: "Warm Stews" },
-          { dayOffset: 1, category: "Windy", max: 14, min: 9, wind: 26, precip: 0.5, affinity: "Comfort Pies" },
-          { dayOffset: 2, category: "Rainy", max: 12, min: 7, wind: 18, precip: 5.5, affinity: "Oxtail Soup" },
-          { dayOffset: 3, category: "Chilly", max: 11, min: 6, wind: 15, precip: 0, affinity: "Kota & Tea" },
-          { dayOffset: 4, category: "Sunny", max: 15, min: 8, wind: 10, precip: 0, affinity: "Cold Drinks" },
-        ];
-      } else if (cleanCity.includes("durban")) {
-        fallbackTemp = "21°C";
-        fallbackCategory = "Sunny";
-        fallbackWind = 10;
-        fallbackPrecip = 0;
-
-        forecastList = [
-          { dayOffset: 0, category: "Sunny", max: 21, min: 14, wind: 10, precip: 0, affinity: "Cold Beer & Sodas" },
-          { dayOffset: 1, category: "Sunny", max: 22, min: 14, wind: 8, precip: 0, affinity: "Chicken Kotas" },
-          { dayOffset: 2, category: "Windy", max: 20, min: 13, wind: 20, precip: 0, affinity: "Baked Pastries" },
-          { dayOffset: 3, category: "Sunny", max: 21, min: 14, wind: 11, precip: 0, affinity: "Hot Wings" },
-          { dayOffset: 4, category: "Sunny", max: 23, min: 15, wind: 9, precip: 0, affinity: "Fruit Chillers" },
-        ];
-      } else if (cleanCity.includes("pretoria")) {
-        fallbackTemp = "17°C";
-        fallbackCategory = "Sunny";
-        fallbackWind = 8;
-        fallbackPrecip = 0;
-
-        forecastList = [
-          { dayOffset: 0, category: "Sunny", max: 17, min: 6, wind: 8, precip: 0, affinity: "Signature Kotas" },
-          { dayOffset: 1, category: "Sunny", max: 18, min: 7, wind: 7, precip: 0, affinity: "Sodas" },
-          { dayOffset: 2, category: "Sunny", max: 17, min: 6, wind: 9, precip: 0, affinity: "Spiced Wings" },
-          { dayOffset: 3, category: "Chilly", max: 15, min: 5, wind: 14, precip: 0, affinity: "Hot Coffee & Tea" },
-          { dayOffset: 4, category: "Sunny", max: 18, min: 7, wind: 10, precip: 0, affinity: "Rib Baskets" },
-        ];
-      } else {
-      console.log("Nudge sent");
-        // Soweto / Joburg winter
-        fallbackTemp = "14°C";
-        fallbackCategory = "Chilly";
-        fallbackWind = 14;
-        fallbackPrecip = 0;
-
-        forecastList = [
-          { dayOffset: 0, category: "Chilly", max: 14, min: 4, wind: 14, precip: 0, affinity: "Mogodu Stew & Samp" },
-          { dayOffset: 1, category: "Sunny", max: 16, min: 5, wind: 11, precip: 0, affinity: "Half-Kota Specials" },
-          { dayOffset: 2, category: "Sunny", max: 15, min: 5, wind: 9, precip: 0, affinity: "Crispy Wing Buckets" },
-          { dayOffset: 3, category: "Chilly", max: 13, min: 3, wind: 12, precip: 0, affinity: "Beef Stew & Rice" },
-          { dayOffset: 4, category: "Chilly", max: 12, min: 2, wind: 16, precip: 0, affinity: "Hot Coffee & Samp" },
-        ];
-      }
-
-      const formattedList = forecastList.map((item, idx) => {
-        const dObj = new Date(baseDate);
-        dObj.setDate(baseDate.getDate() + item.dayOffset);
-        const dayName = dObj.toLocaleDateString("en-US", { weekday: "short" });
-        const timeStr = dObj.toISOString().split('T')[0];
-
-        let demandImpact = "Baseline (100%)";
-        if (item.category === "Rainy") demandImpact = "Surge (+35% delivery)";
-        else if (item.category === "Chilly") demandImpact = "High Demand (+45%)";
-        else if (item.category === "Windy") demandImpact = "Moderate (+15%)";
-
-        return {
-          date: timeStr,
-          dayName: idx === 0 ? "Today" : idx === 1 ? "Tomorrow" : dayName,
-          tempMax: `${item.max}°C`,
-          tempMin: `${item.min}°C`,
-          category: item.category as "Sunny" | "Rainy" | "Chilly" | "Windy",
-          windMax: item.wind,
-          precipSum: item.precip,
-          demandImpact,
-          productAffinity: item.affinity,
-        };
-      });
-
-      setLiveWeatherTemp(fallbackTemp);
-      setLiveWindSpeed(fallbackWind);
-      setLivePrecipitation(fallbackPrecip);
-      setCurrentWeather(fallbackCategory);
-      setWeatherForecast(formattedList);
-
-      const numericTemp = parseInt(fallbackTemp);
-      checkExtremeWeatherAlert(city, fallbackCategory, numericTemp, fallbackWind, fallbackPrecip, formattedList);
-    } finally {
-      setLiveWeatherLoading(false);
-    }
-  }, [currentShop, checkExtremeWeatherAlert]);
 
   useEffect(() => {
-    if (isLiveWeather) {
-      fetchLiveWeatherInfo(weatherCity);
-    }
-  }, [weatherCity, isLiveWeather, fetchLiveWeatherInfo]);
-
-  useEffect(() => {
-    if (user) {
-      const hasOnboarded = localStorage.getItem("localeats_onboard_v1");
-      if (!hasOnboarded) {
-        setOnboardingOpen(true);
-      }
-    }
-  }, [user]);
-  const [authView, setAuthView] = useState<"signin" | "signup">("signin");
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isSaveSuccess, setIsSaveSuccess] = useState(false);
-  const [signupEmail, setSignupEmail] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [soundAlerts, setSoundAlerts] = useState(() => {
-    return localStorage.getItem("soundAlerts") !== "false";
-  });
-  const [soundStyle, setSoundStyle] = useState<"calm" | "friendly" | "sparkle">(() => {
-    return (localStorage.getItem("soundStyle") as "calm" | "friendly" | "sparkle") || "calm";
-  });
-  const [soundVolume, setSoundVolume] = useState<number>(() => {
-    const val = localStorage.getItem("soundVolume");
-    return val ? parseInt(val) : 80;
-  });
-  const [pushEnabled] = useState(() => {
-    return (
-      typeof window !== "undefined" &&
-      "Notification" in window &&
-      Notification.permission === "granted"
-    );
-  });
-
-  // Business Settings State
-  const [storeStatus, setStoreStatus] = useState<"open" | "busy" | "closed">("open");
-  const [prepTime, setPrepTime] = useState(15);
-  const [autoPrint, setAutoPrint] = useState(false);
-  const [printingFormat, setPrintingFormat] = useState<"80mm" | "58mm">((localStorage.getItem("printingFormat") as "80mm" | "58mm") || "80mm");
-  useEffect(() => {
-    localStorage.setItem("printingFormat", printingFormat);
-  }, [printingFormat]);
-  const [deliverySettings, setDeliverySettings] = useState({
-    type: "fixed",
-    baseFee: 25,
-    freeDeliveryOver: 300,
-    maxDistanceKm: 15,
-    minOrderAmount: 50
-  });
-  const [settingsCategory, setSettingsCategory] = useState("account");
-  // Subscription & Billing State
-  const [billingDetails, setBillingDetails] = useState(() => {
-    try {
-      const saved = localStorage.getItem("localeats_billing_details");
-      return saved ? JSON.parse(saved) : {
-        companyName: "",
-        taxNumber: "",
-        billingEmail: "",
-        cardholderName: "",
-        cardNumber: "",
-        expiryDate: "",
-        cvv: "",
-        isCardSaved: false
-      };
-    } catch {
-      return {
-        companyName: "",
-        taxNumber: "",
-        billingEmail: "",
-        cardholderName: "",
-        cardNumber: "",
-        expiryDate: "",
-        cvv: "",
-        isCardSaved: false
-      };
-    }
-  });
-  const [selectedInvoice, setSelectedInvoice] = useState<{ id: string; date: string; amount: string; status: string; detail: string } | null>(null);
-  const [operatingHours, setOperatingHours] = useState([
-    { day: "Mon", open: "09:00", close: "21:00", active: true },
-    { day: "Tue", open: "09:00", close: "21:00", active: true },
-    { day: "Wed", open: "09:00", close: "21:00", active: true },
-    { day: "Thu", open: "09:00", close: "21:00", active: true },
-    { day: "Fri", open: "09:00", close: "22:00", active: true },
-    { day: "Sat", open: "10:00", close: "22:00", active: true },
-    { day: "Sun", open: "10:00", close: "20:00", active: true },
-  ]);
-
-  const prevPendingCount = useRef(0);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [showOfflineInfoModal, setShowOfflineInfoModal] = useState(false);
-  const [testingConnection, setTestingConnection] = useState(false);
-  const handleTestConnection = async () => {
-    setTestingConnection(true);
-    try {
-      const response = await fetch("/api/health?t=" + Date.now(), { method: "HEAD" }).catch(() => null);
-      if (response && response.ok) {
-        setIsOffline(false);
-        setIsOfflineDismissed(false);
-        toast.success("⚡ Connection restored! Cloud synchronization complete.");
-        setShowOfflineInfoModal(false);
-      } else if (navigator.onLine) {
-        setIsOffline(false);
-        setIsOfflineDismissed(false);
-        toast.success("⚡ Connection restored! Cloud synchronization complete.");
-        setShowOfflineInfoModal(false);
-      } else {
-      console.log("Nudge sent");
-        setTimeout(() => {
-          setTestingConnection(false);
-          toast.error("Offline diagnostic check failed. Still working in cached Local Mode.", {
-            id: "offline-check-toast"
-          });
-        }, 1200);
-        return;
-      }
-    } catch {
-      if (navigator.onLine) {
-        setIsOffline(false);
-        setIsOfflineDismissed(false);
-        toast.success("⚡ Connection restored! Cloud synchronization complete.");
-        setShowOfflineInfoModal(false);
-      } else {
-      console.log("Nudge sent");
-        setTimeout(() => {
-          setTestingConnection(false);
-          toast.error("Offline diagnostic check failed. Still working in cached Local Mode.", {
-            id: "offline-check-toast"
-          });
-        }, 1200);
-        return;
-      }
-    }
-    setTestingConnection(false);
-  };
-  const [updateDismissed, setUpdateDismissed] = useState(false);
-  const [kitchenMode, setKitchenMode] = useState(false);
-  const [autoAcceptOrders, setAutoAcceptOrders] = useState(() => {
-    const val = localStorage.getItem("localeats_auto_accept");
-    return val === null ? true : val === "true";
-  });
-  const [showAutoAcceptModal, setShowAutoAcceptModal] = useState(false);
-  
-  useEffect(() => {
-    localStorage.setItem("localeats_auto_accept", String(autoAcceptOrders));
-  }, [autoAcceptOrders]);
-
-  useEffect(() => {
-    const handleAutoAcceptChange = () => {
-      setAutoAcceptOrders(localStorage.getItem("localeats_auto_accept") === "true");
-    };
-    window.addEventListener("localeats_auto_accept_changed", handleAutoAcceptChange);
-    return () => window.removeEventListener("localeats_auto_accept_changed", handleAutoAcceptChange);
-  }, []);
-  const [darkMode, setDarkMode] = useState(() => {
-    return localStorage.getItem("darkMode") === "true";
-  });
-  const shopsRef = useRef<Shop[]>([]);
-
-  // Interactive Confirm Dialog state
-  const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    confirmText?: string;
-    onConfirm: () => void;
-  }>({
-    isOpen: false,
-    title: "",
-    message: "",
-    onConfirm: () => {},
-  });
-
-  const confirmAction = (title: string, message: string, onConfirm: () => void, confirmText = "Delete") => {
-    setConfirmDialog({ isOpen: true, title, message, onConfirm, confirmText });
-  };
-
-  const weatherOrderStats = useMemo(() => {
-    const baseStats = {
-      Sunny: { count: 34, totalSales: 2890, percentage: 31 },
-      Rainy: { count: 48, totalSales: 4420, percentage: 44 },
-      Chilly: { count: 18, totalSales: 1560, percentage: 16 },
-      Windy: { count: 10, totalSales: 890, percentage: 9 }
-    };
-
-    if (!orders || orders.length === 0) {
-      return {
-        ...baseStats,
-        totalComputed: 0,
-        isSimulated: true
-      };
-    }
-
-    const stats = {
-      Sunny: { count: 0, totalSales: 0, percentage: 0 },
-      Rainy: { count: 0, totalSales: 0, percentage: 0 },
-      Chilly: { count: 0, totalSales: 0, percentage: 0 },
-      Windy: { count: 0, totalSales: 0, percentage: 0 }
-    };
-
-    let totalComputed = 0;
-
-    orders.forEach((o) => {
-      const charCode = o.id ? o.id.charCodeAt(o.id.length - 1) : 0;
-      let category: "Sunny" | "Rainy" | "Chilly" | "Windy" = "Sunny";
-      
-      const mod = charCode % 10;
-      if (mod < 3) category = "Sunny";
-      else if (mod < 7) category = "Rainy";
-      else if (mod < 9) category = "Chilly";
-      else category = "Windy";
-
-      const amount = o.total_amount || o.total || 0;
-      stats[category].count += 1;
-      stats[category].totalSales += amount;
-      totalComputed += 1;
-    });
-
-    if (totalComputed > 0) {
-      Object.keys(stats).forEach((k) => {
-        const key = k as "Sunny" | "Rainy" | "Chilly" | "Windy";
-        stats[key].percentage = Math.round((stats[key].count / totalComputed) * 100);
-      });
-      return {
-        ...stats,
-        totalComputed,
-        isSimulated: false
-      };
-    }
-
-    return {
-      ...baseStats,
-      totalComputed: 0,
-      isSimulated: true
-    };
-  }, [orders]);
-
-  // Offline detection
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOffline(false);
-      toast.success("⚡ Back Online! Cloud database and local changes have been successfully synchronized.", {
-        id: "network-status-toast",
-        duration: 4000
-      });
-    };
-    const handleOffline = () => {
-      setIsOffline(true);
-      toast.warning("🔌 Connection Paused. LocalEats is running in offline-cache mode. Your edits are safe & autosaved.", {
-        id: "network-status-toast",
-        duration: 6000
-      });
-    };
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
-
-  // Cache data to localStorage
-  useEffect(() => {
-    if (shops.length > 0)
-      localStorage.setItem("le_shops", JSON.stringify(shops));
-  }, [shops]);
-  useEffect(() => {
-    if (orders.length > 0)
-      localStorage.setItem("le_orders", JSON.stringify(orders));
-  }, [orders]);
-  useEffect(() => {
-    if (menuItems.length > 0)
-      localStorage.setItem("le_menu", JSON.stringify(menuItems));
-  }, [menuItems]);
-
-  // Load cached data on mount
-  useEffect(() => {
-    try {
-      const cachedShops = localStorage.getItem("le_shops");
-      if (cachedShops) {
-        const parsed = JSON.parse(cachedShops);
-        if (Array.isArray(parsed)) setShops(parsed);
-      }
-    } catch (e) {
-      console.error("Error parsing cached shops. Resetting item.", e);
-      localStorage.removeItem("le_shops");
-    }
-
     try {
       const cachedOrders = localStorage.getItem("le_orders");
       if (cachedOrders) {
@@ -20728,7 +17936,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
       // Check each shop owned by the user
       for (const shop of shops) {
         if (shop.owner_id === user.id && shop.is_active !== isOpen) {
-          
+
           const overrideData = localStorage.getItem(`localeats_manual_status_override_${shop.id}`);
           if (overrideData) {
             try {
@@ -20745,7 +17953,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
               // Ignore invalid JSON parsing of override data
             }
           }
-          
+
           const holidayMode = localStorage.getItem(`localeats_holiday_mode_${shop.id}`);
           if (isOpen && holidayMode === "true") {
              continue; // Do not auto open if in manual holiday mode
@@ -20790,7 +17998,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
   }, [user, shops, user?.user_metadata?.operating_hours]);
 
   // VAPID Push configuration moved to custom hook usePushNotifications
-  const { requestPushPermissions } = usePushNotifications(pushEnabled);
+  const { pushEnabled, requestPushPermissions } = usePushNotifications(false);
 
   const playNotificationSound = useCallback((isRepeating = false, styleOverride?: "calm" | "friendly" | "sparkle") => {
     // Vibrate if supported
@@ -20819,7 +18027,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
       const masterGain = ctx.createGain();
       masterGain.gain.setValueAtTime(vol * 0.15, ctx.currentTime); // Node scale volume for comfort
       masterGain.connect(ctx.destination);
-      
+
       const now = ctx.currentTime;
 
       if (style === "calm") {
@@ -20829,21 +18037,21 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           { freq: 830.61, time: 0.1 },  // G#5
           { freq: 987.77, time: 0.2 }   // B5
         ];
-        
+
         notes.forEach(({ freq, time }) => {
           const osc = ctx.createOscillator();
           const gainNode = ctx.createGain();
-          
+
           osc.type = "triangle";
           osc.frequency.setValueAtTime(freq, now + time);
-          
+
           gainNode.gain.setValueAtTime(0, now + time);
           gainNode.gain.linearRampToValueAtTime(0.8, now + time + 0.04);
           gainNode.gain.exponentialRampToValueAtTime(0.001, now + time + 0.8);
-          
+
           osc.connect(gainNode);
           gainNode.connect(masterGain);
-          
+
           osc.start(now + time);
           osc.stop(now + time + 0.8);
         });
@@ -20853,27 +18061,27 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           { freq: 440.00, time: 0, dur: 0.15 },
           { freq: 554.37, time: 0.05, dur: 0.2 }
         ];
-        
+
         notes.forEach(({ freq, time, dur }) => {
           const osc = ctx.createOscillator();
           const gainNode = ctx.createGain();
           const filter = ctx.createBiquadFilter();
-          
+
           osc.type = "sine";
           osc.frequency.setValueAtTime(freq, now + time);
           osc.frequency.exponentialRampToValueAtTime(freq * 0.9, now + time + dur);
-          
+
           filter.type = "lowpass";
           filter.frequency.setValueAtTime(1200, now + time);
-          
+
           gainNode.gain.setValueAtTime(0, now + time);
           gainNode.gain.linearRampToValueAtTime(1.0, now + time + 0.01);
           gainNode.gain.exponentialRampToValueAtTime(0.001, now + time + dur);
-          
+
           osc.connect(filter);
           filter.connect(gainNode);
           gainNode.connect(masterGain);
-          
+
           osc.start(now + time);
           osc.stop(now + time + dur);
         });
@@ -20885,21 +18093,21 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           { freq: 783.99, time: 0.12 },
           { freq: 1046.50, time: 0.18 }
         ];
-        
+
         notes.forEach(({ freq, time }) => {
           const osc = ctx.createOscillator();
           const gainNode = ctx.createGain();
-          
+
           osc.type = "sine";
           osc.frequency.setValueAtTime(freq, now + time);
-          
+
           gainNode.gain.setValueAtTime(0, now + time);
           gainNode.gain.linearRampToValueAtTime(0.6, now + time + 0.01);
           gainNode.gain.exponentialRampToValueAtTime(0.001, now + time + 0.6);
-          
+
           osc.connect(gainNode);
           gainNode.connect(masterGain);
-          
+
           const subOsc = ctx.createOscillator();
           const subGain = ctx.createGain();
           subOsc.type = "triangle";
@@ -20907,10 +18115,10 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           subGain.gain.setValueAtTime(0, now + time);
           subGain.gain.linearRampToValueAtTime(0.2, now + time + 0.01);
           subGain.gain.exponentialRampToValueAtTime(0.001, now + time + 0.3);
-          
+
           subOsc.connect(subGain);
           subGain.connect(masterGain);
-          
+
           osc.start(now + time);
           osc.stop(now + time + 0.6);
           subOsc.start(now + time);
@@ -20969,7 +18177,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
               gainNode.gain.linearRampToValueAtTime(0.6, repNow + time + 0.01);
               gainNode.gain.exponentialRampToValueAtTime(0.001, repNow + time + 0.6);
               osc.connect(gainNode); gainNode.connect(masterGain);
-              
+
               const subOsc = ctx.createOscillator();
               const subGain = ctx.createGain();
               subOsc.type = "triangle";
@@ -20978,7 +18186,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
               subGain.gain.linearRampToValueAtTime(0.2, repNow + time + 0.01);
               subGain.gain.exponentialRampToValueAtTime(0.001, repNow + time + 0.3);
               subOsc.connect(subGain); subGain.connect(masterGain);
-              
+
               osc.start(repNow + time); osc.stop(repNow + time + 0.6);
               subOsc.start(repNow + time); subOsc.stop(repNow + time + 0.3);
             });
@@ -21114,8 +18322,8 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
     }
   }, [user]);
 
-  
-  
+
+
   const fetchAllMenuItems = useCallback(async () => {
     if (!user) return;
 
@@ -21127,7 +18335,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
     const ownedShopIds = ownedShops?.map((s) => s.id) || [];
     if (ownedShopIds.length === 0) {
       setMenuItems([]);
-      
+
       return;
     }
     query = query.in("shop_id", ownedShopIds);
@@ -21158,11 +18366,11 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
         setMenuItems(FALLBACK_MENU_ITEMS);
       }
     }
-    
+
   }, [user]);
 
   const fetchShops = useCallback(async () => {
-    
+
     const { data, error } = await fetchWithRetry(() =>
       supabase
         .from("shops")
@@ -21199,7 +18407,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
       setShops(data);
       localStorage.setItem("localeats_cached_shops", JSON.stringify(data));
     }
-    
+
   }, []);
 
   useAppInitializer({
@@ -21246,7 +18454,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
   const deleteAllOrders = async () => {
     if (!user) return;
-    
+
     confirmAction(
       "Confirm Delete All",
       "Are you sure you want to delete ALL orders? This action cannot be undone.",
@@ -21282,7 +18490,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           toast.error("We couldn't delete these orders right now. Please try again.");
         } else {
       console.log("Nudge sent");
-          
+
           fetchOrders();
         }
       }
@@ -21487,7 +18695,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
   useEffect(() => {
     if (!autoAcceptOrders || orders.length === 0) return;
-    
+
     // Automatically accept any "pending" orders that aren't yet handled
     const pendingOrders = orders.filter(o => o.status === "pending");
     if (pendingOrders.length > 0) {
@@ -21516,7 +18724,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
       );
     } else {
       console.log("Nudge sent");
-      
+
     }
   };
 
@@ -21637,25 +18845,25 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           whatsapp: data.whatsapp,
           location: data.address, // Sync address too
         };
-        
+
         const { error: shopUpdateErr } = await supabase
           .from("shops")
           .update(shopPayload)
           .eq("id", currentShop.id);
-          
+
         if (shopUpdateErr && (shopUpdateErr.code === "42703" || shopUpdateErr.message?.includes("column") || shopUpdateErr.message?.includes("schema cache"))) {
           // Fallback if columns don't exist on shops table
           delete shopPayload.whatsapp;
           delete shopPayload.lat;
           delete shopPayload.lng;
           delete shopPayload.city; // Make sure city is removed if someone adds it again later
-          
+
           await supabase
             .from("shops")
             .update(shopPayload)
             .eq("id", currentShop.id);
         }
-        
+
         fetchShops(); // Refresh shops state
       }
 
@@ -21663,18 +18871,18 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
         setDarkMode(data.darkMode);
       }
       void fetchRiderData();
-      
+
       // Show success state
       setIsSaving(false);
       setIsSaveSuccess(true);
-      
+
       // Close after delay
       setTimeout(() => {
         setIsSaveSuccess(false);
         setIsEditingProfile(false);
-        
+
       }, 1500);
-      
+
     } catch (error: unknown) {
       setIsSaving(false);
       setIsSaveSuccess(false);
@@ -21759,10 +18967,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
       badge: pendingOrdersCount > 0 ? pendingOrdersCount : null,
     },
     { id: "riders", label: "Riders", icon: Bike },
-    { id: "marketing", label: "Marketing", icon: Zap },
-    { id: "coupons", label: "Coupons", icon: Ticket },
     { id: "payments", label: "Payments", icon: CreditCard },
-    { id: "insights", label: "Insights", icon: TrendingUp },
     { id: "settings", label: "Settings", icon: Settings },
   ];
 
@@ -21790,299 +18995,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
           expand={true}
         />
         <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
-        
-        {/* Weather & Demand Analytics Modal */}
-        <AnimatePresence>
-          {showWeatherModal && (
-            <motion.div
-              key="weatherDemandModal"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-md overflow-y-auto text-zinc-900 dark:text-zinc-50"
-              onClick={() => setShowWeatherModal(false)}
-            >
-              <motion.div
-                initial={{ scale: 0.95, y: 25 }}
-                animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.95, y: 25 }}
-                transition={{ type: "spring", duration: 0.5 }}
-                className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 w-full max-w-2xl rounded-[2.5rem] shadow-2xl p-6 md:p-8 max-h-[90vh] overflow-y-auto relative"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Header */}
-                <div className="flex justify-between items-start mb-6 border-b border-zinc-100 dark:border-zinc-800 pb-5">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-orange-500/10 text-orange-500">
-                        Market Intelligence
-                      </span>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    </div>
-                    <h2 className="text-2xl font-black text-zinc-950 dark:text-white tracking-tight">
-                      Weather & Demand Coach
-                    </h2>
-                    <p className="text-xs text-zinc-400 mt-1">
-                      Analyzing order patterns and seasonal demand correlation in South African townships.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowWeatherModal(false)}
-                    className="p-2.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-400 hover:text-zinc-700 transition-all active:scale-90"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
 
-                {/* City Selection & Active Environment */}
-                <div className="bg-zinc-50 dark:bg-zinc-900/40 p-4 rounded-3xl mb-6 border border-zinc-150 dark:border-zinc-800 flex flex-col gap-4">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full">
-                    <div>
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Active Territory</p>
-                      <span className="text-sm font-black text-zinc-800 dark:text-zinc-100 flex items-center gap-1.5 mt-0.5">
-                        <MapPin size={14} className="text-primary" />
-                        {weatherCity === "My Shop" ? (currentShop?.name || "My Shop") : weatherCity}, South Africa
-                      </span>
-                    </div>
-
-                    {/* Live Weather Switcher */}
-                    <div className="flex items-center gap-2.5 bg-white dark:bg-zinc-800/40 p-1.5 px-3.5 rounded-2xl border border-zinc-200/50 dark:border-zinc-700/50">
-                      <span className="text-xs font-black text-zinc-600 dark:text-zinc-300">Live Weather Feed</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const nextVal = !isLiveWeather;
-                          setIsLiveWeather(nextVal);
-                          if (nextVal) {
-                            setCurrentWeather(currentWeather); // Toggling triggers update or we just rely on simulated/auto sync
-                          } else {
-      console.log("Nudge sent");
-                            toast.info("Manual simulated overrides enabled.");
-                          }
-                        }}
-                        className={cn(
-                          "w-10 h-6 rounded-full p-1 transition-colors cursor-pointer duration-300 relative",
-                          isLiveWeather ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-700"
-                        )}
-                      >
-                        <div
-                          className={cn(
-                            "w-4 h-4 rounded-full bg-white transition-transform duration-300 shadow-sm",
-                            isLiveWeather ? "translate-x-4" : "translate-x-0"
-                          )}
-                        />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5 border-t border-zinc-200/50 dark:border-zinc-800/50 pt-3">
-                    {["Soweto", "Johannesburg", "Cape Town", "Durban", "Pretoria", ...(currentShop ? ["My Shop"] : [])].map((city) => (
-                      <button
-                        key={city}
-                        type="button"
-                        onClick={() => {
-                          setWeatherCity(city);
-                          toast.success(`Territory shifted: ${city}`);
-                        }}
-                        className={cn(
-                          "px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0",
-                          weatherCity === city
-                            ? "bg-zinc-950 dark:bg-zinc-900 text-white"
-                            : "bg-white dark:bg-zinc-800/50 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-750 border border-zinc-150/50 dark:border-zinc-805"
-                        )}
-                      >
-                        {city}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Content Grid */}
-                <div className="space-y-6">
-                  {/* Active Weather Status & Description */}
-                  <div className={cn("p-5 rounded-3xl border flex gap-4 items-start relative overflow-hidden", getWeatherInfo(currentWeather).bg)}>
-                    {isLiveWeather && (
-                      <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-emerald-500/10 dark:bg-emerald-400/10 px-2.5 py-1 rounded-full text-[9px] font-black text-emerald-600 dark:text-emerald-400 animate-pulse border border-emerald-500/20">
-                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
-                        LIVE SATELLITE FEED ACTIVE
-                      </div>
-                    )}
-
-                    <div className="p-3 bg-white dark:bg-zinc-950 rounded-2xl shadow-sm text-primary">
-                      {(() => {
-                        const Icon = getWeatherInfo(currentWeather).icon;
-                        return <Icon size={24} className="stroke-[2.5]" />;
-                      })()}
-                    </div>
-                    <div className="space-y-1 relative z-10 w-full">
-                      <div className="flex items-baseline gap-2">
-                        {liveWeatherLoading ? (
-                          <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-spin"></span>
-                            <span className="text-xs text-zinc-400 font-bold">Querying weather satellites...</span>
-                          </div>
-                        ) : (
-                          <h4 className="font-black text-lg text-zinc-900 dark:text-zinc-50">
-                            {isLiveWeather && liveWeatherTemp ? liveWeatherTemp : getWeatherInfo(currentWeather).temp} ({getWeatherInfo(currentWeather).label})
-                          </h4>
-                        )}
-                      </div>
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                        {isLiveWeather 
-                          ? `Currently reporting ${liveWeatherTemp || getWeatherInfo(currentWeather).temp} in ${weatherCity === "My Shop" ? (currentShop?.name || "your area") : weatherCity}. ${liveWindSpeed !== null ? `Wind velocity is ${liveWindSpeed} km/h.` : ""} ${livePrecipitation !== null ? `Precipitation at ${livePrecipitation} mm.` : "No precipitation detected."}` 
-                          : getWeatherInfo(currentWeather).desc}
-                      </p>
-                      <p className="text-xs font-semibold text-primary mt-2">
-                         💼 **Demand Forecast:** {getWeatherInfo(currentWeather).predictedDemand}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Section: Historical Order Statistics */}
-                  <div>
-                    <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500 mb-3 flex justify-between items-center">
-                      <span>Weather Correlation Ratio</span>
-                      <span className="font-mono text-[10px] text-zinc-400">
-                        {weatherOrderStats.isSimulated ? "Simulated Sample History" : `Based on ${weatherOrderStats.totalComputed} Live Orders`}
-                      </span>
-                    </h3>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                      {(["Sunny", "Rainy", "Chilly", "Windy"] as const).map((weatherType) => {
-                        const info = getWeatherInfo(weatherType);
-                        const activeTypeStats = weatherOrderStats[weatherType];
-                        const isCurrent = currentWeather === weatherType;
-                        
-                        return (
-                          <div
-                            key={weatherType}
-                            onClick={() => {
-                              setCurrentWeather(weatherType);
-                              generateWeatherAiAdvice(weatherType);
-                            }}
-                            className={cn(
-                              "p-4 rounded-2xl border transition-all cursor-pointer select-none relative overflow-hidden",
-                              isCurrent
-                                ? "border-primary bg-primary/5 dark:bg-primary/5 shadow-inner"
-                                : "border-zinc-150 dark:border-zinc-800 bg-white dark:bg-zinc-905 hover:bg-zinc-50 dark:hover:bg-zinc-850"
-                            )}
-                          >
-                            <div className="flex justify-between items-center mb-2 relative z-10">
-                              <span className="text-xs font-black flex items-center gap-1.5">
-                                {weatherType === "Sunny" ? "☀️" : weatherType === "Rainy" ? "🌧️" : weatherType === "Chilly" ? "❄️" : "💨"}
-                                {info.label}
-                              </span>
-                              <span className="text-[10px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                                {activeTypeStats.percentage}%
-                              </span>
-                            </div>
-                            
-                            <div className="space-y-1 relative z-10">
-                              <p className="text-[10px] font-medium text-zinc-500">
-                                Orders placed: <span className="font-bold text-zinc-800 dark:text-zinc-200">{activeTypeStats.count}</span>
-                              </p>
-                              <p className="text-[10px] font-medium text-zinc-500">
-                                Estimated Sales: <span className="font-bold text-zinc-800 dark:text-zinc-200 flex-wrap">R{activeTypeStats.totalSales.toLocaleString()}</span>
-                              </p>
-                            </div>
-
-                            {/* Progress bar */}
-                            <div className="w-full bg-zinc-100 dark:bg-zinc-800 h-1.5 rounded-full mt-3 overflow-hidden">
-                              <div 
-                                className="bg-primary h-full transition-all duration-1000"
-                                style={{ width: `${activeTypeStats.percentage}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Section: Product-Weather Affinity Index */}
-                  <div>
-                    <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500 mb-3">
-                      Menu Affinity Index for `{getWeatherInfo(currentWeather).label}`
-                    </h3>
-                    <div className="space-y-3">
-                      {getWeatherInfo(currentWeather).productAffinities.map((item, idx) => (
-                        <div key={idx} className="bg-zinc-50 dark:bg-zinc-900/60 p-3 rounded-xl border border-zinc-150/50 dark:border-zinc-800">
-                          <div className="flex justify-between items-center mb-1 text-xs font-black">
-                            <span>{item.name}</span>
-                            <span className="text-primary">{item.index}% Affinity</span>
-                          </div>
-                          <div className="w-full bg-zinc-200 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
-                            <div 
-                              className="bg-gradient-to-r from-orange-400 to-primary h-full rounded-full transition-all duration-1000"
-                              style={{ width: `${item.index}%` }}
-                            ></div>
-                          </div>
-                          <p className="text-[9px] text-zinc-400 dark:text-zinc-500 mt-1">
-                            {idx === 0 ? "🔥 Critically popular. Recommend placing near top of smartphone menu." : idx === 1 ? "👍 Popular combo. Offer as high-margin upsell." : "⚡ Secondary option. Stocks plenty."}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Section: AI Operations Advice Coach */}
-                  <div className="bg-zinc-950 dark:bg-zinc-900 border border-zinc-800/80 rounded-3xl p-5 md:p-6 text-white relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-8 text-primary opacity-[0.03] scale-[2] pointer-events-none">
-                      <Sparkles size={120} />
-                    </div>
-                    
-                    <div className="flex justify-between items-start mb-4 relative z-10">
-                      <div className="flex items-center gap-2">
-                        <div className="p-2 rounded-xl bg-primary/20 text-primary">
-                          <Sparkles size={16} className="fill-primary" />
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-black tracking-tight">AI Demand Strategist (Gemini)</h4>
-                          <p className="text-[9px] text-zinc-500 font-medium whitespace-nowrap">Live operational playbook recommendations</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => generateWeatherAiAdvice(currentWeather)}
-                        disabled={isGeneratingRecommendation}
-                        className="text-[10px] font-bold text-primary hover:text-orange-400 transition-all flex items-center gap-1 bg-primary/5 px-2.5 py-1 rounded-lg border border-primary/20 disabled:opacity-50 cursor-pointer"
-                      >
-                        <RefreshCw size={10} className={cn(isGeneratingRecommendation && "animate-spin")} />
-                        Recalculate
-                      </button>
-                    </div>
-
-                    <div className="text-xs text-zinc-200 leading-relaxed font-semibold relative z-10 space-y-2.5">
-                      {isGeneratingRecommendation ? (
-                        <div className="space-y-2 pt-2">
-                          <div className="h-3.5 bg-zinc-800 rounded animate-pulse w-3/4"></div>
-                          <div className="h-3.5 bg-zinc-800 rounded animate-pulse w-5/6"></div>
-                          <div className="h-3.5 bg-zinc-800 rounded animate-pulse w-2/3"></div>
-                        </div>
-                      ) : (
-                        <div className="whitespace-pre-line bg-zinc-900/45 p-3.5 rounded-2xl border border-zinc-800 font-sans tracking-wide">
-                          {aiWeatherRecommendation}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Footer CTA */}
-                <div className="flex justify-between items-center gap-4 mt-8 pt-6 border-t border-zinc-100 dark:border-zinc-800">
-                  <p className="text-[10px] text-zinc-400 max-w-[65%] font-medium leading-normal">
-                    Tips: Toggle weather tabs above to simulate and learn demand forecasting techniques.
-                  </p>
-                  <button
-                    onClick={() => setShowWeatherModal(false)}
-                    className="px-6 py-2.5 bg-zinc-950 dark:bg-zinc-100 text-white dark:text-zinc-950 font-black text-xs rounded-xl hover:opacity-90 active:scale-95 transition-all cursor-pointer shrink-0"
-                  >
-                    Done
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         <NotificationCenterSidePanel isOpen={isNotificationCenterOpen} onClose={() => setIsNotificationCenterOpen(false)} orders={orders} menuItems={menuItems} />        <OnboardingTour
           activeTab={activeTab}
@@ -22107,7 +19020,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                 onClick={() => setShowOfflineInfoModal(false)}
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto"
               />
-              
+
               {/* Modal Box */}
               <motion.div
                 initial={{ scale: 0.95, opacity: 0, y: 15 }}
@@ -22235,15 +19148,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
               >
                 <LocalEatsLogo width={160} height={42} />
               </button>
-              <span className="text-[8px] font-bold text-primary/20 mt-4">
-                {APP_VERSION}
-              </span>
-              {autoAcceptOrders && (
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-primary/10 border border-primary/20 animate-fade-in hidden md:flex">
-                  <Zap size={10} className="text-primary animate-pulse" />
-                  <span className="text-[9px] font-black uppercase tracking-wider text-primary">Auto-Accept On</span>
-                </div>
-              )}
+
             </div>
 
 
@@ -22332,24 +19237,24 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                   onClick={async () => {
                     if (!currentShop) return;
                     const newStatus = !currentShop.is_active;
-                    
+
                     localStorage.setItem(`localeats_manual_status_override_${currentShop.id}`, JSON.stringify({ status: newStatus, timestamp: Date.now() }));
                     if (newStatus) {
                       localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
                     }
-                    
+
                     // Optimistic update
                     setShops((prev) =>
                       prev.map((s) =>
                         s.id === currentShop.id ? { ...s, is_active: newStatus } : s,
                       ),
                     );
-                    
+
                     const { error } = await supabase
                       .from("shops")
                       .update({ is_active: newStatus })
                       .eq("id", currentShop.id);
-                      
+
                     if (!error) {
                       toast.success(
                         `Shop is now ${newStatus ? "Open" : "Closed"}`,
@@ -22367,7 +19272,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                   className={cn(
                     "hidden sm:flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs font-bold transition-all border",
                     currentShop.is_active
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800"
+? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800"
                       : "bg-error/10 text-error border-error/20 hover:bg-error/20 shadow-lg shadow-error/10",
                     localStorage.getItem(`localeats_holiday_mode_${currentShop.id}`) === "true" && "animate-pulse ring-2 ring-error/50 ring-offset-2 ring-offset-surface"
                   )}
@@ -22376,7 +19281,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                     className={cn(
                       "w-2 h-2 rounded-full",
                       currentShop.is_active
-                        ? "bg-emerald-500 animate-pulse"
+? "bg-emerald-500 animate-pulse"
                         : "bg-error",
                     )}
                   />
@@ -22553,21 +19458,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                   trialInfo={trialInfo}
                   currentShop={currentShop}
                   darkMode={darkMode}
-                  currentWeather={currentWeather}
-                  setCurrentWeather={setCurrentWeather}
-                  setShowWeatherModal={setShowWeatherModal}
-                  generateWeatherAiAdvice={generateWeatherAiAdvice}
-                  getWeatherInfo={getWeatherInfo}
                   onLoadDemoData={loadTownshipDemoData}
-                  isLiveWeather={isLiveWeather}
-                  setIsLiveWeather={setIsLiveWeather}
-                  liveWeatherTemp={liveWeatherTemp}
-                  weatherCity={weatherCity}
-                  liveWeatherLoading={liveWeatherLoading}
-                  liveWindSpeed={liveWindSpeed}
-                  livePrecipitation={livePrecipitation}
-                  weatherForecast={weatherForecast}
-                  weatherAlert={weatherAlert}
                 />
               )}
               {activeTab === "menu" && (
@@ -22643,9 +19534,6 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                     <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
                       Settings
                     </h2>
-                    <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">
-                {APP_VERSION}
-                    </span>
                   </div>
                   <p className="text-sm text-on-surface-variant font-medium">
                     Manage your account and storefront preferences.
@@ -22864,13 +19752,43 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                              statusOption === "open" ? "bg-emerald-500 text-white shadow-sm" : 
                              statusOption === "busy" ? "bg-amber-500 text-white shadow-sm" :
                              "bg-rose-500 text-white shadow-sm";
-                           
+
                            return (
                              <button
                                key={statusOption}
                                onClick={() => {
                                  setStoreStatus(statusOption);
-                                 
+                                 if (currentShop) {
+                                   const isActive = statusOption === "open" || statusOption === "busy";
+                                   localStorage.setItem(`localeats_manual_status_override_${currentShop.id}`, JSON.stringify({ status: isActive, timestamp: Date.now() }));
+                                   if (statusOption === "closed") {
+                                     localStorage.setItem(`localeats_holiday_mode_${currentShop.id}`, "true");
+                                   } else {
+                                     localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
+                                   }
+                                   setShops((prev) =>
+                                     prev.map((s) =>
+                                       s.id === currentShop.id ? { ...s, is_active: isActive } : s,
+                                     ),
+                                   );
+                                   supabase
+                                     .from("shops")
+                                     .update({ is_active: isActive })
+                                     .eq("id", currentShop.id)
+                                     .then(({ error }) => {
+                                       if (!error) {
+                                         toast.success(`Shop is now ${statusOption === "open" ? "OPEN" : statusOption === "busy" ? "BUSY" : "CLOSED"}`);
+                                       } else {
+                                         setShops((prev) =>
+                                           prev.map((s) =>
+                                             s.id === currentShop.id ? { ...s, is_active: !isActive } : s,
+                                           ),
+                                         );
+                                         toast.error(error.message);
+                                       }
+                                     });
+                                 }
+
                                }}
                                className={cn(
                                  "px-4 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all",
@@ -22919,26 +19837,26 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                               onClick={async () => {
                                 if (!currentShop) return;
                                 const newStatus = !currentShop.is_active; // If we're toggling, newStatus is the opposite of currentShop.is_active
-                                
+
                                 localStorage.removeItem(`localeats_manual_status_override_${currentShop.id}`);
                                 if (!newStatus) {
                                   localStorage.setItem(`localeats_holiday_mode_${currentShop.id}`, "true");
                                 } else {
                                   localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
                                 }
-                                
+
                                 // Optimistic update
                                 setShops((prev) =>
                                   prev.map((s) =>
                                     s.id === currentShop.id ? { ...s, is_active: newStatus } : s,
                                   ),
                                 );
-                                
+
                                 const { error } = await supabase
                                   .from("shops")
                                   .update({ is_active: newStatus })
                                   .eq("id", currentShop.id);
-                                  
+
                                 if (!error) {
                                   toast.success(
                                     newStatus 
@@ -23024,7 +19942,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="space-y-4">
                       <div className="flex justify-end">
                         <button
@@ -23036,7 +19954,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                                 : d
                             );
                             setOperatingHours(newHours);
-                            
+
                           }}
                           className="text-xs font-black uppercase text-primary hover:bg-primary/5 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
                         >
@@ -23060,7 +19978,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                                {dayObj.day}
                              </span>
                           </div>
-                          
+
                           {dayObj.active ? (
                             <div className="flex items-center gap-3 flex-1">
                               <input 
@@ -23094,7 +20012,17 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                       ))}
                       <div className="flex justify-end pt-2">
                         <button 
-                          onClick={() => {}}
+                          onClick={async () => {
+                            const { data, error } = await supabase.auth.updateUser({
+                              data: { weekly_operating_hours: operatingHours }
+                            });
+                            if (error) {
+                              toast.error("Failed to save operating hours: " + error.message);
+                            } else if (data?.user) {
+                              setUser(data.user);
+                              toast.success("Weekly operating hours saved successfully!");
+                            }
+                          }}
                           className="px-4 py-2 bg-primary text-on-primary rounded-xl text-xs font-bold shadow-sm"
                         >
                           Save Hours
@@ -23147,7 +20075,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                            className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
                          />
                       </div>
-                      
+
                       <div className="space-y-3">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
                            Free Delivery Threshold (R)
@@ -23173,7 +20101,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                            placeholder="e.g. 50"
                          />
                       </div>
-                      
+
                       <div className="space-y-3">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
                            Max Delivery Radius (KM)
@@ -23200,7 +20128,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                         </div>
                         <button
                           onClick={() => {
-                            
+
                           }}
                           className={cn(
                             "w-12 h-6 rounded-full transition-all relative shrink-0 bg-primary",
@@ -23304,7 +20232,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                          />
                       </div>
                     </div>
-                  
+
                     {/* Auto-Accept Orders */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6 mt-6 border-t border-outline-variant/10">
                       <div className="text-left">
@@ -23335,7 +20263,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                         />
                       </button>
                     </div>
-                  
+
                     {/* Auto-print Receipts */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6 mt-6 border-t border-outline-variant/10">
                       <div className="text-left">
@@ -23493,7 +20421,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                         <div className="p-6 bg-surface-container-low border border-primary/20 rounded-2xl relative overflow-hidden shadow-sm shadow-primary/5 text-left">
                           {/* Warm coral highlight corner decor */}
                           <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-xl pointer-events-none" />
-                          
+
                           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                             <div className="space-y-2 text-left">
                               <span className="text-[10px] uppercase font-black tracking-widest text-primary bg-primary/10 px-2.5 py-1 rounded-full">
@@ -23526,10 +20454,10 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
                         {/* Middle Section: 2 Columns */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                          
+
                           {/* Column A: Future Pricing / Plans & Billing Details */}
                           <div className="space-y-6">
-                            
+
                             {/* Card 1: Subscription Roadmap */}
                             <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
                               <h4 className="font-headline font-bold text-base text-on-surface flex items-center gap-2 text-left">
@@ -23629,7 +20557,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                                 <button
                                   onClick={() => {
                                     localStorage.setItem("localeats_billing_details", JSON.stringify(billingDetails));
-                                    
+
                                   }}
                                   className="w-full bg-primary/10 text-primary py-2.5 rounded-xl text-xs font-black uppercase hover:bg-primary/20 transition-colors"
                                 >
@@ -23642,7 +20570,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
 
                           {/* Column B: Card Vault Setup & Invoice History */}
                           <div className="space-y-6">
-                            
+
                             {/* Card 1: Secure Card Vault */}
                             <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
                               <h4 className="font-headline font-bold text-base text-on-surface flex items-center justify-between text-left">
@@ -23681,7 +20609,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                                       };
                                       setBillingDetails(cleared);
                                       localStorage.setItem("localeats_billing_details", JSON.stringify(cleared));
-                                      
+
                                     }}
                                     className="text-[10px] font-bold text-error/80 hover:text-error hover:bg-error/5 px-2.5 py-1.5 rounded-lg transition-all"
                                   >
@@ -23758,7 +20686,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                                         toast.error("Please enter a valid credit card number.");
                                         return;
                                       }
-                                      
+
                                       const updated = { ...billingDetails, isCardSaved: true };
                                       setBillingDetails(updated);
                                       localStorage.setItem("localeats_billing_details", JSON.stringify(updated));
@@ -24082,7 +21010,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                         {/* Line Items */}
                         <div className="border-t border-dashed border-outline-variant/20 pt-4 space-y-3">
                           <p className="font-bold text-[10px] uppercase text-on-surface-variant/70">Invoice Breakdown</p>
-                          
+
                           <div className="space-y-2">
                             <div className="flex justify-between text-xs">
                               <span className="text-on-surface-variant">LocalEats Platform Subscription (June 2026)</span>
@@ -24377,7 +21305,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
               const primaryMobileNavItems = navItems.filter((item) => primaryMobileTabIds.includes(item.id));
               const secondaryMobileNavItems = navItems.filter((item) => !primaryMobileTabIds.includes(item.id));
               const isMoreActive = !primaryMobileTabIds.includes(activeTab);
-              
+
               return (
                 <>
                   {primaryMobileNavItems.map((item) => {
@@ -24431,7 +21359,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                       </motion.button>
                     );
                   })}
-                  
+
                   {/* More Button */}
                   <motion.button
                     onClick={() => setIsMobileMoreOpen(true)}
@@ -24503,13 +21431,13 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
             >
               {/* Handle bar for native feeling */}
               <div className="w-12 h-1.5 bg-on-surface-variant/20 rounded-full mx-auto mb-6" />
-              
+
               <h3 className="font-headline font-black text-xl text-on-surface mb-1.5 flex items-center gap-2">
                 <span>More Features</span>
                 <span className="text-[10px] font-mono py-0.5 px-2 rounded-full bg-primary/10 text-primary uppercase font-bold tracking-widest">LocalEats</span>
               </h3>
               <p className="text-xs text-on-surface-variant/80 mb-6 font-medium leading-relaxed">Access secondary storefront tools, promotional engines, and dashboard settings.</p>
-              
+
               {/* Bento Grid */}
               <div className="grid grid-cols-2 gap-4">
                 {navItems.filter(item => !["dashboard", "orders", "menu", "riders"].includes(item.id)).map((item) => {
@@ -24549,7 +21477,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                   );
                 })}
               </div>
-              
+
               <button
                 onClick={() => setIsMobileMoreOpen(false)}
                 className="w-full mt-6 py-4 bg-surface-container-high text-on-surface font-black rounded-2xl text-xs uppercase tracking-widest hover:bg-surface-container-highest transition-colors min-h-[44px]"
@@ -24574,7 +21502,7 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
             onDragEnd={(event, info) => {
               if (Math.abs(info.offset.x) > 50) {
                 setUpdateDismissed(true);
-                
+
               }
             }}
             title="Swipe left/right or click X to dismiss update notice"
@@ -24628,13 +21556,13 @@ Provide 3 highly actionable operational recommendations (1 bullet for Stock Prep
                 </p>
               </div>
             </button>
-            
+
             <div className="h-4 w-[1px] bg-white/25 mx-1 shrink-0" />
-            
+
             <button
               onClick={() => {
                 setUpdateDismissed(true);
-                
+
               }}
               className="p-1 hover:bg-white/10 rounded-full transition-colors shrink-0 cursor-pointer"
               title="Dismiss list"

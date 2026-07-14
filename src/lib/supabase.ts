@@ -25,13 +25,61 @@ if (isProbablyNotSupabaseKey) {
 
 console.log('Supabase initialized with URL:', supabaseUrl ? `${supabaseUrl.substring(0, 10)}...` : 'MISSING');
 
-export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
-
-export const getSupabase = () => supabase;
-
 export const isSupabaseMocked = () => {
   return !supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder') || supabaseAnonKey === 'your-anon-key';
 };
+
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+const createMockThenable = (targetPath = ""): any => {
+  const mock: any = () => createMockThenable(targetPath + "()");
+  
+  mock.then = (onFulfilled: any) => {
+    const result = { data: null, error: { message: "Supabase is unconfigured in this environment." } };
+    return Promise.resolve(onFulfilled ? onFulfilled(result) : result);
+  };
+  
+  mock.catch = (onRejected: any) => {
+    return Promise.resolve();
+  };
+
+  mock.subscribe = () => mock;
+  mock.on = () => mock;
+  mock.getPublicUrl = () => ({ data: { publicUrl: "" } });
+  
+  return new Proxy(mock, {
+    get(target, prop) {
+      if (prop === "then") return target.then;
+      if (prop === "catch") return target.catch;
+      if (prop === "subscribe") return target.subscribe;
+      if (prop === "on") return target.on;
+      if (prop === "getPublicUrl") return target.getPublicUrl;
+      
+      if (prop === "getSession") {
+        return () => Promise.resolve({ data: { session: null }, error: null });
+      }
+      if (prop === "onAuthStateChange") {
+        return (callback: any) => {
+          callback("SIGNED_OUT", null);
+          return { data: { subscription: { unsubscribe: () => {} } } };
+        };
+      }
+      if (prop === "signOut") {
+        return () => Promise.resolve({ error: null });
+      }
+      
+      return createMockThenable(targetPath + "." + String(prop));
+    }
+  });
+};
+/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+
+const isMocked = isSupabaseMocked();
+
+export const supabase = isMocked 
+  ? createMockThenable("supabase") 
+  : createClient(supabaseUrl || '', supabaseAnonKey || '');
+
+export const getSupabase = () => supabase;
 
 // The official dashboard URL for LocalEats South Africa
 export const DASHBOARD_URL = 'https://dashboard.localeatssa.co.za';
