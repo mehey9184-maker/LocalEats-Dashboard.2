@@ -110,6 +110,8 @@ import {
   Volume1,
   Volume2,
   Copy,
+  Compass,
+  ThumbsUp,
 
 
   Leaf,
@@ -131,6 +133,9 @@ import {
   PieChart,
   Pie,
   Legend,
+  LineChart,
+  Line,
+  CartesianGrid,
 } from "recharts";
 import { format } from "date-fns";
 
@@ -138,7 +143,7 @@ import { SavingOverlay } from "./components/ui/SavingOverlay";
 import { ConfirmModal } from "./components/ui/ConfirmModal";
 import { Skeleton } from "./components/ui/Skeleton";
 import { User } from "@supabase/supabase-js";
-import { supabase } from "./lib/supabase";
+import { supabase, isSupabaseMocked } from "./lib/supabase";
 import {
   MapContainer,
   TileLayer,
@@ -857,6 +862,40 @@ export interface Message {
   content: string;
   created_at: string;
 }
+
+export interface CampaignStats {
+  reach: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+}
+
+export interface Campaign {
+  id: string;
+  name: string;
+  type: "email" | "sms" | "social";
+  objective: string;
+  channel: string;
+  subject?: string;
+  message: string;
+  status: "Sent" | "Scheduled" | "Draft";
+  sentAt: string;
+  stats?: CampaignStats;
+}
+
+export interface MarketingCoupon {
+  id: string;
+  code: string;
+  discount_type: "percentage" | "fixed";
+  discount_value: number;
+}
+
+export interface MarketingMenuItem {
+  id: string;
+  name: string;
+  price: number;
+}
+
 
 /**
  * Global fetch wrapper with retry logic to handle intermittent "Failed to fetch" errors.
@@ -4849,6 +4888,7 @@ const DashboardOverview = React.memo(({
   const [testOrderPayMethod, setTestOrderPayMethod] = useState("Cash");
   const [cardName, setCardName] = useState("");
   const [cardNumber, setCardNumber] = useState("");
+  const [specialInstructions, setSpecialInstructions] = useState("");
 
   const generateTestOrder = async () => {
     if (!currentShop) return;
@@ -4881,6 +4921,7 @@ const DashboardOverview = React.memo(({
       terminal_masked_card: testOrderPayMethod === "Card Machine" ? `**** **** **** ${cardNumber.slice(-4)}` : null,
       terminal_sync_status: testOrderPayMethod === "Card Machine" ? "synced" : null,
       created_at: new Date().toISOString(),
+      notes: specialInstructions.trim() || null,
     };
 
     const { error } = await supabase
@@ -4893,6 +4934,7 @@ const DashboardOverview = React.memo(({
     } else {
       console.log("Nudge sent");
       toast.success("Sample order created! View it in the Orders tab.");
+      setSpecialInstructions("");
       setShowTestCheckout(false);
       onRefresh();
     }
@@ -5151,6 +5193,17 @@ const DashboardOverview = React.memo(({
                     <span>Total</span>
                     <span className="text-primary">R 55.00</span>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="checkout_special_instructions" className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70">Special Instructions (Dietary / Delivery Notes)</label>
+                  <textarea
+                    id="checkout_special_instructions"
+                    value={specialInstructions}
+                    onChange={(e) => setSpecialInstructions(e.target.value)}
+                    placeholder="E.g. No onions, extra spicy, gluten free, leave at security..."
+                    className="w-full bg-surface-container-low border border-outline-variant/20 rounded-2xl p-4 text-xs font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all min-h-[80px] resize-y"
+                  />
                 </div>
 
                 <div className="space-y-3">
@@ -6074,6 +6127,13 @@ const CreateShop = ({
     setIsSaving(true);
     setIsSaveSuccess(false);
     try {
+      if (!isValidUUID(user.id)) {
+        toast.error("Cannot create shop with a non-UUID user ID.");
+        setIsSaving(false);
+        setIsSaveSuccess(false);
+        return;
+      }
+
       // Check if a shop with the exact same name already exists for this owner
       const { data: existingShop, error: checkError } = await supabase
         .from("shops")
@@ -9303,6 +9363,7 @@ const OrdersManagement = ({
   };
 
   const handleIframePrint = (order: Order, formatOption: "80mm" | "58mm", includeAddress: boolean) => {
+    toast.info("Receipt Printing Requested");
     try {
       const iframe = document.createElement("iframe");
       iframe.style.position = "absolute";
@@ -13316,12 +13377,19 @@ interface MarketingMenuItem {
   price: number;
 }
 
-const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
+const Marketing = ({
+  currentShop,
+  campaignsHistory,
+  saveCampaigns,
+  setShops,
+}: {
+  currentShop: Shop | undefined;
+  campaignsHistory: Campaign[];
+  saveCampaigns: (newList: Campaign[]) => void;
+  setShops: React.Dispatch<React.SetStateAction<Shop[]>>;
+}) => {
   const [coupons, setCoupons] = useState<MarketingCoupon[]>([]);
   const [menuItems, setMenuItems] = useState<MarketingMenuItem[]>([]);
-
-  // Active general states
-  const [campaignsHistory, setCampaignsHistory] = useState<Campaign[]>([]);
 
   // AI campaign assistant states
   const [showCampaignModal, setShowCampaignModal] = useState(false);
@@ -13377,62 +13445,6 @@ const Marketing = ({ currentShop }: { currentShop: Shop | undefined }) => {
     fetchMarketingData();
   }, [currentShop?.id]);
 
-  // Load campaigns history
-  useEffect(() => {
-    const stored = localStorage.getItem("localeats_merch_campaigns");
-    if (stored) {
-      try {
-        setCampaignsHistory(JSON.parse(stored) as Campaign[]);
-      } catch (err) {
-        console.error("Error parsing campaign history", err);
-      }
-    } else {
-      console.log("Nudge sent");
-      const defaultCampaigns: Campaign[] = [
-        {
-          id: "cmp_1",
-          name: "Friday Lunch Special",
-          type: "sms",
-          objective: "Weekend Rush Hour",
-          channel: "SMS Blast",
-          message: "⚡️ Friday Feast! Get R50 off your woodfired pizza today from Cafe. Use code FRIDAY50 at checkout! Order now: localeats.co/menu",
-          status: "Sent",
-          sentAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-          stats: { reach: 300, clicks: 124, conversions: 42, revenue: 1680 }
-        },
-        {
-          id: "cmp_2",
-          name: "Easter Weekend Promo",
-          type: "email",
-          objective: "Dine-in Boost",
-          channel: "Email Newsletter",
-          subject: "❤️ Let us handle dinner: 15% off dynamic orders!",
-          message: "Hi Eater! Treating yourself to a gorgeous meal this long weekend? Skip the queue and order direct. Support local chefs and eco-friendly cyclists directly...",
-          status: "Sent",
-          sentAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-          stats: { reach: 520, clicks: 211, conversions: 68, revenue: 4120 }
-        },
-        {
-          id: "cmp_3",
-          name: "Unused Promo Draft",
-          type: "social",
-          objective: "Recover Cold Customers",
-          channel: "Social Post",
-          message: "We've missed you! Here's a little reminder that fresh deliciousness is just 3 clicks away. 🍕❤️ Use code SAVE10 today for some weekend vibes! #localeats #food",
-          status: "Draft",
-          sentAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-          stats: { reach: 0, clicks: 0, conversions: 0, revenue: 0 }
-        }
-      ];
-      localStorage.setItem("localeats_merch_campaigns", JSON.stringify(defaultCampaigns));
-      setCampaignsHistory(defaultCampaigns);
-    }
-  }, []);
-
-  const saveCampaigns = (newList: Campaign[]) => {
-    setCampaignsHistory(newList);
-    localStorage.setItem("localeats_merch_campaigns", JSON.stringify(newList));
-  };
 
   const getFallbackSubject = (objective: string, shopName: string, dish?: string, coupon?: string) => {
     const couponStr = coupon ? ` (Use Code ${coupon})` : "";
@@ -13847,6 +13859,54 @@ Please return the content in JSON format with these exact keys:
       }));
   }, [filteredCampaigns]);
 
+  const handleGenerateAppQRPDF = async () => {
+    if (!currentShop) return;
+    try {
+      const { jsPDF } = await import("jspdf");
+      const QRCode = (await import("qrcode")).default;
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      doc.setFillColor(254, 252, 248);
+      doc.rect(0, 0, pageWidth, pageHeight, "F");
+
+      doc.setTextColor(26, 28, 30);
+      doc.setFontSize(28);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Order From ${currentShop.name.toUpperCase()}`, pageWidth / 2, 60, { align: "center" });
+
+      doc.setFontSize(14);
+      doc.setTextColor(70, 70, 70);
+      doc.setFont("helvetica", "normal");
+      doc.text("Scan the QR code below to open our app menu and order directly!", pageWidth / 2, 75, { align: "center" });
+
+      const targetUrl = `https://www.localeatssa.co.za/?shopId=${currentShop.id}`;
+      const qrDataUrl = await QRCode.toDataURL(targetUrl, {
+        width: 400,
+        margin: 2,
+        color: {
+          dark: "#0F172A",
+          light: "#FFFFFF",
+        },
+      });
+
+      const boxSize = 100;
+      const boxX = (pageWidth - boxSize) / 2;
+      doc.addImage(qrDataUrl, "PNG", boxX, 90, boxSize, boxSize);
+
+      doc.save(`LocalEats_App_QRCode_${currentShop.name.replace(/\s+/g, "_")}.pdf`);
+      toast.success("Client App QR Code PDF downloaded!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to generate QR PDF");
+    }
+  };
+
   const handleDownloadSummaryPDF = async () => {
     try {
       const { jsPDF } = await import("jspdf");
@@ -13947,9 +14007,43 @@ Please return the content in JSON format with these exact keys:
     <div className="space-y-8" id="marketing_studio_main">
       <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="space-y-1">
-          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight" id="marketing_header_title">
-            Marketing Studio & Toolkit
-          </h2>
+          <div className="flex items-center gap-4">
+            <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight" id="marketing_header_title">
+              Marketing Studio & Toolkit
+            </h2>
+            {currentShop && (
+              <button
+                onClick={async () => {
+                  const newStatus = !currentShop.is_active;
+                  localStorage.setItem(`localeats_manual_status_override_${currentShop.id}`, JSON.stringify({ status: newStatus, timestamp: Date.now() }));
+                  if (newStatus) {
+                    localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
+                  }
+                  setShops((prev) =>
+                    prev.map((s) => (s.id === currentShop.id ? { ...s, is_active: newStatus } : s))
+                  );
+                  const { error } = await supabase.from("shops").update({ is_active: newStatus }).eq("id", currentShop.id);
+                  if (!error) {
+                    toast.success(`Shop is now ${newStatus ? "Open" : "Closed"}`);
+                  } else {
+                    setShops((prev) =>
+                      prev.map((s) => (s.id === currentShop.id ? { ...s, is_active: !newStatus } : s))
+                    );
+                    toast.error("Failed to update status");
+                  }
+                }}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all border",
+                  currentShop.is_active
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : "bg-error/10 text-error border-error/20"
+                )}
+              >
+                <div className={cn("w-2 h-2 rounded-full", currentShop.is_active ? "bg-emerald-500 animate-pulse" : "bg-error")} />
+                {currentShop.is_active ? "Open for Orders" : "Store Closed"}
+              </button>
+            )}
+          </div>
           <p className="text-sm text-on-surface-variant font-medium">
             Launch campaigns, print custom materials, and manage table QR codes for {currentShop?.name || "your business"}.
           </p>
@@ -13965,6 +14059,13 @@ Please return the content in JSON format with these exact keys:
           >
             <Plus size={14} />
             AI copywriter
+          </button>
+          <button
+            onClick={handleGenerateAppQRPDF}
+            className="flex items-center gap-2 px-4 py-2 text-xs bg-indigo-600 text-white border border-indigo-500 rounded-xl font-bold hover:bg-indigo-700 transition-colors"
+          >
+            <QrCode size={14} />
+            App QR Flyer
           </button>
           <button
             onClick={() => setShowFlyerModal(true)}
@@ -16600,6 +16701,50 @@ const Insights = ({
     return daysArray.map((d) => ({ name: d.dayName, earnings: d.earnings }));
   }, [filteredOrdersForInsights, timeFilter, customStartDate, customEndDate]);
 
+  const netDailyRevenue30dData = useMemo(() => {
+    const now = new Date();
+    const days = Array.from({ length: 30 }, (_, index) => {
+      const d_curr = new Date();
+      d_curr.setDate(now.getDate() - (29 - index));
+      
+      const d_prev = new Date();
+      d_prev.setDate(now.getDate() - (29 - index) - 30);
+      
+      return {
+        dateStrCurr: d_curr.toISOString().split("T")[0],
+        dateStrPrev: d_prev.toISOString().split("T")[0],
+        label: format(d_curr, "dd MMM"),
+        currentRevenue: 0,
+        previousRevenue: 0,
+      };
+    });
+
+    const activeOrders = orders.filter(
+      (o) =>
+        o.status === "completed" ||
+        o.status === "preparing" ||
+        o.status === "ready"
+    );
+
+    activeOrders.forEach((order) => {
+      const orderDate = new Date(order.created_at).toISOString().split("T")[0];
+      const matchedCurr = days.find((d) => d.dateStrCurr === orderDate);
+      if (matchedCurr) {
+        matchedCurr.currentRevenue += Number(order.total_price || 0);
+      }
+      const matchedPrev = days.find((d) => d.dateStrPrev === orderDate);
+      if (matchedPrev) {
+        matchedPrev.previousRevenue += Number(order.total_price || 0);
+      }
+    });
+
+    return days.map((d) => ({
+      name: d.label,
+      "Current Month": d.currentRevenue,
+      "Previous Month": d.previousRevenue,
+    }));
+  }, [orders]);
+
   const couponPerformance = useMemo(() => {
     const couponOrders = filteredOrdersForInsights.filter((o) => o.coupon_code);
     const totalDiscount = couponOrders.reduce(
@@ -16991,6 +17136,102 @@ const Insights = ({
                   animationBegin={200}
                 />
               </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </motion.section>
+
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
+          className="md:col-span-12 bg-surface-container-lowest rounded-xl p-8 shadow-[0_8px_24px_-4px_rgba(167,52,0,0.05)] border border-outline-variant/10"
+        >
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-widest text-on-surface-variant/60 mb-1">
+                Net Daily Revenue Trend (Last 30 Days)
+              </h2>
+              <p className="text-xs text-on-surface-variant font-medium">
+                Comparing current month's performance against the previous month.
+              </p>
+            </div>
+            <div className="flex items-center gap-4 text-xs font-bold">
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-primary" />
+                <span className="text-on-surface">Current Month</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-slate-400" />
+                <span className="text-on-surface-variant">Previous Month</span>
+              </div>
+            </div>
+          </div>
+          <div className="h-72 mt-4" style={{ minHeight: "288px" }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={netDailyRevenue30dData} margin={{ left: 10, right: 10, top: 10, bottom: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--outline-variant)" opacity={0.3} />
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{
+                    fill: "var(--on-surface-variant)",
+                    fontSize: 10,
+                    fontWeight: 700,
+                  }}
+                  dy={10}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{
+                    fill: "var(--on-surface-variant)",
+                    fontSize: 10,
+                    fontWeight: 700,
+                  }}
+                  tickFormatter={(val) => `R${val}`}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#fff",
+                    borderRadius: "16px",
+                    border: "1px solid #e2e8f0",
+                    boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)",
+                    padding: "12px",
+                  }}
+                  itemStyle={{
+                    fontWeight: 800,
+                    fontSize: "14px",
+                  }}
+                  labelStyle={{
+                    color: "#64748b",
+                    fontWeight: 700,
+                    fontSize: "10px",
+                    marginBottom: "4px",
+                    textTransform: "uppercase",
+                  }}
+                  formatter={(value: number) => [
+                    `R${value.toLocaleString()}`,
+                    ""
+                  ]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="Current Month"
+                  stroke="#f58220"
+                  strokeWidth={3}
+                  dot={{ r: 3, strokeWidth: 1 }}
+                  activeDot={{ r: 6 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="Previous Month"
+                  stroke="#94a3b8"
+                  strokeWidth={2}
+                  strokeDasharray="4 4"
+                  dot={{ r: 2 }}
+                />
+              </LineChart>
             </ResponsiveContainer>
           </div>
         </motion.section>
@@ -17897,8 +18138,101 @@ export default function AppWrapper() {
   );
 }
 
+const isValidUUID = (str: string | null | undefined): boolean => {
+  if (!str) return false;
+  const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  return uuidRegex.test(str);
+};
+
 function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
+
+  const [campaignsHistory, setCampaignsHistory] = useState<Campaign[]>([]);
+
+  // Load campaigns history
+  useEffect(() => {
+    const stored = localStorage.getItem("localeats_merch_campaigns");
+    if (stored) {
+      try {
+        let loaded = JSON.parse(stored) as Campaign[];
+        // Auto-merge the new Cheese & Polony special if it's missing!
+        const hasCheeseAndPolony = loaded.some(c => c.id === "cmp_4" || c.name.includes("Cheese & Polony") || c.message.includes("Yebo yes"));
+        if (!hasCheeseAndPolony) {
+          const cheeseAndPolonyCampaign: Campaign = {
+            id: "cmp_4",
+            name: "My-Kota Cheese & Polony Special",
+            type: "social",
+            objective: "Dish Highlight Promotion",
+            channel: "Social Feed",
+            message: "Yebo yes! 🧀🍞 Why complicate perfection when the classics hit this hard? Get your hands on our iconic My-Kota Cheese & Polony special! We’re talking a fresh, hollowed-out quarter loaf packed with generous layers of thick, savory polony and oozing, warm melted cheese. Simple. Classic. Absolutely delicious! 🤤🔥 No stress, just pure kasi flavor that hits the spot every single time. Pull up at My-Kota or order yours now! 🚀 #MyKota #KotaLove #CheeseAndPolony #Kasiflavour #StreetFoodSA #LocalIsLekker #SouthAfricanFood #LunchVibes",
+            status: "Sent",
+            sentAt: new Date(Date.now() - 0.5 * 24 * 60 * 60 * 1000).toISOString(),
+            stats: { reach: 150, clicks: 50, conversions: 2, revenue: 247 }
+          };
+          loaded = [cheeseAndPolonyCampaign, ...loaded];
+          localStorage.setItem("localeats_merch_campaigns", JSON.stringify(loaded));
+        }
+        setCampaignsHistory(loaded);
+      } catch (err) {
+        console.error("Error parsing campaign history", err);
+      }
+    } else {
+      const defaultCampaigns: Campaign[] = [
+        {
+          id: "cmp_4",
+          name: "My-Kota Cheese & Polony Special",
+          type: "social",
+          objective: "Dish Highlight Promotion",
+          channel: "Social Feed",
+          message: "Yebo yes! 🧀🍞 Why complicate perfection when the classics hit this hard? Get your hands on our iconic My-Kota Cheese & Polony special! We’re talking a fresh, hollowed-out quarter loaf packed with generous layers of thick, savory polony and oozing, warm melted cheese. Simple. Classic. Absolutely delicious! 🤤🔥 No stress, just pure kasi flavor that hits the spot every single time. Pull up at My-Kota or order yours now! 🚀 #MyKota #KotaLove #CheeseAndPolony #Kasiflavour #StreetFoodSA #LocalIsLekker #SouthAfricanFood #LunchVibes",
+          status: "Sent",
+          sentAt: new Date(Date.now() - 0.5 * 24 * 60 * 60 * 1000).toISOString(),
+          stats: { reach: 150, clicks: 50, conversions: 2, revenue: 247 }
+        },
+        {
+          id: "cmp_1",
+          name: "Friday Lunch Special",
+          type: "sms",
+          objective: "Weekend Rush Hour",
+          channel: "SMS Blast",
+          message: "⚡️ Friday Feast! Get R50 off your woodfired pizza today from Cafe. Use code FRIDAY50 at checkout! Order now: localeats.co/menu",
+          status: "Sent",
+          sentAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+          stats: { reach: 300, clicks: 124, conversions: 42, revenue: 1680 }
+        },
+        {
+          id: "cmp_2",
+          name: "Easter Weekend Promo",
+          type: "email",
+          objective: "Dine-in Boost",
+          channel: "Email Newsletter",
+          subject: "❤️ Let us handle dinner: 15% off dynamic orders!",
+          message: "Hi Eater! Treating yourself to a gorgeous meal this long weekend? Skip the queue and order direct. Support local chefs and eco-friendly cyclists directly...",
+          status: "Sent",
+          sentAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+          stats: { reach: 520, clicks: 211, conversions: 68, revenue: 4120 }
+        },
+        {
+          id: "cmp_3",
+          name: "Unused Promo Draft",
+          type: "social",
+          objective: "Recover Cold Customers",
+          channel: "Social Post",
+          message: "We've missed you! Here's a little reminder that fresh deliciousness is just 3 clicks away. 🍕❤️ Use code SAVE10 today for some weekend vibes! #localeats #food",
+          status: "Draft",
+          sentAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+          stats: { reach: 0, clicks: 0, conversions: 0, revenue: 0 }
+        }
+      ];
+      localStorage.setItem("localeats_merch_campaigns", JSON.stringify(defaultCampaigns));
+      setCampaignsHistory(defaultCampaigns);
+    }
+  }, []);
+
+  const saveCampaigns = (newList: Campaign[]) => {
+    setCampaignsHistory(newList);
+    localStorage.setItem("localeats_merch_campaigns", JSON.stringify(newList));
+  };
   const [loading, setLoading] = useState(true);
   const [authView, setAuthView] = useState<"signin" | "signup">("signin");
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
@@ -17918,6 +18252,11 @@ function App() {
     message: "",
     onConfirm: () => {},
   });
+
+  const confirmAction = (title: string, message: string, onConfirm: () => void, confirmText = "Delete") => {
+    setConfirmDialog({ isOpen: true, title, message, onConfirm, confirmText });
+  };
+
   const { activeTab, setActiveTab } = useAppNavigation("dashboard");
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -18603,13 +18942,23 @@ function App() {
   const fetchOrders = useCallback(async () => {
     if (!user) return;
 
+    if (!isValidUUID(user.id)) {
+      if (!isSupabaseMocked()) {
+        console.warn("Skipping fetchOrders - user ID is not a valid UUID:", user.id);
+      }
+      setOrders([]);
+      return;
+    }
+
     // First, get the shops owned by this user
     const { data: ownedShops, error: shopsError } = await fetchWithRetry(() =>
       supabase.from("shops").select("id").eq("owner_id", user.id),
     );
 
     if (shopsError) {
-      console.error("Error fetching owned shops for orders:", shopsError);
+      if (!isSupabaseMocked()) {
+        console.error("Error fetching owned shops for orders:", shopsError);
+      }
       if (shopsError.message === "Failed to fetch") {
         toast.error("Uplink failed. Refreshing connection...");
       }
@@ -18679,6 +19028,14 @@ function App() {
 
   const fetchAllMenuItems = useCallback(async () => {
     if (!user) return;
+
+    if (!isValidUUID(user.id)) {
+      if (!isSupabaseMocked()) {
+        console.warn("Skipping fetchAllMenuItems - user ID is not a valid UUID:", user.id);
+      }
+      setMenuItems([]);
+      return;
+    }
 
     let query = supabase.from("menu_items").select("*");
 
@@ -18814,6 +19171,14 @@ function App() {
       async () => {
         setConfirmDialog(p => ({...p, isOpen: false}));
 
+        if (!isValidUUID(user.id)) {
+          if (!isSupabaseMocked()) {
+            console.warn("Skipping confirmDeleteAll - user ID is not a valid UUID:", user.id);
+          }
+          toast.info("No orders to delete.");
+          return;
+        }
+
         // First, get the shops owned by this user
         const { data: ownedShops, error: shopsError } = await supabase
           .from("shops")
@@ -18821,7 +19186,9 @@ function App() {
           .eq("owner_id", user.id);
 
         if (shopsError) {
-          console.error("Error fetching owned shops for deletion:", shopsError);
+          if (!isSupabaseMocked()) {
+            console.error("Error fetching owned shops for deletion:", shopsError);
+          }
           return;
         }
 
@@ -19109,6 +19476,7 @@ function App() {
 
   // --- ESC/POS Printing Actions ---
   const handlePrintBluetoothDirect = async (order: Order) => {
+    toast.info("Receipt Printing Requested");
     setPrintingHardwareLoading(true);
     try {
       const bytes = generateReceiptBytes(order, currentShop?.name || "LocalEats Merchant", printingFormat === "58mm" ? 58 : 80);
@@ -19135,6 +19503,7 @@ function App() {
   };
 
   const handlePrintUSBDirect = async (order: Order) => {
+    toast.info("Receipt Printing Requested");
     setPrintingHardwareLoading(true);
     try {
       const bytes = generateReceiptBytes(order, currentShop?.name || "LocalEats Merchant", printingFormat === "58mm" ? 58 : 80);
@@ -19161,6 +19530,7 @@ function App() {
   };
 
   const retryQueuedPrintDirect = async (job: QueuedPrintJob) => {
+    toast.info("Receipt Printing Requested");
     setPrintingHardwareLoading(true);
     try {
       const bytes = new Uint8Array(job.binaryData);
@@ -20091,7 +20461,12 @@ function App() {
               )}
             </React.Suspense>
             {activeTab === "marketing" && (
-              <Marketing currentShop={currentShop} />
+              <Marketing
+                currentShop={currentShop}
+                campaignsHistory={campaignsHistory}
+                saveCampaigns={saveCampaigns}
+                setShops={setShops}
+              />
             )}
             {activeTab === "coupons" && (
               <Coupons currentShop={currentShop} orders={orders} />
@@ -21655,14 +22030,18 @@ function App() {
               </div>
             )}
             {activeTab === "storefront" && (
-              <div className="max-w-3xl mx-auto">
-                <button
-                  onClick={() => setActiveTab("settings")}
-                  className="mb-6 flex items-center gap-2 text-sm font-bold text-on-surface-variant hover:text-primary transition-colors"
-                >
-                  <ChevronRight className="rotate-180" size={16} />
-                  Back to Settings
-                </button>
+              <div className="max-w-4xl mx-auto space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-outline-variant/10 pb-4">
+                  <button
+                    onClick={() => setActiveTab("settings")}
+                    className="flex items-center gap-2 text-sm font-bold text-on-surface-variant hover:text-primary transition-colors"
+                  >
+                    <ChevronRight className="rotate-180" size={16} />
+                    Back to Settings
+                  </button>
+
+                </div>
+
                 {currentShop ? (
                   <ShopProfile
                     shop={currentShop}
