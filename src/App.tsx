@@ -11,6 +11,17 @@ import { usePushNotifications } from "./hooks/usePushNotifications";
 import { useAppNavigation } from "./hooks/useAppNavigation";
 import { useAppInitializer } from "./hooks/useAppInitializer";
 import { useOrderWorkflow } from "./hooks/useOrderWorkflow";
+import { useKitchenAlerter } from "./hooks/useKitchenAlerter";
+import {
+  generateReceiptBytes,
+  printViaBluetooth,
+  printViaUSB,
+  queueFailedPrint,
+  getFailedPrints,
+  deleteFailedPrint,
+  QueuedPrintJob,
+} from "./utils/escPosEngine";
+import { Wifi } from "lucide-react";
 import { OnboardingTour } from "./components/OnboardingTour";
 import AIMenuScannerModal from "./components/AIMenuScannerModal";
 import { LegalDocsModal } from "./components/LegalDocsModal";
@@ -9074,6 +9085,12 @@ const OrdersManagement = ({
   currentShop,
   printingFormat: propPrintingFormat,
   setPrintingFormat: propSetPrintingFormat,
+  failedPrints = [],
+  printingHardwareLoading = false,
+  handlePrintBluetoothDirect,
+  handlePrintUSBDirect,
+  retryQueuedPrintDirect,
+  clearPrintQueue,
 }: {
   orders: Order[];
   onUpdateStatus: (id: string, status: OrderStatus, message?: string, estimatedTime?: string) => Promise<void> | void;
@@ -9091,6 +9108,12 @@ const OrdersManagement = ({
   currentShop: Shop | undefined;
   printingFormat?: "80mm" | "58mm";
   setPrintingFormat?: (fmt: "80mm" | "58mm") => void;
+  failedPrints?: QueuedPrintJob[];
+  printingHardwareLoading?: boolean;
+  handlePrintBluetoothDirect?: (order: Order) => Promise<void>;
+  handlePrintUSBDirect?: (order: Order) => Promise<void>;
+  retryQueuedPrintDirect?: (job: QueuedPrintJob) => Promise<void>;
+  clearPrintQueue?: () => Promise<void>;
 }) => {
   const [viewMode, setViewMode] = useState<"active" | "history">("active");
   const [layoutMode, setLayoutMode] = useState<"list" | "kanban">("kanban");
@@ -12936,29 +12959,95 @@ Notes: "${order.notes || "None"}"
                   </div>
 
                   <div className="space-y-2 pt-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={printingHardwareLoading}
+                        onClick={() => printingOrder && handlePrintBluetoothDirect?.(printingOrder)}
+                        className="py-3 px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] uppercase tracking-wider rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Wifi size={14} />
+                        Bluetooth POS
+                      </button>
+                      <button
+                        type="button"
+                        disabled={printingHardwareLoading}
+                        onClick={() => printingOrder && handlePrintUSBDirect?.(printingOrder)}
+                        className="py-3 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] uppercase tracking-wider rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Database size={14} />
+                        USB POS
+                      </button>
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => handleIframePrint(printingOrder, printingFormat, printingIncludeAddr)}
-                      className="w-full py-3 bg-primary text-white font-black text-xs uppercase tracking-widest rounded-full shadow-md shadow-primary/20 hover:scale-[1.02] transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                      className="w-full py-2.5 bg-primary text-white font-black text-xs uppercase tracking-widest rounded-xl shadow-md shadow-primary/20 hover:scale-[1.02] transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      <Printer size={16} />
-                      Execute Print Job
+                      <Printer size={15} />
+                      Standard System Print
                     </button>
                     <button
                       type="button"
                       onClick={() => copyReceiptToClipboard(printingOrder)}
-                      className="w-full py-3 bg-surface-container-low hover:bg-surface-container-high text-on-surface-variant font-bold text-xs uppercase tracking-widest rounded-full transition-all active:scale-[0.98] flex items-center justify-center gap-2 border border-outline-variant/15"
+                      className="w-full py-2.5 bg-surface-container-low hover:bg-surface-container-high text-on-surface-variant font-bold text-xs uppercase tracking-widest rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 border border-outline-variant/15 cursor-pointer"
                     >
-                      <Copy size={16} />
+                      <Copy size={15} />
                       Copy Plain-Text Receipt
                     </button>
                     <button
                       type="button"
                       onClick={() => setPrintingOrder(null)}
-                      className="w-full py-3 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-bold text-xs uppercase tracking-widest rounded-full transition-all active:scale-[0.98]"
+                      className="w-full py-2.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-bold text-xs uppercase tracking-widest rounded-xl transition-all active:scale-[0.98] cursor-pointer"
                     >
                       Close Preview
                     </button>
+
+                    {/* Offline Fail Queue Panel */}
+                    <div className="border border-outline-variant/20 rounded-2xl p-4 bg-surface-container-low/50 space-y-3 mt-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">
+                          Offline Print Queue ({failedPrints.length})
+                        </span>
+                        {failedPrints.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => clearPrintQueue?.()}
+                            className="text-[9px] text-red-500 hover:underline font-bold cursor-pointer"
+                          >
+                            Clear Queue
+                          </button>
+                        )}
+                      </div>
+
+                      {failedPrints.length === 0 ? (
+                        <p className="text-[10px] text-zinc-500 italic">No failed print jobs queued.</p>
+                      ) : (
+                        <div className="max-h-[140px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                          {failedPrints.map((job) => (
+                            <div key={job.id} className="p-2.5 bg-white dark:bg-zinc-900 border border-outline-variant/15 rounded-xl flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-black truncate text-on-surface">
+                                  #{job.orderId.slice(0, 8).toUpperCase()} - {job.customerName}
+                                </p>
+                                <p className="text-[8px] text-on-surface-variant">
+                                  {new Date(job.createdAt).toLocaleTimeString()}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                disabled={printingHardwareLoading}
+                                onClick={() => retryQueuedPrintDirect?.(job)}
+                                className="px-2 py-1 bg-[#FF5A36] text-white text-[9px] font-black uppercase tracking-wider rounded-lg hover:opacity-90 active:scale-95 disabled:opacity-50 transition-all shrink-0 cursor-pointer"
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -13690,8 +13779,47 @@ Please return the content in JSON format with these exact keys:
     }
   };
 
+  // --- Date Range Filter States ---
+  const [dateRangeType, setDateRangeType] = useState<"all" | "7d" | "30d" | "90d" | "custom">("all");
+  const [customStartDate, setCustomStartDate] = useState<string>("");
+  const [customEndDate, setCustomEndDate] = useState<string>("");
+
+  const filteredCampaigns = useMemo(() => {
+    const now = new Date();
+    let start: Date | null = null;
+    let end: Date | null = null;
+
+    if (dateRangeType === "7d") {
+      start = new Date();
+      start.setDate(now.getDate() - 7);
+    } else if (dateRangeType === "30d") {
+      start = new Date();
+      start.setDate(now.getDate() - 30);
+    } else if (dateRangeType === "90d") {
+      start = new Date();
+      start.setDate(now.getDate() - 90);
+    } else if (dateRangeType === "custom") {
+      if (customStartDate) {
+        start = new Date(customStartDate);
+        start.setHours(0, 0, 0, 0);
+      }
+      if (customEndDate) {
+        end = new Date(customEndDate);
+        end.setHours(23, 59, 59, 999);
+      }
+    }
+
+    return campaignsHistory.filter((cmp) => {
+      if (!cmp.sentAt) return true;
+      const sentDate = new Date(cmp.sentAt);
+      if (start && sentDate < start) return false;
+      if (end && sentDate > end) return false;
+      return true;
+    });
+  }, [campaignsHistory, dateRangeType, customStartDate, customEndDate]);
+
   const dashboardMetrics = useMemo(() => {
-    const sent = campaignsHistory.filter(c => c.status === "Sent");
+    const sent = filteredCampaigns.filter(c => c.status === "Sent");
     const totalReach = sent.reduce((sum, c) => sum + (c.stats?.reach || 0), 0);
     const totalClicks = sent.reduce((sum, c) => sum + (c.stats?.clicks || 0), 0);
     const totalConversions = sent.reduce((sum, c) => sum + (c.stats?.conversions || 0), 0);
@@ -13699,13 +13827,121 @@ Please return the content in JSON format with these exact keys:
     const avgCtr = totalReach > 0 ? ((totalClicks / totalReach) * 100).toFixed(1) : "0.0";
 
     return {
-      active: campaignsHistory.filter(c => c.status === "Scheduled").length,
+      active: filteredCampaigns.filter(c => c.status === "Scheduled").length,
       reach: totalReach,
       ctr: avgCtr,
       conversions: totalConversions,
       revenue: totalRevenue
     };
-  }, [campaignsHistory]);
+  }, [filteredCampaigns]);
+
+  const chartData = useMemo(() => {
+    return [...filteredCampaigns]
+      .filter(c => c.status === "Sent")
+      .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime())
+      .map(c => ({
+        name: c.name,
+        date: new Date(c.sentAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+        clicks: c.stats?.clicks || 0,
+        conversions: c.stats?.conversions || 0,
+      }));
+  }, [filteredCampaigns]);
+
+  const handleDownloadSummaryPDF = async () => {
+    try {
+      const { jsPDF } = await import("jspdf");
+      const autoTable = (await import("jspdf-autotable")).default;
+
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+
+      // Header Banner
+      doc.setFillColor(255, 90, 54); // Warm coral
+      doc.rect(0, 0, pageWidth, 40, "F");
+
+      // Title
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.text("LocalEats - Marketing Performance Summary", 15, 18);
+
+      // Subtitle with date
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      const dateStr = new Date().toLocaleDateString();
+      const periodStr = dateRangeType === "all" ? "All Time" :
+                        dateRangeType === "7d" ? "Last 7 Days" :
+                        dateRangeType === "30d" ? "Last 30 Days" :
+                        dateRangeType === "90d" ? "Last 90 Days" :
+                        `Custom Range: ${customStartDate || "Start"} to ${customEndDate || "End"}`;
+      doc.text(`Generated on: ${dateStr}   |   Filter Period: ${periodStr}`, 15, 25);
+      if (currentShop) {
+        doc.text(`Merchant: ${currentShop.name}`, 15, 31);
+      }
+
+      // Add a summary section
+      doc.setTextColor(26, 28, 30);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("Performance Overview", 15, 52);
+
+      // Simple overview metrics
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text([
+        `Total Campaigns: ${filteredCampaigns.length}`,
+        `Sent Campaigns: ${filteredCampaigns.filter(c => c.status === "Sent").length}`,
+        `Total Reach: ${dashboardMetrics.reach.toLocaleString()} recipients`,
+        `Average CTR: ${dashboardMetrics.ctr}%`,
+        `Total Conversions (Sales): ${dashboardMetrics.conversions}`,
+        `Direct Marketing Revenue: R${dashboardMetrics.revenue.toLocaleString()}`
+      ], 15, 60);
+
+      // Draw campaign table
+      const tableData = filteredCampaigns.map((cmp) => [
+        cmp.name,
+        cmp.type.toUpperCase(),
+        cmp.status,
+        cmp.sentAt ? new Date(cmp.sentAt).toLocaleDateString() : "N/A",
+        cmp.stats?.reach?.toLocaleString() || "0",
+        cmp.stats?.clicks?.toLocaleString() || "0",
+        cmp.stats?.conversions?.toLocaleString() || "0",
+        `R${cmp.stats?.revenue?.toLocaleString() || "0"}`
+      ]);
+
+      autoTable(doc, {
+        startY: 95,
+        head: [["Campaign Name", "Channel", "Status", "Date", "Reach", "Clicks", "Sales", "Revenue"]],
+        body: tableData,
+        theme: "striped",
+        headStyles: { fillColor: [255, 90, 54], textColor: [255, 255, 255], fontStyle: "bold" },
+        styles: { fontSize: 9, font: "helvetica" },
+        columnStyles: {
+          0: { cellWidth: 45 },
+          1: { cellWidth: 20 },
+          2: { cellWidth: 20 },
+          3: { cellWidth: 25 },
+          4: { cellWidth: 15, halign: "right" },
+          5: { cellWidth: 15, halign: "right" },
+          6: { cellWidth: 15, halign: "right" },
+          7: { cellWidth: 22, halign: "right" }
+        }
+      });
+
+      // Save PDF
+      const shopSlug = currentShop?.name ? currentShop.name.replace(/\s+/g, "_") : "Merchant";
+      doc.save(`Marketing_Summary_${shopSlug}_${new Date().toISOString().split("T")[0]}.pdf`);
+      toast.success("Marketing Performance PDF Summary downloaded!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to generate Campaign Summary PDF");
+    }
+  };
 
   return (
     <div className="space-y-8" id="marketing_studio_main">
@@ -13738,6 +13974,14 @@ Please return the content in JSON format with these exact keys:
             <Printer size={14} />
             Flyer Builder
           </button>
+          <button
+            onClick={handleDownloadSummaryPDF}
+            className="flex items-center gap-2 px-4 py-2 text-xs bg-surface-container border border-outline-variant/10 text-on-surface rounded-xl font-bold hover:bg-surface-container-high transition-colors"
+            id="marketing_summary_pdf_btn"
+          >
+            <Download size={14} />
+            Download Summary PDF
+          </button>
         </div>
       </header>
 
@@ -13760,6 +14004,113 @@ Please return the content in JSON format with these exact keys:
             <p className="text-[10px] text-on-surface-variant/70 font-medium">{m.desc}</p>
           </div>
         ))}
+      </div>
+
+      {/* CAMPAIGN TRENDS & PERFORMANCE (DATE RANGE FILTER & BAR CHART) */}
+      <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-3xl p-6 space-y-6" id="marketing_trends_panel">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-outline-variant/10 pb-4">
+          <div>
+            <h3 className="font-bold text-base text-on-surface">Campaign Trends & Performance</h3>
+            <p className="text-[10px] text-on-surface-variant/70">Analyze marketing clicks vs. conversions over time</p>
+          </div>
+          
+          {/* Date Range Picker */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex bg-on-surface/5 p-1 rounded-xl">
+              {(
+                [
+                  { id: "all", label: "All Time" },
+                  { id: "7d", label: "7 Days" },
+                  { id: "30d", label: "30 Days" },
+                  { id: "90d", label: "90 Days" },
+                  { id: "custom", label: "Custom" },
+                ] as const
+              ).map((type) => (
+                <button
+                  key={type.id}
+                  onClick={() => setDateRangeType(type.id)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer",
+                    dateRangeType === type.id
+                      ? "bg-primary text-on-primary shadow-sm"
+                      : "text-on-surface/70 hover:text-on-surface"
+                  )}
+                >
+                  {type.label}
+                </button>
+              ))}
+            </div>
+
+            {dateRangeType === "custom" && (
+              <div className="flex items-center gap-2 bg-on-surface/5 p-1 rounded-xl border border-outline-variant/10">
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="bg-transparent text-xs text-on-surface font-semibold focus:outline-none px-2 py-1"
+                />
+                <span className="text-xs text-on-surface/40 font-bold">to</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="bg-transparent text-xs text-on-surface font-semibold focus:outline-none px-2 py-1"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {chartData.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 text-on-surface-variant/40">
+            <BarChart3 size={32} className="opacity-30 mb-2" />
+            <p className="text-sm font-medium">No campaign performance data available for this range.</p>
+          </div>
+        ) : (
+          <div className="h-72 w-full pt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                <XAxis 
+                  dataKey="date" 
+                  stroke="#888888" 
+                  fontSize={11} 
+                  tickLine={false} 
+                  axisLine={false} 
+                />
+                <YAxis 
+                  stroke="#888888" 
+                  fontSize={11} 
+                  tickLine={false} 
+                  axisLine={false} 
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    background: "rgba(255, 255, 255, 0.95)", 
+                    border: "1px solid #e2e8f0", 
+                    borderRadius: "12px",
+                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)"
+                  }} 
+                  labelStyle={{ fontWeight: "bold", color: "#1A1C1E" }}
+                />
+                <Legend verticalAlign="top" height={36} iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px', fontWeight: '600' }} />
+                <Bar 
+                  dataKey="clicks" 
+                  name="Clicks" 
+                  fill="#FF5A36" 
+                  radius={[4, 4, 0, 0]} 
+                  maxBarSize={32} 
+                />
+                <Bar 
+                  dataKey="conversions" 
+                  name="Conversions" 
+                  fill="#059669" 
+                  radius={[4, 4, 0, 0]} 
+                  maxBarSize={32} 
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6" id="marketing_secondary_cards">
@@ -13883,18 +14234,18 @@ Please return the content in JSON format with these exact keys:
             <p className="text-[10px] text-on-surface-variant/70">Previous broadcasts and active promotional schedules</p>
           </div>
           <span className="text-xs font-bold text-primary bg-primary/5 px-2.5 py-1 rounded-lg">
-            {campaignsHistory.length} Total Campaigns
+            {filteredCampaigns.length} Campaigns
           </span>
         </div>
 
-        {campaignsHistory.length === 0 ? (
+        {filteredCampaigns.length === 0 ? (
           <div className="text-center py-8 text-on-surface-variant/40">
             <Mail size={32} className="mx-auto mb-2 opacity-30" />
-            <p className="text-sm font-medium">No past campaign records found.</p>
+            <p className="text-sm font-medium">No campaign records found matching this period.</p>
           </div>
         ) : (
           <div className="divide-y divide-outline-variant/10">
-            {campaignsHistory.map((cmp) => (
+            {filteredCampaigns.map((cmp) => (
               <div key={cmp.id} className="py-4 first:pt-0 last:pb-0 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-start gap-4">
                   <div className={cn(
@@ -17575,18 +17926,14 @@ function App() {
   const [showOfflineInfoModal, setShowOfflineInfoModal] = useState<boolean>(false);
   const [isOffline, setIsOffline] = useState<boolean>(() => typeof navigator !== "undefined" ? !navigator.onLine : false);
 
-  useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
+  // --- Real-Time Heartbeat Telemetry & State Re-hydration ---
+  const [isHeartbeatFailed, setIsHeartbeatFailed] = useState<boolean>(false);
+  const wasOffline = useRef(false);
 
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
+  // --- ESC/POS Failed Printing Queue ---
+  const [failedPrints, setFailedPrints] = useState<QueuedPrintJob[]>([]);
+  const [printingHardwareLoading, setPrintingHardwareLoading] = useState<boolean>(false);
 
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
   const [showAutoAcceptModal, setShowAutoAcceptModal] = useState<boolean>(false);
   const [soundAlerts, setSoundAlerts] = useState<boolean>(() => localStorage.getItem("soundAlerts") !== "false");
   const [soundStyle, setSoundStyle] = useState<string>(() => localStorage.getItem("soundStyle") || "modern");
@@ -17634,6 +17981,12 @@ function App() {
   }, [dataSaverMode]);
 
   const [orders, setOrders] = useState<Order[]>([]);
+
+  // --- Live Kitchen Alerter & Screen Wake Lock ---
+  const {
+    isAudioEnabled,
+    enableAudio,
+  } = useKitchenAlerter(orders);
   const [shops, setShops] = useState<Shop[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [user, setUser] = useState<User | null>(null);
@@ -18693,6 +19046,156 @@ function App() {
     fetchOrders,
   });
 
+  // --- Real-Time Connection Heartbeat & Print Queue Manager ---
+  const loadFailedPrints = useCallback(async () => {
+    const list = await getFailedPrints();
+    setFailedPrints(list);
+  }, []);
+
+  useEffect(() => {
+    loadFailedPrints();
+  }, [loadFailedPrints]);
+
+  // Handle automatic database connection re-hydration upon recovery
+  useEffect(() => {
+    const isCurrentlyOffline = isOffline || isHeartbeatFailed;
+    if (!isCurrentlyOffline && wasOffline.current) {
+      toast.success("Connection re-established! Synchronizing local cache with cloud database...", {
+        description: "Pulling any missed order events that occurred during the disconnect window.",
+        duration: 5000,
+      });
+      void fetchOrders();
+    }
+    wasOffline.current = isCurrentlyOffline;
+  }, [isOffline, isHeartbeatFailed, fetchOrders]);
+
+  // Active 30-second Supabase Connection Heartbeat Probe
+  useEffect(() => {
+    if (!user) return;
+    
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    const runHeartbeatCheck = async () => {
+      try {
+        const { error } = await supabase.from("shops").select("id").limit(1);
+        if (error) throw error;
+        setIsHeartbeatFailed(false);
+      } catch (err) {
+        console.warn("[Heartbeat] Probe failed. Database uplink dropped:", err);
+        setIsHeartbeatFailed(true);
+      }
+    };
+
+    runHeartbeatCheck();
+    intervalId = setInterval(runHeartbeatCheck, 30000);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [user, supabase]);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // --- ESC/POS Printing Actions ---
+  const handlePrintBluetoothDirect = async (order: Order) => {
+    setPrintingHardwareLoading(true);
+    try {
+      const bytes = generateReceiptBytes(order, currentShop?.name || "LocalEats Merchant", printingFormat === "58mm" ? 58 : 80);
+      await printViaBluetooth(bytes);
+      toast.success("Receipt printed successfully via Web Bluetooth!");
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error("Direct bluetooth printing failed:", err);
+      toast.error(`Web Bluetooth print failed: ${errorMsg}. Saving to local queue.`);
+      
+      // Queue failed print
+      await queueFailedPrint({
+        id: `print-${Date.now()}-${order.id}`,
+        orderId: order.id,
+        customerName: order.customer_name || "Guest",
+        createdAt: new Date().toISOString(),
+        binaryData: Array.from(generateReceiptBytes(order, currentShop?.name || "LocalEats Merchant", printingFormat === "58mm" ? 58 : 80)),
+      });
+      // Trigger reload of failed queue
+      void loadFailedPrints();
+    } finally {
+      setPrintingHardwareLoading(false);
+    }
+  };
+
+  const handlePrintUSBDirect = async (order: Order) => {
+    setPrintingHardwareLoading(true);
+    try {
+      const bytes = generateReceiptBytes(order, currentShop?.name || "LocalEats Merchant", printingFormat === "58mm" ? 58 : 80);
+      await printViaUSB(bytes);
+      toast.success("Receipt printed successfully via Web USB!");
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error("Direct USB printing failed:", err);
+      toast.error(`Web USB print failed: ${errorMsg}. Saving to local queue.`);
+      
+      // Queue failed print
+      await queueFailedPrint({
+        id: `print-${Date.now()}-${order.id}`,
+        orderId: order.id,
+        customerName: order.customer_name || "Guest",
+        createdAt: new Date().toISOString(),
+        binaryData: Array.from(generateReceiptBytes(order, currentShop?.name || "LocalEats Merchant", printingFormat === "58mm" ? 58 : 80)),
+      });
+      // Trigger reload of failed queue
+      void loadFailedPrints();
+    } finally {
+      setPrintingHardwareLoading(false);
+    }
+  };
+
+  const retryQueuedPrintDirect = async (job: QueuedPrintJob) => {
+    setPrintingHardwareLoading(true);
+    try {
+      const bytes = new Uint8Array(job.binaryData);
+      // Attempt Web Bluetooth or Web USB fallback
+      if (navigator.bluetooth) {
+        toast.info("Attempting print retry over Bluetooth...");
+        await printViaBluetooth(bytes);
+      } else {
+        toast.info("Attempting print retry over USB...");
+        await printViaUSB(bytes);
+      }
+      toast.success("Retry Print Succeeded! Removing job from queue.");
+      await deleteFailedPrint(job.id);
+      void loadFailedPrints();
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error("Failed to retry print job:", err);
+      toast.error(`Print retry failed: ${errorMsg}. Retaining in queue.`);
+    } finally {
+      setPrintingHardwareLoading(false);
+    }
+  };
+
+  const clearPrintQueue = async () => {
+    try {
+      for (const job of failedPrints) {
+        await deleteFailedPrint(job.id);
+      }
+      toast.info("Offline failed print queue cleared completely.");
+      void loadFailedPrints();
+    } catch (err) {
+      console.error("Clear queue error:", err);
+    }
+  };
+
   useEffect(() => {
     if (!autoAcceptOrders || orders.length === 0) return;
 
@@ -18979,6 +19482,90 @@ function App() {
         darkMode && "dark",
       )}
     >
+      {/* 1. Autoplay Audio & Wake Lock whitelisting entry lock screen */}
+      {!isAudioEnabled && (
+        <div className="fixed inset-0 bg-zinc-950/95 backdrop-blur-md z-[10000] flex flex-col items-center justify-center p-4 select-none">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-8 max-w-md w-full shadow-2xl text-center space-y-6">
+            <div className="mx-auto w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center text-[#FF5A36]">
+              <Volume2 size={32} className="stroke-[2.5px] animate-bounce" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="font-headline font-black text-2xl text-zinc-900 dark:text-zinc-50 tracking-tight">
+                LocalEatsSA Kitchen Dashboard
+              </h2>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Authorize high-reliability kitchen alarms, prevent screen auto-locking, and register ESC/POS direct thermal print handshakes.
+              </p>
+            </div>
+            
+            <div className="bg-zinc-50 dark:bg-zinc-950 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-900 text-left space-y-3">
+              <div className="flex gap-3 text-xs">
+                <span className="text-[#FF5A36] font-bold">●</span>
+                <p className="text-zinc-600 dark:text-zinc-300">
+                  <strong>Acoustic Siren Alerter:</strong> Plays a high-volume, dual-tone alarm pattern that halts only on manual resolution of `PENDING` orders.
+                </p>
+              </div>
+              <div className="flex gap-3 text-xs">
+                <span className="text-[#FF5A36] font-bold">●</span>
+                <p className="text-zinc-600 dark:text-zinc-300">
+                  <strong>Screen Wake Lock:</strong> Safeguards continuous screen illumination during busy, high-noise kitchen shifts.
+                </p>
+              </div>
+              <div className="flex gap-3 text-xs">
+                <span className="text-[#FF5A36] font-bold">●</span>
+                <p className="text-zinc-600 dark:text-zinc-300">
+                  <strong>Direct Printers Interface:</strong> Streams byte-aligned ESC/POS receipts directly over Web Bluetooth and Web USB with IndexedDB queueing.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={enableAudio}
+              className="w-full py-4 bg-[#FF5A36] hover:bg-[#e04f2f] text-white font-bold rounded-2xl tracking-wider uppercase text-xs shadow-xl shadow-orange-500/10 transition-all duration-200 cursor-pointer active:scale-95"
+            >
+              Go Online & Initialize Dashboard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Absolute Non-Dismissible Real-Time Connection Lost Overlay */}
+      {(isOffline || isHeartbeatFailed) && (
+        <div className="fixed inset-0 bg-red-950/95 backdrop-blur-md z-[9999] flex flex-col items-center justify-center p-4 select-none">
+          <div className="bg-white dark:bg-zinc-900 border border-red-500/30 rounded-3xl p-8 max-w-md w-full shadow-2xl text-center space-y-6">
+            <div className="mx-auto w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center text-red-500">
+              <WifiOff size={32} className="stroke-[2.5px] animate-pulse" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="font-headline font-black text-xl text-zinc-900 dark:text-zinc-50 tracking-tight">
+                Database Connection Lost!
+              </h2>
+              <p className="text-xs text-red-600 dark:text-red-400 font-bold uppercase tracking-wider animate-pulse">
+                You are not receiving incoming orders!
+              </p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed pt-1">
+                Your tablet has lost connection to the Supabase network. LocalEats is running diagnosis sweeps and trying to re-hydrate the sync channel.
+              </p>
+            </div>
+
+            <div className="bg-red-50 dark:bg-red-950/30 p-4 rounded-2xl border border-red-100 dark:border-red-950 text-left space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-zinc-500">Uplink Status:</span>
+                <span className="font-mono text-red-500 font-black animate-pulse">RECONNECTING...</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-zinc-500">Local Cache:</span>
+                <span className="font-mono text-emerald-500 font-bold uppercase">Secured & Active</span>
+              </div>
+            </div>
+
+            <div className="text-[10px] text-zinc-400">
+              Your kitchen's active orders remain safe in memory. Orders will re-hydrate automatically as soon as South African cellular networks or Wi-Fi reconnects.
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmModal
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}
@@ -19494,6 +20081,12 @@ function App() {
                   currentShop={currentShop}
                   printingFormat={printingFormat}
                   setPrintingFormat={setPrintingFormat}
+                  failedPrints={failedPrints}
+                  printingHardwareLoading={printingHardwareLoading}
+                  handlePrintBluetoothDirect={handlePrintBluetoothDirect}
+                  handlePrintUSBDirect={handlePrintUSBDirect}
+                  retryQueuedPrintDirect={retryQueuedPrintDirect}
+                  clearPrintQueue={clearPrintQueue}
                 />
               )}
             </React.Suspense>
