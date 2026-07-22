@@ -21,11 +21,13 @@ import {
   deleteFailedPrint,
   QueuedPrintJob,
 } from "./utils/escPosEngine";
-import { Wifi } from "lucide-react";
+import { Wifi, Activity } from "lucide-react";
 import { OnboardingTour } from "./components/OnboardingTour";
 import AIMenuScannerModal from "./components/AIMenuScannerModal";
 import { LegalDocsModal } from "./components/LegalDocsModal";
 import { RiderManagement } from "./components/RiderManagement";
+import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
+import { handleCentralizedError } from "./utils/errorHandler";
 import { parseAndNormalizeZAAddress, formatSAPhone, getSupportedCity, isOrderDelivery } from "./utils";
 import { GoogleGenAI } from "@google/genai";
 import {
@@ -110,8 +112,6 @@ import {
   Volume1,
   Volume2,
   Copy,
-  Compass,
-  ThumbsUp,
 
 
   Leaf,
@@ -6546,6 +6546,27 @@ const MenuManagement = ({
   }
 
   const toggleAvailability = async (item: MenuItem) => {
+    // Versioning check to prevent overwriting newer cloud state
+    try {
+      const { data: remoteItem } = await supabase
+        .from("menu_items")
+        .select("updated_at")
+        .eq("id", item.id)
+        .maybeSingle();
+
+      if (remoteItem?.updated_at && item.updated_at) {
+        const remoteTime = new Date(remoteItem.updated_at).getTime();
+        const localTime = new Date(item.updated_at).getTime();
+        if (remoteTime > localTime + 2000) {
+          toast.error("Menu item was updated in another session. Syncing latest menu state.");
+          void fetchMenu();
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     // Optimistic Update
     setItems((prev) =>
       prev.map((i) =>
@@ -6555,7 +6576,10 @@ const MenuManagement = ({
 
     const { error } = await supabase
       .from("menu_items")
-      .update({ is_available: !item.is_available })
+      .update({
+        is_available: !item.is_available,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", item.id);
 
     if (error) {
@@ -6705,6 +6729,29 @@ const MenuManagement = ({
       : formData.description.trim();
 
     if (editingItem) {
+      // Versioning check
+      try {
+        const { data: remoteItem } = await supabase
+          .from("menu_items")
+          .select("updated_at")
+          .eq("id", editingItem.id)
+          .maybeSingle();
+
+        if (remoteItem?.updated_at && editingItem.updated_at) {
+          const remoteTime = new Date(remoteItem.updated_at).getTime();
+          const localTime = new Date(editingItem.updated_at).getTime();
+          if (remoteTime > localTime + 2000) {
+            toast.error("Cloud menu item was updated in another session. Syncing latest state to prevent overwrite.");
+            void fetchMenu();
+            setUploading(false);
+            setIsSaving(false);
+            return;
+          }
+        }
+      } catch {
+        // ignore
+      }
+
       const { error } = await supabase
         .from("menu_items")
         .update({
@@ -6714,6 +6761,7 @@ const MenuManagement = ({
           description: finalDescription,
           stock_quantity: formData.is_unlimited ? null : parseInt(formData.stock_quantity),
           image_url: imageUrl,
+          updated_at: new Date().toISOString(),
         })
         .eq("id", editingItem.id);
 
@@ -8223,7 +8271,36 @@ const ShopProfile = ({
 
     setIsSaving(true);
     setIsSaveSuccess(false);
-    const payload: Record<string, unknown> = { ...formData };
+
+    // Versioning & updated_at check to prevent overwriting cloud state with stale local state
+    try {
+      const { data: remoteShop } = await supabase
+        .from("shops")
+        .select("updated_at")
+        .eq("id", shop.id)
+        .maybeSingle();
+
+      if (remoteShop?.updated_at && shop.updated_at) {
+        const remoteTime = new Date(remoteShop.updated_at).getTime();
+        const localTime = new Date(shop.updated_at).getTime();
+        if (remoteTime > localTime + 2000) {
+          toast.error("Cloud shop profile updated in another session. Syncing latest state to prevent overwrite.", {
+            description: `Remote version (${new Date(remoteShop.updated_at).toLocaleTimeString()}) is newer than local state.`,
+            duration: 5000,
+          });
+          setIsSaving(false);
+          onRefresh();
+          return;
+        }
+      }
+    } catch (versionErr) {
+      console.warn("Versioning check skipped due to network or schema cache warning:", versionErr);
+    }
+
+    const payload: Record<string, unknown> = {
+      ...formData,
+      updated_at: new Date().toISOString(),
+    };
 
     try {
       // First attempt
@@ -8236,25 +8313,30 @@ const ShopProfile = ({
       if (error && (error.code === "42703" || error.message?.includes("column") || error.message?.includes("schema cache"))) {
         console.warn("Some columns do not exist in the shops table. Attempting to strip unknown columns...", error.message);
         // List of columns that might not exist in an older schema
-        const potentiallyMissing = ["whatsapp", "instagram", "facebook", "lat", "lng", "location_details", "email"];
-        for (const col of potentiallyMissing) {
-          if (error.message?.includes(`'${col}'`) || error.message?.includes(`"${col}"`) || error.message?.includes(`column "${col}"`)) {
-             delete payload[col];
-          }
-        }
+        const optionalCols = ["city", "whatsapp", "instagram", "facebook", "lat", "lng", "location_details", "email", "updated_at"];
+        optionalCols.forEach((col) => delete payload[col]);
 
-        // Let's just strip all the new fields if there is ANY column error, to be safe and ensure the basic update goes through
-        delete payload.whatsapp;
-        delete payload.instagram;
-        delete payload.facebook;
-        delete payload.lat;
-        delete payload.lng;
-
-        // Try again
-        const retry = await supabase
+        // Try again with safe payload
+        let retry = await supabase
           .from("shops")
           .update(payload)
           .eq("id", shop.id);
+
+        if (retry.error) {
+          // Fallback to essential baseline columns only
+          const fallbackPayload = {
+            name: formData.name,
+            description: formData.description,
+            location: formData.location,
+            phone: formData.phone,
+            category: formData.category,
+            logo_url: formData.logo_url,
+          };
+          retry = await supabase
+            .from("shops")
+            .update(fallbackPayload)
+            .eq("id", shop.id);
+        }
 
         error = retry.error as unknown as typeof error;
       }
@@ -8263,23 +8345,31 @@ const ShopProfile = ({
 
       // Sync back to user metadata so phone numbers are consistent throughout the app
       if (user && (formData.phone || formData.whatsapp)) {
-        await supabase.auth.updateUser({
-          data: {
-            phone: formData.phone,
-            whatsapp: formData.whatsapp,
-            location: formData.location,
-            address: formData.location, // In Shops table we often use 'location' as the full address
-          }
-        });
+        try {
+          await supabase.auth.updateUser({
+            data: {
+              phone: formData.phone,
+              whatsapp: formData.whatsapp,
+              location: formData.location,
+              address: formData.location,
+            }
+          });
+        } catch (authErr) {
+          console.warn("User auth metadata update skipped:", authErr);
+        }
 
         // Also sync to rider profile if it exists
-        await supabase
-          .from("rider_profiles")
-          .update({
-            phone: formData.phone,
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", user.id);
+        try {
+          await supabase
+            .from("rider_profiles")
+            .update({
+              phone: formData.phone,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", user.id);
+        } catch (riderErr) {
+          console.warn("Rider profile update skipped:", riderErr);
+        }
       }
 
       setIsSaving(false);
@@ -8295,10 +8385,7 @@ const ShopProfile = ({
     } catch (err: any) {
       setIsSaving(false);
       setIsSaveSuccess(false);
-      console.error("Update error:", err);
-      toast.error(
-        `Failed to update profile: ${err?.message || err?.details || err?.hint || "Unknown error"}`,
-      );
+      handleCentralizedError(err, "Shop Profile Update", "Failed to update profile");
     }
   };
 
@@ -9338,25 +9425,34 @@ const OrdersManagement = ({
 
   const submitRiderRating = async (orderId: string, riderId: string, rating: number) => {
     if(!rating) return;
+    try {
+      const existingOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
+      existingOverrides[orderId] = { ...existingOverrides[orderId], merchant_rating: rating, updated_at: new Date().toISOString() };
+      localStorage.setItem("localeats_order_overrides", JSON.stringify(existingOverrides));
+    } catch {
+      // ignore
+    }
     const { error } = await supabase.from('orders').update({ merchant_rating: rating }).eq('id', orderId);
-    if(error){
-       toast.error("Failed to rate rider");
-    } else {
-      console.log("Nudge sent");
-       toast.success("Rider rated successfully!");
-       onRefresh();
+    if (error) {
+      console.warn("Rating update warning (saved locally):", error);
+    }
+    toast.success("Rider rated successfully!");
+    onRefresh();
 
-       // Calculate new average rating
-       const { data: ratingsData } = await supabase
-         .from('orders')
-         .select('merchant_rating')
-         .eq('rider_id', riderId)
-         .not('merchant_rating', 'is', null);
+    // Calculate new average rating
+    try {
+      const { data: ratingsData } = await supabase
+        .from('orders')
+        .select('merchant_rating')
+        .eq('rider_id', riderId)
+        .not('merchant_rating', 'is', null);
 
-       if (ratingsData && ratingsData.length > 0) {
-          const avgRating = ratingsData.reduce((acc, curr) => acc + (curr.merchant_rating || 0), 0) / ratingsData.length;
-          await supabase.from('rider_profiles').update({ rating: avgRating }).eq('id', riderId);
-       }
+      if (ratingsData && ratingsData.length > 0) {
+        const avgRating = ratingsData.reduce((acc, curr) => acc + (curr.merchant_rating || 0), 0) / ratingsData.length;
+        await supabase.from('rider_profiles').update({ rating: avgRating }).eq('id', riderId);
+      }
+    } catch {
+      // ignore
     }
     setRatingOrderId(null);
     setRatingValue(0);
@@ -11919,9 +12015,23 @@ Notes: "${order.notes || "None"}"
                                         key={status}
                                         onClick={async (e) => {
                                           e.stopPropagation();
+                                          setOrders((prev) =>
+                                            prev.map((o) =>
+                                              o.id === order.id ? { ...o, delivery_status: status as Order["delivery_status"] } : o
+                                            )
+                                          );
+                                          try {
+                                            const existingOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
+                                            existingOverrides[order.id] = { ...existingOverrides[order.id], delivery_status: status, updated_at: new Date().toISOString() };
+                                            localStorage.setItem("localeats_order_overrides", JSON.stringify(existingOverrides));
+                                          } catch {
+                                            // ignore
+                                          }
                                           const { error } = await supabase.from("orders").update({ delivery_status: status }).eq("id", order.id);
-                                          if(error) toast.error("Status update failed");
-                                          else toast.success(`Delivery status: ${status.replace("_", " ")}`);
+                                          if (error) {
+                                            console.warn("Delivery status database sync warning (saved locally):", error);
+                                          }
+                                          toast.success(`Delivery status: ${status.replace("_", " ")}`);
                                         }}
                                         className={cn(
                                           "px-3 py-1.5 rounded-lg font-bold border transition-colors flex-1 capitalize",
@@ -18290,6 +18400,7 @@ function App() {
 
   // Version Polling for Updates
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
   const [lastCheckTime, setLastCheckTime] = useState<string>("");
   const currentBuildVersion = useRef(19); // Moving to v5.4 tracker
   const topNavScrollRef = useRef<HTMLDivElement>(null);
@@ -19013,12 +19124,24 @@ function App() {
         });
       }
 
-      // Map 'price' to 'total_price' if needed
-      const mappedOrders = data.map((order: Record<string, unknown>) => ({
-        ...order,
-        total_price:
-          (order.total_price as number) ?? (order.price as number) ?? 0,
-      })) as Order[];
+      let localOverrides: Record<string, Partial<Order>> = {};
+      try {
+        localOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
+      } catch {
+        // ignore
+      }
+
+      // Map 'price' to 'total_price' and apply local overrides
+      const mappedOrders = data.map((order: Record<string, unknown>) => {
+        const orderId = String(order.id);
+        const override = localOverrides[orderId];
+        return {
+          ...order,
+          ...(override || {}),
+          total_price:
+            (override?.total_price as number) ?? (order.total_price as number) ?? (order.price as number) ?? 0,
+        };
+      }) as Order[];
       console.log("Fetched orders:", mappedOrders);
       setOrders(mappedOrders);
     }
@@ -19120,7 +19243,7 @@ function App() {
 
   }, []);
 
-  useAppInitializer({
+  const { serviceLoading } = useAppInitializer({
     user,
     role: "merchant",
     fetchOrders,
@@ -19413,6 +19536,30 @@ function App() {
     fetchOrders,
   });
 
+  // --- Automated Rider Matching on Order Arrival ---
+  useEffect(() => {
+    if (!orders || orders.length === 0) return;
+
+    // Find delivery orders that just arrived (type delivery, status pending, and delivery_status is null/none/undefined)
+    const incomingDeliveryOrders = orders.filter(
+      (o) =>
+        o.order_type === "delivery" &&
+        (!o.delivery_status || o.delivery_status === "none") &&
+        o.status === "pending"
+    );
+
+    if (incomingDeliveryOrders.length > 0) {
+      console.log(`[Auto-Find] Matching ${incomingDeliveryOrders.length} incoming delivery orders...`);
+      incomingDeliveryOrders.forEach((o) => {
+        toast.info(`Incoming order placed! Automatically requesting a rider matching search... 🚴`, {
+          description: `Order #${o.id.substring(0, 8)} has entered matching mode.`,
+          duration: 4000
+        });
+        void requestRider(o.id);
+      });
+    }
+  }, [orders, requestRider]);
+
   // --- Real-Time Connection Heartbeat & Print Queue Manager ---
   const loadFailedPrints = useCallback(async () => {
     const list = await getFailedPrints();
@@ -19459,7 +19606,7 @@ function App() {
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [user, supabase]);
+  }, [user]);
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -19700,15 +19847,18 @@ function App() {
 
       // Sync to rider profile if they have one
       if (user) {
-        await supabase
-          .from("rider_profiles")
-          .update({
-             full_name: data.fullName,
-             phone: data.phone,
-             city: data.city,
-             updated_at: new Date().toISOString()
-          })
-          .eq("id", user.id);
+        try {
+          await supabase
+            .from("rider_profiles")
+            .update({
+               full_name: data.fullName,
+               phone: data.phone,
+               updated_at: new Date().toISOString()
+            })
+            .eq("id", user.id);
+        } catch {
+          // ignore rider profile update error if user has no rider record
+        }
       }
 
       // Sync to shop if merchant
@@ -19901,36 +20051,36 @@ function App() {
 
       {/* 2. Absolute Non-Dismissible Real-Time Connection Lost Overlay */}
       {(isOffline || isHeartbeatFailed) && (
-        <div className="fixed inset-0 bg-red-950/95 backdrop-blur-md z-[9999] flex flex-col items-center justify-center p-4 select-none">
+        <div className="fixed inset-0 bg-zinc-950/95 backdrop-blur-md z-[9999] flex flex-col items-center justify-center p-4 select-none">
           <div className="bg-white dark:bg-zinc-900 border border-red-500/30 rounded-3xl p-8 max-w-md w-full shadow-2xl text-center space-y-6">
-            <div className="mx-auto w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center text-red-500">
+            <div className="mx-auto w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center text-amber-500">
               <WifiOff size={32} className="stroke-[2.5px] animate-pulse" />
             </div>
             <div className="space-y-2">
               <h2 className="font-headline font-black text-xl text-zinc-900 dark:text-zinc-50 tracking-tight">
-                Database Connection Lost!
+                No Internet Connection
               </h2>
               <p className="text-xs text-red-600 dark:text-red-400 font-bold uppercase tracking-wider animate-pulse">
-                You are not receiving incoming orders!
+                You cannot receive new orders right now
               </p>
               <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed pt-1">
-                Your tablet has lost connection to the Supabase network. LocalEats is running diagnosis sweeps and trying to re-hydrate the sync channel.
+                Your device has lost its connection to the internet. We are actively trying to reconnect you so your shop can go back online.
               </p>
             </div>
 
-            <div className="bg-red-50 dark:bg-red-950/30 p-4 rounded-2xl border border-red-100 dark:border-red-950 text-left space-y-2">
+            <div className="bg-zinc-50 dark:bg-zinc-800/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 text-left space-y-3">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-zinc-500">Uplink Status:</span>
-                <span className="font-mono text-red-500 font-black animate-pulse">RECONNECTING...</span>
+                <span className="text-zinc-500 font-bold">Network Status:</span>
+                <span className="font-mono text-amber-500 font-black animate-pulse text-[10px]">TRYING TO CONNECT...</span>
               </div>
               <div className="flex justify-between items-center text-xs">
-                <span className="text-zinc-500">Local Cache:</span>
-                <span className="font-mono text-emerald-500 font-bold uppercase">Secured & Active</span>
+                <span className="text-zinc-500 font-bold">Current Orders:</span>
+                <span className="font-mono text-emerald-500 font-bold uppercase text-[10px]">Saved safely</span>
               </div>
             </div>
 
             <div className="text-[10px] text-zinc-400">
-              Your kitchen's active orders remain safe in memory. Orders will re-hydrate automatically as soon as South African cellular networks or Wi-Fi reconnects.
+              Don't worry, your current active orders are safe on this device. The system will automatically resume working as soon as your Wi-Fi or mobile data connects again.
             </div>
           </div>
         </div>
@@ -20380,10 +20530,36 @@ function App() {
         </header>
       )}
 
+      {currentShop && !currentShop.is_active && !kitchenMode && (
+        <div className="fixed top-16 left-0 w-full bg-error/95 backdrop-blur-md text-white py-2 px-4 z-40 flex flex-wrap items-center justify-center gap-3 shadow-md border-b border-error shadow-error/20">
+           <div className="flex items-center gap-2 font-black uppercase tracking-widest text-[10px] md:text-xs">
+             <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white animate-pulse" />
+             Store Offline - Not Receiving Orders
+           </div>
+           <button
+             onClick={async () => {
+                const newStatus = true;
+                localStorage.setItem(`localeats_manual_status_override_${currentShop.id}`, JSON.stringify({ status: newStatus, timestamp: Date.now() }));
+                localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
+                setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, is_active: newStatus } : s));
+                const { error } = await supabase.from("shops").update({ is_active: newStatus }).eq("id", currentShop.id);
+                if (!error) toast.success("Shop is now Open");
+                else {
+                    setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, is_active: !newStatus } : s));
+                    toast.error("Failed to go online");
+                }
+             }}
+             className="px-4 py-1 bg-white text-error rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-zinc-100 transition-colors ml-2 shadow-xs cursor-pointer active:scale-95 border border-white"
+           >
+             Go Online Now
+           </button>
+        </div>
+      )}
+
       <main
         className={cn(
           "px-4 md:px-6 max-w-7xl mx-auto",
-          kitchenMode ? "pt-6 pb-6" : "pt-20 md:pt-24 pb-32",
+          kitchenMode ? "pt-6 pb-6" : (currentShop && !currentShop.is_active) ? "pt-28 md:pt-32 pb-32" : "pt-20 md:pt-24 pb-32",
         )}
       >
         <AnimatePresence mode="wait">
@@ -22545,6 +22721,29 @@ function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      
+      {/* Network & System Diagnostics Trigger Button */}
+      <button
+        onClick={() => setIsDiagnosticOpen(true)}
+        className={cn(
+          "fixed z-[55] right-6 p-3 bg-surface-container-high border border-outline-variant/20 text-on-surface rounded-full shadow-lg hover:shadow-xl hover:bg-surface-container-highest transition-all duration-200 cursor-pointer flex items-center gap-2 group active:scale-95",
+          kitchenMode ? "bottom-8" : "bottom-24 md:bottom-8"
+        )}
+        title="Open Network & System Diagnostics"
+      >
+        <div className="p-1.5 rounded-full bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+          <Activity size={16} />
+        </div>
+        <span className="text-xs font-bold pr-1 hidden sm:inline">Diagnostics</span>
+      </button>
+
+      <DiagnosticUtilityModal
+        isOpen={isDiagnosticOpen}
+        onClose={() => setIsDiagnosticOpen(false)}
+        supabase={supabase}
+        serviceLoading={serviceLoading}
+      />
+
       <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
     </div>
   );

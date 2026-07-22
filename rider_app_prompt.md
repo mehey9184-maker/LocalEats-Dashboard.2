@@ -1,100 +1,266 @@
-# LocalEats Rider App - Update Prompt
+# LocalEats Rider App — Integration Guide & Prompt
 
-Use this prompt to update the existing Rider/Courier application in AI Studio.
-
----
-
-**Project Name:** LocalEats Rider (applies to rider.localeatssa.co.za)
-**Context:** I already have an existing web application built. I am NOT starting from scratch. I need to integrate new dynamic features that sync with the merchant courier configurations.
-
-## 🚀 The Mission
-Update my existing Rider app to respect the merchant's `allow_external_riders` and `auto_look_for_rider` settings, and display trust banners based on `cash_trust_enabled`.
-
-## 🛠 Tech Stack
-- **Framework:** React 18+ (Vite)
-- **Styling:** Tailwind CSS (Dark Mode by default)
-- **Database:** Supabase (PostgreSQL + Realtime)
-- **Maps:** `leaflet`, `react-leaflet`, `leaflet-routing-machine`
-- **Icons:** `lucide-react`
-- **Animations:** `motion/react`
-
-## 📊 Database Schema (Supabase)
-The app will interact with an existing `orders` table:
-- `id`: uuid/text (Primary Key)
-- `delivery_status`: text ('finding_rider', 'accepted', 'picked_up', 'delivered')
-- `rider_id`: uuid (The ID of the rider)
-- `restaurant_name`, `customer_name`, `address`, `city`, `delivery_fee`
-
-## ✨ Core Features & "Uber" UI Specs
-
-### 1. The "Uber Driver" HUD (Layout)
-- **Primary Tabs (Bottom Nav):** 
-  - **HUD:** High-level performance dashboard (Yield R5.00, Daily Units, Active Pts).
-  - **FEED:** Real-time mission feed scans.
-  - **MOVE (The Navigation Hub):** This is where the map lives. **Constraint:** Wrap the Map component in a conditional: `{activeTab === 'MOVE' && <NavigationMap ... />}`. This ensures the map only renders and tracks when needed.
-  - **LOG:** Transaction history.
-  - **HUB:** Settings and Pairing.
-- **Visuals:** Use a bottom navigation bar with icons (`Smartphone`, `List`, `Navigation`, `BarChart3`, `User`). 
-
-### 4. Mission Protocol & UI
-- **Mission Pulse Card:** When an order is pending, show a floating card at the top of the HUD:
-  - Header: "DROP-OFF PROTOCOL" (Neon Green text).
-  - Subtitle: "TEST SIGNAL" (Bold headline).
-  - Stats: "ETA 931M", "1424.9KM" (Orange/Yellow accents).
-  - Animate in with a 'Pulse' effect.
-- **Map Interaction:** In 'MOVE' tab, show a large "Turn Left" (or next instruction) button floating on the left side of the map.
-
-### 2. Geolocation & Map Tracking (Hardened)
-- **Persistence:** Use `navigator.geolocation.watchPosition` with `{ enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }`.
-- **Graceful Failures:** If geolocation fails, log the full error: `console.error("Geolocation error:", { code: error.code, message: error.message })`. Show a "GPS SIGNAL LOST" overlay.
-- **Permissions:** Ensure `metadata.json` has `requestFramePermissions: ["geolocation"]`.
-
-### 3. Integrated Navigation & Error Handling (CRITICAL FIXES)
-- **Routing:** Use `leaflet-routing-machine` with `react-leaflet`.
-- **Fix "Failed to fetch" (OSRM & Supabase):** 
-  - This error occurs when the OSRM demo server is down or if Supabase requests are blocked by the iframe.
-  - **Logic:** Implement a `try...catch` for ALL Supabase calls and the `fetch` in the routing component.
-  - **Routing Fallback:** Add a `routingerror` listener. If routing fails, draw a `Polyline` between waypoints as a fallback so the app doesn't crash.
-- **Fix `removeLayer` Errors:** 
-  - This occurs during React's lifecycle cleanup. 
-  - **Rule:** Use a `Ref` for the `Routing.control`. In the `useEffect` cleanup: `if (instanceRef.current) { try { map.removeControl(instanceRef.current); } catch (err) { console.error("Safe cleanup:", err); } instanceRef.current = null; }`.
-- **OSRM Warning Fix:** In `L.Routing.control` options, set `show: false`, `addWaypoints: false`, and `draggableWaypoints: false`. Silence the console warnings by not using the default OSRM control panel; build your own HUD from the `routesfound` event data.
-
-### 4. Preview Environment Robustness
-- **Failed to fetch (Auth/Profiles):** When fetching user profiles or auth state, if `TypeError: Failed to fetch` is caught, implement a simple retry mechanism (e.g., 3 retries with 1s delay) before showing a "Connection Error" screen. This is essential for the AI Studio preview environment.
-- **Geolocation error `{}`:** If `navigator.geolocation` returns an empty error object, it usually means permissions were denied or the frame is blocked. Show a "PERMISSION REQUIRED" UI element instead of just a generic error toast.
-
-### 4. Mission Protocol
-- **Radar Scan:** When online but idle, show a pulsing radar overlay on the map.
-- **Mission Pulse:** When an order is detected (`delivery_status === 'finding_rider'`), the bottom sheet should pop up with a "BEEP" sound (simulated with toast/visual).
-- **Accepted State:** The map zooms to show the route from Rider -> Merchant.
-- **Picked Up State:** The map zooms to show the route from Rider -> Customer.
-
-### 5. Pairing Protocol (24h Pass)
-- Input 6-digit merchant codes.
-- Connections expire in 24 hours (countdown in sidebar/top bar).
-
-## 📡 Integration with Storefront Courier Configuration (CRITICAL ALIGNMENT)
-The Rider app MUST coordinate with settings defined by standard merchants in their dashboards:
-1. **Rider Access Rules (`allow_external_riders` in `shops` table):**
-   - **If `false`:** Only riders with a valid active 24-hour linkage (matching `shop_id` in `rider_connections`) are authorized to see or pull orders from this merchant. The app MUST hide these missions from public feeds for unlinked riders.
-   - **If `true`:** ANY active/online rider in the region is authorized to view and accept these missions from the public "FEED".
-2. **Auto-Broadcast Rule (`auto_look_for_rider` in `shops` table):**
-   - When a merchant has no active/linked drivers, the order's `delivery_status` triggers to `finding_rider` and instantly broadcasts to the pool. When this occurs, show an "AUTO-DISPATCH SIGNAL" tag on the client card.
-3. **Verified Trade Trust (`cash_trust_enabled` in `shops` table):**
-   - When carrying cash on arrival orders for stores where `cash_trust_enabled === true`, render a **"TRUSTED LOCAL PARTNER"** banner in green on the active rider screen. This notifies the driver that the customer has verified security clearing for cash handovers.
-
-## 🎨 Visual Direction
-- **Style:** Extreme Brutalism / Cyberpunk.
-- **Colors:** Deep Black (`#050505`), Neon Green (`#39FF14`), Electric Blue, and Warning Orange.
-- **Glassmorphism:** Use `backdrop-blur-xl` and `bg-white/5` for all UI elements over the map.
-- **Buttons:** Large, pill-shaped, high-contrast touch targets.
-
-## 📜 Error Handling
-- Catch "Missing or insufficient permissions" from Supabase.
-- If a rider accepts an order already taken, show "SIGNAL HIJACKED - MISSION NO LONGER AVAILABLE".
+Use this file to update the Rider/Courier application. It contains a copy-pasteable LLM prompt, a standard React component template, and Supabase interaction snippets to synchronize with the new automatic matching system.
 
 ---
 
-**Initial Action:** 
-"Please integrate the Storefront Courier Configuration logic into my existing React components. Review my current code and let me know where we need to query `allow_external_riders`, `auto_look_for_rider`, and `cash_trust_enabled`."
+## 📋 1. Copy-Paste LLM Prompt (Mission Feed & Accept Flow)
+
+Copy and paste this entire prompt directly into the AI Studio agent representing the **Rider/Courier App**:
+
+```text
+Update the Rider delivery mission feed and accept protocol to support the dynamic merchant routing system:
+
+1. REAL-TIME MISSION FEED QUERY (CRITICAL MATCHING RULE):
+   - Query available delivery orders where "delivery_status" is equal to 'finding_rider' AND "rider_id" is null, empty, or 'null'.
+   - BUT, enforce the Merchant Fleet Filter:
+     - Allow the rider to see the order IF the associated shop has "allow_external_riders" set to true (external fleet).
+     - OR, allow the rider to see the order if they are linked to the shop (i.e. they have an active record inside the "rider_connections" table matching the order's shop_id and the current rider's auth ID).
+     - Filter out any other orders.
+
+2. MISSION CARDS WITH BRAND SIGNALING:
+   - If "cash_trust_enabled" is true on the merchant shop, render a "TRUSTED LOCAL PARTNER" badge in warning orange or neon green. This alerts the courier that cash-on-arrival handling is verified and safe.
+   - If "allow_external_riders" is true, show a "📡 Public Fleet" tag. If false, show a "🔒 Private Contract" tag.
+
+3. OPTIMISTIC MUTUAL HANDSHAKE ON ACCEPT:
+   - When a rider clicks "ACCEPT DELIVERY MISSION":
+     - Update the order in Supabase: Set "rider_id" to the logged-in rider's auth.uid(), update "rider_name", "rider_phone", set "delivery_status" to 'accepted', and set the order's main "status" to 'preparing'!
+     - Doing this automatically boots the merchant app kitchen into active cooking state immediately, minimizing courier wait times at the shop!
+     - If the write fails because another rider already updated it, show a clear brutalist warning toast: "SIGNAL HIJACKED - MISSION TAKEN BY ANOTHER COURIER!" and instantly wipe it from the screen.
+```
+
+---
+
+## 🎨 2. Standard React Component Template (`RiderMissionCard.tsx`)
+
+This cyberpunk-themed, high-contrast React component demonstrates how to handle the courier-facing active list with standard Tailwind CSS and Lucide Icons.
+
+```tsx
+import React, { useState } from "react";
+import { Bike, ShieldAlert, Zap, Compass, CheckCircle2 } from "lucide-react";
+
+interface Mission {
+  id: string;
+  shop_id: string | number;
+  restaurant_name: string;
+  address: string;
+  delivery_fee: number;
+  price: number;
+  payment_method: string;
+}
+
+interface ShopMetadata {
+  id: string | number;
+  cash_trust_enabled: boolean;
+  allow_external_riders: boolean;
+}
+
+interface RiderMissionCardProps {
+  mission: Mission;
+  shopMeta: ShopMetadata;
+  onAccept: (missionId: string) => Promise<boolean>;
+}
+
+export const RiderMissionCard: React.FC<RiderMissionCardProps> = ({
+  mission,
+  shopMeta,
+  onAccept,
+}) => {
+  const [isAccepting, setIsAccepting] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
+
+  const handleAccept = async () => {
+    setIsAccepting(true);
+    setErrorText(null);
+    try {
+      const success = await onAccept(mission.id);
+      if (!success) {
+        setErrorText("SIGNAL HIJACKED - MISSION NO LONGER AVAILABLE");
+      }
+    } catch {
+      setErrorText("TRANSMISSION ERROR - PLEASE TRY AGAIN");
+    } finally {
+      setIsAccepting(false);
+    }
+  };
+
+  return (
+    <div className="w-full bg-[#0d0d0d] border-2 border-zinc-800 rounded-3xl p-5 font-sans space-y-4 shadow-lg text-white hover:border-[#39FF14]/30 transition-all duration-300">
+      
+      {/* Top Banner Row */}
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest bg-zinc-900 border border-zinc-800 px-3 py-1 rounded-full text-zinc-400">
+          <Zap size={10} className="text-[#39FF14]" />
+          Unassigned Mission
+        </span>
+        <span className="text-sm font-black text-[#39FF14] tracking-tight">
+          +R {mission.delivery_fee.toFixed(2)}
+        </span>
+      </div>
+
+      {/* Main Details */}
+      <div className="space-y-1.5">
+        <h4 className="text-lg font-black tracking-tight text-zinc-100">
+          {mission.restaurant_name}
+        </h4>
+        <p className="text-xs text-zinc-400 font-medium leading-relaxed flex items-center gap-1.5">
+          <Compass size={14} className="text-zinc-500" />
+          {mission.address}
+        </p>
+      </div>
+
+      {/* Sub-Badges Row */}
+      <div className="flex flex-wrap gap-2 pt-1">
+        {/* Public Fleet status banner */}
+        {shopMeta.allow_external_riders ? (
+          <span className="text-[9px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded">
+            📡 Public Fleet
+          </span>
+        ) : (
+          <span className="text-[9px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded">
+            🔒 Private Contract
+          </span>
+        )}
+
+        {/* Trusted local partner - Cash Safety indicator */}
+        {shopMeta.cash_trust_enabled && (
+          <span className="text-[9px] font-bold uppercase tracking-wider bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2 py-0.5 rounded flex items-center gap-1">
+            ⚡ Trusted Local Partner
+          </span>
+        )}
+      </div>
+
+      {/* Cash Warning Panel */}
+      {mission.payment_method === "Cash" && (
+        <div className="p-3 bg-orange-500/5 border border-orange-500/20 rounded-xl text-[10px] font-medium text-orange-400/90 leading-relaxed">
+          ⚠️ Collect **R {(mission.price + mission.delivery_fee).toFixed(2)}** in cash directly from client on hand-over. Handshake limits apply.
+        </div>
+      )}
+
+      {/* Error / Hijacked notification */}
+      {errorText && (
+        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex gap-2 items-center text-[10px] text-red-400 font-bold tracking-tight animate-bounce">
+          <ShieldAlert size={14} className="shrink-0" />
+          <span>{errorText}</span>
+        </div>
+      )}
+
+      {/* Accept Button */}
+      <button
+        onClick={handleAccept}
+        disabled={isAccepting || !!errorText}
+        className="w-full bg-[#39FF14] hover:bg-[#32e011] text-black font-black uppercase text-xs tracking-widest py-3 px-4 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(57,255,20,0.15)] active:scale-95 disabled:opacity-40 disabled:pointer-events-none"
+      >
+        {isAccepting ? (
+          <div className="w-4.5 h-4.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <>
+            <CheckCircle2 size={15} />
+            Accept Delivery Mission
+          </>
+        )}
+      </button>
+
+    </div>
+  );
+};
+```
+
+---
+
+## 🗄️ 3. Supabase Interaction Snippets (Rider App)
+
+Use this TypeScript snippet inside your Rider/Courier dashboard hooks to fetch open missions and bind real-time acceptance transactions with optimistic lock protection:
+
+```typescript
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient("YOUR_SUPABASE_URL", "YOUR_SUPABASE_ANON_KEY");
+
+/**
+ * 1. Query available unassigned missions matching multi-tiered rules.
+ * This should feed the Rider Feed list.
+ */
+export async function queryAvailableMissions(riderId: string) {
+  try {
+    // We select orders needing riders
+    const { data: orders, error } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        shops (
+          cash_trust_enabled,
+          allow_external_riders
+        )
+      `)
+      .eq("delivery_status", "finding_rider")
+      .or("rider_id.is.null,rider_id.eq.,rider_id.eq.null")
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    if (!orders) return [];
+
+    // Filter list client-side to enforce rider-connections rule in case PostgreSQL RLS is sleeping
+    // Get rider's shop connection records
+    const { data: connections } = await supabase
+      .from("rider_connections")
+      .select("shop_id")
+      .eq("rider_id", riderId);
+
+    const connectedShopIds = new Set(connections?.map((c) => c.shop_id) || []);
+
+    return orders.filter((order: any) => {
+      const shop = order.shops;
+      // Allow if shop has allow_external_riders set to true
+      if (shop?.allow_external_riders === true || shop?.allow_external_riders === null) {
+        return true;
+      }
+      // Or allow if rider is linked/connected to this shop
+      if (connectedShopIds.has(order.shop_id)) {
+        return true;
+      }
+      return false;
+    });
+  } catch (err) {
+    console.error("Error loading open delivery feed:", err);
+    return [];
+  }
+}
+
+/**
+ * 2. Optimistic mutual accept function.
+ * Sets the rider_id and pushes BOTH status fields at once.
+ */
+export async function acceptDeliveryMission(
+  orderId: string,
+  riderId: string,
+  riderName: string,
+  riderPhone: string
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .update({
+        rider_id: riderId,
+        rider_name: riderName,
+        rider_phone: riderPhone,
+        delivery_status: "accepted",
+        // Crucial: Set main status to 'preparing' to notify the merchant kitchen and client immediately!
+        status: "preparing",
+      })
+      .eq("id", orderId)
+      .eq("delivery_status", "finding_rider") // Optimistic lock protection
+      .select();
+
+    if (error || !data || data.length === 0) {
+      console.warn("Optimistic update failed - Order already claimed or locked.");
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error("Transmission error accepting mission:", err);
+    return false;
+  }
+}
+```

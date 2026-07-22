@@ -176,7 +176,22 @@ TO authenticated
 USING (
   delivery_status = 'finding_rider' 
   AND (rider_id IS NULL OR rider_id::text = '' OR rider_id::text = 'null')
-  AND (status = 'accepted' OR status = 'preparing')
+  AND (status = 'pending' OR status = 'accepted' OR status = 'preparing')
+  AND (
+    -- Case A: The shop allows external/public riders
+    EXISTS (
+      SELECT 1 FROM shops 
+      WHERE shops.id = orders.shop_id 
+      AND (shops.allow_external_riders = true OR shops.allow_external_riders IS NULL)
+    )
+    OR
+    -- Case B: The rider is linked to the shop
+    EXISTS (
+      SELECT 1 FROM rider_connections 
+      WHERE rider_connections.shop_id = orders.shop_id 
+      AND rider_connections.rider_id::text = auth.uid()::text
+    )
+  )
 );
 
 -- ==========================================

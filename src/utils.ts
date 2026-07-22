@@ -86,13 +86,16 @@ export const safeStripOrderColumns = async (
   supabaseClient: any,
   data: Record<string, unknown>
 ): Promise<Record<string, unknown>> => {
+  // Columns that frequently cause PGRST204 errors if unmigrated in database schema
+  const unmigratedBlacklist = new Set(["city", "rider_name", "rider_phone", "whatsapp"]);
+
   try {
     const { data: sampleData, error } = await supabaseClient.from("orders").select().limit(1);
     if (!error && sampleData && sampleData.length > 0) {
       const validColumns = new Set(Object.keys(sampleData[0]));
       const cleaned: Record<string, unknown> = {};
       for (const key of Object.keys(data)) {
-        if (validColumns.has(key)) {
+        if (validColumns.has(key) && !unmigratedBlacklist.has(key)) {
           cleaned[key] = data[key];
         } else {
           console.log(`[SafeStrip] Stripping un-migrated column: ${key}`);
@@ -108,7 +111,7 @@ export const safeStripOrderColumns = async (
     "id", "shop_id", "user_id", "product_name", "product_variant", 
     "total_price", "price", "lat", "lng", "status", "payment_method", 
     "country", "created_at", "customer_name", "phone", "email", "address", 
-    "city", "notes", "acceptance_message", "accepted_at", "completed_at", 
+    "notes", "acceptance_message", "accepted_at", "completed_at", 
     "estimated_delivery_time", "items", "coupon_code", "discount_amount", 
     "delivery_fee", "rider_id", "restaurant_name", "delivery_status", 
     "order_type", "merchant_rating", "merchant_feedback", 
@@ -117,7 +120,7 @@ export const safeStripOrderColumns = async (
 
   const cleaned: Record<string, unknown> = {};
   for (const key of Object.keys(data)) {
-    if (defaultColumns.has(key)) {
+    if (defaultColumns.has(key) && !unmigratedBlacklist.has(key)) {
       cleaned[key] = data[key];
     }
   }

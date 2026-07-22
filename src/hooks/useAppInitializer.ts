@@ -1,6 +1,13 @@
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { SupabaseClient, User } from "@supabase/supabase-js";
 import { isSupabaseMocked } from "../lib/supabase";
+import { handleCentralizedError } from "../utils/errorHandler";
+
+export interface ServiceLoadingState {
+  shops: boolean;
+  orders: boolean;
+  menu: boolean;
+}
 
 interface UseAppInitializerProps {
   user: User | null;
@@ -19,14 +26,54 @@ export const useAppInitializer = ({
   fetchAllMenuItems,
   supabase,
 }: UseAppInitializerProps) => {
+  const [serviceLoading, setServiceLoading] = useState<ServiceLoadingState>({
+    shops: true,
+    orders: user ? true : false,
+    menu: true,
+  });
+
+  const loadShopsService = useCallback(async () => {
+    setServiceLoading((prev) => ({ ...prev, shops: true }));
+    try {
+      await fetchShops();
+    } catch (err) {
+      handleCentralizedError(err, "Shops Service", "Failed to load restaurant list", false);
+    } finally {
+      setServiceLoading((prev) => ({ ...prev, shops: false }));
+    }
+  }, [fetchShops]);
+
+  const loadOrdersService = useCallback(async () => {
+    if (!user) {
+      setServiceLoading((prev) => ({ ...prev, orders: false }));
+      return;
+    }
+    setServiceLoading((prev) => ({ ...prev, orders: true }));
+    try {
+      await fetchOrders();
+    } catch (err) {
+      handleCentralizedError(err, "Orders Service", "Failed to load active orders", false);
+    } finally {
+      setServiceLoading((prev) => ({ ...prev, orders: false }));
+    }
+  }, [user, fetchOrders]);
+
+  const loadMenuService = useCallback(async () => {
+    setServiceLoading((prev) => ({ ...prev, menu: true }));
+    try {
+      await fetchAllMenuItems();
+    } catch (err) {
+      handleCentralizedError(err, "Menu Service", "Failed to load menu catalog", false);
+    } finally {
+      setServiceLoading((prev) => ({ ...prev, menu: false }));
+    }
+  }, [fetchAllMenuItems]);
+
   useEffect(() => {
-    // If the user is logged in OR they are viewing as a customer (guest mode)
-    if (user || role === "customer") {
-      if (user) {
-        void fetchOrders();
-      }
-      void fetchShops();
-      void fetchAllMenuItems();
+    if (user || role === "customer" || role === "merchant") {
+      void loadOrdersService();
+      void loadShopsService();
+      void loadMenuService();
 
       if (isSupabaseMocked()) {
         return;
@@ -40,7 +87,7 @@ export const useAppInitializer = ({
           { event: "*", schema: "public", table: "shops" },
           () => {
             void fetchShops();
-          },
+          }
         )
         .subscribe();
 
@@ -48,5 +95,17 @@ export const useAppInitializer = ({
         void supabase.removeChannel(shopsChannel);
       };
     }
-  }, [user, role, fetchOrders, fetchShops, fetchAllMenuItems, supabase]);
+  }, [user, role, loadOrdersService, loadShopsService, loadMenuService, fetchShops, supabase]);
+
+  return {
+    serviceLoading,
+    isShopsLoading: serviceLoading.shops,
+    isOrdersLoading: serviceLoading.orders,
+    isMenuLoading: serviceLoading.menu,
+    isAnyLoading: serviceLoading.shops || serviceLoading.orders || serviceLoading.menu,
+    isAllLoading: serviceLoading.shops && serviceLoading.orders && serviceLoading.menu,
+    reloadShops: loadShopsService,
+    reloadOrders: loadOrdersService,
+    reloadMenu: loadMenuService,
+  };
 };
