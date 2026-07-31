@@ -383,48 +383,50 @@ export const RiderManagement = ({
   const fetchConnections = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data: conns, error: connErr } = await supabase
         .from("rider_connections")
-        .select(`
-          *,
-          rider_profiles:rider_id (
-            is_online,
-            full_name,
-            phone,
-            status,
-            vehicle_type,
-            rating,
-            total_deliveries,
-            total_earnings,
-            current_latitude,
-            current_longitude,
-            updated_at
-          )
-        `)
+        .select("*")
         .eq("shop_id", currentShop.id)
         .order("created_at", { ascending: false });
 
-      if (!error && data) {
-        const processed = (data as (RiderConnection & { rider_profiles: RiderProfile | null })[]).map((item) => {
-          const profile = item.rider_profiles;
-          const isInHouse = item.connection_code === "IN-HOUSE";
-          return {
-            ...item,
-            is_online: profile?.is_online || (isInHouse ? true : false),
-            rider_name: profile?.full_name || item.rider_name,
-            rider_phone: profile?.phone || item.rider_phone,
-            status: profile?.status || (new Date(item.expires_at) < new Date() ? "expired" : (isInHouse ? "idle" : item.status)),
-            vehicle_type: profile?.vehicle_type || "Road",
-            rating: profile?.rating || 5.0,
-            total_deliveries: profile?.total_deliveries || 0,
-            total_earnings: profile?.total_earnings || 0,
-            current_latitude: profile?.current_latitude,
-            current_longitude: profile?.current_longitude,
-            last_seen: profile?.updated_at,
-          };
-        });
-        setConnections(processed);
+      if (connErr || !conns) {
+        console.error("fetchConnections error:", connErr);
+        return;
       }
+      
+      const riderIds = conns.map(c => c.rider_id).filter(Boolean) as string[];
+      
+      const profiles: Record<string, RiderProfile> = {};
+      if (riderIds.length > 0) {
+        const { data: profData, error: profErr } = await supabase
+          .from("rider_profiles")
+          .select("id, is_online, full_name, phone, status, vehicle_type, rating, total_deliveries, total_earnings, current_latitude, current_longitude, updated_at")
+          .in("id", riderIds);
+          
+        if (!profErr && profData) {
+          profData.forEach(p => { profiles[p.id] = p as RiderProfile; });
+        }
+      }
+
+      const processed = conns.map((item) => {
+        const profile = item.rider_id ? profiles[item.rider_id] : null;
+        const isInHouse = item.connection_code === "IN-HOUSE";
+        return {
+          ...item,
+          is_online: profile?.is_online || (isInHouse ? true : false),
+          rider_name: profile?.full_name || item.rider_name,
+          rider_phone: profile?.phone || item.rider_phone,
+          status: profile?.status || (new Date(item.expires_at) < new Date() ? "expired" : (isInHouse ? "idle" : item.status)),
+          vehicle_type: profile?.vehicle_type || "Road",
+          rating: profile?.rating || 5.0,
+          total_deliveries: profile?.total_deliveries || 0,
+          total_earnings: profile?.total_earnings || 0,
+          current_latitude: profile?.current_latitude,
+          current_longitude: profile?.current_longitude,
+          last_seen: profile?.updated_at,
+        };
+      });
+      setConnections(processed);
     } catch (err) {
       console.error("Error fetching rider connections:", err);
     } finally {

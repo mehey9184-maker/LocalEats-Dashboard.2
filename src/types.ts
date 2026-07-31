@@ -15,6 +15,10 @@ export interface Shop {
   cash_trust_enabled?: boolean;
   allow_external_riders?: boolean;
   auto_look_for_rider?: boolean;
+  delivery_radius_enabled?: boolean;
+  delivery_radius_km?: number;
+  lat?: number;
+  lng?: number;
   updated_at?: string;
 }
 

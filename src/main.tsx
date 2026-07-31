@@ -2,6 +2,18 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { cleanLocalStorageCache } from './utils/storageCleanup';
+import { initTimeSync } from './utils/timeSync';
+import { initGlobalErrorLogging } from './utils/errorHandler';
+
+// Run storage cleanup audit, time sync, and global error logging on boot
+try {
+  cleanLocalStorageCache();
+  initTimeSync().catch(() => {});
+  initGlobalErrorLogging();
+} catch {
+  // Fail-safe initialization
+}
 
 // --- CRASH-RECOVERY PROTOCOL ---
 // Note: We now use vite-plugin-pwa for service worker management
@@ -133,7 +145,8 @@ try {
       errorMsg.includes("NetworkError") ||
       errorMsg.includes("Load failed") ||
       errorMsg.includes("Failed to load") ||
-      errorMsg.includes("Script error")
+      errorMsg.includes("Script error") ||
+      errorMsg.includes("Lock broken by another request")
     ) {
       console.warn("[Self-Healing] Ignored transient network/script load error:", errorMsg);
       return;
@@ -152,7 +165,8 @@ try {
       reasonStr.includes("User denied Geolocation") ||
       reasonStr.includes("Timeout expired") ||
       reasonStr.includes("position acquisition error") ||
-      reasonStr.includes("Script error")
+      reasonStr.includes("Script error") ||
+      reasonStr.includes("Lock broken by another request")
     ) {
       console.warn("[Self-Healing] Ignored transient network/api unhandled promise rejection:", reasonStr);
       return;

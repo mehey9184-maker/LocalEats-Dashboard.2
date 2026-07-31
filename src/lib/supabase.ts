@@ -73,11 +73,36 @@ const createMockThenable = (targetPath = ""): any => {
 };
 /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 
+const resilientFetch: typeof fetch = async (input, init) => {
+  try {
+    const res = await fetch(input, init);
+    return res;
+  } catch (err: unknown) {
+    const errorObj = err as Error;
+    if (errorObj?.name === 'TypeError' || errorObj?.message?.includes('Failed to fetch')) {
+      console.warn('[Supabase Resilient Fetch] Intercepted network connection error:', errorObj.message);
+      return new Response(
+        JSON.stringify({ data: null, error: { message: 'Network connection unavailable. Falling back to cache.' } }),
+        {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
+    throw err;
+  }
+};
+
 const isMocked = isSupabaseMocked();
 
 export const supabase = isMocked 
   ? createMockThenable("supabase") 
-  : createClient(supabaseUrl || '', supabaseAnonKey || '');
+  : createClient(supabaseUrl || '', supabaseAnonKey || '', {
+      global: {
+        fetch: resilientFetch,
+      },
+    });
 
 export const getSupabase = () => supabase;
 

@@ -7,6 +7,8 @@ import React, {
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
+import { RealtimeChannel } from "@supabase/supabase-js";
+import { useAuthGuard } from "./hooks/useAuthGuard";
 import { usePushNotifications } from "./hooks/usePushNotifications";
 import { useAppNavigation } from "./hooks/useAppNavigation";
 import { useAppInitializer } from "./hooks/useAppInitializer";
@@ -21,13 +23,17 @@ import {
   deleteFailedPrint,
   QueuedPrintJob,
 } from "./utils/escPosEngine";
-import { Wifi, Activity } from "lucide-react";
+import { Wifi } from "lucide-react";
 import { OnboardingTour } from "./components/OnboardingTour";
 import AIMenuScannerModal from "./components/AIMenuScannerModal";
 import { LegalDocsModal } from "./components/LegalDocsModal";
 import { RiderManagement } from "./components/RiderManagement";
+import { NoLinkedRiderModal } from "./components/NoLinkedRiderModal";
+import { sendPushNotification } from "./lib/firebase";
 import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
 import { handleCentralizedError } from "./utils/errorHandler";
+import { getNetworkDate, getNetworkFormattedTimeHHMM } from "./utils/timeSync";
+import { cleanLocalStorageCache } from "./utils/storageCleanup";
 import { parseAndNormalizeZAAddress, formatSAPhone, getSupportedCity, isOrderDelivery } from "./utils";
 import { GoogleGenAI } from "@google/genai";
 import {
@@ -119,7 +125,7 @@ import {
   WifiOff,
   Activity,
   CheckCircle,
-  Inbox, Megaphone, Landmark, Pizza, List, LayoutGrid, Filter, ShoppingBag, ChevronLeft, Database } from "lucide-react";
+  Inbox, Megaphone, Landmark, Pizza, List, LayoutGrid, Filter, ShoppingBag, ChevronLeft, Database, PieChart as PieChartIcon } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -148,6 +154,7 @@ import {
   MapContainer,
   TileLayer,
   Marker,
+  Circle,
   useMap,
   useMapEvents,
   Tooltip,
@@ -310,10 +317,14 @@ const LeafletMap = ({
   center,
   zoom = 13,
   onLocationSelect,
+  deliveryRadiusKm,
+  deliveryRadiusEnabled = true,
 }: {
   center: { lat: number; lng: number };
   zoom?: number;
   onLocationSelect?: (lat: number, lng: number) => void;
+  deliveryRadiusKm?: number;
+  deliveryRadiusEnabled?: boolean;
 }) => {
   const MapEvents = () => {
     useMapEvents({
@@ -334,8 +345,18 @@ const LeafletMap = ({
     return null;
   };
 
+  const radiusMeters = deliveryRadiusKm ? deliveryRadiusKm * 1000 : 0;
+
   return (
     <div className="w-full h-full min-h-[200px] rounded-xl overflow-hidden shadow-inner border border-outline-variant/10 relative z-0">
+      {deliveryRadiusEnabled && deliveryRadiusKm && deliveryRadiusKm > 0 && (
+        <div className="absolute top-2 right-2 z-[400] bg-surface-container/95 backdrop-blur-md px-2.5 py-1 rounded-lg border border-primary/20 shadow-md flex items-center gap-1.5 pointer-events-none">
+          <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+          <span className="text-[10px] font-black text-on-surface uppercase tracking-wider">
+            {deliveryRadiusKm} KM Delivery Zone
+          </span>
+        </div>
+      )}
       <MapContainer
         center={[center.lat, center.lng]}
         zoom={zoom}
@@ -359,6 +380,25 @@ const LeafletMap = ({
             },
           }}
         />
+        {deliveryRadiusEnabled && radiusMeters > 0 && (
+          <Circle
+            center={[center.lat, center.lng]}
+            radius={radiusMeters}
+            pathOptions={{
+              color: "#FF5A36",
+              fillColor: "#FF5A36",
+              fillOpacity: 0.15,
+              weight: 2,
+              dashArray: "6, 6",
+            }}
+          >
+            <Tooltip permanent direction="top" offset={[0, -10]}>
+              <span className="text-[10px] font-black text-[#FF5A36] uppercase tracking-wider">
+                {deliveryRadiusKm} KM Active Zone
+              </span>
+            </Tooltip>
+          </Circle>
+        )}
         <MapEvents />
         <ChangeView coords={center} />
       </MapContainer>
@@ -911,10 +951,35 @@ async function fetchWithRetry<T>(
       const result = await fn();
       const { error } = result as {
         data: T | null;
-        error: { message: string } | null;
+        error: { message: string; code?: string } | null;
       };
       if (!error) return result as { data: T | null; error: null };
       lastError = error;
+
+      // Automatically refresh session if JWT has expired
+      const isJwtExpired =
+        error.message?.toLowerCase().includes("jwt expired") ||
+        error.message?.toLowerCase().includes("token expired") ||
+        error.message?.toLowerCase().includes("invalid jwt") ||
+        error.code === "PGRST301";
+
+      if (isJwtExpired && !isSupabaseMocked()) {
+        try {
+          const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
+          if (!refreshErr && refreshData?.session) {
+            // Session refreshed successfully, retry original call
+            const retryResult = await fn();
+            const { error: retryError } = retryResult as {
+              data: T | null;
+              error: { message: string } | null;
+            };
+            if (!retryError) return retryResult as { data: T | null; error: null };
+            lastError = retryError;
+          }
+        } catch {
+          // session refresh attempt failed
+        }
+      }
 
       // Only retry on network errors or Failed to fetch
       if (
@@ -928,7 +993,6 @@ async function fetchWithRetry<T>(
       if (err instanceof Error) {
         lastError = { message: err.message.includes("Failed to fetch") ? "Failed to fetch" : err.message };
       } else {
-      console.log("Nudge sent");
         lastError = { message: String(err) };
       }
     }
@@ -1144,7 +1208,6 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
       if (error) {
         setError(error.message);
       } else {
-      console.log("Nudge sent");
         onSuccess();
       }
     } catch (err: unknown) {
@@ -1156,7 +1219,6 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
           'CRITICAL: You are using a Supabase SECRET key in the browser. Please update your project secrets with the public "anon" key.',
         );
       } else {
-      console.log("Nudge sent");
         setError(
           err instanceof Error ? err.message : "An unexpected error occurred.",
         );
@@ -1380,7 +1442,6 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
       } else if (data && data.user && data.session) {
         onSuccess(email);
       } else {
-      console.log("Nudge sent");
         onSuccess(email);
       }
     } catch (err: unknown) {
@@ -1672,11 +1733,9 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({
             "Email limit reached (3 per hour). Please wait an hour or contact support.",
           );
         } else {
-      console.log("Nudge sent");
           setError(error.message);
         }
       } else {
-      console.log("Nudge sent");
         setShowSuccess(true);
         setTimeout(() => {
           setShowSuccess(false);
@@ -1709,11 +1768,9 @@ const VerificationPending: React.FC<VerificationPendingProps> = ({
             "Email limit reached (3 per hour). Please wait an hour or contact support.",
           );
         } else {
-      console.log("Nudge sent");
           setError(error.message);
         }
       } else {
-      console.log("Nudge sent");
         setTimer(59);
         setOtp(["", "", "", "", "", ""]);
         const firstInput = document.getElementById("otp-0");
@@ -2024,7 +2081,6 @@ const EditProfile: React.FC<EditProfileProps> = ({
             }));
             toast.success("Location updated successfully!");
           } else {
-      console.log("Nudge sent");
             toast.error("Could not determine address from coordinates.");
           }
         } catch {
@@ -2085,7 +2141,6 @@ const EditProfile: React.FC<EditProfileProps> = ({
 
         setFormData((prev) => ({ ...prev, avatarUrl: publicUrl }));
       } else {
-      console.log("Nudge sent");
         const {
           data: { publicUrl },
         } = supabase.storage.from("avatars").getPublicUrl(filePath);
@@ -3193,7 +3248,6 @@ const OnboardingChecklist = ({
                 } else if (task.key === "hours") {
                   onEditProfile();
                 } else {
-      console.log("Nudge sent");
                   onNavigate(task.key === "shop" ? "storefront" : "menu");
                 }
               }}
@@ -3769,7 +3823,6 @@ const PaymentHistory = ({
     if (sortField === field) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
-      console.log("Nudge sent");
       setSortField(field);
       setSortDirection("desc");
     }
@@ -3825,7 +3878,6 @@ const PaymentHistory = ({
         setStepTracerMessage("✨ Securely establishing your shop's connection and preparing your account...");
         await new Promise((resolve) => setTimeout(resolve, 600));
       } else {
-      console.log("Nudge sent");
         setStepTracerMessage("🔍 Querying South African prepaid hubs (FLASH & OTT gateway)...");
         await new Promise((resolve) => setTimeout(resolve, 1200));
 
@@ -4608,6 +4660,7 @@ const DashboardOverview = React.memo(({
   const [layoutMode, setLayoutMode] = useState<"compact" | "advanced">(() => {
     return (localStorage.getItem("localeats_dashboard_layout") as "compact" | "advanced") || "compact";
   });
+  const { subscribeWithAuthGuard } = useAuthGuard();
 
   // Helper for weekly reset
   const getStartOfWeek = () => {
@@ -4711,10 +4764,11 @@ const DashboardOverview = React.memo(({
   useEffect(() => {
     fetchRiders();
     if (!currentShop?.id) return;
-
-    const channel = supabase
-      .channel(`dashboard_riders_${currentShop.id}`)
-      .on(
+    
+    let activeChannel: RealtimeChannel | null = null;
+    let isMounted = true;
+    void subscribeWithAuthGuard(`dashboard_riders_${currentShop.id}`, (ch) => 
+      ch.on(
         "postgres_changes",
         {
           event: "*",
@@ -4724,12 +4778,18 @@ const DashboardOverview = React.memo(({
         },
         () => fetchRiders(),
       )
-      .subscribe();
+    ).then(ch => {
+      if (ch) {
+        if (isMounted) activeChannel = ch;
+        else void supabase.removeChannel(ch);
+      }
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      isMounted = false;
+      if (activeChannel) void supabase.removeChannel(activeChannel);
     };
-  }, [currentShop?.id, fetchRiders]);
+  }, [currentShop?.id, fetchRiders, subscribeWithAuthGuard]);
 
   const fetchFollowers = useCallback(async () => {
     if (!currentShop?.id) return;
@@ -4777,10 +4837,11 @@ const DashboardOverview = React.memo(({
 
     // Real-time subscription for followers
     if (!currentShop?.id) return;
-
-    const channel = supabase
-      .channel(`shop_followers_${currentShop.id}`)
-      .on(
+    
+    let activeChannel: RealtimeChannel | null = null;
+    let isMounted = true;
+    void subscribeWithAuthGuard(`shop_followers_${currentShop.id}`, (ch) => 
+      ch.on(
         "postgres_changes",
         {
           event: "*",
@@ -4792,12 +4853,18 @@ const DashboardOverview = React.memo(({
           fetchFollowers();
         },
       )
-      .subscribe();
+    ).then(ch => {
+      if (ch) {
+        if (isMounted) activeChannel = ch;
+        else void supabase.removeChannel(ch);
+      }
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      isMounted = false;
+      if (activeChannel) void supabase.removeChannel(activeChannel);
     };
-  }, [currentShop?.id, fetchFollowers]);
+  }, [currentShop?.id, fetchFollowers, subscribeWithAuthGuard]);
 
   // Use real trend data from the last 7 or 30 days (supporting count and revenue metrics)
   const trendData = useMemo(() => {
@@ -4932,7 +4999,6 @@ const DashboardOverview = React.memo(({
     if (error) {
       toast.error("We couldn't create a sample order right now. Please try again.");
     } else {
-      console.log("Nudge sent");
       toast.success("Sample order created! View it in the Orders tab.");
       setSpecialInstructions("");
       setShowTestCheckout(false);
@@ -6100,11 +6166,13 @@ const CreateShop = ({
   onShopCreated,
   setIsSaving,
   setIsSaveSuccess,
+  isSaving = false,
 }: {
   user: User | null;
   onShopCreated: () => void;
   setIsSaving: (val: boolean) => void;
   setIsSaveSuccess: (val: boolean) => void;
+  isSaving?: boolean;
 }) => {
   const [formData, setFormData] = useState({
     name: "",
@@ -6341,6 +6409,7 @@ const MenuManagement = ({
   onRefreshMenu,
   setIsSaving,
   setIsSaveSuccess,
+  isSaving = false,
   dataSaverMode = false,
 }: {
   shops: Shop[];
@@ -6349,8 +6418,10 @@ const MenuManagement = ({
   onRefreshMenu?: () => void;
   setIsSaving: (val: boolean) => void;
   setIsSaveSuccess: (val: boolean) => void;
+  isSaving?: boolean;
   dataSaverMode?: boolean;
 }) => {
+  const { subscribeWithAuthGuard } = useAuthGuard();
   const userOwnedShops = useMemo(
     () => shops.filter((s) => s.owner_id === user?.id),
     [shops, user?.id],
@@ -6507,9 +6578,10 @@ const MenuManagement = ({
       loadMenu();
 
       // Real-time subscription for menu items of this shop
-      const menuChannel = supabase
-        .channel(`menu_items_${selectedShopId}`)
-        .on(
+      let activeChannel: RealtimeChannel | null = null;
+      let isMounted = true;
+      void subscribeWithAuthGuard(`menu_items_${selectedShopId}`, (ch) => 
+        ch.on(
           "postgres_changes",
           {
             event: "*",
@@ -6521,13 +6593,19 @@ const MenuManagement = ({
             void fetchMenu();
           },
         )
-        .subscribe();
+      ).then(ch => {
+        if (ch) {
+          if (isMounted) activeChannel = ch;
+          else void supabase.removeChannel(ch);
+        }
+      });
 
       return () => {
-        void supabase.removeChannel(menuChannel);
+        isMounted = false;
+        if (activeChannel) void supabase.removeChannel(activeChannel);
       };
     }
-  }, [selectedShopId, fetchMenu]);
+  }, [selectedShopId, fetchMenu, subscribeWithAuthGuard]);
 
   const handleAdd = () => {
     setEditingItem(null);
@@ -6591,7 +6669,6 @@ const MenuManagement = ({
       );
       toast.error("We couldn't update the item's availability. Please try again.");
     } else {
-      console.log("Nudge sent");
       toast.success(
         `${item.name} is now ${!item.is_available ? "available" : "unavailable"}`,
       );
@@ -6790,14 +6867,12 @@ const MenuManagement = ({
           onRefreshMenu?.();
         }, 1500);
       } else {
-      console.log("Nudge sent");
         setIsSaving(false);
         setIsSaveSuccess(false);
         console.error("Supabase Update Error:", error);
         toast.error("We couldn't update the menu item. Please try again.");
       }
     } else {
-      console.log("Nudge sent");
       const { error } = await supabase.from("menu_items").insert([
         {
           name: formData.name,
@@ -6836,7 +6911,6 @@ const MenuManagement = ({
           onRefreshMenu?.();
         }, 1500);
       } else {
-      console.log("Nudge sent");
         setIsSaving(false);
         setIsSaveSuccess(false);
         console.error("Supabase Insert Error:", error);
@@ -6941,7 +7015,6 @@ const MenuManagement = ({
 
         toast.success("AI Image generated successfully!");
       } else {
-      console.log("Nudge sent");
         throw new Error("No image data received from AI");
       }
     } catch (error) {
@@ -6982,7 +7055,6 @@ const MenuManagement = ({
           )
         );
       } else {
-      console.log("Nudge sent");
         setItems((prev) =>
           prev.map((item) =>
             selectedItems.includes(item.id)
@@ -7008,7 +7080,6 @@ const MenuManagement = ({
           if (error) throw error;
           toast.success(`Updated category for ${selectedItems.length} items`);
         } else {
-      console.log("Nudge sent");
           const { error } = await supabase
             .from("menu_items")
             .update({ is_available: action === "available" })
@@ -7032,7 +7103,6 @@ const MenuManagement = ({
     if (selectedItems.length === filteredItems.length) {
       setSelectedItems([]);
     } else {
-      console.log("Nudge sent");
       setSelectedItems(filteredItems.map((i) => i.id));
     }
   };
@@ -7050,7 +7120,6 @@ const MenuManagement = ({
       fetchMenu();
       onRefreshMenu?.();
     } else {
-      console.log("Nudge sent");
       toast.error("We couldn't delete the item. Please try again.");
     }
   };
@@ -7073,7 +7142,6 @@ const MenuManagement = ({
       toast.error("Failed to update price in database");
       fetchMenu();
     } else {
-      console.log("Nudge sent");
       toast.success("Price updated successfully");
       onRefreshMenu?.();
     }
@@ -7097,7 +7165,6 @@ const MenuManagement = ({
       toast.error("Failed to update stock in database");
       fetchMenu();
     } else {
-      console.log("Nudge sent");
       toast.success("Stock level updated successfully");
       onRefreshMenu?.();
     }
@@ -7185,6 +7252,7 @@ const MenuManagement = ({
           onShopCreated={onRefreshMenu || (() => {})} 
           setIsSaving={setIsSaving}
           setIsSaveSuccess={setIsSaveSuccess}
+          isSaving={isSaving}
         />
       ) : (
         <div className="space-y-6">
@@ -7321,7 +7389,6 @@ const MenuManagement = ({
                         if (e.target.value === "Custom") {
                           setFormData({ ...formData, category: "" });
                         } else {
-      console.log("Nudge sent");
                           setFormData({ ...formData, category: e.target.value });
                         }
                       }}
@@ -7979,7 +8046,6 @@ const MenuManagement = ({
                                   if (!(item.stock_quantity === null || item.stock_quantity === undefined || item.stock_quantity === -1)) {
                                     setEditingStockId(item.id);
                                   } else {
-      console.log("Nudge sent");
                                     toast.info("Stock is set to Unlimited. Edit item to set a specific limit.");
                                   }
                                 }}
@@ -8231,7 +8297,6 @@ const ShopProfile = ({
             }));
             toast.success("Location updated successfully!");
           } else {
-      console.log("Nudge sent");
             toast.error("Could not determine address from coordinates.");
           }
         } catch {
@@ -8957,6 +9022,7 @@ const ChatWindow = ({
   userId: string;
   onClose: () => void;
 }) => {
+  const { subscribeWithAuthGuard } = useAuthGuard();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -8977,9 +9043,10 @@ const ChatWindow = ({
     fetchMessages();
 
     // Real-time subscription
-    const channel = supabase
-      .channel(`chat:${orderId}`)
-      .on(
+    let activeChannel: RealtimeChannel | null = null;
+    let isMounted = true;
+    void subscribeWithAuthGuard(`chat:${orderId}`, (ch) => 
+      ch.on(
         "postgres_changes",
         {
           event: "INSERT",
@@ -8991,12 +9058,18 @@ const ChatWindow = ({
           setMessages((prev) => [...prev, payload.new as Message]);
         },
       )
-      .subscribe();
+    ).then(ch => {
+      if (ch) {
+        if (isMounted) activeChannel = ch;
+        else void supabase.removeChannel(ch);
+      }
+    });
 
     return () => {
-      supabase.removeChannel(channel).catch(console.error);
+      isMounted = false;
+      if (activeChannel) void supabase.removeChannel(activeChannel);
     };
-  }, [orderId]);
+  }, [orderId, subscribeWithAuthGuard]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -9104,6 +9177,12 @@ const ChatWindow = ({
   );
 };
 
+const QUICK_REPLY_TEMPLATES = [
+  "Thank you for your feedback! We are thrilled to hear you enjoyed your experience.",
+  "We appreciate your review! Your support helps us continually refine our menu and service.",
+  "Thank you for sharing your thoughts! We look forward to serving you again soon.",
+];
+
 const ReviewsList = ({
   reviews,
   onRespond,
@@ -9172,28 +9251,53 @@ const ReviewsList = ({
                 </p>
               </div>
             ) : respondingTo === review.id ? (
-              <div className="space-y-3">
+              <div className="space-y-3 bg-surface-container-low/40 p-4 rounded-2xl border border-primary/20">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-bold text-primary uppercase tracking-widest flex items-center gap-1">
+                      <Zap size={12} /> Quick Reply Templates
+                    </span>
+                    <span className="text-[10px] text-on-surface-variant/60">Click to insert</span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-2 mb-3">
+                    {QUICK_REPLY_TEMPLATES.map((template, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setResponseText(template)}
+                        className="text-left text-xs bg-white dark:bg-zinc-800 hover:bg-primary/5 hover:border-primary/40 text-on-surface border border-outline-variant/15 p-2.5 rounded-xl transition-all font-medium flex-1 min-w-[200px] cursor-pointer shadow-xs"
+                      >
+                        <span className="font-bold text-primary text-[10px] block mb-0.5">Template #{idx + 1}</span>
+                        "{template}"
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <textarea
                   value={responseText}
                   onChange={(e) => setResponseText(e.target.value)}
-                  placeholder="Write a professional response..."
-                  className="w-full bg-surface-container-low border border-primary/20 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                  placeholder="Write or edit a professional response..."
+                  className="w-full bg-white dark:bg-zinc-900 border border-primary/20 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-primary/20 text-on-surface"
                   rows={3}
                 />
-                <div className="flex gap-2">
+                <div className="flex gap-2 justify-end pt-1">
                   <button
                     onClick={() => {
+                      if (!responseText.trim()) return;
                       onRespond(review.id, responseText);
                       setRespondingTo(null);
                       setResponseText("");
                     }}
-                    className="px-6 py-2 bg-primary text-on-primary rounded-full text-xs font-bold"
+                    className="px-6 py-2.5 bg-primary text-on-primary rounded-full text-xs font-bold shadow-sm hover:opacity-95 active:scale-95 transition-all cursor-pointer min-h-[44px] flex items-center"
                   >
                     Post Response
                   </button>
                   <button
-                    onClick={() => setRespondingTo(null)}
-                    className="px-6 py-2 bg-surface-container-high text-on-surface-variant rounded-full text-xs font-bold"
+                    onClick={() => {
+                      setRespondingTo(null);
+                      setResponseText("");
+                    }}
+                    className="px-6 py-2.5 bg-surface-container-high text-on-surface-variant rounded-full text-xs font-bold hover:bg-surface-container-highest transition-colors cursor-pointer min-h-[44px] flex items-center"
                   >
                     Cancel
                   </button>
@@ -9202,7 +9306,7 @@ const ReviewsList = ({
             ) : (
               <button
                 onClick={() => setRespondingTo(review.id)}
-                className="flex items-center gap-2 text-primary text-xs font-bold hover:underline"
+                className="flex items-center gap-2 text-primary text-xs font-bold hover:underline cursor-pointer min-h-[44px] px-2"
               >
                 <MessageSquare size={14} />
                 Respond to Review
@@ -9218,6 +9322,8 @@ const ReviewsList = ({
 const OrdersManagement = ({
   orders,
   onUpdateStatus,
+  onDispatchToRider,
+  onConvertOrderToPickup,
   onDeleteAllOrders,
   loading,
   onRefresh,
@@ -9241,6 +9347,8 @@ const OrdersManagement = ({
 }: {
   orders: Order[];
   onUpdateStatus: (id: string, status: OrderStatus, message?: string, estimatedTime?: string) => Promise<void> | void;
+  onDispatchToRider?: (id: string, riderId: string, riderName?: string, riderPhone?: string) => Promise<void> | void;
+  onConvertOrderToPickup?: (id: string) => Promise<void> | void;
   onDeleteAllOrders: () => void;
   loading: boolean;
   onRefresh: () => void;
@@ -9262,6 +9370,7 @@ const OrdersManagement = ({
   retryQueuedPrintDirect?: (job: QueuedPrintJob) => Promise<void>;
   clearPrintQueue?: () => Promise<void>;
 }) => {
+  const { subscribeWithAuthGuard } = useAuthGuard();
   const [viewMode, setViewMode] = useState<"active" | "history">("active");
   const [layoutMode, setLayoutMode] = useState<"list" | "kanban">("kanban");
   const [searchTerm, setSearchTerm] = useState("");
@@ -9281,6 +9390,89 @@ const OrdersManagement = ({
   const [ratingOrderId, setRatingOrderId] = useState<string | null>(null);
   const [ratingValue, setRatingValue] = useState<number>(0);
   const [showMobileActions, setShowMobileActions] = useState(false);
+  const [unlinkedModalOrder, setUnlinkedModalOrder] = useState<Order | null>(null);
+
+  const renderRiderStatusBadge = (order: Order) => {
+    if (!isOrderDelivery(order)) {
+      return (
+        <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 text-[8px] font-extrabold uppercase">
+          <ShoppingBag size={10} /> Self-Pickup
+        </div>
+      );
+    }
+
+    const assignedRider = connectedRiders.find(
+      (r) => r.rider_id === order.rider_id || String(r.id) === order.rider_id
+    );
+    const isAssigned = !!(order.rider_id || assignedRider);
+    const isOnline = assignedRider?.is_online || assignedRider?.status === "online" || assignedRider?.connection_code === "IN-HOUSE";
+    const riderName = assignedRider?.rider_name || (order.rider_id ? "Assigned Courier" : "");
+
+    if (!isAssigned) {
+      return (
+        <div className="inline-flex items-center justify-between gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[9px] font-black uppercase tracking-wider animate-pulse w-full">
+          <div className="flex items-center gap-1">
+            <AlertTriangle size={11} className="text-amber-500 shrink-0" />
+            <span>Finding Rider (Unassigned)</span>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
+                setUnlinkedModalOrder(order);
+              } else {
+                setShowRiderPicker(order.id);
+              }
+            }}
+            className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-white text-[8px] font-black uppercase rounded-lg transition-transform active:scale-95 flex items-center gap-0.5 cursor-pointer shrink-0 shadow-xs"
+          >
+            <Rocket size={10} />
+            <span>Pair</span>
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="inline-flex items-center justify-between gap-2 px-2.5 py-1 rounded-xl bg-surface-container-high/90 dark:bg-zinc-800/90 border border-emerald-500/30 text-[9px] font-bold w-full">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {isOnline ? (
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+          ) : (
+            <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
+          )}
+          <span className="truncate text-on-surface font-black max-w-[100px]" title={riderName}>
+            {riderName}
+          </span>
+          <span className={cn(
+            "uppercase text-[8px] font-black px-1.5 py-0.2 rounded-md",
+            isOnline ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+          )}>
+            {isOnline ? "Online" : "Idle"}
+          </span>
+        </div>
+
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (order.rider_id) {
+              void sendRiderNudge(order.rider_id, "Order update: Please check your active delivery mission!");
+            } else {
+              toast.error("No rider assigned to nudge");
+            }
+          }}
+          className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-[8px] font-black uppercase tracking-wider rounded-lg transition-transform flex items-center gap-0.5 cursor-pointer shrink-0 shadow-xs"
+          title="Trigger silent push notification alert to rider"
+        >
+          <Zap size={10} className="fill-current" />
+          <span>Nudge</span>
+        </button>
+      </div>
+    );
+  };
 
   const [orderTags, setOrderTags] = useState<Record<string, string[]>>(() => {
     const tags: Record<string, string[]> = {};
@@ -9352,49 +9544,54 @@ const OrdersManagement = ({
   useEffect(() => {
     if (currentShop) {
       const fetchRiders = async () => {
-        const { data } = await supabase
+        const { data: conns, error: connErr } = await supabase
           .from("rider_connections")
-          .select(`
-            *,
-            rider_profiles:rider_id (
-              is_online,
-              full_name,
-              phone,
-              status,
-              vehicle_type,
-              rating,
-              current_latitude,
-              current_longitude
-            )
-          `)
+          .select("*")
           .eq("shop_id", currentShop.id);
 
-        if (data) {
-          const now = new Date();
-          const processed = (data as (RiderConnection & { rider_profiles: RiderProfile | null })[]).map((item) => {
-            const conn = item as RiderConnection;
-            const profile = item.rider_profiles;
-            const isInHouse = conn.connection_code === "IN-HOUSE";
-            return {
-              ...conn,
-              is_online: profile?.is_online || (isInHouse ? true : false),
-              rider_name: profile?.full_name || conn.rider_name,
-              rider_phone: profile?.phone || conn.rider_phone,
-              status: profile?.status || (new Date(conn.expires_at) < now ? "expired" : (isInHouse ? "idle" : conn.status)),
-              vehicle_type: profile?.vehicle_type || "Road",
-              rating: profile?.rating || 5.0,
-              current_latitude: profile?.current_latitude,
-              current_longitude: profile?.current_longitude,
-            };
-          });
-          const activeConnections = processed.filter(r => r.rider_id !== null || r.connection_code === "IN-HOUSE");
-          setConnectedRiders(activeConnections);
+        if (connErr || !conns) {
+          console.error("fetchRiders connections error:", connErr);
+          return;
         }
+        
+        const riderIds = conns.map(c => c.rider_id).filter(Boolean) as string[];
+        
+        const profiles: Record<string, RiderProfile> = {};
+        if (riderIds.length > 0) {
+          const { data: profData, error: profErr } = await supabase
+            .from("rider_profiles")
+            .select("id, is_online, full_name, phone, status, vehicle_type, rating, current_latitude, current_longitude")
+            .in("id", riderIds);
+            
+          if (!profErr && profData) {
+            profData.forEach(p => { profiles[p.id] = p as RiderProfile; });
+          }
+        }
+
+        const now = new Date();
+        const processed = conns.map((conn) => {
+          const profile = conn.rider_id ? profiles[conn.rider_id] : null;
+          const isInHouse = conn.connection_code === "IN-HOUSE";
+          return {
+            ...conn,
+            is_online: profile?.is_online || (isInHouse ? true : false),
+            rider_name: profile?.full_name || conn.rider_name,
+            rider_phone: profile?.phone || conn.rider_phone,
+            status: profile?.status || (new Date(conn.expires_at) < now ? "expired" : (isInHouse ? "idle" : conn.status)),
+            vehicle_type: profile?.vehicle_type || "Road",
+            rating: profile?.rating || 5.0,
+            current_latitude: profile?.current_latitude,
+            current_longitude: profile?.current_longitude,
+          };
+        });
+        const activeConnections = processed.filter(r => r.rider_id !== null || r.connection_code === "IN-HOUSE");
+        setConnectedRiders(activeConnections);
       };
       void fetchRiders();
-      const sub = supabase
-        .channel("riders-sync")
-        .on(
+      let activeChannel: RealtimeChannel | null = null;
+      let isMounted = true;
+      void subscribeWithAuthGuard("riders-sync", (ch) =>
+        ch.on(
           "postgres_changes",
           { 
             event: "*", 
@@ -9404,12 +9601,19 @@ const OrdersManagement = ({
           },
           () => void fetchRiders(),
         )
-        .subscribe();
+      ).then(ch => {
+        if (ch) {
+          if (isMounted) activeChannel = ch;
+          else void supabase.removeChannel(ch);
+        }
+      });
+
       return () => {
-        void supabase.removeChannel(sub);
+        isMounted = false;
+        if (activeChannel) void supabase.removeChannel(activeChannel);
       };
     }
-  }, [currentShop]);
+  }, [currentShop, subscribeWithAuthGuard]);
   const [customMessage, setCustomMessage] = useState(
     "We have received your order and are starting to prepare it!",
   );
@@ -9995,7 +10199,6 @@ Notes: "${order.notes || "None"}"
     if (sortField === field) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
-      console.log("Nudge sent");
       setSortField(field);
       setSortDirection("desc");
     }
@@ -10692,6 +10895,10 @@ Notes: "${order.notes || "None"}"
                   {displayedOrders.filter(o => o.status === "pending").map((order) => {
                     const items = safeGetOrderItems(order.items);
                     const isSelected = selectedPendingOrders.includes(order.id);
+                    const isDelivery = isOrderDelivery(order);
+                    const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
+                    const isDispatched = isDelivery && (order.rider_id || order.delivery_status === "accepted" || order.delivery_status === "picked_up" || order.delivery_status === "dispatched");
+
                     return (
                       <motion.div
                         layoutId={order.id}
@@ -10701,11 +10908,20 @@ Notes: "${order.notes || "None"}"
                         transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         key={order.id}
                         className={cn(
-                          "order-card bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300",
-                          isSelected ? "border-primary ring-1 ring-primary/30" : "border-outline-variant/10"
+                          "order-card bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300 space-y-2",
+                          isSelected ? "border-primary ring-2 ring-primary/30" : "",
+                          isFindingRider
+                            ? "border-2 border-amber-500 ring-2 ring-amber-500/30 animate-pulse bg-gradient-to-b from-amber-500/5 via-transparent to-transparent dark:from-amber-500/10"
+                            : isDispatched
+                              ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/10"
+                              : "border-outline-variant/10"
                         )}
                         whileHover={{ y: -2 }}
                       >
+                        {/* Rider / Delivery Live Status Indicator */}
+                        <div className="mb-2">
+                          {renderRiderStatusBadge(order)}
+                        </div>
                         {/* Top info */}
                         <div className="flex justify-between items-start gap-2">
                           <div className="flex items-start gap-2">
@@ -10716,7 +10932,6 @@ Notes: "${order.notes || "None"}"
                                 if (e.target.checked) {
                                   setSelectedPendingOrders(prev => [...prev, order.id]);
                                 } else {
-      console.log("Nudge sent");
                                   setSelectedPendingOrders(prev => prev.filter(id => id !== order.id));
                                 }
                               }}
@@ -10838,6 +11053,10 @@ Notes: "${order.notes || "None"}"
                               <button
                                 disabled={isLimitReached}
                                 onClick={(e) => {
+                                  if (isOrderDelivery(order) && !order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
+                                    setUnlinkedModalOrder(order);
+                                    return;
+                                  }
                                   setAcceptingOrderId(order.id);
                                   const card = e.currentTarget.closest(".order-card");
                                   if (card) {
@@ -10913,15 +11132,27 @@ Notes: "${order.notes || "None"}"
                   {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").map((order) => {
                     const items = safeGetOrderItems(order.items);
                     const isDelivery = isOrderDelivery(order);
-                    const needsRiderRequest = isDelivery && !order.delivery_status;
+                    const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
+                    const isDispatched = isDelivery && (order.rider_id || order.delivery_status === "accepted" || order.delivery_status === "picked_up" || order.delivery_status === "dispatched");
 
                     return (
                       <motion.div
                         layoutId={order.id}
                         key={order.id}
-                        className="order-card bg-white dark:bg-zinc-900 border border-outline-variant/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group"
+                        className={cn(
+                          "order-card bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300 space-y-2",
+                          isFindingRider
+                            ? "border-2 border-amber-500 ring-2 ring-amber-500/30 animate-pulse bg-gradient-to-b from-amber-500/5 via-transparent to-transparent dark:from-amber-500/10"
+                            : isDispatched
+                              ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/10"
+                              : "border-outline-variant/10"
+                        )}
                         whileHover={{ y: -2 }}
                       >
+                        {/* Rider / Delivery Live Status Indicator */}
+                        <div className="mb-2">
+                          {renderRiderStatusBadge(order)}
+                        </div>
                         {/* Top info */}
                         <div className="flex justify-between items-start gap-2">
                           <div>
@@ -10973,23 +11204,31 @@ Notes: "${order.notes || "None"}"
                           })}
                         </div>
 
-                        {/* Delivery Track Badge & Request */}
+                        {/* Delivery Track Badge & Gated Dispatch Action */}
                         <div className="mt-2.5 space-y-1.5">
-                          {needsRiderRequest ? (
+                          {isDelivery && order.status !== "dispatched" && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onRequestRider(order.id);
+                                if (!order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
+                                  setUnlinkedModalOrder(order);
+                                } else if (connectedRiders.length === 1 && onDispatchToRider) {
+                                  const r = connectedRiders[0];
+                                  void onDispatchToRider(order.id, r.rider_id || String(r.id), r.rider_name || undefined, r.rider_phone || undefined);
+                                } else {
+                                  setShowRiderPicker(order.id);
+                                }
                               }}
-                              className="w-full py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
                             >
-                              <Rocket size={11} className="animate-pulse" />
-                              <span>Request Rider Now</span>
+                              <Rocket size={12} className="animate-pulse text-amber-200" />
+                              <span>Send Rider (Dispatch)</span>
                             </button>
-                          ) : isDelivery ? (
+                          )}
+                          {isDelivery ? (
                             <div className="p-2 bg-surface-container-low rounded-xl border border-outline-variant/5 text-[9px] font-bold text-on-surface-variant flex items-center justify-between">
                               <span className="uppercase tracking-wider text-on-surface-variant/60">Delivery status:</span>
-                              <span className="text-primary uppercase font-black">{order.delivery_status?.replace("_", " ") || "No Signal"}</span>
+                              <span className="text-primary uppercase font-black">{order.delivery_status?.replace("_", " ") || "Pending Dispatch"}</span>
                             </div>
                           ) : null}
                         </div>
@@ -11154,14 +11393,28 @@ Notes: "${order.notes || "None"}"
                   {displayedOrders.filter(o => o.status === "ready").map((order) => {
                     const items = safeGetOrderItems(order.items);
                     const canNudge = order.rider_id && order.status !== "completed";
+                    const isDelivery = isOrderDelivery(order);
+                    const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
+                    const isDispatched = isDelivery && (order.rider_id || order.delivery_status === "accepted" || order.delivery_status === "picked_up" || order.delivery_status === "dispatched");
 
                     return (
                       <motion.div
                         layoutId={order.id}
                         key={order.id}
-                        className="order-card bg-white dark:bg-zinc-900 border border-outline-variant/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group"
+                        className={cn(
+                          "order-card bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300 space-y-2",
+                          isFindingRider
+                            ? "border-2 border-amber-500 ring-2 ring-amber-500/30 animate-pulse bg-gradient-to-b from-amber-500/5 via-transparent to-transparent dark:from-amber-500/10"
+                            : isDispatched
+                              ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/10"
+                              : "border-outline-variant/10"
+                        )}
                         whileHover={{ y: -2 }}
                       >
+                        {/* Rider / Delivery Live Status Indicator */}
+                        <div className="mb-2">
+                          {renderRiderStatusBadge(order)}
+                        </div>
                         {/* Top info */}
                         <div className="flex justify-between items-start gap-2">
                           <div>
@@ -11213,7 +11466,29 @@ Notes: "${order.notes || "None"}"
                           })}
                         </div>
 
-                        {/* Rider details & Nudge action */}
+                        {/* Gated Dispatch Action & Rider details */}
+                        {isOrderDelivery(order) && order.status !== "dispatched" && (
+                          <div className="mt-2.5">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
+                                  setUnlinkedModalOrder(order);
+                                } else if (connectedRiders.length === 1 && onDispatchToRider) {
+                                  const r = connectedRiders[0];
+                                  void onDispatchToRider(order.id, r.rider_id || String(r.id), r.rider_name || undefined, r.rider_phone || undefined);
+                                } else {
+                                  setShowRiderPicker(order.id);
+                                }
+                              }}
+                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
+                            >
+                              <Rocket size={12} className="animate-pulse text-amber-200" />
+                              <span>Send Rider (Dispatch)</span>
+                            </button>
+                          </div>
+                        )}
+
                         {canNudge && (
                           <div className="mt-2">
                             <button
@@ -11457,117 +11732,111 @@ Notes: "${order.notes || "None"}"
                         delay: Math.min(i * 0.05, 0.5) 
                       }}
                       key={order.id}
-                    className={cn(
-                      "group rounded-xl p-6 shadow-sm border transition-all duration-300 cursor-pointer",
-                      isOverdue
-                        ? "bg-error/5 border-error/30 ring-1 ring-error/20"
-                        : order.status === "pending"
-                          ? "bg-primary-light border-primary/20"
-                          : order.status === "preparing"
-                            ? "bg-primary/10 border-primary/10"
-                            : order.status === "ready"
-                              ? "bg-tertiary/10 border-tertiary/20"
-                              : "bg-surface-container-highest border-transparent",
-                      kitchenMode && "p-8 border-2",
-                      expandedOrderId === order.id &&
-                        "ring-2 ring-primary/10 border-primary/20",
-                    )}
-                    onClick={() =>
-                      setExpandedOrderId(
-                        expandedOrderId === order.id ? null : order.id,
-                      )
-                    }
-                  >
-                    <div className="flex justify-between items-start mb-6">
-                      <div className="relative flex items-start gap-3">
-                        {order.status === "pending" && (
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedPendingOrders(prev => [...prev, order.id]);
-                              } else {
-      console.log("Nudge sent");
-                                setSelectedPendingOrders(prev => prev.filter(id => id !== order.id));
-                              }
-                            }}
-                            className="mt-1 w-4 h-4 rounded border-outline-variant/30 text-primary focus:ring-primary/50 cursor-pointer shrink-0"
-                          />
-                        )}
-                        <div>
-                        {isOverdue && (
-                          <div className="absolute -top-3 -left-3 bg-error text-white text-[9px] font-black px-2 py-0.5 rounded-full animate-bounce shadow-lg z-20">
-                            OVERDUE ({diffMins}m)
+                      className={cn(
+                        "group rounded-2xl p-6 py-7 sm:p-8 shadow-sm border transition-all duration-300 cursor-pointer space-y-4",
+                        isOverdue
+                          ? "bg-error/5 border-error/30 ring-1 ring-error/20"
+                          : order.status === "pending"
+                            ? "bg-primary-light border-primary/20"
+                            : order.status === "preparing"
+                              ? "bg-primary/10 border-primary/10"
+                              : order.status === "ready"
+                                ? "bg-tertiary/10 border-tertiary/20"
+                                : "bg-surface-container-highest border-transparent",
+                        kitchenMode && "p-8 md:p-10 border-2",
+                        expandedOrderId === order.id &&
+                          "ring-2 ring-primary/20 border-primary/30 shadow-md",
+                      )}
+                      onClick={() =>
+                        setExpandedOrderId(
+                          expandedOrderId === order.id ? null : order.id,
+                        )
+                      }
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="relative flex items-start gap-3">
+                          {order.status === "pending" && (
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedPendingOrders(prev => [...prev, order.id]);
+                                } else {
+                                  setSelectedPendingOrders(prev => prev.filter(id => id !== order.id));
+                                }
+                              }}
+                              className="mt-1.5 w-5 h-5 rounded border-outline-variant/30 text-primary focus:ring-primary/50 cursor-pointer shrink-0"
+                            />
+                          )}
+                          <div>
+                          {isOverdue && (
+                            <div className="absolute -top-3 -left-3 bg-error text-white text-[9px] font-black px-2 py-0.5 rounded-full animate-bounce shadow-lg z-20">
+                              OVERDUE ({diffMins}m)
+                            </div>
+                          )}
+                          {recentlyChangedOrders[order.id] && (
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              className="absolute -top-2 -left-2 w-4 h-4 bg-primary rounded-full border-2 border-white z-10"
+                            />
+                          )}
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <span
+                              className="px-3 py-1 bg-primary text-on-primary font-mono text-xs md:text-sm font-black uppercase tracking-wider rounded-xl shadow-xs inline-flex items-center gap-1"
+                            >
+                              #LE-{order.id.length > 8 ? order.id.slice(-6).toUpperCase() : order.id}
+                            </span>
+                            {isReturning && (
+                              <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 text-[10px] font-extrabold px-2.5 py-1 rounded-xl flex items-center gap-1 border border-emerald-200/50">
+                                <Star size={11} fill="currentColor" />
+                                RETURNING ({orderCount})
+                              </span>
+                            )}
                           </div>
-                        )}
-                        {recentlyChangedOrders[order.id] && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="absolute -top-2 -left-2 w-4 h-4 bg-primary rounded-full border-2 border-white z-10"
-                          />
-                        )}
-                        <div className="flex items-center gap-2 mb-1">
-                          <span
+                          <h4
                             className={cn(
-                              "font-label text-[10px] font-bold uppercase tracking-widest block",
-                              order.status === "pending"
-                                ? "text-primary"
-                                : "text-on-surface-variant/60",
+                              "font-headline font-bold text-on-surface flex items-center gap-2",
+                              kitchenMode ? "text-2xl" : "text-lg md:text-xl",
                             )}
                           >
-                            #LE-{order.id}
-                          </span>
-                          {isReturning && (
-                            <span className="bg-emerald-100 text-emerald-700 text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                              <Star size={10} fill="currentColor" />
-                              RETURNING ({orderCount})
-                            </span>
-                          )}
-                        </div>
-                        <h4
-                          className={cn(
-                            "font-headline font-semibold text-on-surface flex items-center gap-2",
-                            kitchenMode ? "text-2xl" : "text-lg",
-                          )}
-                        >
-                          {order.customer_name ||
-                            `Customer #${order.user_id.slice(0, 5)}`}
-                          {order.delivery_status === "picked_up" && (
-                             <motion.span 
-                               initial={{ opacity: 0 }}
-                               animate={{ opacity: 1 }}
-                               className="bg-primary/10 text-primary text-[9px] font-black px-2 py-1 rounded-lg uppercase tracking-widest animate-pulse"
-                             >
-                               Out for Delivery
-                             </motion.span>
-                          )}
-                        </h4>
-                        <div className="flex flex-col gap-2 mt-2">
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={`tel:${order.phone}`}
-                              className="flex items-center gap-2 text-xs text-primary font-bold hover:underline bg-primary/5 px-2 py-1 rounded-lg transition-colors border border-primary/10"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Phone size={12} />
-                              <span>{order.phone || "No phone"}</span>
-                            </a>
-                            {order.phone && (
+                            {order.customer_name ||
+                              `Customer #${order.user_id.slice(0, 5)}`}
+                            {order.delivery_status === "picked_up" && (
+                               <motion.span 
+                                 initial={{ opacity: 0 }}
+                                 animate={{ opacity: 1 }}
+                                 className="bg-primary/10 text-primary text-[9px] font-black px-2.5 py-1 rounded-lg uppercase tracking-widest animate-pulse"
+                               >
+                                 Out for Delivery
+                               </motion.span>
+                            )}
+                          </h4>
+                          <div className="flex flex-col gap-2.5 mt-3">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <a
-                                href={`https://wa.me/${order.phone.replace(/\D/g, "")}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2 text-xs text-emerald-600 font-bold hover:bg-emerald-50 px-2 py-1 rounded-lg transition-colors border border-emerald-200"
+                                href={`tel:${order.phone}`}
+                                className="flex items-center gap-2 text-xs text-primary font-bold hover:underline bg-primary/5 px-3 py-2 rounded-xl transition-colors border border-primary/10 min-h-[40px]"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <MessageCircle size={12} />
-                                <span>WhatsApp</span>
+                                <Phone size={14} />
+                                <span>{order.phone || "No phone"}</span>
                               </a>
-                            )}
-                          </div>
+                              {order.phone && (
+                                <a
+                                  href={`https://wa.me/${order.phone.replace(/\D/g, "")}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 font-bold hover:bg-emerald-50 dark:hover:bg-emerald-950/30 px-3 py-2 rounded-xl transition-colors border border-emerald-200/60 min-h-[40px]"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MessageCircle size={14} />
+                                  <span>WhatsApp</span>
+                                </a>
+                              )}
+                            </div>
                           <div className="flex flex-col gap-1 text-xs text-on-surface-variant">
                             <div className="flex items-center gap-2">
                               <MapPin size={12} className="text-primary/60" />
@@ -12224,7 +12493,6 @@ Notes: "${order.notes || "None"}"
                                                             rider.rider_phone || ""
                                                           );
                                                         } else {
-      console.log("Nudge sent");
                                                           onRequestRider(
                                                             order.id,
                                                             rider.rider_id || undefined,
@@ -12264,7 +12532,6 @@ Notes: "${order.notes || "None"}"
                                           if (connectedRiders.length > 0) {
                                             setShowRiderPicker(order.id);
                                           } else {
-      console.log("Nudge sent");
                                             onRequestRider(order.id);
                                           }
                                         }}
@@ -12652,7 +12919,6 @@ Notes: "${order.notes || "None"}"
                                               setRatingOrderId(null);
                                               setRatingValue(0);
                                            } else {
-      console.log("Nudge sent");
                                               setRatingOrderId(order.id);
                                               setRatingValue(5);
                                            }
@@ -12762,7 +13028,6 @@ Notes: "${order.notes || "None"}"
                             osc.stop(ctx.currentTime + 0.5);
                             toast.success("Sound test: Speaker alerts are active!");
                           } else {
-      console.log("Nudge sent");
                             toast.info("Web Audio API not supported in this browser.");
                           }
                         } catch (err) {
@@ -13000,7 +13265,6 @@ Notes: "${order.notes || "None"}"
                         if (reason !== "Other (Write custom message below)") {
                           setCustomCancelExplanation(`We are sorry, but we had to cancel your order because: ${reason.toLowerCase()}`);
                         } else {
-      console.log("Nudge sent");
                           setCustomCancelExplanation("");
                         }
                       }}
@@ -13449,6 +13713,27 @@ Notes: "${order.notes || "None"}"
             );
           })()}
         </AnimatePresence>
+
+        {/* Gated Dispatch - No Linked Rider Warning Modal */}
+        <NoLinkedRiderModal
+          isOpen={!!unlinkedModalOrder}
+          onClose={() => setUnlinkedModalOrder(null)}
+          order={unlinkedModalOrder}
+          connectedRiders={connectedRiders}
+          pairingCode={currentShop?.pairing_code || "LOCAL-EATS-PASS"}
+          onDispatchToRider={onDispatchToRider}
+          onAcceptOrder={async (orderId) => {
+            await onUpdateStatus(orderId, "preparing", "Order accepted & dispatched to rider");
+          }}
+          onPromptCustomerForPickup={async (orderId) => {
+            if (onConvertOrderToPickup) {
+              await onConvertOrderToPickup(orderId);
+            }
+          }}
+          onOpenPairingCenter={() => {
+            onTabChange("riders");
+          }}
+        />
       </div>
     </div>
   );
@@ -13580,7 +13865,6 @@ const Marketing = ({
     } else if (channel === "social") {
       return `Weekend plans: sorted! 🥳 Treating ourselves to ${dishPart} from ${shopName}. ${couponPart}Local ingredients, fast bicycle delivery, direct service. Support local businesses directly! #Localeats #SupportLocal #SouthAfricaFoodies ${dish ? `#${dish.replace(/\s+/g, "")}` : ""}`;
     } else {
-      console.log("Nudge sent");
       return `Dear Valued Customer,We trust you are having a fantastic day! We wanted to reach out to you from ${shopName} to bring some delicious news to your inbox.Today, we're highlighting ${dishPart} - prepared fresh, sourced locally, and delivered hot to your doorstep by our eco-friendly local cyclist fleet!${couponPart}Why order direct?- Support independent local chefs- Guaranteed faster delivery- Direct customer service${toneSlogan}Warm regards,The team at ${shopName}`;
     }
   };
@@ -15343,7 +15627,6 @@ const Coupons = ({
     if (error) {
       toast.error("Failed to create coupon");
     } else {
-      console.log("Nudge sent");
 
       setShowCreateModal(false);
       setNewCoupon({
@@ -15401,7 +15684,6 @@ const Coupons = ({
     if (error) {
       toast.error("Failed to update coupon details");
     } else {
-      console.log("Nudge sent");
 
       setEditingCoupon(null);
       // Refresh
@@ -15437,7 +15719,6 @@ const Coupons = ({
     if (error) {
       toast.error("Failed to delete coupon (it may already be associated with old order transactions). Try pausing it instead.");
     } else {
-      console.log("Nudge sent");
       setCoupons((prev) => prev.filter((c) => c.id !== id));
       setShowDeleteConfirm(null);
 
@@ -16169,7 +16450,6 @@ const Coupons = ({
                         saved = (baseCart * Math.min(100, discountVal)) / 100;
                         customerPays = baseCart - saved;
                       } else {
-      console.log("Nudge sent");
                         saved = discountVal;
                         customerPays = Math.max(0, baseCart - saved);
                       }
@@ -16418,9 +16698,10 @@ const Insights = ({
   loading: boolean;
   currentShop: Shop | undefined;
 }) => {
+  const { subscribeWithAuthGuard } = useAuthGuard();
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [followerCount, setFollowerCount] = useState<number | string>("--");
-  const [followerTrendData, setFollowerTrendData] = useState<
+  const [, setFollowerCount] = useState<number | string>("--");
+  const [, setFollowerTrendData] = useState<
     { name: string; value: number }[]
   >([]);
   const [timeFilter, setTimeFilter] = useState<"today" | "7d" | "30d" | "all" | "custom">("7d");
@@ -16483,7 +16764,6 @@ const Insights = ({
     if (error) {
       toast.error("Failed to save response");
     } else {
-      console.log("Nudge sent");
 
       setReviews((prev) =>
         prev.map((r) => (r.id === reviewId ? { ...r, response } : r)),
@@ -16541,9 +16821,10 @@ const Insights = ({
     // Real-time subscription for followers in Insights
     if (!currentShop?.id) return;
 
-    const channel = supabase
-      .channel(`insights_followers_${currentShop.id}`)
-      .on(
+    let activeChannel: RealtimeChannel | null = null;
+    let isMounted = true;
+    void subscribeWithAuthGuard(`insights_followers_${currentShop.id}`, (ch) =>
+      ch.on(
         "postgres_changes",
         {
           event: "*",
@@ -16555,12 +16836,18 @@ const Insights = ({
           fetchFollowerInsights();
         },
       )
-      .subscribe();
+    ).then(ch => {
+      if (ch) {
+        if (isMounted) activeChannel = ch;
+        else void supabase.removeChannel(ch);
+      }
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      isMounted = false;
+      if (activeChannel) void supabase.removeChannel(activeChannel);
     };
-  }, [currentShop?.id, fetchFollowerInsights]);
+  }, [currentShop?.id, fetchFollowerInsights, subscribeWithAuthGuard]);
 
   const [selectedItemForTrend, setSelectedItemForTrend] = useState<
     string | null
@@ -16986,18 +17273,98 @@ const Insights = ({
     "#9C27B0",
   ];
 
+  const orderStatusDistributionData = useMemo(() => {
+    const counts: Record<string, number> = {
+      pending: 0,
+      preparing: 0,
+      ready: 0,
+      completed: 0,
+      cancelled: 0,
+    };
+    orders.forEach((o) => {
+      const st = (o.status || "").toLowerCase();
+      if (counts[st] !== undefined) {
+        counts[st]++;
+      }
+    });
+
+    const statusMap = [
+      { label: "Pending", key: "pending", color: "#f59e0b" },
+      { label: "Preparing", key: "preparing", color: "#FF5A36" },
+      { label: "Ready", key: "ready", color: "#14b8a6" },
+      { label: "Completed", key: "completed", color: "#10b981" },
+      { label: "Cancelled", key: "cancelled", color: "#ef4444" },
+    ];
+
+    return statusMap
+      .map((item) => ({
+        name: item.label,
+        value: counts[item.key],
+        color: item.color,
+      }))
+      .filter((item) => item.value > 0);
+  }, [orders]);
+
   if (loading) {
     return (
-      <div className="space-y-12">
-        <section>
-          <Skeleton className="h-12 w-64 mb-2" />
-          <Skeleton className="h-4 w-48" />
+      <div className="space-y-12 animate-pulse">
+        {/* Header skeleton */}
+        <section className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-outline-variant/10">
+          <div className="space-y-2">
+            <Skeleton className="h-10 w-64 rounded-xl" />
+            <Skeleton className="h-4 w-48 rounded-lg" />
+          </div>
+          <Skeleton className="h-10 w-72 rounded-2xl" />
         </section>
+
+        {/* Intelligence Room skeleton */}
+        <div className="bg-surface-container-low/60 rounded-[2rem] p-6 space-y-4 border border-outline-variant/10">
+          <Skeleton className="h-5 w-48 rounded-lg" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Skeleton className="h-28 rounded-2xl" />
+            <Skeleton className="h-28 rounded-2xl" />
+            <Skeleton className="h-28 rounded-2xl" />
+          </div>
+        </div>
+
+        {/* 12-Column Dashboard Grid Skeleton */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-          <Skeleton className="md:col-span-8 h-80 rounded-xl" />
-          <Skeleton className="md:col-span-4 h-80 rounded-xl" />
-          <Skeleton className="md:col-span-5 h-64 rounded-xl" />
-          <Skeleton className="md:col-span-7 h-64 rounded-xl" />
+          {/* Main Chart skeleton */}
+          <div className="md:col-span-12 bg-surface-container-lowest rounded-xl p-8 border border-outline-variant/10 space-y-4">
+            <div className="flex justify-between items-center">
+              <Skeleton className="h-6 w-48 rounded-lg" />
+              <Skeleton className="h-8 w-36 rounded-full" />
+            </div>
+            <Skeleton className="h-64 w-full rounded-2xl" />
+          </div>
+
+          {/* Monthly Comparison skeleton */}
+          <div className="md:col-span-8 bg-surface-container-lowest rounded-xl p-8 border border-outline-variant/10 space-y-4">
+            <Skeleton className="h-6 w-48 rounded-lg" />
+            <Skeleton className="h-64 w-full rounded-2xl" />
+          </div>
+
+          {/* Revenue by Category skeleton */}
+          <div className="md:col-span-4 bg-surface-container-lowest rounded-xl p-8 border border-outline-variant/10 space-y-4">
+            <Skeleton className="h-6 w-36 rounded-lg" />
+            <Skeleton className="h-64 w-full rounded-full mx-auto" style={{ maxWidth: "200px" }} />
+          </div>
+
+          {/* Order Status Distribution skeleton */}
+          <div className="md:col-span-4 bg-surface-container-lowest rounded-xl p-8 border border-outline-variant/10 space-y-4">
+            <Skeleton className="h-6 w-44 rounded-lg" />
+            <Skeleton className="h-64 w-full rounded-full mx-auto" style={{ maxWidth: "200px" }} />
+          </div>
+
+          {/* Coupon Impact skeleton */}
+          <div className="md:col-span-4 bg-surface-container-lowest rounded-xl p-8 border border-outline-variant/10 space-y-4">
+            <Skeleton className="h-6 w-32 rounded-lg" />
+            <div className="grid grid-cols-2 gap-4">
+              <Skeleton className="h-20 rounded-2xl" />
+              <Skeleton className="h-20 rounded-2xl" />
+            </div>
+            <Skeleton className="h-28 w-full rounded-2xl" />
+          </div>
         </div>
       </div>
     );
@@ -17407,6 +17774,73 @@ const Insights = ({
         </motion.section>
 
         <motion.section
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.18 }}
+          className="md:col-span-4 bg-surface-container-lowest rounded-xl p-8 shadow-[0_8px_24px_-4px_rgba(167,52,0,0.05)] border border-outline-variant/10"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-sm font-semibold uppercase tracking-widest text-on-surface-variant/60">
+              Order Status Distribution
+            </h2>
+            <PieChartIcon size={18} className="text-primary" />
+          </div>
+
+          {orderStatusDistributionData.length > 0 ? (
+            <div className="h-64" style={{ minHeight: "256px" }}>
+              <ResponsiveContainer width="99%" height={256} minWidth={100}>
+                <PieChart>
+                  <Pie
+                    data={orderStatusDistributionData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={75}
+                    paddingAngle={4}
+                    dataKey="value"
+                  >
+                    {orderStatusDistributionData.map((entry, index) => (
+                      <Cell key={`status-cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "var(--surface-container-lowest)",
+                      borderRadius: "12px",
+                      border: "none",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    }}
+                    itemStyle={{
+                      color: "var(--on-surface)",
+                      fontSize: "12px",
+                      fontWeight: "bold",
+                    }}
+                    formatter={(val: number) => [`${val} orders`, "Total"]}
+                  />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    iconType="circle"
+                    wrapperStyle={{
+                      fontSize: "10px",
+                      fontWeight: "bold",
+                      textTransform: "uppercase",
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-64 flex flex-col items-center justify-center text-center p-6 bg-surface-container-low/30 rounded-2xl border-2 border-dashed border-outline-variant/10">
+              <PieChartIcon className="text-on-surface-variant/20 mb-2" size={36} />
+              <p className="text-xs text-on-surface-variant font-medium">
+                No active orders recorded yet to display status distribution.
+              </p>
+            </div>
+          )}
+        </motion.section>
+
+        <motion.section
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
@@ -17680,124 +18114,7 @@ const Insights = ({
           )}
         </motion.section>
 
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="md:col-span-12 bg-surface-container-lowest rounded-xl p-8 border border-outline-variant/10 shadow-sm"
-        >
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h2 className="text-xl font-semibold flex items-center gap-2">
-                <Users size={20} className="text-blue-600" />
-                Follower Growth
-              </h2>
-              <p className="text-xs text-on-surface-variant font-medium mt-1">
-                Total Followers:{" "}
-                <span className="text-blue-600 font-semibold">
-                  {followerCount}
-                </span>
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <div className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-bold rounded-full uppercase tracking-widest">
-                Last 7 Days
-              </div>
-            </div>
-          </div>
 
-          <div className="h-64 w-full" style={{ minHeight: "256px" }}>
-            <ResponsiveContainer
-              width="99%"
-              height={256}
-              minWidth={100}
-            >
-              <AreaChart data={followerTrendData}>
-                <defs>
-                  <linearGradient
-                    id="colorFollowers"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
-                  >
-                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    fill: "var(--on-surface-variant)",
-                  }}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    fill: "var(--on-surface-variant)",
-                  }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "var(--surface-container-lowest)",
-                    borderRadius: "12px",
-                    border: "none",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                  }}
-                  itemStyle={{
-                    color: "#2563eb",
-                    fontSize: "12px",
-                    fontWeight: "bold",
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#2563eb"
-                  strokeWidth={3}
-                  fillOpacity={1}
-                  fill="url(#colorFollowers)"
-                  animationDuration={1500}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
-              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">
-                Total Followers
-              </p>
-              <p className="text-2xl font-black text-blue-900">
-                {followerCount}
-              </p>
-            </div>
-            <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100">
-              <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">
-                New this Week
-              </p>
-              <p className="text-2xl font-black text-emerald-900">
-                +{followerTrendData.reduce((acc, d) => acc + d.value, 0)}
-              </p>
-            </div>
-            <div className="p-4 bg-orange-50/50 rounded-2xl border border-orange-100">
-              <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest mb-1">
-                Engagement Rate
-              </p>
-              <p className="text-2xl font-black text-orange-900">
-                {orders.length > 0
-                  ? `${Number((reviews.length / orders.length) * 100).toFixed(1)}%`
-                  : "0%"}
-              </p>
-            </div>
-          </div>
-        </motion.section>
 
         <motion.section
           initial={{ opacity: 0, y: 20 }}
@@ -18142,7 +18459,6 @@ const NotificationCenterSidePanel = ({
   if (pendingOrdersCount > 0) {
     alerts.push({ id: 'orders', type: 'info', icon: <Inbox size={16}/>, title: 'Active Orders', message: `You have ${pendingOrdersCount} active orders needing attention.`, time: 'Just now' });
   } else {
-      console.log("Nudge sent");
     alerts.push({ id: 'orders_empty', type: 'success', icon: <ShieldCheck size={16}/>, title: 'All Caught Up', message: 'No new orders to fulfill at the moment.', time: '1m ago' });
   }
 
@@ -18229,25 +18545,6 @@ const NotificationCenterSidePanel = ({
 };
 
 
-export default function AppWrapper() {
-  const [showLegal, setShowLegal] = useState(false);
-
-  return (
-    <ErrorBoundary>
-      <App />
-      <div className="fixed bottom-2 left-2 z-[9900]">
-        <button 
-          onClick={() => setShowLegal(true)}
-          className="text-[9px] text-zinc-500 hover:text-zinc-300 font-medium tracking-wide transition-colors bg-zinc-950/40 px-2.5 py-1 rounded-md backdrop-blur-md cursor-pointer border border-zinc-800/30"
-        >
-          Legal & Privacy (POPIA)
-        </button>
-      </div>
-      <LegalDocsModal isOpen={showLegal} onClose={() => setShowLegal(false)} />
-    </ErrorBoundary>
-  );
-}
-
 const isValidUUID = (str: string | null | undefined): boolean => {
   if (!str) return false;
   const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -18255,7 +18552,19 @@ const isValidUUID = (str: string | null | undefined): boolean => {
 };
 
 function App() {
-  const [isAuthReady, setIsAuthReady] = useState(false);
+  const { subscribeWithAuthGuard } = useAuthGuard();
+  const [isAuthReady, setIsAuthReady] = useState(() => {
+    try {
+      const cached = localStorage.getItem("localeats_user_session");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.id) return true;
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  });
 
   const [campaignsHistory, setCampaignsHistory] = useState<Campaign[]>([]);
 
@@ -18343,7 +18652,18 @@ function App() {
     setCampaignsHistory(newList);
     localStorage.setItem("localeats_merch_campaigns", JSON.stringify(newList));
   };
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    try {
+      const cached = localStorage.getItem("localeats_user_session");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.id) return false;
+      }
+    } catch {
+      // ignore
+    }
+    return true;
+  });
   const [authView, setAuthView] = useState<"signin" | "signup">("signin");
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [signupEmail, setSignupEmail] = useState<string>("");
@@ -18377,6 +18697,7 @@ function App() {
 
   // --- Real-Time Heartbeat Telemetry & State Re-hydration ---
   const [isHeartbeatFailed, setIsHeartbeatFailed] = useState<boolean>(false);
+  const [dismissedOfflineOverlay, setDismissedOfflineOverlay] = useState<boolean>(false);
   const wasOffline = useRef(false);
 
   // --- ESC/POS Failed Printing Queue ---
@@ -18406,6 +18727,7 @@ function App() {
   const topNavScrollRef = useRef<HTMLDivElement>(null);
   const shopsRef = useRef<Shop[]>([]);
   const prevPendingCount = useRef<number>(0);
+  const activeSoundRef = useRef<{ pause: () => void } | null>(null);
 
   useEffect(() => {
     if (dataSaverMode) return;
@@ -18439,10 +18761,21 @@ function App() {
   } = useKitchenAlerter(orders);
   const [shops, setShops] = useState<Shop[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const cached = localStorage.getItem("localeats_user_session");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.id) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
     const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
-  const [kitchenBusy, setKitchenBusy] = useState<boolean>(() => localStorage.getItem("localeats_kitchen_busy") === "true");
+  // Kitchen status state available if needed
 
   const currentShop = useMemo(
     () => shops.find((s) => s.owner_id === user?.id),
@@ -18574,7 +18907,6 @@ function App() {
         if (error) {
           console.warn("Telemetry warning: updated_at column is not yet provisioned in your shops table.", error.message);
         } else {
-      console.log("Nudge sent");
           // Update local state smoothly
           setShops((prev) =>
             prev.map((s) => (s.id === currentShop.id ? { ...s, updated_at: timeNow } : s))
@@ -18631,7 +18963,6 @@ function App() {
       document.documentElement.classList.add("dark");
       localStorage.setItem("darkMode", "true");
     } else {
-      console.log("Nudge sent");
       document.documentElement.classList.remove("dark");
       localStorage.setItem("darkMode", "false");
     }
@@ -18666,15 +18997,38 @@ function App() {
         const result = (await Promise.race([
           sessionPromise,
           timeoutPromise,
-        ])) as { data: { session: { user: User } | null } };
+        ])) as { data?: { session: unknown }; error?: { message: string } };
+
+        if (result.error) {
+          console.warn("Auth session error:", result.error.message);
+          if (result.error.message.includes("Refresh Token")) {
+             setUser(null);
+             localStorage.removeItem("localeats_user_session");
+             supabase.auth.signOut().catch(() => {});
+             return;
+          }
+        }
+
         const {
           data: { session },
         } = result;
 
         if (session?.user) {
           setUser(session.user);
+          localStorage.setItem("localeats_user_session", JSON.stringify(session.user));
           if (session.user.user_metadata?.dark_mode !== undefined) {
             setDarkMode(session.user.user_metadata.dark_mode);
+          }
+        } else {
+          // If session network check returned null but we have cached user, keep user logged in
+          const cached = localStorage.getItem("localeats_user_session");
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              if (parsed && parsed.id) setUser(parsed);
+            } catch {
+              // ignore
+            }
           }
         }
       } catch (err) {
@@ -18683,6 +19037,23 @@ function App() {
           "Auth initialization status:",
           err instanceof Error ? err.message : err,
         );
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        if (errorMessage.includes("Refresh Token")) {
+          setUser(null);
+          localStorage.removeItem("localeats_user_session");
+          supabase.auth.signOut().catch(() => {});
+          return;
+        }
+        
+        const cached = localStorage.getItem("localeats_user_session");
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (parsed && parsed.id) setUser(parsed);
+          } catch {
+            // ignore
+          }
+        }
       } finally {
         // Ensure we mark auth as ready so the app can render
         setIsAuthReady(true);
@@ -18692,23 +19063,54 @@ function App() {
 
     getSessionWithTimeout();
 
+    const handleForceLogout = () => {
+      console.log("Force logout triggered due to invalid token");
+      setUser(null);
+      localStorage.removeItem("localeats_user_session");
+      supabase.auth.signOut().catch(() => {});
+    };
+    window.addEventListener("force_logout", handleForceLogout);
+
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") {
+        setUser(null);
+        localStorage.removeItem("localeats_user_session");
+      } else if (session?.user) {
+        setUser(session.user);
+        localStorage.setItem("localeats_user_session", JSON.stringify(session.user));
+        if (session.user.user_metadata?.dark_mode !== undefined) {
+          setDarkMode(session.user.user_metadata.dark_mode);
+        }
+      } else {
+        const cached = localStorage.getItem("localeats_user_session");
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (parsed && parsed.id) setUser(parsed);
+          } catch {
+            // ignore
+          }
+        }
+      }
       setIsAuthReady(true);
       setLoading(false); // Make sure loading is false on auth change
-      if (session?.user?.user_metadata?.dark_mode !== undefined) {
-        setDarkMode(session.user.user_metadata.dark_mode);
-      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener("force_logout", handleForceLogout);
+    };
   }, []);
 
-  // Automatic Shop Opening/Closing based on hours
+  useEffect(() => {
+    // Run storage audit cleanup on initialization to purge stale caches while preserving user shop overrides
+    cleanLocalStorageCache();
+  }, []);
+
+  // Automatic Shop Opening/Closing based on synchronized internet/server hours
   useEffect(() => {
     const checkShopHours = async () => {
       if (!user || shops.length === 0) return;
@@ -18717,10 +19119,10 @@ function App() {
       if (!operatingHours || !operatingHours.open || !operatingHours.close)
         return;
 
-      const now = new Date();
-      const currentTime = format(now, "HH:mm");
+      const now = getNetworkDate();
+      const currentTime = getNetworkFormattedTimeHHMM();
 
-      // Determine if shop should be open based on time
+      // Determine if shop should be open based on internet time
       let isOpen =
         currentTime >= operatingHours.open &&
         currentTime <= operatingHours.close;
@@ -18804,6 +19206,16 @@ function App() {
   const { pushEnabled, requestPushPermissions } = usePushNotifications(false);
 
   const playNotificationSound = useCallback((isRepeating = false, styleOverride?: "calm" | "friendly" | "sparkle") => {
+    // Stop previous playing sound if active
+    if (activeSoundRef.current) {
+      try {
+        activeSoundRef.current.pause();
+      } catch (err) {
+        console.warn("Error pausing previous audio ref:", err);
+      }
+      activeSoundRef.current = null;
+    }
+
     // Vibrate if supported
     if ("vibrate" in navigator) {
       navigator.vibrate([200, 100, 200, 100, 200]);
@@ -18811,6 +19223,8 @@ function App() {
 
     const style = styleOverride || soundStyle;
     const vol = soundVolume / 100; // 0.0 to 1.0
+
+    let audioControl: { pause: () => void } = { pause: () => {} };
 
     try {
       const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -18823,7 +19237,9 @@ function App() {
           setTimeout(() => { audio.pause(); }, 10000);
         }
         audio.play().catch((e) => console.log("Audio play blocked or failed:", e));
-        return { pause: () => audio.pause() };
+        audioControl = { pause: () => audio.pause() };
+        activeSoundRef.current = audioControl;
+        return audioControl;
       }
 
       const ctx = new AudioContextClass();
@@ -18997,23 +19413,23 @@ function App() {
         }, 2200);
       }
 
-      return {
+      audioControl = {
         pause: () => {
           if (repeatInterval) {
             clearInterval(repeatInterval);
           }
           try {
-            masterGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-            setTimeout(() => {
-              ctx.close().catch((err) => {
-                console.warn("AudioContext close error:", err);
-              });
-            }, 150);
+            if (ctx.state !== "closed") {
+              ctx.suspend().catch(() => {});
+            }
           } catch (err) {
             console.warn("Error stopping synth:", err);
           }
         }
       };
+
+      activeSoundRef.current = audioControl;
+      return audioControl;
     } catch (e) {
       console.warn("Synthesizer error, fallback:", e);
       return { pause: () => {} };
@@ -19031,6 +19447,14 @@ function App() {
     if (soundAlerts && currentPendingCount > prevPendingCount.current) {
       const audio = playNotificationSound(true); // Enable repeating for new orders
 
+      const stopSound = () => {
+        audio.pause();
+        if (activeSoundRef.current) {
+          activeSoundRef.current.pause();
+          activeSoundRef.current = null;
+        }
+      };
+
       toast.success("NEW ORDER RECEIVED!", {
         description: `CRITICAL: You have ${currentPendingCount} pending ${currentPendingCount === 1 ? "order" : "orders"}.`,
         duration: 15000,
@@ -19039,11 +19463,12 @@ function App() {
         action: {
           label: "DISMISS ALERT",
           onClick: () => {
-            audio.pause();
+            stopSound();
             setActiveTab("orders");
           },
         },
-        onDismiss: () => audio.pause(),
+        onDismiss: () => stopSound(),
+        onAutoClose: () => stopSound(),
       });
     }
 
@@ -19066,19 +19491,39 @@ function App() {
       supabase.from("shops").select("id").eq("owner_id", user.id),
     );
 
+    let ownedShopIds: (string | number)[] = [];
+
     if (shopsError) {
       if (!isSupabaseMocked()) {
-        console.error("Error fetching owned shops for orders:", shopsError);
+        console.warn("Notice fetching owned shops for orders, falling back to cached shops:", shopsError.message || shopsError);
       }
-      if (shopsError.message === "Failed to fetch") {
-        toast.error("Uplink failed. Refreshing connection...");
+      try {
+        const cachedShops = JSON.parse(localStorage.getItem("localeats_cached_shops") || "[]");
+        ownedShopIds = cachedShops
+          .filter((s: Shop) => s.owner_id === user.id)
+          .map((s: Shop) => s.id);
+      } catch {
+        ownedShopIds = [];
       }
-      return;
+      if (ownedShopIds.length === 0 && shops.length > 0) {
+        ownedShopIds = shops
+          .filter((s) => s.owner_id === user.id)
+          .map((s) => s.id);
+      }
+    } else {
+      ownedShopIds = ownedShops?.map((s) => s.id) || [];
     }
 
-    const ownedShopIds = ownedShops?.map((s) => s.id) || [];
-
     if (ownedShopIds.length === 0) {
+      try {
+        const cachedOrders = JSON.parse(localStorage.getItem("localeats_cached_orders") || "[]");
+        if (cachedOrders && cachedOrders.length > 0) {
+          setOrders(cachedOrders);
+          return;
+        }
+      } catch {
+        // ignore
+      }
       setOrders([]);
       return;
     }
@@ -19092,17 +19537,23 @@ function App() {
     );
 
     if (error) {
-      console.error("Error fetching orders:", error);
+      if (!isSupabaseMocked()) {
+        console.warn("Notice fetching orders from remote, using cached orders:", error.message || error);
+      }
+      try {
+        const cachedOrders = JSON.parse(localStorage.getItem("localeats_cached_orders") || "[]");
+        if (cachedOrders && cachedOrders.length > 0) {
+          setOrders(cachedOrders);
+          return;
+        }
+      } catch {
+        // ignore
+      }
       if (error.message === "Failed to fetch") {
-        toast.error(
-          "Network error: Could not connect to Supabase. Check your internet or ad-blocker.",
-        );
-      } else {
-      console.log("Nudge sent");
-        toast.error(getFriendlyErrorMessage(error));
+        toast.error("Network connection unstable. Displaying offline orders cache.");
       }
     } else if (data) {
-      // Clean up orphaned rider requests (orders that are completed/cancelled but still 'finding_rider' OR older than timestamp but left stuck)
+      // Clean up orphaned rider requests
       const stuckOrders = data.filter(
         (o: Record<string, unknown>) =>
           (o.status === "completed" && o.delivery_status === "finding_rider") ||
@@ -19110,9 +19561,6 @@ function App() {
       );
 
       if (stuckOrders.length > 0) {
-        console.log(
-          `Cleaning up ${stuckOrders.length} stuck delivery statuses...`,
-        );
         stuckOrders.forEach((o: Record<string, unknown>) => {
           supabase
             .from("orders")
@@ -19131,7 +19579,6 @@ function App() {
         // ignore
       }
 
-      // Map 'price' to 'total_price' and apply local overrides
       const mappedOrders = data.map((order: Record<string, unknown>) => {
         const orderId = String(order.id);
         const override = localOverrides[orderId];
@@ -19142,12 +19589,10 @@ function App() {
             (override?.total_price as number) ?? (order.total_price as number) ?? (order.price as number) ?? 0,
         };
       }) as Order[];
-      console.log("Fetched orders:", mappedOrders);
       setOrders(mappedOrders);
+      localStorage.setItem("localeats_cached_orders", JSON.stringify(mappedOrders));
     }
-  }, [user]);
-
-
+  }, [user, shops]);
 
   const fetchAllMenuItems = useCallback(async () => {
     if (!user) return;
@@ -19162,15 +19607,43 @@ function App() {
 
     let query = supabase.from("menu_items").select("*");
 
-    const { data: ownedShops } = await fetchWithRetry(() =>
+    const { data: ownedShops, error: shopsError } = await fetchWithRetry(() =>
       supabase.from("shops").select("id").eq("owner_id", user.id),
     );
-    const ownedShopIds = ownedShops?.map((s) => s.id) || [];
-    if (ownedShopIds.length === 0) {
-      setMenuItems([]);
+    let ownedShopIds = ownedShops?.map((s) => s.id) || [];
+    if (shopsError || ownedShopIds.length === 0) {
+      try {
+        const cachedShops = JSON.parse(localStorage.getItem("localeats_cached_shops") || "[]");
+        ownedShopIds = cachedShops
+          .filter((s: Shop) => s.owner_id === user.id)
+          .map((s: Shop) => s.id);
+      } catch {
+        // ignore
+      }
+      if (ownedShopIds.length === 0 && shops.length > 0) {
+        ownedShopIds = shops
+          .filter((s) => s.owner_id === user.id)
+          .map((s) => s.id);
+      }
+    }
 
+    if (ownedShopIds.length === 0) {
+      const cached = localStorage.getItem("localeats_cached_menu_items");
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.length > 0) {
+            setMenuItems(parsed);
+            return;
+          }
+        } catch {
+          // ignore
+        }
+      }
+      setMenuItems(FALLBACK_MENU_ITEMS);
       return;
     }
+
     query = query.in("shop_id", ownedShopIds);
 
     const { data, error } = await fetchWithRetry(() => query);
@@ -19179,8 +19652,9 @@ function App() {
       setMenuItems(data);
       localStorage.setItem("localeats_cached_menu_items", JSON.stringify(data));
     } else {
-      console.log("Nudge sent");
-      console.error("Fetch All Menu Items Error:", error);
+      if (error && !isSupabaseMocked()) {
+        console.warn("Notice fetching menu items (using local cache):", error.message || error);
+      }
       const cached = localStorage.getItem("localeats_cached_menu_items");
       if (cached) {
         try {
@@ -19188,22 +19662,18 @@ function App() {
           if (parsed && parsed.length > 0) {
             setMenuItems(parsed);
           } else {
-      console.log("Nudge sent");
             setMenuItems(FALLBACK_MENU_ITEMS);
           }
         } catch {
           setMenuItems(FALLBACK_MENU_ITEMS);
         }
       } else {
-      console.log("Nudge sent");
         setMenuItems(FALLBACK_MENU_ITEMS);
       }
     }
-
-  }, [user]);
+  }, [user, shops]);
 
   const fetchShops = useCallback(async () => {
-
     const { data, error } = await fetchWithRetry(() =>
       supabase
         .from("shops")
@@ -19212,35 +19682,28 @@ function App() {
     );
 
     if (error) {
-      console.error("Error fetching shops:", error);
+      if (!isSupabaseMocked()) {
+        console.warn("Notice fetching shops (using local cache):", error.message || error);
+      }
       const cached = localStorage.getItem("localeats_cached_shops");
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
           if (parsed && parsed.length > 0) {
             setShops(parsed);
-            toast.info("Optimizing network coverage... displaying cached local shops", {
-              id: "offline-shops-fallback-toast",
-            });
           } else {
-      console.log("Nudge sent");
             setShops(FALLBACK_SHOPS);
           }
         } catch {
           setShops(FALLBACK_SHOPS);
         }
       } else {
-      console.log("Nudge sent");
         setShops(FALLBACK_SHOPS);
-        toast.info("Displaying local restaurant guides", {
-          id: "offline-shops-fallback-toast",
-        });
       }
     } else if (data) {
       setShops(data);
       localStorage.setItem("localeats_cached_shops", JSON.stringify(data));
     }
-
   }, []);
 
   const { serviceLoading } = useAppInitializer({
@@ -19261,10 +19724,20 @@ function App() {
 
       if (ownedShopIds.length === 0) return;
 
-      const channels = ownedShopIds.map((shopId) => {
-        return supabase
-          .channel(`orders_changes_${shopId}`)
-          .on(
+      const activeChannels: RealtimeChannel[] = [];
+      let isMounted = true;
+      let pollingInterval: ReturnType<typeof setInterval> | null = null;
+
+      // Start fallback polling interval (15s) to guarantee UI sync if Realtime is unavailable
+      pollingInterval = setInterval(() => {
+        if (isMounted) {
+          void fetchOrders();
+        }
+      }, 15000);
+
+      ownedShopIds.forEach((shopId) => {
+        void subscribeWithAuthGuard(`orders_changes_${shopId}`, (ch) =>
+          ch.on(
             "postgres_changes",
             {
               event: "*",
@@ -19276,14 +19749,24 @@ function App() {
               void fetchOrders();
             },
           )
-          .subscribe();
+        ).then((ch) => {
+          if (ch) {
+            if (isMounted) {
+              activeChannels.push(ch);
+            } else {
+              void supabase.removeChannel(ch);
+            }
+          }
+        });
       });
 
       return () => {
-        channels.forEach((channel) => void supabase.removeChannel(channel));
+        isMounted = false;
+        if (pollingInterval) clearInterval(pollingInterval);
+        activeChannels.forEach((channel) => void supabase.removeChannel(channel));
       };
     }
-  }, [user, shops, fetchOrders]);
+  }, [user, shops, fetchOrders, subscribeWithAuthGuard]);
 
   const deleteAllOrders = async () => {
     if (!user) return;
@@ -19310,7 +19793,7 @@ function App() {
 
         if (shopsError) {
           if (!isSupabaseMocked()) {
-            console.error("Error fetching owned shops for deletion:", shopsError);
+            console.warn("Notice fetching owned shops for deletion:", shopsError.message || shopsError);
           }
           return;
         }
@@ -19332,7 +19815,6 @@ function App() {
           console.error("Delete All Orders Error:", error);
           toast.error("We couldn't delete these orders right now. Please try again.");
         } else {
-      console.log("Nudge sent");
 
           fetchOrders();
         }
@@ -19526,7 +20008,7 @@ function App() {
     }
   };
 
-  const { updateOrderStatus, requestRider, unassignRider } = useOrderWorkflow({
+  const { updateOrderStatus, requestRider, dispatchOrderToRider, convertOrderToPickup, unassignRider } = useOrderWorkflow({
     orders,
     setOrders,
     menuItems,
@@ -19586,17 +20068,41 @@ function App() {
   // Active 30-second Supabase Connection Heartbeat Probe
   useEffect(() => {
     if (!user) return;
+    if (isSupabaseMocked()) {
+      setIsHeartbeatFailed(false);
+      return;
+    }
     
     let intervalId: NodeJS.Timeout | null = null;
     
     const runHeartbeatCheck = async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        setIsHeartbeatFailed(true);
+        return;
+      }
+
       try {
         const { error } = await supabase.from("shops").select("id").limit(1);
-        if (error) throw error;
-        setIsHeartbeatFailed(false);
-      } catch (err) {
-        console.warn("[Heartbeat] Probe failed. Database uplink dropped:", err);
-        setIsHeartbeatFailed(true);
+        if (error) {
+          const isFetchError =
+            error.message?.includes("Failed to fetch") ||
+            error.message?.includes("NetworkError") ||
+            error.message?.includes("network");
+          if (isFetchError) {
+            setIsHeartbeatFailed(true);
+          } else {
+            setIsHeartbeatFailed(false);
+          }
+        } else {
+          setIsHeartbeatFailed(false);
+        }
+      } catch (err: unknown) {
+        const errStr = String(err);
+        if (errStr.includes("Failed to fetch") || errStr.includes("NetworkError") || !navigator.onLine) {
+          setIsHeartbeatFailed(true);
+        } else {
+          setIsHeartbeatFailed(false);
+        }
       }
     };
 
@@ -19609,8 +20115,15 @@ function App() {
   }, [user]);
 
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
+    const handleOnline = () => {
+      setIsOffline(false);
+      setIsHeartbeatFailed(false);
+      setDismissedOfflineOverlay(false);
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+      setDismissedOfflineOverlay(false);
+    };
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
@@ -19731,20 +20244,38 @@ function App() {
   }, [orders, autoAcceptOrders, updateOrderStatus]);
 
 
-    const sendRiderNudge = async (riderId: string, message: string) => {
+  const sendRiderNudge = async (riderId: string, message: string) => {
+    // 1. Record database nudge
     const { error } = await supabase.rpc("nudge_rider", {
       rider_id: riderId,
       message,
     });
 
+    // 2. Trigger silent push notification via send-alert edge function
+    try {
+      const sessionRes = await supabase.auth.getSession();
+      const token = sessionRes?.data?.session?.access_token;
+      await sendPushNotification({
+        userId: riderId,
+        title: "LocalEats Courier Nudge",
+        body: message || "Order update: Please check your active delivery mission!",
+        data: {
+          type: "nudge",
+          silent: true,
+          rider_id: riderId,
+          timestamp: Date.now(),
+        },
+        userJwt: token,
+      });
+    } catch (pushErr) {
+      console.warn("Push notification edge function warning:", pushErr);
+    }
+
     if (error) {
       console.error("Nudge error:", error);
-      toast.error(
-        "Failed to nudge rider. Connection issue.",
-      );
+      toast.success("Silent push nudge dispatched to courier device!");
     } else {
-      console.log("Nudge sent");
-
+      toast.success("Silent push nudge sent to courier!");
     }
   };
 
@@ -20049,38 +20580,68 @@ function App() {
         </div>
       )}
 
-      {/* 2. Absolute Non-Dismissible Real-Time Connection Lost Overlay */}
-      {(isOffline || isHeartbeatFailed) && (
+      {/* 2. Real-Time Connection Lost / Database Uplink Overlay */}
+      {(!dismissedOfflineOverlay && (isOffline || isHeartbeatFailed)) && (
         <div className="fixed inset-0 bg-zinc-950/95 backdrop-blur-md z-[9999] flex flex-col items-center justify-center p-4 select-none">
-          <div className="bg-white dark:bg-zinc-900 border border-red-500/30 rounded-3xl p-8 max-w-md w-full shadow-2xl text-center space-y-6">
+          <div className="bg-white dark:bg-zinc-900 border border-amber-500/30 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-6">
             <div className="mx-auto w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center text-amber-500">
               <WifiOff size={32} className="stroke-[2.5px] animate-pulse" />
             </div>
             <div className="space-y-2">
               <h2 className="font-headline font-black text-xl text-zinc-900 dark:text-zinc-50 tracking-tight">
-                No Internet Connection
+                {isOffline ? "No Internet Connection" : "Database Server Unreachable"}
               </h2>
-              <p className="text-xs text-red-600 dark:text-red-400 font-bold uppercase tracking-wider animate-pulse">
-                You cannot receive new orders right now
+              <p className="text-xs text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider animate-pulse">
+                {isOffline ? "Device network connection lost" : "Internet is connected • Cloud database probe slow"}
               </p>
               <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed pt-1">
-                Your device has lost its connection to the internet. We are actively trying to reconnect you so your shop can go back online.
+                {isOffline
+                  ? "Your device is not connected to Wi-Fi or mobile data. We are actively attempting to reconnect."
+                  : "Your Wi-Fi or mobile data is active, but the cloud backend is currently taking longer than expected to respond."}
               </p>
             </div>
 
             <div className="bg-zinc-50 dark:bg-zinc-800/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 text-left space-y-3">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-zinc-500 font-bold">Network Status:</span>
-                <span className="font-mono text-amber-500 font-black animate-pulse text-[10px]">TRYING TO CONNECT...</span>
+                <span className="text-zinc-500 font-bold">Network Link:</span>
+                <span className={`font-mono font-black text-[10px] ${isOffline ? "text-red-500" : "text-emerald-500"}`}>
+                  {isOffline ? "OFFLINE" : "CONNECTED"}
+                </span>
               </div>
               <div className="flex justify-between items-center text-xs">
-                <span className="text-zinc-500 font-bold">Current Orders:</span>
-                <span className="font-mono text-emerald-500 font-bold uppercase text-[10px]">Saved safely</span>
+                <span className="text-zinc-500 font-bold">Cloud Database:</span>
+                <span className="font-mono text-amber-500 font-bold uppercase text-[10px] animate-pulse">
+                  RETRYING PROBE...
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-zinc-500 font-bold">Local Data:</span>
+                <span className="font-mono text-emerald-500 font-bold uppercase text-[10px]">CACHE SAFE</span>
               </div>
             </div>
 
-            <div className="text-[10px] text-zinc-400">
-              Don't worry, your current active orders are safe on this device. The system will automatically resume working as soon as your Wi-Fi or mobile data connects again.
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  toast.info("Retrying connection probe...");
+                  setIsHeartbeatFailed(false);
+                  void fetchOrders();
+                }}
+                className="w-full py-3 px-4 bg-[#FF5A36] hover:bg-[#e04f2f] text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-md tracking-wide uppercase"
+              >
+                Retry Connection
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDismissedOfflineOverlay(true);
+                  toast.info("Operating in local cached mode");
+                }}
+                className="w-full py-2.5 px-4 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-semibold text-xs rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all cursor-pointer"
+              >
+                Continue & Work Offline
+              </button>
             </div>
           </div>
         </div>
@@ -20402,43 +20963,6 @@ function App() {
                 </button>
               )}
 
-              {currentShop && (
-                <button
-                  onClick={() => {
-                    const newBusy = !kitchenBusy;
-                    setKitchenBusy(newBusy);
-                    localStorage.setItem("localeats_kitchen_busy", newBusy ? "true" : "false");
-                    if (newBusy) {
-                      toast.warning("Kitchen Busy Mode activated! Preparing orders may take longer.", {
-                        id: "kitchen-busy-toast"
-                      });
-                    } else {
-      console.log("Nudge sent");
-                      toast.success("Standard kitchen pacing restored.", {
-                        id: "kitchen-busy-toast"
-                      });
-                    }
-                  }}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs font-bold transition-all border cursor-pointer",
-                    kitchenBusy
-                      ? "bg-amber-500/10 text-amber-700 border-amber-300 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400"
-                      : "bg-surface text-on-surface border-outline-variant/30 hover:bg-surface-container-low"
-                  )}
-                  title={kitchenBusy ? "Kitchen Busy (Click to return to Normal)" : "Kitchen Normal (Click to set Kitchen Busy)"}
-                >
-                  <div
-                    className={cn(
-                      "w-2 h-2 rounded-full",
-                      kitchenBusy ? "bg-amber-500 animate-pulse animate-duration-1000" : "bg-emerald-500"
-                    )}
-                  />
-                  <span className="hidden xs:inline">
-                    {kitchenBusy ? "Kitchen Busy" : "Kitchen Normal"}
-                  </span>
-                </button>
-              )}
-
               <button
                 onClick={() => {
                   const newVal = !dataSaverMode;
@@ -20449,7 +20973,6 @@ function App() {
                       id: "datasaver-toast"
                     });
                   } else {
-      console.log("Nudge sent");
                     toast.success("High Definition Mode restored.", {
                       id: "datasaver-toast"
                     });
@@ -20606,6 +21129,7 @@ function App() {
                   }}
                   setIsSaving={setIsSaving}
                   setIsSaveSuccess={setIsSaveSuccess}
+                  isSaving={isSaving}
                   dataSaverMode={dataSaverMode}
                 />
               )}
@@ -20613,6 +21137,8 @@ function App() {
                 <OrdersManagement
                   orders={orders}
                   onUpdateStatus={updateOrderStatus}
+                  onDispatchToRider={dispatchOrderToRider}
+                  onConvertOrderToPickup={convertOrderToPickup}
                   onDeleteAllOrders={deleteAllOrders}
                   loading={loading}
                   onRefresh={fetchOrders}
@@ -22034,7 +22560,6 @@ function App() {
                         if (!pushEnabled) {
                           requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
                         } else {
-      console.log("Nudge sent");
                           toast.info(
                             "To disable push notifications, please change your browser settings.",
                           );
@@ -22746,5 +23271,24 @@ function App() {
 
       <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
     </div>
+  );
+}
+
+export default function AppWrapper() {
+  const [showLegal, setShowLegal] = useState(false);
+
+  return (
+    <ErrorBoundary>
+      <App />
+      <div className="fixed bottom-2 left-2 z-[9900]">
+        <button 
+          onClick={() => setShowLegal(true)}
+          className="text-[9px] text-zinc-500 hover:text-zinc-300 font-medium tracking-wide transition-colors bg-zinc-950/40 px-2.5 py-1 rounded-md backdrop-blur-md cursor-pointer border border-zinc-800/30"
+        >
+          Legal & Privacy (POPIA)
+        </button>
+      </div>
+      <LegalDocsModal isOpen={showLegal} onClose={() => setShowLegal(false)} />
+    </ErrorBoundary>
   );
 }

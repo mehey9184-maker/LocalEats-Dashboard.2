@@ -2,7 +2,7 @@
 // Combines Web Audio API dual-tone synthesized sirens with the Screen Wake Lock API.
 // Keeps screens on during busy shifts and pierces high kitchen background noise on new PENDING orders.
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Order } from "../types";
 
 export interface KitchenAlerterResult {
@@ -18,7 +18,7 @@ interface CustomWindow extends Window {
 }
 
 export const useKitchenAlerter = (orders: Order[]): KitchenAlerterResult => {
-  const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(false);
+  const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(true);
   const [isWakeLocked, setIsWakeLocked] = useState<boolean>(false);
   const [hasPendingAlarm, setHasPendingAlarm] = useState<boolean>(false);
 
@@ -149,27 +149,8 @@ export const useKitchenAlerter = (orders: Order[]): KitchenAlerterResult => {
     }, 180);
   };
 
-  // Explicit user unlock/opt-in to whitelist modern browsers autoplay policies
-  const enableAudioAndGoOnline = async () => {
-    try {
-      const Win = window as unknown as CustomWindow;
-      const AudioCtxClass = window.AudioContext || Win.webkitAudioContext;
-      if (AudioCtxClass) {
-        const ctx = new AudioCtxClass();
-        if (ctx.state === "suspended") {
-          await ctx.resume();
-        }
-        audioCtxRef.current = ctx;
-      }
-      setIsAudioEnabled(true);
-      await requestWakeLock();
-    } catch (err) {
-      console.error("Audio Whitelisting Error:", err);
-    }
-  };
-
   // --- 2. Screen Wake Lock Orchestration ---
-  const requestWakeLock = async () => {
+  const requestWakeLock = useCallback(async () => {
     if (!("wakeLock" in navigator)) {
       console.warn("This browser does not support native Screen Wake Locks.");
       return;
@@ -189,9 +170,9 @@ export const useKitchenAlerter = (orders: Order[]): KitchenAlerterResult => {
       console.warn("Screen Wake Lock allocation blocked:", err);
       setIsWakeLocked(false);
     }
-  };
+  }, []);
 
-  const releaseWakeLock = async () => {
+  const releaseWakeLock = useCallback(async () => {
     if (wakeLockRef.current) {
       try {
         const lock = wakeLockRef.current as { release: () => Promise<void> };
@@ -202,7 +183,47 @@ export const useKitchenAlerter = (orders: Order[]): KitchenAlerterResult => {
         console.error("Failed releasing wake lock:", err);
       }
     }
-  };
+  }, []);
+
+  // Explicit user unlock/opt-in to whitelist modern browsers autoplay policies
+  const enableAudioAndGoOnline = useCallback(async () => {
+    try {
+      const Win = window as unknown as CustomWindow;
+      const AudioCtxClass = window.AudioContext || Win.webkitAudioContext;
+      if (AudioCtxClass) {
+        if (!audioCtxRef.current) {
+          audioCtxRef.current = new AudioCtxClass();
+        }
+        if (audioCtxRef.current.state === "suspended") {
+          await audioCtxRef.current.resume();
+        }
+      }
+      setIsAudioEnabled(true);
+      await requestWakeLock();
+    } catch (err) {
+      console.error("Audio Whitelisting Error:", err);
+    }
+  }, [requestWakeLock]);
+
+  // Auto-enable audio context & wake lock on first user gesture anywhere
+  useEffect(() => {
+    const handleFirstGesture = () => {
+      void enableAudioAndGoOnline();
+      window.removeEventListener("click", handleFirstGesture);
+      window.removeEventListener("touchstart", handleFirstGesture);
+      window.removeEventListener("keydown", handleFirstGesture);
+    };
+
+    window.addEventListener("click", handleFirstGesture, { once: true });
+    window.addEventListener("touchstart", handleFirstGesture, { once: true });
+    window.addEventListener("keydown", handleFirstGesture, { once: true });
+
+    return () => {
+      window.removeEventListener("click", handleFirstGesture);
+      window.removeEventListener("touchstart", handleFirstGesture);
+      window.removeEventListener("keydown", handleFirstGesture);
+    };
+  }, [enableAudioAndGoOnline]);
 
   // Visibility Change Auto-Rehydration (standard Screen Wake Lock requirement)
   useEffect(() => {
@@ -216,7 +237,7 @@ export const useKitchenAlerter = (orders: Order[]): KitchenAlerterResult => {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [isAudioEnabled]);
+  }, [isAudioEnabled, requestWakeLock]);
 
   // Evaluate orders live status triggers
   useEffect(() => {
@@ -238,7 +259,7 @@ export const useKitchenAlerter = (orders: Order[]): KitchenAlerterResult => {
       stopSiren();
       void releaseWakeLock();
     };
-  }, []);
+  }, [releaseWakeLock]);
 
   return {
     isAudioEnabled,
