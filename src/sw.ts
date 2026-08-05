@@ -52,3 +52,17 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+// Handle Service Worker Background Sync for Offline Mutations
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+self.addEventListener('sync', (event: any) => {
+  if (event.tag === 'sync-offline-updates' || event.tag === 'localeats-offline-queue') {
+    event.waitUntil(
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'TRIGGER_OFFLINE_SYNC' });
+        });
+      })
+    );
+  }
+});

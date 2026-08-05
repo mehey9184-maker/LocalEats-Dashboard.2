@@ -146,9 +146,17 @@ try {
       errorMsg.includes("Load failed") ||
       errorMsg.includes("Failed to load") ||
       errorMsg.includes("Script error") ||
-      errorMsg.includes("Lock broken by another request")
+      errorMsg.includes("Lock broken by another request") ||
+      errorMsg.toLowerCase().includes("jwt expired") ||
+      errorMsg.toLowerCase().includes("token expired") ||
+      errorMsg.toLowerCase().includes("refresh token") ||
+      errorMsg.toLowerCase().includes("auth session missing") ||
+      errorMsg.toLowerCase().includes("session_not_found") ||
+      errorMsg.toLowerCase().includes("pgrst301") ||
+      errorMsg.toLowerCase().includes("unauthorized") ||
+      errorMsg.toLowerCase().includes("401")
     ) {
-      console.warn("[Self-Healing] Ignored transient network/script load error:", errorMsg);
+      console.warn("[Self-Healing] Ignored transient network/auth error:", errorMsg);
       return;
     }
     handleGlobalCrash("unhandled error", event.error || event.message);
@@ -166,9 +174,17 @@ try {
       reasonStr.includes("Timeout expired") ||
       reasonStr.includes("position acquisition error") ||
       reasonStr.includes("Script error") ||
-      reasonStr.includes("Lock broken by another request")
+      reasonStr.includes("Lock broken by another request") ||
+      reasonStr.toLowerCase().includes("jwt expired") ||
+      reasonStr.toLowerCase().includes("token expired") ||
+      reasonStr.toLowerCase().includes("refresh token") ||
+      reasonStr.toLowerCase().includes("auth session missing") ||
+      reasonStr.toLowerCase().includes("session_not_found") ||
+      reasonStr.toLowerCase().includes("pgrst301") ||
+      reasonStr.toLowerCase().includes("unauthorized") ||
+      reasonStr.toLowerCase().includes("401")
     ) {
-      console.warn("[Self-Healing] Ignored transient network/api unhandled promise rejection:", reasonStr);
+      console.warn("[Self-Healing] Ignored transient network/auth unhandled promise rejection:", reasonStr);
       return;
     }
     handleGlobalCrash("unhandled promise rejection", event.reason);

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import imageCompression from "browser-image-compression";
 import { 
   X, Camera, Upload, RefreshCw, Sparkles, Check, 
   Trash2, AlertCircle, Info, Wifi, WifiOff, CloudLightning 
@@ -227,12 +228,24 @@ export default function AIMenuScannerModal({
   };
 
   // File drag & drop or select triggers
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setUploadedFile(file);
-      const url = URL.createObjectURL(file);
-      setFilePreview(url);
+      try {
+        const options = {
+          maxSizeMB: 0.2,
+          maxWidthOrHeight: 1024,
+          useWebWorker: true,
+        };
+        const compressed = await imageCompression(file, options);
+        setUploadedFile(compressed);
+        const url = URL.createObjectURL(compressed);
+        setFilePreview(url);
+      } catch {
+        setUploadedFile(file);
+        const url = URL.createObjectURL(file);
+        setFilePreview(url);
+      }
     }
   };
 

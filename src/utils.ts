@@ -24,15 +24,35 @@ export const parseAndNormalizeZAAddress = (rawAddress: string, defaultCity: stri
     return { formattedAddress: "", city: defaultCity, postalCode: "" };
   }
 
-  const clean = rawAddress
-    .replace(/, South Africa/gi, "")
-    .replace(/, ZA/gi, "")
-    .replace(/, GP/gi, "")
-    .replace(/, Gauteng/gi, "")
+  // Remove administrative/governmental clutter, province, and country codes
+  let clean = rawAddress
+    .replace(/,?\s*South Africa/gi, "")
+    .replace(/,?\s*ZA\b/gi, "")
+    .replace(/,?\s*GP\b/gi, "")
+    .replace(/,?\s*Gauteng/gi, "")
+    .replace(/,?\s*City of [^,]+ Metropolitan Municipality/gi, "")
+    .replace(/,?\s*[^,]+ Metropolitan Municipality/gi, "")
+    .replace(/,?\s*Local Municipality/gi, "")
+    .replace(/,?\s*[^,]+ Ward \d+/gi, "")
+    .replace(/,?\s*Ward \d+/gi, "")
+    .replace(/,?\s*Region [A-Z0-9]+/gi, "")
+    .replace(/,?\s*Subregion [A-Z0-9]+/gi, "")
     .trim();
 
+  // Extract 4-digit postal code if present
   const zipMatch = clean.match(/\b\d{4}\b/);
   const postalCode = zipMatch ? zipMatch[0] : "";
+
+  // Remove standalone postal code numbers from main street/suburb text
+  clean = clean.replace(/,?\s*\b\d{4}\b/g, "").trim();
+
+  // Clean up duplicate commas, extra spaces, and filter empty parts
+  const parts = clean
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s, idx, arr) => s.length > 0 && arr.indexOf(s) === idx);
+
+  clean = parts.join(", ");
 
   let city = defaultCity;
   const lowerClean = clean.toLowerCase();
@@ -46,13 +66,21 @@ export const parseAndNormalizeZAAddress = (rawAddress: string, defaultCity: stri
     city = getSupportedCity(clean);
   }
 
-  const formattedAddress = `${clean}, South Africa`;
+  const formattedAddress = clean || rawAddress;
 
   return {
     formattedAddress,
     city,
     postalCode,
   };
+};
+
+export const shortenAddress = (address: string, maxParts = 2): string => {
+  if (!address) return "";
+  const parsed = parseAndNormalizeZAAddress(address);
+  const parts = parsed.formattedAddress.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length <= maxParts) return parts.join(", ");
+  return parts.slice(0, maxParts).join(", ");
 };
 
 export const formatSAPhone = (value: string) => {
@@ -208,3 +236,250 @@ export const getOrderTransitionData = (
 
   return updateData;
 };
+
+// --- South African Suburb & Section Fuzzy Search Helper ---
+export interface ZAAddressAliasSuggestion {
+  alias: string;
+  canonicalSuburb: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  score: number;
+  formattedSuggestion: string;
+}
+
+export const ZA_SUBURB_DICTIONARY: Array<{
+  alias: string;
+  canonicalSuburb: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  keywords: string[];
+}> = [
+  {
+    alias: "Hospital View",
+    canonicalSuburb: "Hospital View, Tembisa",
+    city: "Tembisa",
+    province: "Gauteng",
+    postalCode: "1632",
+    keywords: ["hospital", "view", "tembisa", "thembisa", "hospitall", "hospitaal"],
+  },
+  {
+    alias: "Winnie Mandela",
+    canonicalSuburb: "Winnie Mandela Park, Tembisa",
+    city: "Tembisa",
+    province: "Gauteng",
+    postalCode: "1632",
+    keywords: ["winnie", "mandela", "park", "tembisa", "thembisa", "winny"],
+  },
+  {
+    alias: "Esangweni",
+    canonicalSuburb: "Esangweni, Tembisa",
+    city: "Tembisa",
+    province: "Gauteng",
+    postalCode: "1632",
+    keywords: ["esangweni", "sangweni", "tembisa", "thembisa", "isangweni"],
+  },
+  {
+    alias: "Oakmoor",
+    canonicalSuburb: "Oakmoor Station, Tembisa",
+    city: "Tembisa",
+    province: "Gauteng",
+    postalCode: "1632",
+    keywords: ["oakmoor", "oakmor", "station", "tembisa", "thembisa"],
+  },
+  {
+    alias: "Phomolong",
+    canonicalSuburb: "Phomolong, Tembisa",
+    city: "Tembisa",
+    province: "Gauteng",
+    postalCode: "1632",
+    keywords: ["phomolong", "fomolong", "phomong", "tembisa", "thembisa"],
+  },
+  {
+    alias: "Sethokga",
+    canonicalSuburb: "Sethokga, Tembisa",
+    city: "Tembisa",
+    province: "Gauteng",
+    postalCode: "1632",
+    keywords: ["sethokga", "setokga", "tembisa", "thembisa"],
+  },
+  {
+    alias: "Rabasotho",
+    canonicalSuburb: "Rabasotho, Tembisa",
+    city: "Tembisa",
+    province: "Gauteng",
+    postalCode: "1632",
+    keywords: ["rabasotho", "rabasoto", "hall", "tembisa"],
+  },
+  {
+    alias: "Makhulong",
+    canonicalSuburb: "Makhulong, Tembisa",
+    city: "Tembisa",
+    province: "Gauteng",
+    postalCode: "1632",
+    keywords: ["makhulong", "makulong", "stadium", "tembisa"],
+  },
+  {
+    alias: "Ebony Park",
+    canonicalSuburb: "Ebony Park, Kaalfontein",
+    city: "Kaalfontein",
+    province: "Gauteng",
+    postalCode: "1632",
+    keywords: ["ebony", "park", "eboni", "ebonipark", "kaalfontein"],
+  },
+  {
+    alias: "Kaalfontein",
+    canonicalSuburb: "Kaalfontein Ext 1-7",
+    city: "Kaalfontein",
+    province: "Gauteng",
+    postalCode: "1632",
+    keywords: ["kaalfontein", "kalfontein", "kaal", "fontein"],
+  },
+  {
+    alias: "Ivory Park Ext 2",
+    canonicalSuburb: "Ivory Park Extension 2",
+    city: "Ivory Park",
+    province: "Gauteng",
+    postalCode: "1689",
+    keywords: ["ivory", "park", "ext", "2", "kopanong", "midrand"],
+  },
+  {
+    alias: "Ivory Park Ext 3",
+    canonicalSuburb: "Ivory Park Extension 3",
+    city: "Ivory Park",
+    province: "Gauteng",
+    postalCode: "1689",
+    keywords: ["ivory", "park", "ext", "3", "kopanong", "midrand"],
+  },
+  {
+    alias: "Rabie Ridge",
+    canonicalSuburb: "Rabie Ridge",
+    city: "Midrand",
+    province: "Gauteng",
+    postalCode: "1619",
+    keywords: ["rabie", "ridge", "rabi", "midrand"],
+  },
+  {
+    alias: "Clayville",
+    canonicalSuburb: "Clayville Industrial, Olifantsfontein",
+    city: "Tembisa",
+    province: "Gauteng",
+    postalCode: "1666",
+    keywords: ["clayville", "olifantsfontein", "industrial", "clay"],
+  },
+  {
+    alias: "Birch Acres",
+    canonicalSuburb: "Birch Acres, Kempton Park",
+    city: "Tembisa",
+    province: "Gauteng",
+    postalCode: "1618",
+    keywords: ["birch", "acres", "kempton", "park"],
+  },
+  {
+    alias: "Chloorkop",
+    canonicalSuburb: "Chloorkop, Kempton Park",
+    city: "Tembisa",
+    province: "Gauteng",
+    postalCode: "1624",
+    keywords: ["chloorkop", "chlorkop", "kempton"],
+  },
+  {
+    alias: "Vorna Valley",
+    canonicalSuburb: "Vorna Valley, Midrand",
+    city: "Ivory Park",
+    province: "Gauteng",
+    postalCode: "1686",
+    keywords: ["vorna", "valley", "midrand", "mall", "of", "africa"],
+  },
+  {
+    alias: "Halfway House",
+    canonicalSuburb: "Halfway House, Midrand",
+    city: "Ivory Park",
+    province: "Gauteng",
+    postalCode: "1685",
+    keywords: ["halfway", "house", "midrand"],
+  },
+  {
+    alias: "Alexandra",
+    canonicalSuburb: "Alexandra, Sandton",
+    city: "Tembisa",
+    province: "Gauteng",
+    postalCode: "2090",
+    keywords: ["alexandra", "alex", "sandton", "wynberg"],
+  },
+];
+
+export function getLevenshteinDistance(a: string, b: string): number {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+export function getZASuburbFuzzyMatches(
+  query: string,
+  limit: number = 4
+): ZAAddressAliasSuggestion[] {
+  if (!query || query.trim().length < 2) return [];
+
+  const normQuery = query.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "");
+  const queryTokens = normQuery.split(/\s+/).filter(Boolean);
+
+  const results: Array<ZAAddressAliasSuggestion> = [];
+
+  for (const entry of ZA_SUBURB_DICTIONARY) {
+    let matchScore = 0;
+    const entryAliasNorm = entry.alias.toLowerCase();
+
+    if (entryAliasNorm.includes(normQuery) || normQuery.includes(entryAliasNorm)) {
+      matchScore += 0.8;
+    }
+
+    for (const token of queryTokens) {
+      if (entry.keywords.some((kw) => kw.includes(token) || token.includes(kw))) {
+        matchScore += 0.4;
+      }
+      for (const kw of entry.keywords) {
+        if (Math.abs(kw.length - token.length) <= 2) {
+          const dist = getLevenshteinDistance(token, kw);
+          if (dist === 1) matchScore += 0.3;
+          else if (dist === 2) matchScore += 0.15;
+        }
+      }
+    }
+
+    if (matchScore > 0.3) {
+      results.push({
+        alias: entry.alias,
+        canonicalSuburb: entry.canonicalSuburb,
+        city: entry.city,
+        province: entry.province,
+        postalCode: entry.postalCode,
+        score: matchScore,
+        formattedSuggestion: `${entry.canonicalSuburb}, ${entry.city}, Gauteng, South Africa`,
+      });
+    }
+  }
+
+  return results
+    .sort((a, b) => b.score - a.score)
+    .filter((v, idx, self) => self.findIndex((t) => t.alias === v.alias) === idx)
+    .slice(0, limit);
+}

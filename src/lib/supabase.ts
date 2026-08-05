@@ -79,10 +79,19 @@ const resilientFetch: typeof fetch = async (input, init) => {
     return res;
   } catch (err: unknown) {
     const errorObj = err as Error;
-    if (errorObj?.name === 'TypeError' || errorObj?.message?.includes('Failed to fetch')) {
-      console.warn('[Supabase Resilient Fetch] Intercepted network connection error:', errorObj.message);
+    if (
+      errorObj?.name === 'AbortError' ||
+      errorObj?.name === 'TypeError' ||
+      errorObj?.message?.includes('Failed to fetch') ||
+      errorObj?.message?.includes('aborted')
+    ) {
+      console.debug("[Supabase] Network fetch notice:", err);
       return new Response(
-        JSON.stringify({ data: null, error: { message: 'Network connection unavailable. Falling back to cache.' } }),
+        JSON.stringify({
+          error: 'network_error',
+          error_description: 'Network connection unavailable or request timed out.',
+          message: 'Network connection unavailable or request timed out.',
+        }),
         {
           status: 503,
           statusText: 'Service Unavailable',

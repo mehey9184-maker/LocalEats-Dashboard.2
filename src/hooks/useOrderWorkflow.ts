@@ -3,6 +3,7 @@ import { Order, OrderStatus, MenuItem, Shop } from "../types";
 import { getOrderTransitionData, safeStripOrderColumns } from "../utils";
 import { sendPushNotification } from "../lib/firebase";
 import { validateDeliveryRadius, checkDeliveryRadiusRPC } from "../utils/deliveryRadius";
+import { queueOfflineMutation } from "../utils/offlineSyncQueue";
 import React from "react";
 
 interface OrderWorkflowProps {
@@ -96,8 +97,17 @@ export const useOrderWorkflow = ({
       // Ignore localStorage errors
     }
 
-    if (error && (!data || data.length === 0)) {
-      console.warn("Database sync notice (saved to local fallback cache):", error);
+    if ((error && (!data || data.length === 0)) || !navigator.onLine) {
+      console.warn("Database sync notice (saved to offline queue for background sync):", error);
+      void queueOfflineMutation({
+        type: "UPDATE_ORDER",
+        payload: {
+          id,
+          status: transitionData.status,
+          delivery_status: transitionData.delivery_status,
+          cancellation_reason: message,
+        },
+      });
     }
     
     toast.success(`Order marked as ${status}`);

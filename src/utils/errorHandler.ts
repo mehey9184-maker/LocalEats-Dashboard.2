@@ -7,7 +7,54 @@ export interface LoggedNetworkError {
   context: string;
   message: string;
   code?: string;
+  closeCode?: number;
+  closeReason?: string;
   details?: string;
+  latencyMs?: number;
+  type?: "websocket" | "api_gateway" | "database" | "offline_sync" | "general";
+}
+
+export function getWebSocketCloseCodeInfo(code: number): { name: string; description: string; isFatal: boolean } {
+  switch (code) {
+    case 1000:
+      return { name: "1000 Normal Closure", description: "Connection closed normally.", isFatal: false };
+    case 1001:
+      return { name: "1001 Going Away", description: "Endpoint server restarted or client navigated away.", isFatal: false };
+    case 1002:
+      return { name: "1002 Protocol Error", description: "WebSocket protocol error detected.", isFatal: true };
+    case 1003:
+      return { name: "1003 Unsupported Data", description: "Unsupported frame data type received.", isFatal: true };
+    case 1005:
+      return { name: "1005 No Status Code", description: "Connection closed without status code.", isFatal: true };
+    case 1006:
+      return { name: "1006 Abnormal Closure", description: "Connection lost without close frame (Network drop or connection timeout).", isFatal: true };
+    case 1007:
+      return { name: "1007 Invalid Payload", description: "Inconsistent frame payload format.", isFatal: true };
+    case 1008:
+      return { name: "1008 Policy Violation", description: "Connection terminated due to security policy.", isFatal: true };
+    case 1009:
+      return { name: "1009 Message Too Big", description: "Message payload exceeded maximum allowed frame size.", isFatal: true };
+    case 1011:
+      return { name: "1011 Server Error", description: "Realtime server encountered an unexpected failure.", isFatal: true };
+    case 1012:
+      return { name: "1012 Service Restart", description: "Supabase Realtime engine restarting.", isFatal: false };
+    case 1013:
+      return { name: "1013 Try Again Later", description: "Realtime server temporary load shedding.", isFatal: false };
+    case 1015:
+      return { name: "1015 TLS Failure", description: "TLS handshake error during WebSocket negotiation.", isFatal: true };
+    case 4000:
+      return { name: "4000 Realtime Error", description: "Supabase Realtime subscription configuration error.", isFatal: true };
+    case 4001:
+      return { name: "4001 Unauthorized", description: "Invalid auth token or insufficient RLS channel permissions.", isFatal: true };
+    case 4002:
+      return { name: "4002 Rate Limited", description: "Realtime message rate limit exceeded.", isFatal: true };
+    case 4003:
+      return { name: "4003 Token Expired", description: "Realtime auth token expired.", isFatal: true };
+    case 4004:
+      return { name: "4004 Connection Timeout", description: "Supabase Realtime connection timed out.", isFatal: true };
+    default:
+      return { name: `${code} Custom Code`, description: `WebSocket terminated with close code ${code}.`, isFatal: code >= 1002 };
+  }
 }
 
 const MAX_LOG_ENTRIES = 20;
@@ -83,11 +130,36 @@ export const sendErrorToSupabaseLogs = async (entry: LoggedNetworkError) => {
   }
 };
 
-export const logNetworkError = (context: string, error: unknown): LoggedNetworkError => {
+export const logNetworkError = (
+  context: string,
+  error: unknown,
+  options?: {
+    code?: string;
+    closeCode?: number;
+    closeReason?: string;
+    details?: string;
+    latencyMs?: number;
+    type?: "websocket" | "api_gateway" | "database" | "offline_sync" | "general";
+  }
+): LoggedNetworkError => {
   const errObj = error as Record<string, unknown> | null;
-  const code = errObj?.code ? String(errObj.code) : undefined;
-  const message = errObj?.message ? String(errObj.message) : (error instanceof Error ? error.message : String(error));
-  const details = errObj?.details ? String(errObj.details) : (errObj?.hint ? String(errObj.hint) : undefined);
+  const code = options?.code || (errObj?.code ? String(errObj.code) : undefined);
+  const message = errObj?.message ? String(errObj.message) : (error instanceof Error ? error.message : (typeof error === "string" ? error : String(error)));
+  const details = options?.details || (errObj?.details ? String(errObj.details) : (errObj?.hint ? String(errObj.hint) : undefined));
+
+  // Determine error classification type if omitted
+  let errorType: "websocket" | "api_gateway" | "database" | "offline_sync" | "general" = options?.type || "general";
+  if (!options?.type) {
+    if (context.includes("websocket") || context.includes("realtime") || options?.closeCode) {
+      errorType = "websocket";
+    } else if (context.includes("offline") || context.includes("sync")) {
+      errorType = "offline_sync";
+    } else if (context.includes("api") || context.includes("gateway") || context.includes("ping")) {
+      errorType = "api_gateway";
+    } else if (code || context.includes("supabase") || context.includes("db")) {
+      errorType = "database";
+    }
+  }
 
   const entry: LoggedNetworkError = {
     id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -95,7 +167,11 @@ export const logNetworkError = (context: string, error: unknown): LoggedNetworkE
     context,
     message,
     code,
+    closeCode: options?.closeCode,
+    closeReason: options?.closeReason,
     details,
+    latencyMs: options?.latencyMs,
+    type: errorType,
   };
 
   errorLogMemory = [entry, ...errorLogMemory].slice(0, MAX_LOG_ENTRIES);
@@ -104,6 +180,11 @@ export const logNetworkError = (context: string, error: unknown): LoggedNetworkE
     localStorage.setItem(STORAGE_KEY, JSON.stringify(errorLogMemory));
   } catch {
     // ignore
+  }
+
+  // Dispatch window event so Diagnostic UI components update instantly
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("diagnostic_log_updated"));
   }
 
   // Trigger structured remote logging to Supabase table
@@ -238,7 +319,14 @@ export const initGlobalErrorLogging = () => {
     ) {
       return;
     }
-    if (msg.includes("Refresh Token")) {
+    const lowerMsg = msg.toLowerCase();
+    if (
+      lowerMsg.includes("refresh token") ||
+      lowerMsg.includes("jwt expired") ||
+      lowerMsg.includes("token expired") ||
+      lowerMsg.includes("session_not_found") ||
+      lowerMsg.includes("auth session missing")
+    ) {
       window.dispatchEvent(new Event("force_logout"));
       return;
     }
@@ -257,7 +345,14 @@ export const initGlobalErrorLogging = () => {
     ) {
       return;
     }
-    if (reasonStr.includes("Refresh Token")) {
+    const lowerReason = reasonStr.toLowerCase();
+    if (
+      lowerReason.includes("refresh token") ||
+      lowerReason.includes("jwt expired") ||
+      lowerReason.includes("token expired") ||
+      lowerReason.includes("session_not_found") ||
+      lowerReason.includes("auth session missing")
+    ) {
       window.dispatchEvent(new Event("force_logout"));
       return;
     }

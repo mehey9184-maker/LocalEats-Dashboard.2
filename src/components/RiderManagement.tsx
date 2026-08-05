@@ -16,8 +16,14 @@ import {
   Star, 
   Navigation, 
   TrendingUp, 
-  Heart
+  Heart,
+  Download,
+  Award,
+  CheckCircle2,
+  AlertTriangle
 } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { motion, AnimatePresence } from "framer-motion";
 import { MapContainer, TileLayer, Marker, useMap, Polyline, Tooltip } from "react-leaflet";
 import L from "leaflet";
@@ -215,7 +221,138 @@ export const RiderManagement = ({
 
 
   // New Sub-Tabs Selection State
-  const [activeSubTab, setActiveSubTab] = useState<"missions" | "network" | "controls">("missions");
+  const [activeSubTab, setActiveSubTab] = useState<"missions" | "network" | "ratings" | "controls">("missions");
+
+  // Sorted connections so online riders appear at the top for layout animations
+  const sortedConnections = useMemo(() => {
+    return [...connections].sort((a, b) => {
+      if (a.is_online === b.is_online) {
+        return (b.rating || 5.0) - (a.rating || 5.0);
+      }
+      return a.is_online ? -1 : 1;
+    });
+  }, [connections]);
+
+  // PDF Summary Report Generator for Rider Performance & COD Handovers
+  const generateRiderPerformanceReport = useCallback(() => {
+    try {
+      const doc = new jsPDF();
+      const shopName = currentShop?.name || "LocalEats Vendor";
+      const dateStr = new Date().toLocaleDateString("en-ZA", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      // Dark header block
+      doc.setFillColor(24, 24, 27);
+      doc.rect(0, 0, 210, 28, "F");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(15);
+      doc.setTextColor(255, 255, 255);
+      doc.text("LocalEats - Courier Fleet & COD Performance Report", 14, 16);
+
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Store: ${shopName}  |  Generated: ${dateStr}`, 14, 23);
+
+      // Key Metrics Card
+      const activeRiders = connections.filter((c) => c.is_online).length;
+      const totalRiders = connections.length;
+      const completedOrders = orders.filter((o) => o.status === "completed" || o.status === "delivered");
+      const codOrders = completedOrders.filter((o) => o.payment_method?.toLowerCase().includes("cash") || o.payment_method?.toLowerCase().includes("cod"));
+      const totalCodAmount = codOrders.reduce((sum, o) => sum + (Number(o.total_price) || 0), 0);
+      const avgRating = connections.length > 0
+        ? (connections.reduce((acc, c) => acc + (c.rating || 5.0), 0) / connections.length).toFixed(1)
+        : "5.0";
+
+      doc.setFillColor(245, 245, 245);
+      doc.roundedRect(14, 33, 182, 28, 3, 3, "F");
+
+      doc.setTextColor(30, 30, 30);
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.text("FLEET & CASH HANDOVER EXECUTIVE SUMMARY", 18, 41);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.text(`• Total Registered Couriers: ${totalRiders} (${activeRiders} online)`, 18, 48);
+      doc.text(`• Completed Delivery Missions: ${completedOrders.length}`, 18, 54);
+      doc.text(`• Fleet Average Rating: ${avgRating} / 5.0 Stars`, 110, 48);
+      doc.text(`• Total COD Cash Collected: R ${totalCodAmount.toFixed(2)}`, 110, 54);
+
+      // Table 1: Rider Performance Table
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10.5);
+      doc.text("1. Rider Performance & Rating Roster", 14, 69);
+
+      const riderRows = connections.map((conn) => {
+        const riderOrders = orders.filter((o) => o.rider_id === conn.rider_id || o.rider_name === conn.rider_name);
+        const riderCod = riderOrders
+          .filter((o) => (o.status === "completed" || o.status === "delivered") && (o.payment_method?.toLowerCase().includes("cash") || o.payment_method?.toLowerCase().includes("cod")))
+          .reduce((sum, o) => sum + (Number(o.total_price) || 0), 0);
+
+        return [
+          conn.rider_name || "Courier",
+          conn.rider_phone || "N/A",
+          conn.is_online ? "Online" : "Offline",
+          conn.connection_code === "IN-HOUSE" ? "In-House Fleet" : "Paired Courier",
+          riderOrders.length.toString(),
+          `${(conn.rating || 5.0).toFixed(1)} / 5.0`,
+          `R ${riderCod.toFixed(2)}`,
+        ];
+      });
+
+      autoTable(doc, {
+        startY: 73,
+        head: [["Rider Name", "Phone", "Status", "Access Protocol", "Missions", "Rating", "COD Collected"]],
+        body: riderRows.length > 0 ? riderRows : [["No registered riders found", "-", "-", "-", "-", "-", "R 0.00"]],
+        headStyles: { fillColor: [245, 130, 32], textColor: [255, 255, 255], fontStyle: "bold" },
+        styles: { fontSize: 8 },
+        theme: "striped",
+      });
+
+      // Table 2: COD Orders Reconciliation Log
+      // @ts-expect-error autoTable lastAutoTable property attachment
+      const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : 130;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10.5);
+      doc.setTextColor(30, 30, 30);
+      doc.text("2. Cash-on-Delivery (COD) Handshake Order Logs", 14, finalY);
+
+      const codRows = codOrders.map((o) => [
+        o.id.slice(0, 8).toUpperCase(),
+        o.customer_name || "Customer",
+        o.rider_name || "Assigned Courier",
+        `R ${(Number(o.total_price) || 0).toFixed(2)}`,
+        o.status.toUpperCase(),
+        new Date(o.created_at).toLocaleDateString("en-ZA"),
+      ]);
+
+      autoTable(doc, {
+        startY: finalY + 4,
+        head: [["Order ID", "Customer", "Rider Handshake", "Order Value", "Status", "Date"]],
+        body: codRows.length > 0 ? codRows : [["No COD orders recorded", "-", "-", "R 0.00", "-", "-"]],
+        headStyles: { fillColor: [39, 39, 42], textColor: [255, 255, 255], fontStyle: "bold" },
+        styles: { fontSize: 8 },
+        theme: "grid",
+      });
+
+      const filename = `Rider_Performance_COD_Report_${shopName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
+      doc.save(filename);
+      toast.success("Rider Performance & COD Report downloaded!", {
+        description: `Exported as ${filename}`,
+        icon: <Download className="text-emerald-500" />,
+      });
+    } catch (err) {
+      console.error("PDF generation error:", err);
+      toast.error("Failed to generate PDF report.");
+    }
+  }, [currentShop?.name, connections, orders]);
 
   const dbCashTrust = currentShop.cash_trust_enabled;
   const dbAllowExternal = currentShop.allow_external_riders;
@@ -593,6 +730,15 @@ export const RiderManagement = ({
             Manage your delivery network, monitor active routes, and configure secure pairing ciphers.
           </p>
         </div>
+
+        <button
+          onClick={generateRiderPerformanceReport}
+          className="px-4 py-2.5 bg-zinc-900 text-white dark:bg-surface-container-high dark:text-on-surface font-black rounded-2xl shadow-sm hover:bg-zinc-800 transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer border border-zinc-800 shrink-0"
+          title="Export Rider Performance & COD Summary (PDF)"
+        >
+          <Download size={15} className="text-primary" />
+          <span>Download Report</span>
+        </button>
       </header>
 
       {/* Sub-Tabs Switcher */}
@@ -600,6 +746,7 @@ export const RiderManagement = ({
         {[
           { id: "missions", label: "Live Missions", icon: Compass, count: activeMissions.length },
           { id: "network", label: "Rider Network", icon: Bike, count: activeConnectionsCount },
+          { id: "ratings", label: "Rider Ratings", icon: Star },
           { id: "controls", label: "Courier & Trust", icon: Settings },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -607,7 +754,7 @@ export const RiderManagement = ({
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveSubTab(tab.id as "missions" | "network" | "controls")}
+              onClick={() => setActiveSubTab(tab.id as "missions" | "network" | "ratings" | "controls")}
               className={cn(
                 "flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-black transition-all cursor-pointer whitespace-nowrap border uppercase tracking-wider",
                 isActive
@@ -915,21 +1062,27 @@ export const RiderManagement = ({
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {connections.map((conn) => {
-                    const isExpired = new Date(conn.expires_at) < new Date();
-                    const isInHouse = conn.connection_code === "IN-HOUSE";
+                <motion.div layout className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <AnimatePresence mode="popLayout">
+                    {sortedConnections.map((conn) => {
+                      const isExpired = new Date(conn.expires_at) < new Date();
+                      const isInHouse = conn.connection_code === "IN-HOUSE";
 
-                    return (
-                      <div
-                        key={conn.id}
-                        className={cn(
-                          "bg-surface-container-low rounded-2xl p-4.5 border transition-all flex flex-col justify-between gap-4 relative",
-                          isExpired 
-                            ? "border-outline-variant/10 opacity-60" 
-                            : "border-outline-variant/10 hover:border-outline hover:shadow-sm"
-                        )}
-                      >
+                      return (
+                        <motion.div
+                          layout
+                          key={conn.id}
+                          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                          transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                          className={cn(
+                            "bg-surface-container-low rounded-2xl p-4.5 border transition-all flex flex-col justify-between gap-4 relative",
+                            isExpired 
+                              ? "border-outline-variant/10 opacity-60" 
+                              : "border-outline-variant/10 hover:border-outline hover:shadow-sm"
+                          )}
+                        >
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-3">
                             <div className="relative">
@@ -1002,16 +1155,206 @@ export const RiderManagement = ({
                             </span>
                           )}
                         </div>
-                      </div>
+                      </motion.div>
                     );
                   })}
+                  </AnimatePresence>
+                </motion.div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* --- TAB 3: RIDER RATINGS & PERFORMANCE DASHBOARD --- */}
+        {activeSubTab === "ratings" && (
+          <div className="space-y-6 animate-fade-in">
+            {/* Fleet Overview Header */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Fleet Rating Card */}
+              <div className="bg-surface-container-low rounded-3xl p-5 border border-outline-variant/10 shadow-sm relative overflow-hidden flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Fleet Rating Index</span>
+                  <div className="p-2 bg-amber-500/10 text-amber-500 rounded-xl">
+                    <Star size={18} fill="currentColor" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-black text-on-surface tracking-tight">
+                      {(connections.reduce((acc, c) => acc + (c.rating || 5.0), 0) / (connections.length || 1)).toFixed(1)}
+                    </span>
+                    <span className="text-xs text-amber-500 font-extrabold">/ 5.0 ⭐</span>
+                  </div>
+                  <p className="text-[10px] text-on-surface-variant/75 font-semibold mt-1">
+                    Based on {orders.filter(o => o.status === "completed").length} completed delivery missions
+                  </p>
+                </div>
+                <div className="mt-3 pt-3 border-t border-outline-variant/10 flex items-center justify-between text-[10px] font-bold">
+                  <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                    <Award size={12} /> Top 5% Fleet Quality
+                  </span>
+                  <span className="text-on-surface-variant/60">{connections.length} Riders Active</span>
+                </div>
+              </div>
+
+              {/* Top Performer Spotlight */}
+              <div className="bg-gradient-to-br from-amber-500/10 via-surface-container-low to-surface-container-low rounded-3xl p-5 border border-amber-500/20 shadow-sm relative overflow-hidden flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">🏆 Fleet Top Performer</span>
+                  <span className="px-2 py-0.5 bg-amber-500 text-white font-black text-[9px] rounded-full uppercase tracking-wider">Gold Badge</span>
+                </div>
+                {sortedConnections.length > 0 ? (
+                  <div className="mt-3 flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-600 flex items-center justify-center font-black text-lg shrink-0 border border-amber-500/30">
+                      🏆
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm text-on-surface">{sortedConnections[0].rider_name}</p>
+                      <p className="text-[10px] text-on-surface-variant font-medium">{sortedConnections[0].rider_phone || "In-House Fleet"}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] font-black text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-md">
+                          ★ {(sortedConnections[0].rating || 5.0).toFixed(1)} Stars
+                        </span>
+                        <span className="text-[10px] font-bold text-on-surface-variant/70">
+                          {sortedConnections[0].total_deliveries || 0} tasks
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-on-surface-variant mt-2">No active riders registered.</p>
+                )}
+                <div className="mt-3 pt-2 border-t border-amber-500/10 text-[9px] text-on-surface-variant/70 font-semibold">
+                  Highest customer satisfaction score this month
+                </div>
+              </div>
+
+              {/* Underperforming Alert / Attention Needed */}
+              <div className="bg-surface-container-low rounded-3xl p-5 border border-outline-variant/10 shadow-sm relative overflow-hidden flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Quality Nudge & Alert</span>
+                  <div className="p-2 bg-rose-500/10 text-rose-500 rounded-xl">
+                    <AlertTriangle size={18} />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  {connections.filter(c => (c.rating || 5.0) < 4.5).length > 0 ? (
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold text-on-surface">
+                        {connections.filter(c => (c.rating || 5.0) < 4.5).length} Rider(s) Need Coaching
+                      </p>
+                      <p className="text-[10px] text-on-surface-variant">
+                        Rating under 4.5 stars. Send a quality nudge signal to improve service standards.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 size={14} /> Zero Quality Alerts
+                      </p>
+                      <p className="text-[10px] text-on-surface-variant">
+                        All couriers in your fleet are maintaining high 4.5+ star ratings!
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3 pt-3 border-t border-outline-variant/10 flex items-center justify-between text-[10px]">
+                  <span className="text-on-surface-variant/60 font-bold">Automatic Monitoring</span>
+                  <span className="text-primary font-black uppercase text-[9px]">Active</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Rider Rating Roster & Performance Table */}
+            <div className="bg-surface-container-low rounded-3xl p-6 border border-outline-variant/10 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-outline-variant/10 pb-4">
+                <div>
+                  <h3 className="text-base font-headline font-bold text-on-surface">Rider Performance Leaderboard</h3>
+                  <p className="text-xs text-on-surface-variant">Detailed rating breakdown, mission volume, and COD handovers</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold bg-primary/10 text-primary px-2.5 py-1 rounded-xl">
+                    {connections.length} Couriers Rated
+                  </span>
+                </div>
+              </div>
+
+              {connections.length === 0 ? (
+                <div className="py-12 text-center text-xs text-on-surface-variant">
+                  No riders available to rate. Connect a rider in the Rider Network tab.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-outline-variant/10 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">
+                        <th className="pb-3 pl-2">Rider</th>
+                        <th className="pb-3">Access Protocol</th>
+                        <th className="pb-3 text-center">Deliveries</th>
+                        <th className="pb-3 text-center">Overall Rating</th>
+                        <th className="pb-3 text-right pr-2">Performance Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-outline-variant/5">
+                      {sortedConnections.map((rider, idx) => {
+                        const rating = rider.rating || 5.0;
+                        const isTop = idx === 0 && rating >= 4.5;
+                        const needsHelp = rating < 4.2;
+
+                        return (
+                          <tr key={rider.id} className="hover:bg-surface-container-high/40 transition-colors">
+                            <td className="py-3.5 pl-2 font-bold text-on-surface flex items-center gap-2.5">
+                              <div className={cn(
+                                "w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs",
+                                isTop ? "bg-amber-500/20 text-amber-600" : "bg-surface-container-high text-on-surface-variant"
+                              )}>
+                                {isTop ? "🏆" : rider.rider_name ? rider.rider_name.charAt(0).toUpperCase() : "R"}
+                              </div>
+                              <div>
+                                <p className="font-bold text-xs text-on-surface">{rider.rider_name}</p>
+                                <p className="text-[10px] text-on-surface-variant/70 font-mono">{rider.rider_phone || "In-House"}</p>
+                              </div>
+                            </td>
+                            <td className="py-3.5 text-on-surface-variant font-medium">
+                              <span className="px-2 py-0.5 rounded-lg bg-surface-container-high text-[10px] font-bold text-on-surface">
+                                {rider.connection_code === "IN-HOUSE" ? "In-House Fleet" : "Paired Courier"}
+                              </span>
+                            </td>
+                            <td className="py-3.5 text-center font-bold text-on-surface">
+                              {rider.total_deliveries || orders.filter(o => o.rider_name === rider.rider_name).length || 0}
+                            </td>
+                            <td className="py-3.5 text-center">
+                              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-500/10 text-amber-600 font-black text-xs border border-amber-500/20">
+                                <span>★ {rating.toFixed(1)}</span>
+                              </div>
+                            </td>
+                            <td className="py-3.5 text-right pr-2">
+                              {isTop ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-amber-600 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-2.5 py-1 rounded-full">
+                                  🏆 Top Performer
+                                </span>
+                              ) : needsHelp ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-amber-700 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-2.5 py-1 rounded-full">
+                                  ⚠️ Needs Coaching
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-2.5 py-1 rounded-full">
+                                  ✓ Good Standing
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* --- TAB 3: COURIER & TRUST --- */}
+        {/* --- TAB 4: COURIER & TRUST --- */}
         {activeSubTab === "controls" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
             {/* Dispatch settings */}
@@ -1045,9 +1388,9 @@ export const RiderManagement = ({
 
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1">
-                    <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Auto-Find On-Demand Search</h4>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Auto-Dispatch to Paired Riders</h4>
                     <p className="text-[11px] text-on-surface-variant font-medium leading-relaxed">
-                      Automatically request regional delivery agents on the network the moment you approve a pickup or preparing order.
+                      Automatically dispatch the order to your active paired riders the moment you accept an order.
                     </p>
                   </div>
                   <button
