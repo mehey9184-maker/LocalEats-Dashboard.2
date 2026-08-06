@@ -20,7 +20,9 @@ import {
   Download,
   Award,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  MessageCircle,
+  Send
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -2022,12 +2024,33 @@ export const RiderManagement = ({
                 </div>
               </div>
 
-              <div className="p-6 bg-on-surface/5 border-t border-outline-variant/10 flex gap-3">
+              <div className="p-6 bg-on-surface/5 border-t border-outline-variant/10 flex flex-wrap gap-2">
                 <button
                   onClick={() => setNudgingRider(null)}
-                  className="flex-1 py-3 bg-transparent border border-outline-variant/20 rounded-xl text-sm font-bold hover:bg-on-surface/5"
+                  className="px-4 py-3 bg-transparent border border-outline-variant/20 rounded-xl text-xs font-bold hover:bg-on-surface/5"
                 >
                   Close
+                </button>
+                <button
+                  onClick={() => {
+                    const msg = customNudgeText.trim() || "⚠️ High priority dispatch notice from shop.";
+                    const rawPhone = nudgingRider.rider_phone || "";
+                    const digits = rawPhone.replace(/[^\d+]/g, "");
+                    const cleanPhone = digits.startsWith("0") ? "27" + digits.slice(1) : digits.replace("+", "");
+                    if (cleanPhone) {
+                      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(`📢 *${currentShop?.name || 'LocalEats'} Dispatch Alert*\n\n${msg}`)}`, "_blank");
+                      toast.success("Opening WhatsApp dispatch link...");
+                    } else {
+                      toast.error("Rider has no phone number attached.");
+                    }
+                    void sendRiderNudge(nudgingRider.rider_id || nudgingRider.id, msg);
+                    setNudgingRider(null);
+                    setCustomNudgeText("");
+                  }}
+                  className="flex-1 py-3 bg-emerald-600 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <MessageCircle size={14} className="fill-current" />
+                  <span>WhatsApp Alert</span>
                 </button>
                 <button
                   onClick={() => {
@@ -2036,9 +2059,10 @@ export const RiderManagement = ({
                     setNudgingRider(null);
                     setCustomNudgeText("");
                   }}
-                  className="flex-1 py-3 bg-amber-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition cursor-pointer"
+                  className="px-4 py-3 bg-amber-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition cursor-pointer flex items-center justify-center gap-1"
                 >
-                  Send Signal Nudge
+                  <Send size={13} />
+                  <span>Push Nudge</span>
                 </button>
               </div>
             </motion.div>
@@ -2048,3 +2072,5 @@ export const RiderManagement = ({
     </div>
   );
 };
+
+export default RiderManagement;
