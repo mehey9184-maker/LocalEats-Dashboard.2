@@ -13131,8 +13131,8 @@ function App() {
     const getSessionWithTimeout = async () => {
       console.log("[Auth Init] getSessionWithTimeout started...");
       try {
-        // Increased timeout to 15 seconds for slower networks
-        const timeout = 15000;
+        // Fast session check timeout (3s) with instant cached fallback
+        const timeout = 3000;
         const sessionPromise = supabase.auth.getSession();
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(
@@ -13187,7 +13187,7 @@ function App() {
           }
         }
       } catch (err) {
-        console.warn(
+        console.debug(
           "[Auth Init] Exception caught during session check:",
           err instanceof Error ? err.message : err,
         );

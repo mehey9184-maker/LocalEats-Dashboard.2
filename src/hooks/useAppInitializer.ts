@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { SupabaseClient, User } from "@supabase/supabase-js";
-import { isSupabaseMocked } from "../lib/supabase";
+import { isSupabaseMocked, getFreshChannel } from "../lib/supabase";
 import { handleCentralizedError } from "../utils/errorHandler";
 
 export interface ServiceLoadingState {
@@ -80,8 +80,7 @@ export const useAppInitializer = ({
       }
 
       // Real-time subscription for shops
-      const shopsChannel = supabase
-        .channel("shops_changes")
+      const shopsChannel = getFreshChannel("shops_changes")
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "shops" },

@@ -18,6 +18,7 @@ import {
   Globe,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getFreshChannel } from "../lib/supabase";
 import { useErrorHandler } from "../hooks/useErrorHandler";
 import { ServiceLoadingState } from "../hooks/useAppInitializer";
 import { getWebSocketCloseCodeInfo, LoggedNetworkError, logNetworkError } from "../utils/errorHandler";
@@ -100,7 +101,7 @@ export const DiagnosticUtilityModal: React.FC<DiagnosticUtilityModalProps> = ({
     setWsResult({ status: "idle" });
 
     try {
-      const wsChannel = supabase.channel("diagnostic_ws_probe");
+      const wsChannel = getFreshChannel("diagnostic_ws_probe");
       const wsPromise = new Promise<void>((resolve, reject) => {
         let isResolved = false;
         const timeout = setTimeout(() => {

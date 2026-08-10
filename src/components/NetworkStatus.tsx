@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Wifi, WifiOff, Activity, RefreshCw } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { supabase, getFreshChannel } from "../lib/supabase";
 import { cn } from "../lib/utils";
 import { getQueuedMutations } from "../utils/offlineSyncQueue";
 
@@ -44,7 +44,7 @@ export function NetworkStatus() {
     let wsChannel: ReturnType<typeof supabase.channel>;
 
     try {
-      wsChannel = supabase.channel('system_health_check');
+      wsChannel = getFreshChannel('system_health_check');
       wsChannel.subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           setSupabaseStatus("connected");

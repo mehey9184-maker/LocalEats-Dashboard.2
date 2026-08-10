@@ -38,7 +38,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MapContainer, TileLayer, Marker, useMap, Polyline, Tooltip } from "react-leaflet";
 import L from "leaflet";
 import { toast } from "sonner";
-import { supabase } from "../lib/supabase";
+import { supabase, getFreshChannel } from "../lib/supabase";
 import { cn } from "../lib/utils";
 import { Shop, Order, RiderProfile } from "../types";
 import { QRScanner } from "./QRScanner";
@@ -903,8 +903,7 @@ export const RiderManagement = ({
     fetchConnections();
 
     const shopId = currentShop?.id || 1;
-    const channel = supabase
-      .channel(`rider_connections_sync_${shopId}`)
+    const channel = getFreshChannel(`rider_connections_sync_${shopId}`)
       .on(
         'postgres_changes',
         {
@@ -927,8 +926,7 @@ export const RiderManagement = ({
 
     let profileSub: ReturnType<typeof supabase.channel> | null = null;
     if (selectedTrackId) {
-      profileSub = supabase
-        .channel(`track_rider_${selectedTrackId}`)
+      profileSub = getFreshChannel(`track_rider_${selectedTrackId}`)
         .on(
           'postgres_changes',
           {

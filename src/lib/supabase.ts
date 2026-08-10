@@ -133,5 +133,48 @@ export const supabase = isMocked
 
 export const getSupabase = () => supabase;
 
+export function getFreshChannel(channelName: string) {
+  if (isSupabaseMocked()) {
+    return supabase.channel(channelName);
+  }
+  try {
+    const existing = supabase.getChannels();
+    for (const ch of existing) {
+      if (
+        ch.topic === `realtime:${channelName}` ||
+        ch.topic === channelName ||
+        (ch as any).name === channelName
+      ) {
+        try {
+          void ch.unsubscribe();
+        } catch {
+          // ignore
+        }
+        try {
+          void supabase.removeChannel(ch);
+        } catch {
+          // ignore
+        }
+        try {
+          if ((supabase as any).realtime?.channels) {
+            (supabase as any).realtime.channels = (supabase as any).realtime.channels.filter(
+              (c: any) =>
+                c !== ch &&
+                c.topic !== ch.topic &&
+                c.topic !== `realtime:${channelName}` &&
+                (c as any).name !== channelName
+            );
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return supabase.channel(channelName);
+}
+
 // The official dashboard URL for LocalEats South Africa
 export const DASHBOARD_URL = 'https://dashboard.localeatssa.co.za';

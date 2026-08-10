@@ -3,6 +3,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { Wifi, WifiOff, RefreshCw, Layers, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
+import { getFreshChannel } from "../lib/supabase";
 import { getQueuedMutations, processOfflineSyncQueue } from "../utils/offlineSyncQueue";
 import { logNetworkError } from "../utils/errorHandler";
 
@@ -125,7 +126,7 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
     let wsChannel: ReturnType<typeof supabase.channel>;
 
     try {
-      wsChannel = supabase.channel("system_connectivity_monitor");
+      wsChannel = getFreshChannel("system_connectivity_monitor");
       wsChannel.subscribe((status, err) => {
         setWsStatus(status);
         if (status === "SUBSCRIBED") {

@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { RealtimeChannel } from "@supabase/supabase-js";
-import { supabase } from "../lib/supabase";
+import { supabase, getFreshChannel } from "../lib/supabase";
 
 export const useAuthGuard = () => {
   const checkAuthWithTimeout = useCallback(async (timeoutMs = 1200) => {
@@ -17,7 +17,7 @@ export const useAuthGuard = () => {
       ]);
       return res;
     } catch (err) {
-      console.warn("[AuthGuard] Auth check exception, proceeding in limited offline mode:", err);
+      console.debug("[AuthGuard] Auth check exception, proceeding in limited offline mode:", err);
       return { data: { session: null }, error: err };
     }
   }, []);
@@ -27,16 +27,7 @@ export const useAuthGuard = () => {
     setupChannel: (channel: RealtimeChannel) => RealtimeChannel
   ): Promise<RealtimeChannel | null> => {
     try {
-      // 1. Clean up any existing stale channel with the same name asynchronously (non-blocking)
-      const existingChannels = supabase.getChannels();
-      const existing = existingChannels.find(
-        (ch) => ch.topic === `realtime:${channelName}` || ch.topic === channelName
-      );
-      if (existing) {
-        void supabase.removeChannel(existing);
-      }
-
-      // 2. Verify session validity quickly with fast 1.2s timeout
+      // 1. Verify session validity quickly with fast 1.2s timeout
       const authRes = await checkAuthWithTimeout(1200);
       const session = authRes?.data?.session;
 
@@ -48,8 +39,10 @@ export const useAuthGuard = () => {
         }
       }
 
-      // 3. Create clean channel for postgres_changes
-      const baseChannel = supabase.channel(channelName);
+      // 2. Obtain clean, guaranteed fresh channel instance
+      const baseChannel = getFreshChannel(channelName);
+
+      // 3. Attach listeners BEFORE calling .subscribe()
       const configuredChannel = setupChannel(baseChannel);
 
       // 4. Fast subscription with 2s timeout safety
@@ -71,13 +64,13 @@ export const useAuthGuard = () => {
           } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
             isResolved = true;
             clearTimeout(subTimeout);
-            console.warn(`[Realtime ${channelName}] Channel status:`, status, err || "");
+            console.debug(`[Realtime ${channelName}] Channel status:`, status, err || "");
             resolve(null);
           }
         });
       });
     } catch (err) {
-      console.warn(`[Realtime ${channelName}] Subscription failed:`, err);
+      console.debug(`[Realtime ${channelName}] Subscription notice:`, err);
       return null;
     }
   }, [checkAuthWithTimeout]);

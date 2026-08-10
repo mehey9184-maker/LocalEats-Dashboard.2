@@ -171,7 +171,6 @@ try {
       errorMsg.toLowerCase().includes("unauthorized") ||
       errorMsg.toLowerCase().includes("401")
     ) {
-      console.warn("[Self-Healing] Ignored transient network/auth error:", errorMsg);
       return;
     }
     handleGlobalCrash("unhandled error", event.error || event.message);
@@ -206,7 +205,6 @@ try {
       reasonStr.toLowerCase().includes("unauthorized") ||
       reasonStr.toLowerCase().includes("401")
     ) {
-      console.warn("[Self-Healing] Ignored transient network/auth unhandled promise rejection:", reasonStr);
       return;
     }
     handleGlobalCrash("unhandled promise rejection", event.reason);
