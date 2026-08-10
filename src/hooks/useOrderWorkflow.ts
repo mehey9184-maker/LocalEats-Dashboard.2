@@ -254,8 +254,8 @@ export const useOrderWorkflow = ({
         currentOrder?.items && currentOrder.items.length > 0
           ? currentOrder.items
           : currentOrder?.product_name
-            ? [currentOrder.product_name]
-            : ["Food Delivery"],
+            ? [{ name: currentOrder.product_name, price: currentOrder?.price || currentOrder?.total_price || 0, quantity: 1 }]
+            : [{ name: "Food Delivery", price: currentOrder?.price || currentOrder?.total_price || 0, quantity: 1 }],
       order_type: "delivery",
       shop_id: currentOrder?.shop_id || Number(currentShop?.id) || 0,
       rider_id: targetRiderId || null,

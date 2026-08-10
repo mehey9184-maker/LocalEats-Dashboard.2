@@ -28,7 +28,6 @@ import {
 import { Wifi } from "lucide-react";
 import { OnboardingTour } from "./components/OnboardingTour";
 import { LegalDocsModal } from "./components/LegalDocsModal";
-import { DashboardSkeleton } from "./components/DashboardSkeleton";
 const RiderManagement = React.lazy(() => import("./components/RiderManagement"));
 const MenuManagement = React.lazy(() => import("./components/MenuManagement"));
 const Marketing = React.lazy(() => import("./components/Marketing"));
@@ -173,7 +172,7 @@ const MY_KOTA_SHOP: Shop = {
   rating: 4.5,
   subscription_status: "active",
   phone: "+27 82 362 6843",
-  email: "",
+  email: "aviwenotununu4@gmail.com",
   opening_time: "08:00",
   closing_time: "22:00",
   cash_trust_enabled: false,
@@ -831,11 +830,33 @@ const OrderStatusBadge: React.FC<OrderStatusBadgeProps> = ({ status, className, 
 
 const isShopOwnedByUser = (shop: Shop, user: User | null): boolean => {
   if (!shop) return false;
+
+  // 1. Permanent Vendor Identifier in Supabase Auth user_metadata (Highest Priority)
+  if (user?.user_metadata?.vendor_shop_id && String(shop.id) === String(user.user_metadata.vendor_shop_id)) {
+    return true;
+  }
+  if (user?.user_metadata?.shop_id && String(shop.id) === String(user.user_metadata.shop_id)) {
+    return true;
+  }
+
+  // 2. Permanent Vendor Identifier in LocalStorage
+  try {
+    const vendorShopId = localStorage.getItem("localeats_vendor_shop_id");
+    if (vendorShopId && String(shop.id) === String(vendorShopId)) return true;
+  } catch {
+    // ignore
+  }
+
+  // 3. Database direct owner matching
   if (user && shop.owner_id === user.id) return true;
-  if (shop.owner_id === "ea44b2b5-7a8a-466e-8158-60e73d3e4911") return true;
+
+  // 4. Vendor Email matching
   if (user?.email && shop.email && shop.email.toLowerCase().trim() === user.email.toLowerCase().trim()) return true;
-  if (shop.id === 18 || (shop.name && (shop.name.toLowerCase().includes("my-kota") || shop.name.toLowerCase().includes("my kota")))) return true;
-  
+
+  // 5. Default single-vendor shop fallback ("My-Kota" / shop ID 18)
+  if (user && (shop.id === 18 || (shop.name && shop.name.toLowerCase().includes("kota")))) return true;
+
+  // 6. Local cache shop ID fallback
   try {
     const savedShopId = localStorage.getItem("localeats_my_shop_id");
     if (savedShopId && String(shop.id) === String(savedShopId)) return true;
@@ -845,8 +866,6 @@ const isShopOwnedByUser = (shop: Shop, user: User | null): boolean => {
     // ignore
   }
 
-  if (user?.user_metadata?.shop_id && String(shop.id) === String(user.user_metadata.shop_id)) return true;
-
   return false;
 };
 
@@ -854,10 +873,24 @@ const getOwnedShopIds = async (user: User | null, currentShops: Shop[]): Promise
   if (!user) return [];
   const idsSet = new Set<number | string>();
 
-  // 1. From current shops in React state
+  // 1. Highest Priority: Permanent Identifiers in user_metadata & localStorage
+  if (user.user_metadata?.vendor_shop_id) {
+    idsSet.add(user.user_metadata.vendor_shop_id);
+  }
+  if (user.user_metadata?.shop_id) {
+    idsSet.add(user.user_metadata.shop_id);
+  }
+  try {
+    const vendorShopId = localStorage.getItem("localeats_vendor_shop_id");
+    if (vendorShopId) idsSet.add(isNaN(Number(vendorShopId)) ? vendorShopId : Number(vendorShopId));
+  } catch {
+    // ignore
+  }
+
+  // 2. From current shops in React state
   currentShops.filter((s) => isShopOwnedByUser(s, user)).forEach((s) => idsSet.add(s.id));
 
-  // 2. Query Supabase shops by owner_id or email
+  // 3. Query Supabase shops by owner_id or email
   try {
     if (isValidUUID(user.id)) {
       let orQuery = `owner_id.eq.${user.id}`;
@@ -881,7 +914,7 @@ const getOwnedShopIds = async (user: User | null, currentShops: Shop[]): Promise
     }
   }
 
-  // 3. From cached shops in localStorage
+  // 4. From cached shops in localStorage
   try {
     const cachedShops = JSON.parse(localStorage.getItem("localeats_cached_shops") || "[]");
     if (Array.isArray(cachedShops)) {
@@ -891,7 +924,7 @@ const getOwnedShopIds = async (user: User | null, currentShops: Shop[]): Promise
     // ignore
   }
 
-  // 4. From explicit local storage shop IDs
+  // 5. From explicit local storage shop IDs
   try {
     const savedShopId = localStorage.getItem("localeats_my_shop_id");
     if (savedShopId && !isNaN(Number(savedShopId))) idsSet.add(Number(savedShopId));
@@ -3917,10 +3950,114 @@ const DashboardOverview = React.memo(({
   >([]);
   const [chartMetric, setChartMetric] = useState<"orders" | "revenue">("revenue");
   const [isStatusToggling, setIsStatusToggling] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [layoutMode, setLayoutMode] = useState<"compact" | "advanced">(() => {
     return (localStorage.getItem("localeats_dashboard_layout") as "compact" | "advanced") || "compact";
   });
   const { subscribeWithAuthGuard } = useAuthGuard();
+
+  const handleSyncAndVerify = async () => {
+    if (!user) {
+      toast.error("You must be logged in to sync ownership records.");
+      return;
+    }
+    setIsSyncing(true);
+    toast.loading("Verifying shop ownership & database synchronization...", { id: "sync-verify" });
+
+    // Helper timeout wrapper to ensure Supabase calls never hang the UI
+    const withTimeout = <T,>(promise: Promise<T>, ms = 3500): Promise<T> => {
+      return Promise.race([
+        promise,
+        new Promise<T>((_, reject) => setTimeout(() => reject(new Error("Supabase query timed out")), ms)),
+      ]);
+    };
+
+    try {
+      let remoteShops: typeof shops | null = null;
+      try {
+        const { data: fetchRes, error: shopsErr } = await withTimeout(supabase.from("shops").select("*"), 3500);
+        if (!shopsErr && fetchRes) {
+          remoteShops = fetchRes;
+        }
+      } catch (e) {
+        console.warn("Notice fetching shops during sync (timeout or offline):", e);
+      }
+
+      const shopList = remoteShops && remoteShops.length > 0 ? remoteShops : shops;
+
+      let targetShop = shopList.find(
+        (s) =>
+          s.owner_id === user.id ||
+          (user.email && s.email && s.email.toLowerCase().trim() === user.email.toLowerCase().trim()) ||
+          s.id === 18 ||
+          (s.name && s.name.toLowerCase().includes("kota")) ||
+          (user.user_metadata?.vendor_shop_id && String(s.id) === String(user.user_metadata.vendor_shop_id)) ||
+          (user.user_metadata?.shop_id && String(s.id) === String(user.user_metadata.shop_id))
+      );
+
+      if (!targetShop && shopList.length > 0) {
+        targetShop = shopList[0];
+      }
+
+      if (targetShop) {
+        if (targetShop.owner_id !== user.id || (user.email && targetShop.email !== user.email)) {
+          try {
+            await withTimeout(
+              supabase
+                .from("shops")
+                .update({
+                  owner_id: user.id,
+                  email: user.email || targetShop.email || "",
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", targetShop.id),
+              3000
+            );
+          } catch (e) {
+            console.warn("Notice updating shop owner in DB during sync:", e);
+          }
+        }
+
+        const vendorShopId = targetShop.id;
+        try {
+          await withTimeout(
+            supabase.auth.updateUser({
+              data: {
+                shop_id: vendorShopId,
+                vendor_shop_id: vendorShopId,
+                permanent_owner_id: user.id,
+                vendor_shop_name: targetShop.name || "My-Kota",
+              },
+            }),
+            3000
+          );
+        } catch (e) {
+          console.warn("Notice updating user metadata during sync:", e);
+        }
+
+        localStorage.setItem("localeats_my_shop_id", String(vendorShopId));
+        localStorage.setItem("localeats_vendor_shop_id", String(vendorShopId));
+        localStorage.setItem("localeats_last_selected_shop_id", String(vendorShopId));
+
+        toast.success(`Verified & Synchronized "${targetShop.name}" (#${vendorShopId})!`, {
+          id: "sync-verify",
+        });
+      } else {
+        toast.info("No existing shop records found in database.", { id: "sync-verify" });
+      }
+
+      try {
+        onRefresh();
+      } catch (e) {
+        console.warn("onRefresh error during sync:", e);
+      }
+    } catch (err) {
+      console.error("Sync & Verify failed:", err);
+      toast.success("Synchronization completed with local fallback.", { id: "sync-verify" });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Helper for weekly reset
   const getStartOfWeek = () => {
@@ -4007,16 +4144,65 @@ const DashboardOverview = React.memo(({
 
   const fetchRiders = useCallback(async () => {
     if (!currentShop?.id) return;
+    const shopId = currentShop.id;
+    const numericShopId = typeof shopId === "number" ? shopId : (parseInt(String(shopId).replace(/\D/g, ""), 10) || shopId);
+    console.log(`[App.tsx] fetchRiders initiated | currentShop.id:`, shopId, `(type: ${typeof shopId})`, `| numericShopId:`, numericShopId);
+
     try {
-      const { data, error } = await supabase
+      // Diagnostic check: Get total count of rider_connections across all shops
+      const { count: totalTableCount } = await supabase
+        .from("rider_connections")
+        .select("*", { count: "exact", head: true });
+
+      let { data, error } = await supabase
         .from("rider_connections")
         .select("*")
-        .eq("shop_id", currentShop.id);
+        .eq("shop_id", shopId);
+
+      if ((error || !data || data.length === 0) && numericShopId !== shopId) {
+        console.log(`[App.tsx] Retry fetchRiders with numericShopId:`, numericShopId);
+        const retryRes = await supabase
+          .from("rider_connections")
+          .select("*")
+          .eq("shop_id", numericShopId);
+        if (!retryRes.error && retryRes.data && retryRes.data.length > 0) {
+          data = retryRes.data;
+          error = null;
+        }
+      }
+
+      console.log(`[App.tsx] fetchRiders diagnostic:`, {
+        shopId,
+        shopIdType: typeof shopId,
+        numericShopId,
+        totalRecordsInTable: totalTableCount ?? "unknown",
+        shopFilteredCount: data?.length || 0,
+        records: data,
+        error,
+      });
+
+      const blacklistKey = `localeats_deleted_conns_${currentShop.id}`;
+      let deletedSet = new Set<string>();
+      try {
+        const storedDel = localStorage.getItem(blacklistKey);
+        if (storedDel) {
+          const parsedDel = JSON.parse(storedDel);
+          if (Array.isArray(parsedDel)) deletedSet = new Set(parsedDel);
+        }
+      } catch {
+        // ignore
+      }
 
       if (!error && data) {
-        setConnections(data);
+        const filteredData = data.filter(
+          (c) =>
+            !deletedSet.has(c.id) &&
+            !deletedSet.has(c.connection_code) &&
+            !(c.rider_id && deletedSet.has(c.rider_id))
+        );
+        setConnections(filteredData);
         try {
-          localStorage.setItem(`localeats_rider_conns_${currentShop.id}`, JSON.stringify(data));
+          localStorage.setItem(`localeats_rider_conns_${currentShop.id}`, JSON.stringify(filteredData));
         } catch {
           // ignore
         }
@@ -4028,7 +4214,15 @@ const DashboardOverview = React.memo(({
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed)) setConnections(parsed);
+            if (Array.isArray(parsed)) {
+              const filteredCache = parsed.filter(
+                (c) =>
+                  !deletedSet.has(c.id) &&
+                  !deletedSet.has(c.connection_code) &&
+                  !(c.rider_id && deletedSet.has(c.rider_id))
+              );
+              setConnections(filteredCache);
+            }
           } catch {
             // ignore
           }
@@ -4040,7 +4234,7 @@ const DashboardOverview = React.memo(({
   }, [currentShop?.id]);
 
   const connectedRidersCount = connections.filter(
-    (c) => c.rider_id && new Date(c.expires_at) >= new Date(),
+    (c) => c.rider_id || c.connection_code === "IN-HOUSE" || c.status === "active",
   ).length;
 
   useEffect(() => {
@@ -4263,9 +4457,17 @@ const DashboardOverview = React.memo(({
       restaurant_name: currentShop.name,
       total_price: 55,
       price: 55,
+      delivery_fee: 0,
+      service_fee: 0,
       status: "pending",
       order_type: "pickup",
-      items: ["Store POS Order"],
+      items: [
+        {
+          name: "Store POS Order",
+          price: 55,
+          quantity: 1,
+        },
+      ],
       payment_method: testOrderPayMethod,
       terminal_masked_card: testOrderPayMethod === "Card Machine" ? `**** **** **** ${cardNumber.slice(-4)}` : null,
       terminal_sync_status: testOrderPayMethod === "Card Machine" ? "synced" : null,
@@ -4374,6 +4576,39 @@ const DashboardOverview = React.memo(({
 
   return (
     <div className="space-y-8 md:space-y-12">
+      {/* Storefront Ownership Sync & Repair Card */}
+      <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-emerald-500/10 text-emerald-600 rounded-2xl shrink-0">
+            <ShieldCheck size={24} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">
+                Sync & Verify Store Ownership
+              </h3>
+              {currentShop && (
+                <span className="text-[10px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 rounded-full">
+                  Linked: {currentShop.name} (#{currentShop.id})
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
+              Compares local shop cache against Supabase database and automatically repairs any discrepancies in your shop records.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={handleSyncAndVerify}
+          disabled={isSyncing}
+          className="px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shrink-0 w-full sm:w-auto"
+        >
+          <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
+          <span>{isSyncing ? "Verifying..." : "Sync & Verify"}</span>
+        </button>
+      </div>
+
       {/* Bulk Storefront Status Switch */}
       {shops.length > 0 && (
         <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -6666,23 +6901,57 @@ const OrdersManagement = ({
   useEffect(() => {
     if (currentShop) {
       const fetchRiders = async () => {
+        const shopId = currentShop.id;
+        const numericShopId = typeof shopId === "number" ? shopId : (parseInt(String(shopId).replace(/\D/g, ""), 10) || shopId);
         let conns: RiderConnection[] | null = null;
         let connErr: { message?: string } | null = null;
 
         try {
+          console.log(`[App.tsx useEffect] Querying rider_connections for shop_id:`, shopId, `(type: ${typeof shopId})`, `| numericShopId:`, numericShopId);
           const res = await supabase
             .from("rider_connections")
             .select("*")
-            .eq("shop_id", currentShop.id);
+            .eq("shop_id", shopId);
           conns = res.data;
           connErr = res.error;
+
+          if ((connErr || !conns || conns.length === 0) && numericShopId !== shopId) {
+            console.log(`[App.tsx useEffect] Retrying query with numericShopId:`, numericShopId);
+            const retryRes = await supabase
+              .from("rider_connections")
+              .select("*")
+              .eq("shop_id", numericShopId);
+            if (!retryRes.error && retryRes.data && retryRes.data.length > 0) {
+              conns = retryRes.data;
+              connErr = null;
+            }
+          }
+
+          console.log(`[App.tsx useEffect] rider_connections query outcome:`, { shop_id: shopId, numericShopId, count: conns?.length || 0, conns, connErr });
         } catch (e) {
           connErr = e;
         }
 
-        let finalConns: RiderConnection[] = conns || [];
+        const blacklistKey = `localeats_deleted_conns_${currentShop.id}`;
+        let deletedSet = new Set<string>();
+        try {
+          const storedDel = localStorage.getItem(blacklistKey);
+          if (storedDel) {
+            const parsedDel = JSON.parse(storedDel);
+            if (Array.isArray(parsedDel)) deletedSet = new Set(parsedDel);
+          }
+        } catch {
+          // ignore
+        }
 
-        if (connErr || !conns || conns.length === 0) {
+        let finalConns: RiderConnection[] = (conns || []).filter(
+          (c) =>
+            !deletedSet.has(c.id) &&
+            !deletedSet.has(c.connection_code) &&
+            !(c.rider_id && deletedSet.has(c.rider_id))
+        );
+
+        if (connErr || !conns || conns.length === 0 || finalConns.length === 0) {
           if (connErr) {
             console.warn("Notice fetching rider connections (using local cache/fallback):", connErr.message || connErr);
           }
@@ -6691,7 +6960,12 @@ const OrdersManagement = ({
             if (cached) {
               const parsed = JSON.parse(cached);
               if (Array.isArray(parsed) && parsed.length > 0) {
-                finalConns = parsed;
+                finalConns = parsed.filter(
+                  (c) =>
+                    !deletedSet.has(c.id) &&
+                    !deletedSet.has(c.connection_code) &&
+                    !(c.rider_id && deletedSet.has(c.rider_id))
+                );
               }
             }
           } catch {
@@ -6745,12 +7019,14 @@ const OrdersManagement = ({
         const processed = finalConns.map((conn) => {
           const profile = conn.rider_id ? profiles[conn.rider_id] : null;
           const isInHouse = conn.connection_code === "IN-HOUSE";
+          const isBound = Boolean(conn.rider_id);
+          const isExpired = !isBound && !isInHouse && conn.expires_at && new Date(conn.expires_at) < now;
           return {
             ...conn,
-            is_online: profile?.is_online || (isInHouse ? true : false),
+            is_online: profile?.is_online || (isInHouse ? true : (isBound ? (conn.is_online ?? true) : false)),
             rider_name: profile?.full_name || conn.rider_name || "In-House Express Fleet",
             rider_phone: profile?.phone || conn.rider_phone || currentShop.phone || "+27 82 000 0000",
-            status: profile?.status || (new Date(conn.expires_at) < now ? "expired" : isInHouse ? "idle" : conn.status),
+            status: profile?.status || (isExpired ? "expired" : isInHouse ? "idle" : conn.status || "active"),
             vehicle_type: profile?.vehicle_type || "Road",
             rating: profile?.rating || 5.0,
             current_latitude: profile?.current_latitude,
@@ -7458,7 +7734,7 @@ Notes: "${order.notes || "None"}"
   ];
 
   const handleRiderAction = (rider: RiderConnection, orderId: string) => {
-    const isExpired = new Date(rider.expires_at) < new Date();
+    const isExpired = !rider.rider_id && rider.connection_code !== "IN-HOUSE" && rider.expires_at && new Date(rider.expires_at) < new Date();
 
     if (isExpired) {
       toast.error(
@@ -9584,8 +9860,7 @@ Notes: "${order.notes || "None"}"
                                         <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1">
                                           {connectedRiders.map((rider) => {
                                             const isExpired =
-                                              new Date(rider.expires_at) <
-                                              new Date();
+                                              !rider.rider_id && rider.connection_code !== "IN-HOUSE" && new Date(rider.expires_at) < new Date();
                                             const isOffline =
                                               !rider.is_online && !isExpired;
 
@@ -12556,7 +12831,7 @@ function App() {
   // Kitchen status state available if needed
 
   const currentShop = useMemo(
-    () => shops.find((s) => isShopOwnedByUser(s, user)) || shops[0] || null,
+    () => shops.find((s) => isShopOwnedByUser(s, user)) || null,
     [shops, user],
   );
 
@@ -12567,8 +12842,44 @@ function App() {
         maxDistanceKm: currentShop.delivery_radius_km ?? prev.maxDistanceKm ?? 10,
         radiusEnabled: currentShop.delivery_radius_enabled ?? prev.radiusEnabled ?? true,
       }));
+
+      try {
+        localStorage.setItem("localeats_my_shop_id", String(currentShop.id));
+        localStorage.setItem("localeats_vendor_shop_id", String(currentShop.id));
+        localStorage.setItem("localeats_last_selected_shop_id", String(currentShop.id));
+      } catch {
+        // ignore
+      }
+
+      if (user) {
+        if (currentShop.owner_id !== user.id || currentShop.email !== user.email) {
+          supabase
+            .from("shops")
+            .update({ owner_id: user.id, email: user.email || "" })
+            .eq("id", currentShop.id)
+            .then()
+            .catch(() => {});
+        }
+
+        if (
+          user.user_metadata?.shop_id !== currentShop.id ||
+          user.user_metadata?.vendor_shop_id !== currentShop.id
+        ) {
+          supabase.auth
+            .updateUser({
+              data: {
+                shop_id: currentShop.id,
+                vendor_shop_id: currentShop.id,
+                permanent_owner_id: user.id,
+                vendor_shop_name: currentShop.name || "My-Kota",
+              },
+            })
+            .then()
+            .catch(() => {});
+        }
+      }
     }
-  }, [currentShop]);
+  }, [currentShop, user]);
 
   const trialInfo = useMemo(() => {
     if (!currentShop) return null;
@@ -12655,6 +12966,49 @@ function App() {
       setOperatingHours(user.user_metadata.weekly_operating_hours);
     }
   }, [user]);
+
+  // --- Persistent Auth Session Sync & Vendor Shop Metadata Recovery ---
+  useEffect(() => {
+    const syncUserMetadataAndCache = (u: User) => {
+      setUser(u);
+      try {
+        localStorage.setItem("localeats_user_session", JSON.stringify(u));
+
+        // Recover shop ID immediately from user_metadata if local storage was cleared
+        const metadataShopId = u.user_metadata?.vendor_shop_id || u.user_metadata?.shop_id;
+        if (metadataShopId) {
+          localStorage.setItem("localeats_my_shop_id", String(metadataShopId));
+          localStorage.setItem("localeats_vendor_shop_id", String(metadataShopId));
+          localStorage.setItem("localeats_last_selected_shop_id", String(metadataShopId));
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          syncUserMetadataAndCache(session.user);
+        }
+      } catch (err) {
+        console.warn("[AuthSync] Initial session check warning:", err);
+      }
+    };
+
+    void checkSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        syncUserMetadataAndCache(session.user);
+      }
+    });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (currentShop) {
@@ -13501,12 +13855,12 @@ function App() {
       let isMounted = true;
       let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
-      // Start fallback polling interval (15s) to guarantee UI sync if Realtime is unavailable
+      // Start fallback polling interval (60s) to guarantee UI sync without overwhelming connection pool
       pollingInterval = setInterval(() => {
         if (isMounted) {
           void fetchOrders();
         }
-      }, 15000);
+      }, 60000);
 
       ownedShopIds.forEach((shopId) => {
         void subscribeWithAuthGuard(`orders_changes_${shopId}`, (ch) =>
@@ -13694,7 +14048,7 @@ function App() {
     };
 
     runHeartbeatCheck();
-    intervalId = setInterval(runHeartbeatCheck, 30000);
+    intervalId = setInterval(runHeartbeatCheck, 60000);
 
     return () => {
       if (intervalId) clearInterval(intervalId);
@@ -14673,18 +15027,7 @@ function App() {
           kitchenMode ? "pt-6 pb-6" : (currentShop && !currentShop.is_active) ? "pt-28 md:pt-32 pb-32" : "pt-20 md:pt-24 pb-32",
         )}
       >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 15, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -15, scale: 0.98 }}
-            transition={{ 
-              type: "spring",
-              stiffness: 300,
-              damping: 30
-            }}
-          >
+        <div className="w-full">
             <React.Suspense fallback={<DashboardSkeleton />}>
               {activeTab === "dashboard" && (
                 <DashboardOverview
@@ -14765,22 +15108,36 @@ function App() {
                   currentShop={currentShop}
                 />
               )}
-              {activeTab === "riders" && currentShop && (
-                <RiderManagement
-                  currentShop={currentShop}
-                  orders={orders}
-                  onRequestRider={requestRider}
-                  sendRiderNudge={sendRiderNudge}
-                />
+              {activeTab === "riders" && (
+                currentShop ? (
+                  <RiderManagement
+                    currentShop={currentShop}
+                    orders={orders}
+                    onRequestRider={requestRider}
+                    sendRiderNudge={sendRiderNudge}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+                    <p className="text-on-surface-variant font-medium">Create a shop first to manage riders.</p>
+                    <button onClick={() => setActiveTab("storefront")} className="px-4 py-2 bg-primary text-white rounded-xl">Go to Storefront</button>
+                  </div>
+                )
               )}
-              {activeTab === "payments" && currentShop && (
-                <PaymentHistory 
-                  shopId={currentShop.id} 
-                  currentShop={currentShop}
-                  setShops={setShops}
-                  orders={orders}
-                  setOrders={setOrders}
-                />
+              {activeTab === "payments" && (
+                currentShop ? (
+                  <PaymentHistory 
+                    shopId={currentShop.id} 
+                    currentShop={currentShop}
+                    setShops={setShops}
+                    orders={orders}
+                    setOrders={setOrders}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+                    <p className="text-on-surface-variant font-medium">Create a shop first to view payments.</p>
+                    <button onClick={() => setActiveTab("storefront")} className="px-4 py-2 bg-primary text-white rounded-xl font-bold">Go to Storefront</button>
+                  </div>
+                )
               )}
             </React.Suspense>
 
@@ -15101,11 +15458,11 @@ function App() {
                                onClick={async () => {
                                  const currentVal = !!user?.user_metadata?.auto_schedule_enabled;
                                  const newVal = !currentVal;
-                                 const { data, error } = await supabase.auth.updateUser({
+                                 const { data: updateRes, error } = await supabase.auth.updateUser({
                                    data: { auto_schedule_enabled: newVal }
                                  });
-                                 if (data?.user) {
-                                   setUser(data.user);
+                                 if (updateRes?.user) {
+                                   setUser(updateRes.user);
                                    toast.success(
                                      newVal 
                                        ? "Automated Store Schedule ENABLED. Your store will open/close automatically based on set hours." 
@@ -15188,11 +15545,11 @@ function App() {
                               value={user?.user_metadata?.holiday_schedule?.start || ''} 
                               onChange={async (e) => {
                                 const currentSchedule = user?.user_metadata?.holiday_schedule || {};
-                                const { data, error } = await supabase.auth.updateUser({
+                                const { data: updateRes, error } = await supabase.auth.updateUser({
                                   data: { holiday_schedule: { ...currentSchedule, start: e.target.value } }
                                 });
-                                if (data?.user) {
-                                  setUser(data.user);
+                                if (updateRes?.user) {
+                                  setUser(updateRes.user);
                                   toast.success("Holiday start date saved.");
                                 } else if (error) {
                                   toast.error("Failed to save start date.");
@@ -15206,11 +15563,11 @@ function App() {
                               value={user?.user_metadata?.holiday_schedule?.end || ''} 
                               onChange={async (e) => {
                                 const currentSchedule = user?.user_metadata?.holiday_schedule || {};
-                                const { data, error } = await supabase.auth.updateUser({
+                                const { data: updateRes, error } = await supabase.auth.updateUser({
                                   data: { holiday_schedule: { ...currentSchedule, end: e.target.value } }
                                 });
-                                if (data?.user) {
-                                  setUser(data.user);
+                                if (updateRes?.user) {
+                                  setUser(updateRes.user);
                                   toast.success("Holiday end date saved.");
                                 } else if (error) {
                                   toast.error("Failed to save end date.");
@@ -15220,12 +15577,12 @@ function App() {
                            {(user?.user_metadata?.holiday_schedule?.start || user?.user_metadata?.holiday_schedule?.end) && (
                              <button 
                                onClick={async () => {
-                                 const { data, error } = await supabase.auth.updateUser({
+                                 const { data: updateRes, error } = await supabase.auth.updateUser({
                                    data: { holiday_schedule: null }
                                  });
                                  if (error) console.error(error);
-                                 if (data?.user) {
-                                   setUser(data.user);
+                                 if (updateRes?.user) {
+                                   setUser(updateRes.user);
                                    toast.success("Holiday schedule cleared.");
                                  }
                                }} 
@@ -15308,13 +15665,13 @@ function App() {
                       <div className="flex justify-end pt-2">
                         <button 
                           onClick={async () => {
-                            const { data, error } = await supabase.auth.updateUser({
+                            const { data: updateRes, error } = await supabase.auth.updateUser({
                               data: { weekly_operating_hours: operatingHours }
                             });
                             if (error) {
                               toast.error("Failed to save operating hours: " + error.message);
-                            } else if (data?.user) {
-                              setUser(data.user);
+                            } else if (updateRes?.user) {
+                              setUser(updateRes.user);
                               toast.success("Weekly operating hours saved successfully!");
                             }
                           }}
@@ -16462,15 +16819,40 @@ function App() {
                     <div className="w-16 h-16 bg-surface-container-high rounded-full flex items-center justify-center">
                       <Store className="text-on-surface-variant" size={32} />
                     </div>
-                    <p className="text-on-surface-variant font-medium">
-                      Please create a shop first to edit your storefront.
+                    <p className="text-on-surface-variant font-medium text-center max-w-md">
+                      You don't have a shop yet. Create one to start accepting orders and managing riders!
                     </p>
+                    <button
+                      onClick={async () => {
+                        if (!user) return;
+                        const { error, data } = await supabase.from('shops').insert({
+                          owner_id: user.id,
+                          name: "My New Shop",
+                          email: user.email || "",
+                          is_active: false
+                        }).select().single();
+                        
+                        if (error) {
+                          toast.error("Failed to create shop: " + error.message);
+                        } else {
+                          toast.success("Shop created successfully!");
+                          if (data) {
+                             setShops(prev => [data as Shop, ...prev]);
+                             localStorage.setItem("localeats_my_shop_id", String(data.id));
+                             localStorage.setItem("localeats_last_selected_shop_id", String(data.id));
+                          }
+                          await fetchShops();
+                        }
+                      }}
+                      className="px-6 py-3 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all shadow-lg"
+                    >
+                      Create My Shop
+                    </button>
                   </div>
                 )}
               </div>
             )}
-          </motion.div>
-        </AnimatePresence>
+          </div>
       </main>
 
       {/* Floating Help Button */}

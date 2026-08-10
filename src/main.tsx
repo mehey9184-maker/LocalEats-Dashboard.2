@@ -5,6 +5,14 @@ import './index.css';
 import { cleanLocalStorageCache } from './utils/storageCleanup';
 import { initTimeSync } from './utils/timeSync';
 import { initGlobalErrorLogging } from './utils/errorHandler';
+import { initSentry } from './utils/sentry';
+
+// Initialize Sentry SDK
+try {
+  initSentry();
+} catch {
+  // Fail-safe
+}
 
 // Run storage cleanup audit, time sync, and global error logging on boot
 try {
@@ -134,19 +142,26 @@ try {
 
   // Register unhandled error listeners
   window.addEventListener("error", (event) => {
-    const errorMsg = String(event.error?.message || event.message || "");
+    const rawMsg = event.error?.message || event.message || "";
+    const errorMsg = typeof rawMsg === "object" ? JSON.stringify(rawMsg) : String(rawMsg);
     const filename = String(event.filename || "");
     if (filename.includes("chrome-extension") || errorMsg.includes("Extension") || errorMsg.includes("ExtensionContext")) {
       return; // Ignore external extensions
     }
     if (
+      !errorMsg ||
+      errorMsg === "{}" ||
+      errorMsg === "[object Object]" ||
+      errorMsg === "undefined" ||
+      errorMsg === "null" ||
       errorMsg.includes("Failed to fetch") ||
       errorMsg.includes("network") ||
       errorMsg.includes("NetworkError") ||
       errorMsg.includes("Load failed") ||
       errorMsg.includes("Failed to load") ||
       errorMsg.includes("Script error") ||
-      errorMsg.includes("Lock broken by another request") ||
+      errorMsg.includes("Lock broken") ||
+      errorMsg.includes("steal") ||
       errorMsg.toLowerCase().includes("jwt expired") ||
       errorMsg.toLowerCase().includes("token expired") ||
       errorMsg.toLowerCase().includes("refresh token") ||
@@ -163,8 +178,14 @@ try {
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    const reasonStr = event.reason ? String(event.reason.message || event.reason) : "";
+    const rawReason = event.reason?.message || event.reason || "";
+    const reasonStr = typeof rawReason === "object" ? JSON.stringify(rawReason) : String(rawReason);
     if (
+      !reasonStr ||
+      reasonStr === "{}" ||
+      reasonStr === "[object Object]" ||
+      reasonStr === "undefined" ||
+      reasonStr === "null" ||
       reasonStr.includes("Failed to fetch") ||
       reasonStr.includes("network") ||
       reasonStr.includes("NetworkError") ||
@@ -174,7 +195,8 @@ try {
       reasonStr.includes("Timeout expired") ||
       reasonStr.includes("position acquisition error") ||
       reasonStr.includes("Script error") ||
-      reasonStr.includes("Lock broken by another request") ||
+      reasonStr.includes("Lock broken") ||
+      reasonStr.includes("steal") ||
       reasonStr.toLowerCase().includes("jwt expired") ||
       reasonStr.toLowerCase().includes("token expired") ||
       reasonStr.toLowerCase().includes("refresh token") ||

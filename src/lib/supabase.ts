@@ -103,11 +103,29 @@ const resilientFetch: typeof fetch = async (input, init) => {
   }
 };
 
+const noOpLock = async (name: string, acquireTimeout: number, fn: () => Promise<any>) => {
+  try {
+    return await fn();
+  } catch (err: any) {
+    if (err?.message?.includes('Lock broken') || String(err)?.includes('Lock broken')) {
+      console.debug('[Supabase Auth Lock] Handled lock contention:', err?.message || err);
+      return null;
+    }
+    throw err;
+  }
+};
+
 const isMocked = isSupabaseMocked();
 
 export const supabase = isMocked 
   ? createMockThenable("supabase") 
   : createClient(supabaseUrl || '', supabaseAnonKey || '', {
+      auth: {
+        lock: noOpLock,
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
       global: {
         fetch: resilientFetch,
       },

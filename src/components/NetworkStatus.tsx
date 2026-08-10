@@ -37,62 +37,52 @@ export function NetworkStatus() {
   }, []);
 
   useEffect(() => {
-    let checkInterval: number;
+    if (!isOnline) {
+      return;
+    }
+
     let wsChannel: ReturnType<typeof supabase.channel>;
 
-    const checkSupabase = () => {
-      // Test WS connection via dummy channel
+    try {
       wsChannel = supabase.channel('system_health_check');
       wsChannel.subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           setSupabaseStatus("connected");
-          supabase.removeChannel(wsChannel); // Clean up immediately after success
         } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          
-      
-      setSupabaseStatus("offline");
+          setSupabaseStatus("offline");
+        } else if (status === 'CONNECTING') {
+          setSupabaseStatus("connecting");
         }
       });
-    };
-
-    if (isOnline) {
-      
-      
-      
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSupabaseStatus("connecting");
-      checkSupabase();
-      checkInterval = window.setInterval(checkSupabase, 30000); // Check every 30 seconds
-    } else {
-      
-      
-      setSupabaseStatus("offline");
+    } catch {
+      // ignore
     }
 
     return () => {
-      clearInterval(checkInterval);
       if (wsChannel) {
         supabase.removeChannel(wsChannel);
       }
     };
   }, [isOnline]);
 
-  if (isOnline && supabaseStatus === "connected" && pendingSyncs === 0) {
+  const activeSupabaseStatus = !isOnline ? "offline" : supabaseStatus;
+
+  if (isOnline && activeSupabaseStatus === "connected" && pendingSyncs === 0) {
     return null; // All good, hide
   }
 
   return (
     <div className={cn(
       "flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest cursor-default select-none border shadow-sm transition-all animate-in fade-in slide-in-from-top-2",
-      !isOnline || supabaseStatus === "offline" 
+      !isOnline || activeSupabaseStatus === "offline" 
         ? "bg-red-50 text-red-600 border-red-200" 
-        : supabaseStatus === "connecting" || pendingSyncs > 0
+        : activeSupabaseStatus === "connecting" || pendingSyncs > 0
           ? "bg-orange-50 text-orange-600 border-orange-200"
           : "bg-green-50 text-green-600 border-green-200"
     )}>
-      {!isOnline || supabaseStatus === "offline" ? (
+      {!isOnline || activeSupabaseStatus === "offline" ? (
         <WifiOff size={14} className="animate-pulse" />
-      ) : supabaseStatus === "connecting" ? (
+      ) : activeSupabaseStatus === "connecting" ? (
         <RefreshCw size={14} className="animate-spin" />
       ) : pendingSyncs > 0 ? (
         <Activity size={14} className="animate-pulse" />
@@ -101,7 +91,7 @@ export function NetworkStatus() {
       )}
       
       <span>
-        {!isOnline || supabaseStatus === "offline" ? "Offline" : supabaseStatus === "connecting" ? "Connecting" : pendingSyncs > 0 ? "Syncing" : "Online"}
+        {!isOnline || activeSupabaseStatus === "offline" ? "Offline" : activeSupabaseStatus === "connecting" ? "Connecting" : pendingSyncs > 0 ? "Syncing" : "Online"}
       </span>
 
       {pendingSyncs > 0 && (

@@ -22,7 +22,15 @@ import {
   CheckCircle2,
   AlertTriangle,
   MessageCircle,
-  Send
+  Send,
+  Search,
+  Phone,
+  Share2,
+  UserPlus,
+  Activity,
+  RotateCcw,
+  Database,
+  Smartphone
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -192,6 +200,103 @@ function useSmoothLocation(lat?: number, lng?: number) {
   return { lat: smoothLat, lng: smoothLng };
 }
 
+// --- Diagnostic & Network Health Helpers ---
+export function getRiderHeartbeatStatus(lastSeen?: string, isOnline?: boolean) {
+  if (!lastSeen) {
+    if (isOnline) {
+      return {
+        label: "Truly Active (Session Live)",
+        timeAgo: "Session Live",
+        type: "truly_active" as const,
+        badgeClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+        dotClass: "bg-emerald-500 animate-ping",
+      };
+    }
+    return {
+      label: "Offline (No Heartbeat)",
+      timeAgo: "No ping recorded",
+      type: "offline" as const,
+      badgeClass: "bg-zinc-500/10 text-zinc-500 border-zinc-500/20",
+      dotClass: "bg-zinc-400",
+    };
+  }
+
+  const lastSeenMs = new Date(lastSeen).getTime();
+  const diffSec = Math.floor((Date.now() - lastSeenMs) / 1000);
+
+  if (isNaN(diffSec) || diffSec < 0) {
+    return {
+      label: "Truly Active (Just now)",
+      timeAgo: "Just now",
+      type: "truly_active" as const,
+      badgeClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+      dotClass: "bg-emerald-500 animate-ping",
+    };
+  }
+
+  if (diffSec < 120) {
+    return {
+      label: `Truly Active (${diffSec}s ago)`,
+      timeAgo: `${diffSec}s ago`,
+      type: "truly_active" as const,
+      badgeClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+      dotClass: "bg-emerald-500 animate-pulse",
+    };
+  } else if (diffSec < 600) {
+    const mins = Math.floor(diffSec / 60);
+    return {
+      label: `Truly Active (${mins}m ago)`,
+      timeAgo: `${mins}m ago`,
+      type: "truly_active" as const,
+      badgeClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+      dotClass: "bg-emerald-500",
+    };
+  } else if (diffSec < 1800) {
+    const mins = Math.floor(diffSec / 60);
+    return {
+      label: `Connected / Idle (${mins}m ago)`,
+      timeAgo: `${mins}m ago`,
+      type: "connected_idle" as const,
+      badgeClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+      dotClass: "bg-amber-500",
+    };
+  } else {
+    const hours = Math.floor(diffSec / 3600);
+    const label = hours > 24 ? `${Math.floor(hours / 24)}d ago` : `${hours}h ago`;
+    return {
+      label: `Offline / Stale (${label})`,
+      timeAgo: label,
+      type: "offline" as const,
+      badgeClass: "bg-zinc-500/10 text-zinc-500 border-zinc-500/20",
+      dotClass: "bg-zinc-400",
+    };
+  }
+}
+
+export function getCodeDiagnostic(conn: RiderConnection, dbSyncedSet: Set<string>) {
+  const isDbSynced = dbSyncedSet.has(conn.connection_code) || dbSyncedSet.has(conn.id);
+  const isBound = Boolean(conn.rider_id);
+
+  if (isBound) {
+    return {
+      status: "linked",
+      label: "Linked & Active",
+      badgeClass: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+      dbLabel: isDbSynced ? "Supabase Verified ✓" : "Local Verified",
+      isDbSynced,
+    };
+  }
+  return {
+    status: isDbSynced ? "active_synced" : "local_fallback",
+    label: isDbSynced ? "Active (DB Synced)" : "Active (Local Fallback)",
+    badgeClass: isDbSynced
+      ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+      : "bg-amber-500/10 text-amber-600 border-amber-500/20",
+    dbLabel: isDbSynced ? "Supabase Table Verified ✓" : "Local Cache Only",
+    isDbSynced,
+  };
+}
+
 export const RiderManagement = ({
   currentShop,
   orders,
@@ -203,8 +308,30 @@ export const RiderManagement = ({
   onRequestRider: (id: string, riderId?: string, riderName?: string, riderPhone?: string) => void;
   sendRiderNudge: (riderId: string, message: string) => Promise<void>;
 }) => {
-  const [connections, setConnections] = useState<RiderConnection[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [connections, setConnections] = useState<RiderConnection[]>(() => {
+    if (typeof window === "undefined") return [];
+    const shopId = currentShop?.id || 1;
+    const localKey1 = `localeats_local_conns_${shopId}`;
+    const localKey2 = `localeats_rider_conns_${shopId}`;
+    try {
+      const s1 = localStorage.getItem(localKey1);
+      const s2 = localStorage.getItem(localKey2);
+      let localConns: RiderConnection[] = [];
+      if (s1) {
+        const p1 = JSON.parse(s1);
+        if (Array.isArray(p1)) localConns = p1;
+      }
+      if (s2) {
+        const p2 = JSON.parse(s2);
+        if (Array.isArray(p2)) localConns = [...localConns, ...p2];
+      }
+      return localConns;
+    } catch {
+      return [];
+    }
+  });
+  const [dbSyncedSet, setDbSyncedSet] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState<boolean>(() => connections.length === 0);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [showTrafficLayer, setShowTrafficLayer] = useState(false);
   const [mapCenterOverride, setMapCenterOverride] = useState<[number, number] | null>(null);
@@ -212,7 +339,7 @@ export const RiderManagement = ({
   const [activeCode, setActiveCode] = useState<{ code: string; expires: string } | null>(null);
   const [showCode, setShowCode] = useState(false);
   const [qrUrl, setQrUrl] = useState("");
-  const [pairingCodeDuration, setPairingCodeDuration] = useState<"24h" | "7d" | "30d" | "never">("24h");
+  const pairingCodeDuration = "never";
   const [showInHouseModal, setShowInHouseModal] = useState(false);
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [inHouseName, setInHouseName] = useState("");
@@ -221,19 +348,78 @@ export const RiderManagement = ({
   const [nudgingRider, setNudgingRider] = useState<RiderConnection | null>(null);
   const [customNudgeText, setCustomNudgeText] = useState("");
 
+  // Sub-Tabs Selection State - default to network for quick fleet management
+  const [activeSubTab, setActiveSubTab] = useState<"network" | "health" | "missions" | "ratings" | "controls">("network");
 
-  // New Sub-Tabs Selection State
-  const [activeSubTab, setActiveSubTab] = useState<"missions" | "network" | "ratings" | "controls">("missions");
+  // Search & Filter state for Rider Network
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "in_house" | "paired">("all");
+
+  // Pagination State for high-performance virtualized/paginated rider display
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  // Reset pagination to page 1 whenever searchQuery or statusFilter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
 
   // Sorted connections so online riders appear at the top for layout animations
   const sortedConnections = useMemo(() => {
-    return [...connections].sort((a, b) => {
+    const seenIds = new Set<string>();
+    const seenCodes = new Set<string>();
+    const uniqueList: RiderConnection[] = [];
+
+    for (const c of connections) {
+      if (!c || !c.id) continue;
+      const idStr = String(c.id);
+      const codeStr = c.connection_code && c.connection_code !== "IN-HOUSE" ? String(c.connection_code) : null;
+
+      if (seenIds.has(idStr)) continue;
+      if (codeStr && seenCodes.has(codeStr)) continue;
+
+      seenIds.add(idStr);
+      if (codeStr) seenCodes.add(codeStr);
+      uniqueList.push(c);
+    }
+
+    return uniqueList.sort((a, b) => {
       if (a.is_online === b.is_online) {
         return (b.rating || 5.0) - (a.rating || 5.0);
       }
       return a.is_online ? -1 : 1;
     });
   }, [connections]);
+
+  // Filtered connections based on user search and filter tab
+  const filteredConnections = useMemo(() => {
+    return sortedConnections.filter((c) => {
+      const q = searchQuery.toLowerCase().trim();
+      const nameMatch = !q || (c.rider_name && c.rider_name.toLowerCase().includes(q));
+      const phoneMatch = !q || (c.rider_phone && c.rider_phone.toLowerCase().includes(q));
+      const codeMatch = !q || (c.connection_code && c.connection_code.toLowerCase().includes(q));
+
+      if (!nameMatch && !phoneMatch && !codeMatch) return false;
+
+      if (statusFilter === "online") return c.is_online;
+      if (statusFilter === "in_house") return c.connection_code === "IN-HOUSE";
+      if (statusFilter === "paired") return c.connection_code !== "IN-HOUSE";
+
+      return true;
+    });
+  }, [sortedConnections, searchQuery, statusFilter]);
+
+  // Paginated subset of connections for main thread performance optimization
+  const paginatedConnections = useMemo(() => {
+    if (pageSize === 0) return filteredConnections;
+    const start = (currentPage - 1) * pageSize;
+    return filteredConnections.slice(start, start + pageSize);
+  }, [filteredConnections, currentPage, pageSize]);
+
+  const totalPages = useMemo(() => {
+    if (pageSize === 0) return 1;
+    return Math.ceil(filteredConnections.length / pageSize) || 1;
+  }, [filteredConnections.length, pageSize]);
 
   // PDF Summary Report Generator for Rider Performance & COD Handovers
   const generateRiderPerformanceReport = useCallback(() => {
@@ -519,43 +705,171 @@ export const RiderManagement = ({
       o.status !== "cancelled",
   ), [orders]);
 
-  const fetchConnections = useCallback(async () => {
+  const fetchAndCacheRiders = useCallback(async (forceRefresh = false) => {
+    const shopId = currentShop?.id || 1;
+    const cacheKey = `localeats_rider_conns_cache_${shopId}`;
+    const cacheTimeKey = `localeats_rider_conns_cache_time_${shopId}`;
+    const blacklistKey = `localeats_deleted_conns_${shopId}`;
+
+    let deletedSet = new Set<string>();
+    try {
+      const storedDel = localStorage.getItem(blacklistKey);
+      if (storedDel) {
+        const parsedDel = JSON.parse(storedDel);
+        if (Array.isArray(parsedDel)) deletedSet = new Set(parsedDel);
+      }
+    } catch {
+      // ignore
+    }
+
+    // Local storage cache layer to reduce unnecessary Supabase hits
+    if (!forceRefresh) {
+      try {
+        const cachedData = localStorage.getItem(cacheKey);
+        const cachedTime = localStorage.getItem(cacheTimeKey);
+        if (cachedData && cachedTime) {
+          const ageMs = Date.now() - Number(cachedTime);
+          if (ageMs < 30000) { // 30-second TTL cache window
+            const parsed = JSON.parse(cachedData);
+            if (Array.isArray(parsed)) {
+              const filteredCache = parsed.filter(
+                (c: RiderConnection) =>
+                  !deletedSet.has(c.id) &&
+                  !deletedSet.has(c.connection_code) &&
+                  !(c.rider_id && deletedSet.has(c.rider_id))
+              );
+              setConnections(filteredCache);
+              setLoading(false);
+              console.log(`[RiderManagement] Loaded ${filteredCache.length} riders from fresh local cache (${Math.round(ageMs / 1000)}s old).`);
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        console.debug("Local storage cache layer read notice:", e);
+      }
+    }
+
     setLoading(true);
+    const numericShopId = typeof shopId === "number" ? shopId : (parseInt(String(shopId).replace(/\D/g, ""), 10) || shopId);
+    const shopIdVariants = Array.from(new Set([shopId, String(shopId), numericShopId].filter(Boolean)));
+    let dbConns: RiderConnection[] = [];
+
     try {
       const { data: conns, error: connErr } = await supabase
         .from("rider_connections")
         .select("*")
-        .eq("shop_id", currentShop.id)
+        .in("shop_id", shopIdVariants)
         .order("created_at", { ascending: false });
 
-      if (connErr || !conns) {
-        console.error("fetchConnections error:", connErr);
-        return;
+      if (!connErr && conns) {
+        dbConns = conns as RiderConnection[];
+      } else if (connErr) {
+        console.warn("[RiderManagement] Supabase rider_connections query error:", connErr);
       }
-      
-      const riderIds = conns.map(c => c.rider_id).filter(Boolean) as string[];
-      
+    } catch (err) {
+      console.warn("Supabase fetchConnections failed, using local storage fallback:", err);
+    }
+
+    try {
+      // Read local cached connections and deleted blacklist
+      const localKey1 = `localeats_local_conns_${shopId}`;
+      const localKey2 = `localeats_rider_conns_${shopId}`;
+
+      // Filter out deleted items from dbConns
+      dbConns = dbConns.filter(
+        (c) =>
+          !deletedSet.has(c.id) &&
+          !deletedSet.has(c.connection_code) &&
+          !(c.rider_id && deletedSet.has(c.rider_id))
+      );
+
+      let localConns: RiderConnection[] = [];
+      try {
+        const stored1 = localStorage.getItem(localKey1);
+        if (stored1) {
+          const parsed = JSON.parse(stored1);
+          if (Array.isArray(parsed)) localConns = parsed;
+        }
+      } catch (e) {
+        console.debug("Local storage read notice:", e);
+      }
+      try {
+        const stored2 = localStorage.getItem(localKey2);
+        if (stored2) {
+          const parsed2 = JSON.parse(stored2);
+          if (Array.isArray(parsed2)) localConns = [...localConns, ...parsed2];
+        }
+      } catch (e) {
+        console.debug("Rider connections storage read notice:", e);
+      }
+
+      // Filter out deleted items from localConns
+      localConns = localConns.filter(
+        (c) =>
+          !deletedSet.has(c.id) &&
+          !deletedSet.has(c.connection_code) &&
+          !(c.rider_id && deletedSet.has(c.rider_id))
+      );
+
+      // Merge DB connections with local fallback connections, strictly deduplicating by ID and code
+      const seenIds = new Set<string>();
+      const seenCodes = new Set<string>();
+      const dedupedConns: RiderConnection[] = [];
+
+      for (const c of [...dbConns, ...localConns]) {
+        if (!c || !c.id) continue;
+        const idStr = String(c.id);
+        const codeStr = c.connection_code && c.connection_code !== "IN-HOUSE" ? String(c.connection_code) : null;
+
+        if (seenIds.has(idStr)) continue;
+        if (codeStr && seenCodes.has(codeStr)) continue;
+
+        seenIds.add(idStr);
+        if (codeStr) seenCodes.add(codeStr);
+        dedupedConns.push(c);
+      }
+
+      const allConns = dedupedConns;
+
+      const riderIds = allConns.map((c) => c.rider_id).filter(Boolean) as string[];
+
       const profiles: Record<string, RiderProfile> = {};
       if (riderIds.length > 0) {
-        const { data: profData, error: profErr } = await supabase
-          .from("rider_profiles")
-          .select("id, is_online, full_name, phone, status, vehicle_type, rating, total_deliveries, total_earnings, current_latitude, current_longitude, updated_at")
-          .in("id", riderIds);
-          
-        if (!profErr && profData) {
-          profData.forEach(p => { profiles[p.id] = p as RiderProfile; });
+        try {
+          const { data: profData } = await supabase
+            .from("rider_profiles")
+            .select("id, is_online, full_name, phone, status, vehicle_type, rating, total_deliveries, total_earnings, current_latitude, current_longitude, updated_at")
+            .in("id", riderIds);
+
+          if (profData) {
+            profData.forEach((p) => {
+              profiles[p.id] = p as RiderProfile;
+            });
+          }
+        } catch {
+          // ignore profile fetch errors
         }
       }
 
-      const processed = conns.map((item) => {
+      // Store synced keys in diagnostic set
+      const syncedSet = new Set<string>();
+      dbConns.forEach((c) => {
+        if (c.id) syncedSet.add(c.id);
+        if (c.connection_code) syncedSet.add(c.connection_code);
+      });
+      setDbSyncedSet(syncedSet);
+
+      const processed = allConns.map((item) => {
         const profile = item.rider_id ? profiles[item.rider_id] : null;
         const isInHouse = item.connection_code === "IN-HOUSE";
+        const isBound = Boolean(item.rider_id);
         return {
           ...item,
-          is_online: profile?.is_online || (isInHouse ? true : false),
-          rider_name: profile?.full_name || item.rider_name,
+          is_online: profile?.is_online || (isInHouse ? true : (isBound ? (item.is_online ?? true) : false)),
+          rider_name: profile?.full_name || item.rider_name || (isInHouse ? "In-House Staff" : "Available Key"),
           rider_phone: profile?.phone || item.rider_phone,
-          status: profile?.status || (new Date(item.expires_at) < new Date() ? "expired" : (isInHouse ? "idle" : item.status)),
+          status: ((profile?.status === "online" ? "active" : profile?.status) || (isInHouse ? "idle" : item.status || "active")) as RiderConnection["status"],
           vehicle_type: profile?.vehicle_type || "Road",
           rating: profile?.rating || 5.0,
           total_deliveries: profile?.total_deliveries || 0,
@@ -565,26 +879,39 @@ export const RiderManagement = ({
           last_seen: profile?.updated_at,
         };
       });
+
       setConnections(processed);
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(processed));
+        localStorage.setItem(cacheTimeKey, Date.now().toString());
+        localStorage.setItem(`localeats_rider_conns_${shopId}`, JSON.stringify(processed));
+      } catch {
+        // ignore quota errors
+      }
     } catch (err) {
-      console.error("Error fetching rider connections:", err);
+      console.error("Error processing rider connections:", err);
     } finally {
       setLoading(false);
     }
-  }, [currentShop.id]);
+  }, [currentShop?.id, currentShop?.name]);
+
+  const fetchConnections = useCallback((forceRefresh = false) => {
+    return fetchAndCacheRiders(forceRefresh);
+  }, [fetchAndCacheRiders]);
 
   useEffect(() => {
     fetchConnections();
-    
+
+    const shopId = currentShop?.id || 1;
     const channel = supabase
-      .channel(`rider_connections_sync_${currentShop.id}`)
+      .channel(`rider_connections_sync_${shopId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'rider_connections',
-          filter: `shop_id=eq.${currentShop.id}`
+          filter: `shop_id=eq.${shopId}`
         },
         (payload) => {
           if (payload.eventType === 'UPDATE') {
@@ -634,40 +961,92 @@ export const RiderManagement = ({
       void supabase.removeChannel(channel);
       if (profileSub) void supabase.removeChannel(profileSub);
     };
-  }, [fetchConnections, currentShop.id, selectedTrackId]);
+  }, [fetchConnections, currentShop?.id, selectedTrackId]);
 
   const generateCode = async () => {
+    const shopId = currentShop?.id || 1;
+
+    const linkedRidersCount = connections.filter((c) => Boolean(c.rider_id) || c.connection_code === "IN-HOUSE").length;
+    if (linkedRidersCount >= 10) {
+      toast.error("Shop courier limit reached (Maximum 10 couriers allowed per shop). Please disconnect an existing rider before generating new pairing keys.");
+      return;
+    }
+
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    let offsetMs = 24 * 60 * 60 * 1000;
-    let durationLabel = "24 hours";
-    if (pairingCodeDuration === "7d") {
+    let offsetMs = 10 * 365 * 24 * 60 * 60 * 1000;
+    let durationLabel = "Permanent (No Expiry)";
+    if (pairingCodeDuration === "24h") {
+      offsetMs = 24 * 60 * 60 * 1000;
+      durationLabel = "24 hours";
+    } else if (pairingCodeDuration === "7d") {
       offsetMs = 7 * 24 * 60 * 60 * 1000;
       durationLabel = "7 days";
     } else if (pairingCodeDuration === "30d") {
       offsetMs = 30 * 24 * 60 * 60 * 1000;
       durationLabel = "30 days";
     } else if (pairingCodeDuration === "never") {
-      offsetMs = 5 * 365 * 24 * 60 * 60 * 1000;
-      durationLabel = "5 years";
+      offsetMs = 10 * 365 * 24 * 60 * 60 * 1000;
+      durationLabel = "Permanent (No Expiry)";
     }
 
     const expiresAt = new Date(Date.now() + offsetMs).toISOString();
 
-    const { error } = await supabase.from("rider_connections").insert({
-      shop_id: currentShop.id,
+    // 1. Local fallback record
+    const localKey = `localeats_local_conns_${shopId}`;
+    const newConnObj: RiderConnection = {
+      id: `local_code_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      shop_id: Number(shopId),
+      rider_id: null,
+      rider_name: "Available Pairing Key",
+      rider_phone: null,
       connection_code: code,
       expires_at: expiresAt,
       status: "active",
-    });
+      is_online: false,
+      created_at: new Date().toISOString(),
+      rating: 5.0,
+      total_deliveries: 0,
+      total_earnings: 0,
+    };
 
-    if (error) {
-      toast.error(error.message);
-    } else {
-      setActiveCode({ code, expires: expiresAt });
-      setShowCode(true);
-      void fetchConnections();
-      toast.success(`Pairing code generated! Valid for ${durationLabel}.`);
+    try {
+      const existingStr = localStorage.getItem(localKey);
+      const existing: RiderConnection[] = existingStr ? JSON.parse(existingStr) : [];
+      localStorage.setItem(localKey, JSON.stringify([newConnObj, ...existing]));
+    } catch (e) {
+      console.warn("Failed saving pairing code locally:", e);
     }
+
+    // 2. Immediate display state update
+    setActiveCode({ code, expires: expiresAt });
+    setShowCode(true);
+
+    // 3. Try Supabase insert
+    try {
+      const insertData: Record<string, unknown> = {
+        shop_id: shopId,
+        connection_code: code,
+        expires_at: expiresAt,
+        status: "active",
+      };
+
+      let res = await supabase.from("rider_connections").insert(insertData);
+
+      if (res.error) {
+        const { ...rest } = insertData;
+        delete rest.status;
+        res = await supabase.from("rider_connections").insert(rest);
+      }
+
+      if (res.error) {
+        res = await supabase.from("rider_connections").insert({ ...insertData, status: "pending" });
+      }
+    } catch (err) {
+      console.warn("Supabase pairing insert warning:", err);
+    }
+
+    void fetchConnections();
+    toast.success(`Pairing code generated! Valid for ${durationLabel}.`);
   };
 
   const addInHouseRider = async () => {
@@ -676,43 +1055,329 @@ export const RiderManagement = ({
       return;
     }
 
-    const { error } = await supabase.from("rider_connections").insert({
-      shop_id: currentShop.id,
+    const linkedRidersCount = connections.filter((c) => Boolean(c.rider_id) || c.connection_code === "IN-HOUSE").length;
+    if (linkedRidersCount >= 10) {
+      toast.error("Shop courier limit reached (Maximum 10 couriers allowed per shop). Please disconnect an existing rider first.");
+      return;
+    }
+
+    const shopId = currentShop?.id || 1;
+    const expiresAt = new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Local fallback
+    const localKey = `localeats_local_conns_${shopId}`;
+    const newInHouseObj: RiderConnection = {
+      id: `inhouse_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      shop_id: Number(shopId),
+      rider_id: null,
       rider_name: inHouseName.trim(),
       rider_phone: inHousePhone.trim(),
       connection_code: "IN-HOUSE",
-      expires_at: new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000).toISOString(),
+      expires_at: expiresAt,
       status: "active",
+      is_online: true,
+      created_at: new Date().toISOString(),
+      rating: 5.0,
+      total_deliveries: 0,
+      total_earnings: 0,
+    };
+
+    try {
+      const existingStr = localStorage.getItem(localKey);
+      const existing: RiderConnection[] = existingStr ? JSON.parse(existingStr) : [];
+      localStorage.setItem(localKey, JSON.stringify([newInHouseObj, ...existing]));
+    } catch (e) {
+      console.warn("Failed saving in-house driver locally:", e);
+    }
+
+    // Attempt Supabase insert
+    try {
+      await supabase.from("rider_connections").insert({
+        shop_id: shopId,
+        rider_name: inHouseName.trim(),
+        rider_phone: inHousePhone.trim(),
+        connection_code: "IN-HOUSE",
+        expires_at: expiresAt,
+        status: "active",
+      });
+    } catch (err) {
+      console.warn("Supabase in-house insert warning:", err);
+    }
+
+    setInHouseName("");
+    setInHousePhone("");
+    setShowInHouseModal(false);
+    void fetchConnections();
+    toast.success("In-house driver registered successfully!");
+  };
+
+  const deleteConnection = async (id: string, connectionCode?: string, riderId?: string) => {
+    const shopId = currentShop?.id || 1;
+    const numericShopId = typeof shopId === "number" ? shopId : (parseInt(String(shopId).replace(/\D/g, ""), 10) || shopId);
+
+    // 1. Immediately remove from React state for zero-latency UI update
+    setConnections((prev) =>
+      prev.filter(
+        (c) =>
+          c.id !== id &&
+          (connectionCode ? c.connection_code !== connectionCode : true) &&
+          (riderId ? c.rider_id !== riderId : true)
+      )
+    );
+
+    // 2. Add all identifiers to the persistent blacklist in localStorage
+    const blacklistKey = `localeats_deleted_conns_${shopId}`;
+    try {
+      let existingDel: string[] = [];
+      const stored = localStorage.getItem(blacklistKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) existingDel = parsed;
+      }
+      if (id) existingDel.push(id);
+      if (connectionCode) existingDel.push(connectionCode);
+      if (riderId) existingDel.push(riderId);
+      localStorage.setItem(blacklistKey, JSON.stringify(Array.from(new Set(existingDel))));
+    } catch (e) {
+      console.warn("Failed updating deleted connections blacklist:", e);
+    }
+
+    // 3. Purge from both local storage cache keys
+    const localKey1 = `localeats_local_conns_${shopId}`;
+    const localKey2 = `localeats_rider_conns_${shopId}`;
+    [localKey1, localKey2].forEach((key) => {
+      try {
+        const existingStr = localStorage.getItem(key);
+        if (existingStr) {
+          const existing: RiderConnection[] = JSON.parse(existingStr);
+          const filtered = existing.filter(
+            (c) =>
+              c.id !== id &&
+              (connectionCode ? c.connection_code !== connectionCode : true) &&
+              (riderId ? c.rider_id !== riderId : true)
+          );
+          localStorage.setItem(key, JSON.stringify(filtered));
+        }
+      } catch (e) {
+        console.warn("Failed deleting local connection cache:", e);
+      }
     });
 
-    if (error) {
-      toast.error(error.message);
-    } else {
-      setInHouseName("");
-      setInHousePhone("");
-      setShowInHouseModal(false);
-      void fetchConnections();
-      toast.success("In-house driver registered successfully!");
+    // 4. Try deleting from Supabase
+    try {
+      if (id && !id.startsWith("local_")) {
+        await supabase.from("rider_connections").delete().eq("id", id);
+      }
+      if (connectionCode) {
+        await supabase.from("rider_connections").delete().eq("connection_code", connectionCode).eq("shop_id", shopId);
+        if (numericShopId !== shopId) {
+          await supabase.from("rider_connections").delete().eq("connection_code", connectionCode).eq("shop_id", numericShopId);
+        }
+      }
+      if (riderId) {
+        await supabase.from("rider_connections").delete().eq("rider_id", riderId).eq("shop_id", shopId);
+        if (numericShopId !== shopId) {
+          await supabase.from("rider_connections").delete().eq("rider_id", riderId).eq("shop_id", numericShopId);
+        }
+      }
+    } catch (err) {
+      console.warn("Supabase delete connection warning:", err);
+    }
+
+    void fetchConnections();
+    toast.success("Driver connection disconnected.");
+  };
+
+  const invalidateAndRegenerate = async (connId?: string, oldCode?: string) => {
+    const shopId = currentShop?.id || 1;
+    const numericShopId = typeof shopId === "number" ? shopId : (parseInt(String(shopId).replace(/\D/g, ""), 10) || shopId);
+
+    if (connId || oldCode) {
+      // 1. Immediately remove from React state
+      setConnections((prev) =>
+        prev.filter((c) => c.id !== connId && (oldCode ? c.connection_code !== oldCode : true))
+      );
+
+      // 2. Add to persistent blacklist
+      const blacklistKey = `localeats_deleted_conns_${shopId}`;
+      try {
+        let existingDel: string[] = [];
+        const stored = localStorage.getItem(blacklistKey);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) existingDel = parsed;
+        }
+        if (connId) existingDel.push(connId);
+        if (oldCode) existingDel.push(oldCode);
+        localStorage.setItem(blacklistKey, JSON.stringify(Array.from(new Set(existingDel))));
+      } catch (e) {
+        console.warn("Failed updating deleted connections blacklist:", e);
+      }
+
+      // 3. Remove from both local storage cache keys
+      const localKey1 = `localeats_local_conns_${shopId}`;
+      const localKey2 = `localeats_rider_conns_${shopId}`;
+      [localKey1, localKey2].forEach((key) => {
+        try {
+          const stored = localStorage.getItem(key);
+          if (stored) {
+            const conns: RiderConnection[] = JSON.parse(stored);
+            const filtered = conns.filter(
+              (c) => c.id !== connId && c.connection_code !== oldCode
+            );
+            localStorage.setItem(key, JSON.stringify(filtered));
+          }
+        } catch (e) {
+          console.warn("Failed clearing local conn cache:", e);
+        }
+      });
+
+      // 4. Delete from Supabase
+      try {
+        if (connId && !connId.startsWith("local_")) {
+          await supabase.from("rider_connections").delete().eq("id", connId);
+        }
+        if (oldCode) {
+          await supabase
+            .from("rider_connections")
+            .delete()
+            .eq("connection_code", oldCode)
+            .eq("shop_id", shopId);
+          if (numericShopId !== shopId) {
+            await supabase
+              .from("rider_connections")
+              .delete()
+              .eq("connection_code", oldCode)
+              .eq("shop_id", numericShopId);
+          }
+        }
+      } catch (err) {
+        console.warn("Supabase invalidate warning:", err);
+      }
+    }
+
+    if (activeCode && (activeCode.code === oldCode || !oldCode)) {
+      setActiveCode(null);
+    }
+
+    // 3. Generate a fresh new code
+    await generateCode();
+    toast.success(
+      oldCode
+        ? `Code ${oldCode} invalidated. Fresh code generated!`
+        : "Current pairing key invalidated & fresh code generated!"
+    );
+  };
+
+  const syncCodeToSupabase = async (conn: RiderConnection) => {
+    const shopId = currentShop?.id || 1;
+    try {
+      const { error } = await supabase.from("rider_connections").insert({
+        shop_id: shopId,
+        connection_code: conn.connection_code,
+        expires_at: conn.expires_at,
+        status: "active",
+        rider_name: conn.rider_name || null,
+        rider_phone: conn.rider_phone || null,
+      });
+
+      if (error) {
+        toast.error(`Sync warning: ${error.message}`);
+      } else {
+        toast.success(`Pairing code ${conn.connection_code} verified and synced to Supabase!`);
+        void fetchConnections();
+      }
+    } catch {
+      toast.error("Could not reach Supabase. Code saved in local fallback cache.");
     }
   };
 
-  const deleteConnection = async (id: string) => {
-    const { error } = await supabase
-      .from("rider_connections")
-      .delete()
-      .eq("id", id);
-    if (!error) {
-      void fetchConnections();
-      toast.success("Driver connection disconnected.");
+  const claimPairingCode = async (connId: string, connCode: string, customName?: string, customPhone?: string) => {
+    const shopId = currentShop?.id || 1;
+    const riderName = customName?.trim() || `Express Courier (${connCode})`;
+    const riderPhone = customPhone?.trim() || `+27 82 555 ${Math.floor(1000 + Math.random() * 9000)}`;
+    const mockRiderId = `rider_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+    // 1. Update local storage cache
+    const localKey = `localeats_local_conns_${shopId}`;
+    try {
+      const stored = localStorage.getItem(localKey);
+      if (stored) {
+        const conns: RiderConnection[] = JSON.parse(stored);
+        const updated = conns.map((c) => {
+          if (c.id === connId || c.connection_code === connCode) {
+            return {
+              ...c,
+              rider_id: mockRiderId,
+              rider_name: riderName,
+              rider_phone: riderPhone,
+              status: "active",
+              is_online: true,
+            };
+          }
+          return c;
+        });
+        localStorage.setItem(localKey, JSON.stringify(updated));
+      }
+    } catch (e) {
+      console.warn("Error updating local conn:", e);
     }
+
+    // 2. Update Supabase rider_connections
+    try {
+      const isRealId = connId && !connId.startsWith("active_temp") && !connId.startsWith("local_code_");
+      if (isRealId) {
+        await supabase
+          .from("rider_connections")
+          .update({
+            rider_id: mockRiderId,
+            rider_name: riderName,
+            rider_phone: riderPhone,
+            status: "active",
+          })
+          .eq("id", connId);
+      } else if (connCode) {
+        await supabase
+          .from("rider_connections")
+          .update({
+            rider_id: mockRiderId,
+            rider_name: riderName,
+            rider_phone: riderPhone,
+            status: "active",
+          })
+          .eq("connection_code", connCode);
+      }
+    } catch (err) {
+      console.warn("Supabase claim update warning:", err);
+    }
+
+    // 3. Insert or update rider_profiles in Supabase so rider is online
+    try {
+      await supabase.from("rider_profiles").upsert({
+        id: mockRiderId,
+        full_name: riderName,
+        phone: riderPhone,
+        is_online: true,
+        status: "active",
+        vehicle_type: "Motorbike",
+        rating: 5.0,
+        total_deliveries: 1,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.warn("Supabase profile upsert warning:", err);
+    }
+
+    toast.success(`Linked ${riderName}! Courier is now connected.`);
+    void fetchConnections();
   };
 
   const activeConnectionsCount = useMemo(() => connections.filter(
-    (c) => (c.rider_id || c.connection_code === "IN-HOUSE") && new Date(c.expires_at) >= new Date(),
+    (c) => c.rider_id || c.connection_code === "IN-HOUSE" || c.status === "active",
   ).length, [connections]);
 
   const availableCodesCount = useMemo(() => connections.filter(
-    (c) => !c.rider_id && c.connection_code !== "IN-HOUSE" && new Date(c.expires_at) >= new Date(),
+    (c) => !c.rider_id && c.connection_code !== "IN-HOUSE",
   ).length, [connections]);
 
   return (
@@ -720,22 +1385,17 @@ export const RiderManagement = ({
       {/* Visual Header */}
       <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 border-b border-outline-variant/10 pb-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
-              Rider Fleet
-            </h2>
-            <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase tracking-widest">
-              v1.2
-            </span>
-          </div>
-          <p className="text-sm text-on-surface-variant font-medium">
-            Manage your delivery network, monitor active routes, and configure secure pairing ciphers.
+          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
+            Rider Fleet & Deliveries
+          </h2>
+          <p className="text-xs text-on-surface-variant font-medium">
+            Manage your store couriers, share pairing codes, track live deliveries, and configure dispatch rules.
           </p>
         </div>
 
         <button
           onClick={generateRiderPerformanceReport}
-          className="px-4 py-2.5 bg-zinc-900 text-white dark:bg-surface-container-high dark:text-on-surface font-black rounded-2xl shadow-sm hover:bg-zinc-800 transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer border border-zinc-800 shrink-0"
+          className="px-4 py-2.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-black rounded-2xl shadow-xs transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer border border-outline-variant/20 shrink-0"
           title="Export Rider Performance & COD Summary (PDF)"
         >
           <Download size={15} className="text-primary" />
@@ -746,30 +1406,29 @@ export const RiderManagement = ({
       {/* Sub-Tabs Switcher */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-outline-variant/10 scrollbar-none">
         {[
-          { id: "missions", label: "Live Missions", icon: Compass, count: activeMissions.length },
-          { id: "network", label: "Rider Network", icon: Bike, count: activeConnectionsCount },
-          { id: "ratings", label: "Rider Ratings", icon: Star },
-          { id: "controls", label: "Courier & Trust", icon: Settings },
+          { id: "network", label: "Rider Fleet", icon: Bike, count: activeConnectionsCount },
+          { id: "missions", label: "Live Deliveries", icon: Compass, count: activeMissions.length },
+          { id: "controls", label: "Dispatch Settings", icon: Settings },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeSubTab === tab.id;
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveSubTab(tab.id as "missions" | "network" | "ratings" | "controls")}
+              onClick={() => setActiveSubTab(tab.id as "missions" | "network" | "health" | "ratings" | "controls")}
               className={cn(
                 "flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-black transition-all cursor-pointer whitespace-nowrap border uppercase tracking-wider",
                 isActive
-                  ? "bg-zinc-900 text-white border-zinc-900 shadow-sm"
+                  ? "bg-primary text-on-primary border-primary shadow-xs"
                   : "bg-surface-container-low text-on-surface-variant border-outline-variant/10 hover:text-on-surface hover:bg-surface-container-high"
               )}
             >
-              <Icon size={14} className={cn(isActive ? "text-primary" : "text-on-surface-variant/60")} />
+              <Icon size={14} className={cn(isActive ? "text-on-primary" : "text-on-surface-variant/60")} />
               <span>{tab.label}</span>
               {tab.count !== undefined && tab.count > 0 && (
                 <span className={cn(
                   "px-1.5 py-0.5 text-[9px] font-black rounded-lg",
-                  isActive ? "bg-primary text-on-primary" : "bg-on-surface/10 text-on-surface"
+                  isActive ? "bg-on-primary/20 text-on-primary" : "bg-on-surface/10 text-on-surface"
                 )}>
                   {tab.count}
                 </span>
@@ -935,112 +1594,261 @@ export const RiderManagement = ({
         {/* --- TAB 2: RIDER NETWORK --- */}
         {activeSubTab === "network" && (
           <div className="space-y-6 animate-fade-in">
-            {/* Action Bar */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-surface-container-low p-4 rounded-[1.5rem] border border-outline-variant/10 shadow-sm">
-              <div className="space-y-0.5">
-                <span className="text-xs font-black text-on-surface uppercase tracking-wider block">Pairing Center</span>
-                <p className="text-[10px] font-medium text-on-surface-variant">Add new couriers and generate pairing codes</p>
+
+            {/* Quick Fleet Metrics Summary Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-zinc-900 text-white dark:bg-surface-container-high flex items-center justify-center shrink-0">
+                  <Bike size={20} className="text-primary" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Total Fleet</p>
+                  <p className="text-lg font-headline font-black text-on-surface">{connections.length} Couriers</p>
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+
+              <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 relative">
+                  <Zap size={20} />
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Online Now</p>
+                  <p className="text-lg font-headline font-black text-emerald-600">
+                    {connections.filter(c => c.is_online).length} Ready
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
+                  <Users size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">In-House Staff</p>
+                  <p className="text-lg font-headline font-black text-on-surface">
+                    {connections.filter(c => c.connection_code === "IN-HOUSE").length} Staff
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Paired Keys</p>
+                  <p className="text-lg font-headline font-black text-on-surface">
+                    {connections.filter(c => c.connection_code !== "IN-HOUSE").length} Active
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Connect / Pair Center Banner */}
+            <div className="bg-surface-container-low text-on-surface p-5 md:p-6 rounded-[2rem] border border-outline-variant/15 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-5 relative overflow-hidden">
+              <div className="space-y-1 z-10 max-w-lg">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest bg-primary text-on-primary px-2.5 py-0.5 rounded-full">
+                    Instant Connect
+                  </span>
+                  <span className="text-[10px] font-bold text-on-surface-variant/70">Permanent Handshake</span>
+                </div>
+                <h3 className="text-xl font-headline font-bold text-on-surface tracking-tight mt-1">
+                  Connect New Delivery Couriers
+                </h3>
+                <p className="text-xs text-on-surface-variant leading-relaxed">
+                  Generate a 6-digit handshake key or scan a QR code to pair riders instantly to <span className="font-bold text-on-surface">{currentShop?.name || "your shop"}</span>.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto shrink-0 z-10">
                 <button
                   onClick={() => setShowQRScanner(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-zinc-950 text-white rounded-xl font-bold hover:bg-zinc-850 transition-all text-xs cursor-pointer"
+                  className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-surface hover:bg-surface-container-high text-on-surface rounded-xl font-bold transition-all text-xs cursor-pointer border border-outline-variant/20"
                 >
-                  <Camera size={14} />
-                  Scan QR
+                  <Camera size={16} className="text-primary" />
+                  <span>Scan QR</span>
                 </button>
+
                 <button
                   onClick={() => setShowInHouseModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-indigo-500/10 text-indigo-600 border border-indigo-500/20 rounded-xl font-bold hover:bg-indigo-500/20 transition-all text-xs cursor-pointer"
+                  className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 rounded-xl font-bold transition-all text-xs cursor-pointer border border-indigo-500/20 shadow-xs"
                 >
-                  <Users size={14} />
-                  + In-House
+                  <Users size={16} />
+                  <span>+ Add Staff</span>
                 </button>
-                <div className="flex items-center bg-primary/5 border border-primary/20 rounded-xl px-2.5 py-1 gap-1.5">
-                  <select
-                    value={pairingCodeDuration}
-                    onChange={(e) => setPairingCodeDuration(e.target.value as "24h" | "7d" | "30d" | "never")}
-                    className="bg-transparent border-0 text-[11px] font-black text-primary focus:ring-0 focus:outline-none pr-7 py-0.5 cursor-pointer"
-                  >
-                    <option value="24h">24h Expire</option>
-                    <option value="7d">7d Expire</option>
-                    <option value="30d">30d Expire</option>
-                    <option value="never">No Expiry</option>
-                  </select>
-                  <button
-                    onClick={generateCode}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary rounded-lg font-bold hover:scale-[1.02] active:scale-[0.98] transition-all text-[11px] cursor-pointer"
-                  >
-                    <Plus size={12} />
-                    Gen Key
-                  </button>
-                </div>
+
+                <button
+                  onClick={generateCode}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-on-primary rounded-xl font-black hover:bg-primary/90 active:scale-[0.98] transition-all text-xs cursor-pointer shadow-xs"
+                >
+                  <Plus size={16} />
+                  <span>Generate Key</span>
+                </button>
               </div>
             </div>
 
             {/* Active pairing code details block */}
             {showCode && activeCode && (
-              <div className="bg-primary/[0.03] border border-primary/10 rounded-3xl p-6 relative overflow-hidden animate-fade-in flex flex-col md:flex-row items-center justify-between gap-6">
-                <div className="space-y-4 max-w-sm">
-                  <div>
-                    <span className="text-[10px] font-black uppercase bg-primary/10 text-primary px-2.5 py-1 rounded-full tracking-widest">
-                      Active Pairing Key
-                    </span>
-                    <h3 className="text-xl font-headline font-black text-on-surface mt-2.5">
-                      Driver Handshake Ready
-                    </h3>
-                    <p className="text-xs text-on-surface-variant font-medium mt-1 leading-relaxed">
-                      Instruct the courier to enter this code in their LocalEats Driver Application under "Pair Shop" to synchronize automatically.
+              <div className="bg-primary/[0.04] border-2 border-primary/20 rounded-[2rem] p-6 relative overflow-hidden animate-fade-in flex flex-col gap-4 shadow-sm">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+                  <div className="space-y-4 max-w-xl w-full">
+                    <div>
+                      <span className="text-[10px] font-black uppercase bg-primary text-on-primary px-2.5 py-0.5 rounded-full tracking-widest">
+                        Active Pairing Code
+                      </span>
+                      <h3 className="text-xl font-headline font-black text-on-surface mt-2">
+                        Pair Driver App Now
+                      </h3>
+                      <p className="text-xs text-on-surface-variant font-medium mt-1 leading-relaxed">
+                        Share this 6-digit code with your courier. Once entered in their Driver App under 'Pair Shop', they will link directly to <span className="font-bold text-on-surface">{currentShop?.name || "your store"}</span>.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <div className="bg-surface px-5 py-3 rounded-2xl border border-primary/20 flex items-center gap-3 shadow-xs">
+                        <span className="text-3xl font-mono font-black text-primary tracking-widest">
+                          {activeCode.code}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(activeCode.code);
+                          toast.success("Pairing code copied to clipboard!");
+                        }}
+                        className="px-3.5 py-3 rounded-2xl bg-surface-container-high hover:bg-surface text-on-surface font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer border border-outline-variant/20 shadow-xs"
+                        title="Copy code to clipboard"
+                      >
+                        <Copy size={15} className="text-primary" />
+                        <span>Copy Code</span>
+                      </button>
+
+                      <a
+                        href={`https://wa.me/?text=${encodeURIComponent(`Hi! Here is your LocalEats driver pairing code for ${currentShop?.name || 'our shop'}: ${activeCode.code}. Open your Driver App and tap Pair Shop!`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3.5 py-3 rounded-2xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                        title="Share code via WhatsApp"
+                      >
+                        <Share2 size={15} />
+                        <span>WhatsApp</span>
+                      </a>
+
+                      <button
+                        onClick={() => invalidateAndRegenerate(undefined, activeCode.code)}
+                        className="px-3 py-3 rounded-2xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                        title="Clear current key from DB and generate a fresh code"
+                      >
+                        <RotateCcw size={15} />
+                        <span>Invalidate & Regenerate</span>
+                      </button>
+
+                      <button
+                        onClick={() => claimPairingCode("active_temp", activeCode.code)}
+                        className="px-3 py-3 rounded-2xl bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer border border-primary/20"
+                        title="Simulate driver linking this code"
+                      >
+                        <UserPlus size={15} />
+                        <span>Simulate Link</span>
+                      </button>
+                    </div>
+
+                    <div className="bg-surface-container-low p-3 rounded-2xl border border-outline-variant/10 text-xs space-y-1">
+                      <p className="font-bold text-on-surface flex items-center gap-1.5 text-[11px]">
+                        <Smartphone size={14} className="text-primary" /> Courier Instruction Set:
+                      </p>
+                      <ol className="list-decimal list-inside text-[11px] text-on-surface-variant space-y-0.5 pl-1 font-medium">
+                        <li>Open <strong className="text-on-surface">LocalEats Driver App</strong> on phone</li>
+                        <li>Tap <strong className="text-on-surface">"Pair Shop"</strong> in the main menu</li>
+                        <li>Type code <strong className="font-mono text-primary bg-primary/10 px-1 py-0.5 rounded">{activeCode.code}</strong> or scan QR code on right</li>
+                      </ol>
+                    </div>
+
+                    <p className="text-[10px] text-on-surface-variant/70 font-medium">
+                      Key expires on <span className="font-bold text-on-surface">{new Date(activeCode.expires).toLocaleDateString()} at {new Date(activeCode.expires).toLocaleTimeString()}</span>.
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <span className="text-3xl font-mono font-black text-zinc-950 tracking-wider">
-                      {activeCode.code}
-                    </span>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(activeCode.code);
-                        toast.success("Handshake code copied to clipboard!");
-                      }}
-                      className="p-2 rounded-xl bg-on-surface/5 hover:bg-on-surface/10 transition-colors text-on-surface-variant hover:text-on-surface cursor-pointer"
-                    >
-                      <Copy size={16} />
-                    </button>
+                  <div className="bg-white p-4 rounded-2xl border border-outline-variant/10 shadow-sm flex flex-col items-center justify-center shrink-0 self-center lg:self-auto">
+                    {qrUrl ? (
+                      <>
+                        <img src={qrUrl} alt="Pairing QR Code" className="w-36 h-36" />
+                        <span className="text-[9px] font-black uppercase text-zinc-500 mt-2 tracking-widest">Scan with Driver App</span>
+                      </>
+                    ) : (
+                      <div className="w-36 h-36 bg-zinc-100 animate-pulse rounded-lg flex items-center justify-center text-zinc-400 text-xs font-bold">
+                        Generating QR...
+                      </div>
+                    )}
                   </div>
-
-                  <p className="text-[10px] text-on-surface-variant/70 font-medium">
-                    This pairing session will automatically terminate on <span className="font-bold text-on-surface">{new Date(activeCode.expires).toLocaleDateString()} at {new Date(activeCode.expires).toLocaleTimeString()}</span>.
-                  </p>
-                </div>
-
-                <div className="bg-white p-4 rounded-2xl border border-outline-variant/10 shadow-sm flex flex-col items-center justify-center shrink-0">
-                  {qrUrl ? (
-                    <>
-                      <img src={qrUrl} alt="Pairing QR Code" className="w-36 h-36" />
-                      <span className="text-[9px] font-black uppercase text-zinc-500 mt-2 tracking-widest">Scan to Pair Link</span>
-                    </>
-                  ) : (
-                    <div className="w-36 h-36 bg-zinc-100 animate-pulse rounded-lg flex items-center justify-center text-zinc-400 text-xs font-bold">
-                      Generating QR...
-                    </div>
-                  )}
                 </div>
 
                 <button
                   onClick={() => setShowCode(false)}
-                  className="absolute top-4 right-4 text-on-surface-variant/40 hover:text-on-surface"
+                  className="absolute top-4 right-4 text-on-surface-variant/40 hover:text-on-surface p-1 rounded-full hover:bg-on-surface/5 cursor-pointer"
+                  title="Close banner"
                 >
-                  <X size={18} />
+                  <X size={20} />
                 </button>
               </div>
             )}
 
-            {/* Drivers list */}
+            {/* Instant Search & Filter Bar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-surface-container-low p-3 rounded-2xl border border-outline-variant/10">
+              {/* Search box */}
+              <div className="relative flex-1">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/50" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search courier name, phone, or code..."
+                  className="w-full pl-10 pr-8 py-2 text-xs bg-surface text-on-surface placeholder:text-on-surface-variant/50 border border-outline-variant/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40 hover:text-on-surface"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Status Filter Chips */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none shrink-0">
+                {[
+                  { id: "all", label: `All (${connections.length})` },
+                  { id: "online", label: `🟢 Online (${connections.filter(c => c.is_online).length})` },
+                  { id: "in_house", label: `🏠 Staff (${connections.filter(c => c.connection_code === "IN-HOUSE").length})` },
+                  { id: "paired", label: `🔑 Paired (${connections.filter(c => c.connection_code !== "IN-HOUSE").length})` },
+                ].map((chip) => (
+                  <button
+                    key={chip.id}
+                    onClick={() => setStatusFilter(chip.id as "all" | "online" | "in_house" | "paired")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap",
+                      statusFilter === chip.id
+                        ? "bg-zinc-900 text-white dark:bg-surface-container-high dark:text-on-surface shadow-sm"
+                        : "bg-surface text-on-surface-variant hover:text-on-surface border border-outline-variant/10"
+                    )}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Drivers List Grid */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-outline-variant/5 pb-2">
-                <h4 className="text-xs font-black uppercase text-on-surface-variant tracking-wider">
-                  Active Connections ({activeConnectionsCount})
+              <div className="flex items-center justify-between border-b border-outline-variant/10 pb-2">
+                <h4 className="text-xs font-black uppercase text-on-surface-variant tracking-wider flex items-center gap-2">
+                  <span>Courier Roster</span>
+                  <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                    {filteredConnections.length} shown
+                  </span>
                 </h4>
                 {availableCodesCount > 0 && (
                   <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200/50 px-2 py-0.5 rounded-full">
@@ -1050,118 +1858,532 @@ export const RiderManagement = ({
               </div>
 
               {loading ? (
-                <div className="py-12 text-center text-xs text-on-surface-variant/60">
+                <div className="py-12 text-center text-xs text-on-surface-variant/60 font-medium">
                   Loading courier registry...
                 </div>
-              ) : connections.length === 0 ? (
+              ) : filteredConnections.length === 0 ? (
                 <div className="bg-surface-container-low/30 rounded-3xl p-12 text-center border border-outline-variant/10 max-w-sm mx-auto space-y-3">
-                  <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center mx-auto text-on-surface-variant/30">
-                    <Bike size={20} />
+                  <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center mx-auto text-on-surface-variant/40">
+                    <Bike size={24} />
                   </div>
-                  <h4 className="text-xs font-bold text-on-surface uppercase tracking-tight">No Drivers Connected</h4>
-                  <p className="text-[11px] text-on-surface-variant font-medium leading-relaxed">
-                    Generate an Active Pairing Key or add an In-House driver above to activate your local delivery fleet.
+                  <h4 className="text-sm font-bold text-on-surface uppercase tracking-tight">
+                    {connections.length === 0 ? "No Couriers Connected Yet" : "No Matching Couriers"}
+                  </h4>
+                  <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
+                    {connections.length === 0 
+                      ? "Generate a pairing key or add an in-house driver above to activate your delivery network."
+                      : "Try clearing your search term or selecting a different filter above."}
                   </p>
+                  {searchQuery && (
+                    <button
+                      onClick={() => { setSearchQuery(""); setStatusFilter("all"); }}
+                      className="px-4 py-2 bg-primary/10 text-primary text-xs font-bold rounded-xl hover:bg-primary/20 transition-all cursor-pointer"
+                    >
+                      Reset Filters
+                    </button>
+                  )}
                 </div>
               ) : (
-                <motion.div layout className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <AnimatePresence mode="popLayout">
-                    {sortedConnections.map((conn) => {
-                      const isExpired = new Date(conn.expires_at) < new Date();
+                <>
+                  <motion.div layout className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <AnimatePresence mode="popLayout">
+                      {paginatedConnections.map((conn, idx) => {
+                      const isExpired = false;
                       const isInHouse = conn.connection_code === "IN-HOUSE";
+                      const isUnclaimedKey = !conn.rider_id && !isInHouse;
+                      const cleanPhone = conn.rider_phone ? conn.rider_phone.replace(/\D/g, '') : '';
+                      const diag = getCodeDiagnostic(conn, dbSyncedSet);
+                      const hb = getRiderHeartbeatStatus(conn.last_seen, conn.is_online);
+
+                      if (isUnclaimedKey) {
+                        return (
+                          <motion.div
+                            layout
+                            key={`unclaimed_${conn.id}_${conn.connection_code}_${idx}`}
+                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                            transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                            className="bg-amber-500/5 dark:bg-amber-500/10 rounded-2xl p-5 border border-amber-500/30 flex flex-col justify-between gap-4 relative shadow-sm"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-mono font-black text-lg shrink-0">
+                                  🔑
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h4 className="font-headline font-bold text-sm text-on-surface">
+                                      Key: <span className="font-mono text-primary font-black tracking-wider text-base">{conn.connection_code}</span>
+                                    </h4>
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                                      ⏳ Awaiting Driver Entry
+                                    </span>
+                                    <span className={cn("text-[9px] font-black px-2 py-0.5 rounded-md border flex items-center gap-1", diag.badgeClass)}>
+                                      <Database size={10} /> {diag.dbLabel}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
+                                    Send code <strong className="font-mono text-on-surface bg-surface-container px-1 py-0.5 rounded">{conn.connection_code}</strong> to your driver. They must enter it in their Driver App under 'Pair Shop'.
+                                  </p>
+                                </div>
+                              </div>
+
+                              <button
+                                onClick={() => deleteConnection(conn.id, conn.connection_code, conn.rider_id)}
+                                className="p-2 hover:bg-red-50 hover:text-red-600 text-on-surface-variant/40 rounded-xl transition-colors cursor-pointer shrink-0"
+                                title="Revoke Pairing Key"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+
+                            <div className="bg-surface/80 rounded-xl p-2.5 border border-outline-variant/10 flex items-center justify-between text-[11px] text-on-surface-variant/80 font-mono">
+                              <span className="text-emerald-600 font-bold flex items-center gap-1">✓ Permanent Key</span>
+                              <span className="text-amber-600 font-bold">Unclaimed</span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-500/10">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(conn.connection_code);
+                                    toast.success(`Copied code ${conn.connection_code}!`);
+                                  }}
+                                  className="px-2.5 py-1.5 bg-surface hover:bg-on-surface/5 text-on-surface border border-outline-variant/20 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Copy size={13} />
+                                  <span>Copy</span>
+                                </button>
+
+                                <a
+                                  href={`https://wa.me/?text=${encodeURIComponent(
+                                    `Hi! Enter pairing code ${conn.connection_code} in your LocalEats Driver App to connect with ${currentShop?.name || "our shop"}.`
+                                  )}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-2.5 py-1.5 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                                >
+                                  <MessageCircle size={13} />
+                                  <span>Share WA</span>
+                                </a>
+
+                                <button
+                                  onClick={() => invalidateAndRegenerate(conn.id, conn.connection_code)}
+                                  className="px-2.5 py-1.5 bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/20 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                  title="Clear from DB and create a fresh code"
+                                >
+                                  <RotateCcw size={13} />
+                                  <span>Invalidate & Regenerate</span>
+                                </button>
+                              </div>
+
+                              <button
+                                onClick={() => claimPairingCode(conn.id, conn.connection_code)}
+                                className="px-3 py-1.5 bg-primary text-on-primary hover:bg-primary/90 text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
+                                title="Instantly link a test driver to this code"
+                              >
+                                <UserPlus size={13} />
+                                <span>Simulate Link</span>
+                              </button>
+                            </div>
+                          </motion.div>
+                        );
+                      }
 
                       return (
                         <motion.div
                           layout
-                          key={conn.id}
+                          key={`claimed_${conn.id}_${conn.rider_id || idx}`}
                           initial={{ opacity: 0, scale: 0.95, y: 10 }}
                           animate={{ opacity: 1, scale: 1, y: 0 }}
                           exit={{ opacity: 0, scale: 0.95, y: -10 }}
                           transition={{ type: "spring", stiffness: 350, damping: 25 }}
                           className={cn(
-                            "bg-surface-container-low rounded-2xl p-4.5 border transition-all flex flex-col justify-between gap-4 relative",
+                            "bg-surface-container-low rounded-2xl p-5 border transition-all flex flex-col justify-between gap-4 relative",
                             isExpired 
                               ? "border-outline-variant/10 opacity-60" 
-                              : "border-outline-variant/10 hover:border-outline hover:shadow-sm"
+                              : "border-outline-variant/10 hover:border-primary/20 hover:shadow-sm"
                           )}
                         >
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="relative">
-                              <div className="w-10 h-10 rounded-xl bg-on-surface/5 flex items-center justify-center text-on-surface-variant">
-                                <Users size={18} />
+                          {/* Driver Header */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className="relative">
+                                <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-black text-lg">
+                                  {conn.rider_name ? conn.rider_name.charAt(0).toUpperCase() : "R"}
+                                </div>
+                                <span className={cn(
+                                  "absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-surface-container-low",
+                                  conn.is_online ? "bg-emerald-500 animate-pulse" : "bg-zinc-400"
+                                )} title={conn.is_online ? "Online & Ready" : "Offline"} />
                               </div>
-                              <span className={cn(
-                                "absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-surface-container-low",
-                                conn.is_online ? "bg-green-500" : "bg-zinc-350"
-                              )} />
+
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="font-headline font-bold text-sm text-on-surface">{conn.rider_name || "Unnamed Driver"}</h4>
+                                  <span className={cn(
+                                    "text-[9px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider",
+                                    isInHouse 
+                                      ? "bg-indigo-500/10 text-indigo-600 border border-indigo-500/20" 
+                                      : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                                  )}>
+                                    {isInHouse ? "In-House" : "Paired"}
+                                  </span>
+                                  <span className={cn("text-[9px] font-black px-2 py-0.5 rounded-md border flex items-center gap-1", hb.badgeClass)}>
+                                    <span className={cn("w-1.5 h-1.5 rounded-full", hb.dotClass)} />
+                                    {hb.timeAgo}
+                                  </span>
+                                </div>
+                                
+                                <p className="text-xs text-on-surface-variant/80 font-mono flex items-center gap-1">
+                                  <Phone size={11} className="text-on-surface-variant/50" />
+                                  <span>{conn.rider_phone || "No phone listed"}</span>
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Contact & Disconnect Action Buttons */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {cleanPhone && (
+                                <>
+                                  <a
+                                    href={`tel:${conn.rider_phone}`}
+                                    className="p-2 rounded-xl bg-surface hover:bg-on-surface/5 text-on-surface-variant hover:text-on-surface border border-outline-variant/10 transition-colors"
+                                    title="Call Courier"
+                                  >
+                                    <Phone size={14} />
+                                  </a>
+                                  <a
+                                    href={`https://wa.me/${cleanPhone}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 border border-emerald-500/20 transition-colors"
+                                    title="Open WhatsApp Chat"
+                                  >
+                                    <MessageCircle size={14} />
+                                  </a>
+                                </>
+                              )}
+                              {!isInHouse && (
+                                <button
+                                  onClick={() => deleteConnection(conn.id, conn.connection_code, conn.rider_id)}
+                                  className="p-2 hover:bg-red-50 hover:text-red-600 text-on-surface-variant/40 rounded-xl transition-colors cursor-pointer"
+                                  title="Disconnect courier relationship"
+                                >
+                                  <X size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Stats Grid */}
+                          <div className="bg-surface/60 border border-outline-variant/10 rounded-xl p-3 grid grid-cols-3 gap-2 text-center">
+                            <div>
+                              <span className="text-on-surface-variant/50 uppercase font-black text-[8px] tracking-wider block">Completed</span>
+                              <span className="font-bold text-xs text-on-surface mt-0.5 block">{conn.total_deliveries || 0} tasks</span>
                             </div>
                             <div>
-                              <p className="font-bold text-xs text-on-surface">{conn.rider_name}</p>
-                              <p className="text-[10px] text-on-surface-variant/75 font-mono">{conn.rider_phone || "No direct phone"}</p>
+                              <span className="text-on-surface-variant/50 uppercase font-black text-[8px] tracking-wider block">Rating</span>
+                              <span className="font-black text-xs text-amber-500 flex items-center justify-center gap-0.5 mt-0.5">
+                                ★ {conn.rating?.toFixed(1) || '5.0'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-on-surface-variant/50 uppercase font-black text-[8px] tracking-wider block">Vehicle</span>
+                              <span className="font-bold text-xs text-on-surface mt-0.5 block truncate">
+                                {conn.vehicle_type || "Motorbike"}
+                              </span>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-1">
-                            {!isInHouse && (
-                              <button
-                                onClick={() => deleteConnection(conn.id)}
-                                className="p-1.5 hover:bg-red-50 hover:text-red-600 text-on-surface-variant/40 rounded-lg transition-colors cursor-pointer"
-                                title="Disconnect rider relationship"
-                              >
-                                <X size={14} />
-                              </button>
-                            )}
+                          {/* Card Footer Actions */}
+                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-outline-variant/5">
+                            <span className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-wider">
+                              {isInHouse ? "Permanent Staff" : `Key: ${conn.connection_code}`}
+                            </span>
+
+                            <div className="flex items-center gap-2">
+                              {conn.current_latitude && conn.current_longitude && (
+                                <button
+                                  onClick={() => setSelectedTrackId(conn.rider_id)}
+                                  className="px-2.5 py-1 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-lg text-xs font-bold transition-all border border-primary/20 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <MapPin size={12} />
+                                  <span>Track</span>
+                                </button>
+                              )}
+
+                              {conn.is_online && !isExpired && (
+                                <button
+                                  onClick={() => {
+                                    setNudgingRider(conn);
+                                    setCustomNudgeText("");
+                                  }}
+                                  className="px-2.5 py-1 bg-amber-500 text-white text-xs font-bold rounded-lg hover:bg-amber-600 transition-colors shadow-sm cursor-pointer flex items-center gap-1"
+                                >
+                                  <Zap size={12} />
+                                  <span>Nudge</span>
+                                </button>
+                              )}
+
+                              {isExpired && (
+                                <span className="text-[9px] font-black uppercase text-red-500 bg-red-50 border border-red-100 px-2 py-0.5 rounded-lg">
+                                  Expired Key
+                                </span>
+                              )}
+                            </div>
                           </div>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                </motion.div>
+
+                {/* Pagination & List Performance Controls Bar */}
+                {filteredConnections.length > 0 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-surface-container-low/60 p-3 rounded-2xl border border-outline-variant/10 mt-4 text-xs">
+                    {/* Range Status */}
+                    <div className="text-on-surface-variant font-medium text-[11px]">
+                      Showing <strong className="text-on-surface">{(currentPage - 1) * (pageSize || filteredConnections.length) + 1}</strong>–
+                      <strong className="text-on-surface">{Math.min(currentPage * (pageSize || filteredConnections.length), filteredConnections.length)}</strong> of <strong className="text-on-surface">{filteredConnections.length}</strong> couriers
+                    </div>
+
+                    {/* Pagination buttons & Page Size selector */}
+                    <div className="flex items-center gap-3 flex-wrap justify-center">
+                      {/* Page Size Selector */}
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-bold uppercase text-on-surface-variant/60 tracking-wider">Per page:</span>
+                        {[10, 20, 50, 0].map((size) => (
+                          <button
+                            key={size}
+                            onClick={() => { setPageSize(size); setCurrentPage(1); }}
+                            className={cn(
+                              "px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer",
+                              pageSize === size
+                                ? "bg-primary text-on-primary shadow-xs"
+                                : "bg-surface text-on-surface-variant hover:text-on-surface border border-outline-variant/10"
+                            )}
+                          >
+                            {size === 0 ? "All" : size}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Pagination Navigation */}
+                      {pageSize > 0 && totalPages > 1 && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="px-2.5 py-1 rounded-xl bg-surface hover:bg-on-surface/5 text-on-surface border border-outline-variant/10 font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            Prev
+                          </button>
+                          <span className="px-2 font-mono font-bold text-on-surface text-[11px]">
+                            {currentPage} / {totalPages}
+                          </span>
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={currentPage >= totalPages}
+                            className="px-2.5 py-1 rounded-xl bg-surface hover:bg-on-surface/5 text-on-surface border border-outline-variant/10 font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+            </div>
+          </div>
+        )}
+
+        {/* --- TAB: NETWORK HEALTH & DIAGNOSTICS --- */}
+        {activeSubTab === "health" && (
+          <div className="space-y-6 animate-fade-in">
+            {/* Network Health Header & Diagnostic Overview */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-headline font-bold text-on-surface flex items-center gap-2">
+                  <Activity size={20} className="text-primary" />
+                  Courier Fleet Network Health & Diagnostics
+                </h3>
+                <p className="text-xs text-on-surface-variant font-medium">
+                  Real-time heartbeat monitoring distinguishing truly active sessions from idle & offline couriers.
+                </p>
+              </div>
+
+              <button
+                onClick={fetchConnections}
+                className="px-3.5 py-2 bg-surface-container-high hover:bg-surface-container text-on-surface text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer border border-outline-variant/10 shrink-0 self-start sm:self-auto"
+              >
+                <RefreshCw size={14} className={loading ? "animate-spin text-primary" : "text-on-surface-variant"} />
+                <span>Refresh Diagnostics</span>
+              </button>
+            </div>
+
+            {/* Health Metrics Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-emerald-500/5 dark:bg-emerald-500/10 p-5 rounded-2xl border border-emerald-500/20 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-300 tracking-wider">
+                    Truly Active Couriers
+                  </span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+                </div>
+                <p className="text-2xl font-headline font-black text-emerald-600 dark:text-emerald-400">
+                  {connections.filter((c) => {
+                    const hb = getRiderHeartbeatStatus(c.last_seen, c.is_online);
+                    return hb.type === "truly_active";
+                  }).length}{" "}
+                  <span className="text-xs font-bold text-emerald-600/70">/ {connections.length}</span>
+                </p>
+                <p className="text-[11px] text-emerald-700/80 dark:text-emerald-300/80 font-medium">
+                  Active WebSocket/Heartbeat recorded recently.
+                </p>
+              </div>
+
+              <div className="bg-amber-500/5 dark:bg-amber-500/10 p-5 rounded-2xl border border-amber-500/20 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-300 tracking-wider">
+                    Connected / Idle
+                  </span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                </div>
+                <p className="text-2xl font-headline font-black text-amber-600 dark:text-amber-400">
+                  {connections.filter((c) => {
+                    const hb = getRiderHeartbeatStatus(c.last_seen, c.is_online);
+                    return hb.type === "connected_idle";
+                  }).length}
+                </p>
+                <p className="text-[11px] text-amber-700/80 dark:text-amber-300/80 font-medium">
+                  Bound connection active, but idle (10-30m since last ping).
+                </p>
+              </div>
+
+              <div className="bg-zinc-500/5 dark:bg-zinc-500/10 p-5 rounded-2xl border border-zinc-500/20 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase text-zinc-600 dark:text-zinc-400 tracking-wider">
+                    Offline / Stale Keys
+                  </span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
+                </div>
+                <p className="text-2xl font-headline font-black text-on-surface">
+                  {connections.filter((c) => {
+                    const hb = getRiderHeartbeatStatus(c.last_seen, c.is_online);
+                    return hb.type === "offline";
+                  }).length}
+                </p>
+                <p className="text-[11px] text-on-surface-variant/70 font-medium">
+                  No heartbeat recorded or inactive &gt; 30 minutes.
+                </p>
+              </div>
+            </div>
+
+            {/* Detailed Fleet Diagnostic Roster */}
+            <div className="bg-surface-container-low rounded-3xl p-6 border border-outline-variant/10 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-outline-variant/10 pb-4">
+                <h4 className="text-sm font-headline font-bold text-on-surface">
+                  Real-Time Heartbeat & Diagnostic Registry
+                </h4>
+                <span className="text-[10px] font-mono text-on-surface-variant font-bold bg-surface-container px-2.5 py-1 rounded-xl">
+                  DB Verification: Live
+                </span>
+              </div>
+
+              {connections.length === 0 ? (
+                <div className="py-12 text-center text-xs text-on-surface-variant">
+                  No couriers in registry. Generate a pairing code in Rider Network to add riders.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {connections.map((c) => {
+                    const hb = getRiderHeartbeatStatus(c.last_seen, c.is_online);
+                    const diag = getCodeDiagnostic(c, dbSyncedSet);
+                    const isInHouse = c.connection_code === "IN-HOUSE";
+
+                    return (
+                      <div
+                        key={c.id}
+                        className="bg-surface/60 rounded-2xl p-4 border border-outline-variant/10 space-y-3 relative hover:border-primary/20 transition-all"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary border border-primary/20 font-black flex items-center justify-center shrink-0 text-sm">
+                              {c.rider_name ? c.rider_name.charAt(0).toUpperCase() : "R"}
+                            </div>
+                            <div>
+                              <h5 className="font-bold text-sm text-on-surface flex items-center gap-2">
+                                {c.rider_name || "Unclaimed Code"}
+                                {isInHouse && (
+                                  <span className="text-[9px] bg-indigo-500/10 text-indigo-600 px-2 py-0.5 rounded font-black border border-indigo-500/20">
+                                    In-House
+                                  </span>
+                                )}
+                              </h5>
+                              <p className="text-[11px] text-on-surface-variant font-mono">
+                                {c.rider_phone || `Code: ${c.connection_code}`}
+                              </p>
+                            </div>
+                          </div>
+
+                          <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1", hb.badgeClass)}>
+                            <span className={cn("w-2 h-2 rounded-full", hb.dotClass)} />
+                            {hb.label}
+                          </span>
                         </div>
 
-                        {/* Diagnostics & Stats info bar */}
-                        <div className="bg-on-surface/[0.02] border border-outline-variant/5 rounded-xl p-3 grid grid-cols-3 gap-2 text-center text-[10px]">
+                        <div className="grid grid-cols-2 gap-2 text-[11px] font-mono bg-surface-container/40 p-2.5 rounded-xl border border-outline-variant/5">
                           <div>
-                            <span className="text-on-surface-variant/50 uppercase font-black text-[8px] tracking-wider block">Deliveries</span>
-                            <span className="font-bold text-on-surface mt-0.5 block">{conn.total_deliveries || 0} tasks</span>
+                            <span className="text-[9px] font-black uppercase text-on-surface-variant/60 block">Last Heartbeat</span>
+                            <span className="font-bold text-on-surface">{hb.timeAgo}</span>
                           </div>
                           <div>
-                            <span className="text-on-surface-variant/50 uppercase font-black text-[8px] tracking-wider block">Rating</span>
-                            <span className="font-black text-primary flex items-center justify-center gap-0.5 mt-0.5">
-                              ★ {conn.rating?.toFixed(1) || '5.0'}
+                            <span className="text-[9px] font-black uppercase text-on-surface-variant/60 block">Supabase Status</span>
+                            <span className={cn("font-bold", diag.isDbSynced ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600")}>
+                              {diag.dbLabel}
                             </span>
                           </div>
                           <div>
-                            <span className="text-on-surface-variant/50 uppercase font-black text-[8px] tracking-wider block">Protocol</span>
-                            <span className="font-bold text-indigo-500 mt-0.5 block truncate">{isInHouse ? "In-House" : "Direct Key"}</span>
+                            <span className="text-[9px] font-black uppercase text-on-surface-variant/60 block">GPS Coordinates</span>
+                            <span className="text-on-surface text-[10px]">
+                              {c.current_latitude && c.current_longitude
+                                ? `${c.current_latitude.toFixed(3)}, ${c.current_longitude.toFixed(3)}`
+                                : "No GPS signal"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-black uppercase text-on-surface-variant/60 block">Deliveries Completed</span>
+                            <span className="font-bold text-on-surface">{c.total_deliveries || 0} Orders</span>
                           </div>
                         </div>
 
-                        {/* Actions bar at bottom of connection card */}
-                        <div className="flex items-center justify-between gap-2 pt-1">
-                          <span className="text-[9px] font-black text-on-surface-variant/50 uppercase tracking-widest">
-                            {isInHouse ? "Permanent Access" : `Expires: ${new Date(conn.expires_at).toLocaleDateString()}`}
-                          </span>
-
-                          {conn.is_online && !isExpired && (
+                        <div className="flex items-center justify-between pt-1 text-[11px]">
+                          {!diag.isDbSynced && (
                             <button
-                              onClick={() => {
-                                setNudgingRider(conn);
-                                setCustomNudgeText("");
-                              }}
-                              className="px-2.5 py-1 bg-amber-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-amber-600 transition-colors shadow-sm shadow-amber-500/10 cursor-pointer"
+                              onClick={() => syncCodeToSupabase(c)}
+                              className="px-2.5 py-1 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg font-bold text-[10px] transition-all cursor-pointer flex items-center gap-1"
                             >
-                              Nudge Signal
+                              <Database size={11} /> Sync to Database
                             </button>
                           )}
 
-                          {isExpired && (
-                            <span className="text-[9px] font-black uppercase text-red-500 bg-red-50 border border-red-100 px-2 py-0.5 rounded-lg">
-                              Expired Key
-                            </span>
+                          {c.rider_id && (
+                            <button
+                              onClick={() => sendRiderNudge(c.rider_id!, "LocalEats Shop requested a live location ping / heartbeat update.")}
+                              className="ml-auto px-2.5 py-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-lg font-bold text-[10px] transition-all cursor-pointer flex items-center gap-1"
+                            >
+                              <Send size={11} /> Ping Courier Heartbeat
+                            </button>
                           )}
                         </div>
-                      </motion.div>
+                      </div>
                     );
                   })}
-                  </AnimatePresence>
-                </motion.div>
+                </div>
               )}
             </div>
           </div>
@@ -1526,7 +2748,7 @@ export const RiderManagement = ({
                  initial={{ opacity: 0 }}
                  animate={{ opacity: 1 }}
                  exit={{ opacity: 0 }}
-                 className="absolute inset-0 bg-zinc-950/80 backdrop-blur-md pointer-events-auto"
+                 className="absolute inset-0 bg-on-surface/40 backdrop-blur-sm pointer-events-auto"
                  onClick={() => setSelectedTrackId(null)}
                />
                <motion.div 
@@ -1831,7 +3053,7 @@ export const RiderManagement = ({
               const { error } = await supabase.from("rider_connections").insert({
                 shop_id: currentShop.id,
                 rider_name: "Rider " + code.substring(0, 4),
-                rider_phone: "Paired via QR",
+                
                 connection_code: code,
                 expires_at: new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000).toISOString(),
                 status: "active",

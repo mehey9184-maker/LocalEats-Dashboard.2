@@ -100,9 +100,7 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
         });
         setHealthStatus("degraded");
       } else {
-        if (latency > 600) {
-          setHealthStatus("degraded");
-        } else if (wsStatus === "CLOSED" || wsStatus === "CHANNEL_ERROR" || wsStatus === "TIMED_OUT") {
+        if (latency > 800) {
           setHealthStatus("degraded");
         } else {
           setHealthStatus("connected");
@@ -118,7 +116,7 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
         type: "api_gateway",
       });
     }
-  }, [supabase, wsStatus]);
+  }, [supabase]);
 
   // 4. Set up persistent Realtime Channel monitoring
   useEffect(() => {
@@ -145,9 +143,9 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
       logNetworkError("supabase_websocket_init_error", err, { type: "websocket" });
     }
 
-    // Ping check every 25 seconds
+    // Ping check every 60 seconds (relaxed to prevent pool exhaustion)
     checkHealth();
-    const interval = setInterval(checkHealth, 25000);
+    const interval = setInterval(checkHealth, 60000);
 
     return () => {
       clearInterval(interval);
@@ -227,7 +225,7 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
           "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all border cursor-pointer select-none shadow-xs active:scale-95",
           getBadgeStyles()
         )}
-        title="Realtime Gateway & WebSocket Connectivity Status (Click for Diagnostics)"
+        title={`Realtime WS: ${wsStatus} | Gateway: ${latencyMs ?? 0}ms (Click for Diagnostics)`}
       >
         <div className={cn("w-2 h-2 rounded-full shrink-0", getDotStyles())} />
 

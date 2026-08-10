@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
+import { captureErrorToSentry } from "./sentry";
 
 export interface LoggedNetworkError {
   id: string;
@@ -125,6 +126,9 @@ export const sendErrorToSupabaseLogs = async (entry: LoggedNetworkError) => {
     await supabase.from("app_errors").insert([payload]).catch(() => {});
     // Also try app_error_logs table as fallback
     await supabase.from("app_error_logs").insert([payload]).catch(() => {});
+
+    // Forward exception to Sentry
+    captureErrorToSentry(entry.message, entry.context);
   } catch {
     // Safe non-blocking execution
   }
@@ -309,13 +313,20 @@ export const initGlobalErrorLogging = () => {
 
   window.addEventListener("error", (event) => {
     if (event.filename?.includes("chrome-extension")) return;
-    const msg = String(event.error?.message || event.message || "");
+    const rawMsg = event.error?.message || event.message || "";
+    const msg = typeof rawMsg === "object" ? JSON.stringify(rawMsg) : String(rawMsg);
     if (
+      !msg ||
+      msg === "{}" ||
+      msg === "[object Object]" ||
+      msg === "undefined" ||
+      msg === "null" ||
       msg.includes("Failed to fetch") ||
       msg.includes("network") ||
       msg.includes("NetworkError") ||
       msg.includes("Load failed") ||
-      msg.includes("Lock broken")
+      msg.includes("Lock broken") ||
+      msg.includes("steal")
     ) {
       return;
     }
@@ -334,13 +345,20 @@ export const initGlobalErrorLogging = () => {
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    const reasonStr = event.reason ? String(event.reason.message || event.reason) : String(event.reason || "");
+    const rawReason = event.reason?.message || event.reason || "";
+    const reasonStr = typeof rawReason === "object" ? JSON.stringify(rawReason) : String(rawReason);
     if (
+      !reasonStr ||
+      reasonStr === "{}" ||
+      reasonStr === "[object Object]" ||
+      reasonStr === "undefined" ||
+      reasonStr === "null" ||
       reasonStr.includes("Failed to fetch") ||
       reasonStr.includes("network") ||
       reasonStr.includes("NetworkError") ||
       reasonStr.includes("Load failed") ||
       reasonStr.includes("Lock broken") ||
+      reasonStr.includes("steal") ||
       reasonStr.includes("User denied Geolocation")
     ) {
       return;

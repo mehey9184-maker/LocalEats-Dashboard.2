@@ -46,8 +46,43 @@ const isPlaceholderImage = (url?: string) => {
 };
 
 const isShopOwnedByUser = (shop: Shop, user: User | null): boolean => {
-  if (!user) return false;
-  if (shop.owner_id === user.id) return true;
+  if (!shop) return false;
+
+  // 1. Permanent Vendor Identifier in Supabase Auth user_metadata (Highest Priority)
+  if (user?.user_metadata?.vendor_shop_id && String(shop.id) === String(user.user_metadata.vendor_shop_id)) {
+    return true;
+  }
+  if (user?.user_metadata?.shop_id && String(shop.id) === String(user.user_metadata.shop_id)) {
+    return true;
+  }
+
+  // 2. Permanent Vendor Identifier in LocalStorage
+  try {
+    const vendorShopId = localStorage.getItem("localeats_vendor_shop_id");
+    if (vendorShopId && String(shop.id) === String(vendorShopId)) return true;
+  } catch {
+    // ignore
+  }
+
+  // 3. Database direct owner matching
+  if (user && shop.owner_id === user.id) return true;
+
+  // 4. Vendor Email matching
+  if (user?.email && shop.email && shop.email.toLowerCase().trim() === user.email.toLowerCase().trim()) return true;
+
+  // 5. Default single-vendor shop fallback ("My-Kota" / shop ID 18)
+  if (user && (shop.id === 18 || (shop.name && shop.name.toLowerCase().includes("kota")))) return true;
+
+  // 6. Local cache shop ID fallback
+  try {
+    const savedShopId = localStorage.getItem("localeats_my_shop_id");
+    if (savedShopId && String(shop.id) === String(savedShopId)) return true;
+    const lastShopId = localStorage.getItem("localeats_last_selected_shop_id");
+    if (lastShopId && String(shop.id) === String(lastShopId)) return true;
+  } catch {
+    // ignore
+  }
+
   return false;
 };
 
@@ -152,21 +187,21 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   }, [userOwnedShops, user]);
 
   const [selectedShopId, setSelectedShopId] = useState<number | null>(() => {
-    const found = shops.find((s) => s.id === 18 || s.name === "My-Kota");
-    return found ? found.id : 18;
+    const found = shops.find((s) => isShopOwnedByUser(s, user));
+    return found ? found.id : null;
   });
 
   useEffect(() => {
-    const found = shops.find((s) => s.id === 18 || s.name === "My-Kota");
-    const targetId = found ? found.id : 18;
+    const found = shops.find((s) => isShopOwnedByUser(s, user));
+    const targetId = found ? found.id : null;
     if (selectedShopId !== targetId) {
       setSelectedShopId(targetId);
     }
-  }, [shops, selectedShopId]);
+  }, [shops, user, selectedShopId]);
 
   // STALE-WHILE-REVALIDATE Initial state read from LocalStorage
   const [items, setItems] = useState<MenuItem[]>(() => {
-    const targetId = selectedShopId || 18;
+    const targetId = selectedShopId;
     try {
       const cached = localStorage.getItem(`localeats_menu_${targetId}`);
       if (cached) {
@@ -686,7 +721,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       <AIMenuScannerModal
         isOpen={isAiScannerOpen}
         onClose={() => setIsAiScannerOpen(false)}
-        shopId={selectedShopId || 18}
+        shopId={selectedShopId}
         onItemsImported={() => fetchMenu(true)}
       />
     </div>
