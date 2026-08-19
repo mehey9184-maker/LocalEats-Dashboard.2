@@ -6,11 +6,18 @@ export function getSupportedCity(cityName: string): string {
   const normalized = cityName.toLowerCase();
   
   // High-precision matching for specific sub-areas
-  if (normalized.includes("kaalfontein") || normalized.includes("eboni")) return "Kaalfontein";
-  if (normalized.includes("ivory park") || normalized.includes("kopanong") || normalized.includes("midrand")) return "Ivory Park";
-  if (normalized.includes("tembisa") || normalized.includes("kempton park")) return "Tembisa";
+  if (normalized.includes("kaalfontein") || normalized.includes("eboni") || normalized.includes("ebony")) return "Kaalfontein";
+  if (normalized.includes("ivory park") || normalized.includes("kopanong")) return "Ivory Park";
+  if (normalized.includes("clayville")) return "Clayville";
+  if (normalized.includes("rabie ridge") || normalized.includes("rabie")) return "Rabie Ridge";
+  if (normalized.includes("midrand")) return "Midrand";
+  if (normalized.includes("kempton park") || normalized.includes("kempton")) return "Kempton Park";
+  if (normalized.includes("tembisa") || normalized.includes("thembisa")) return "Tembisa";
+  if (normalized.includes("johannesburg") || normalized.includes("joburg")) return "Johannesburg";
+  if (normalized.includes("pretoria") || normalized.includes("tshwane")) return "Pretoria";
+  if (normalized.includes("cape town")) return "Cape Town";
   
-  return "Tembisa"; // Default regional hub
+  return cityName ? cityName.charAt(0).toUpperCase() + cityName.slice(1) : "Tembisa";
 }
 
 export interface ParsedAddress {
@@ -56,11 +63,19 @@ export const parseAndNormalizeZAAddress = (rawAddress: string, defaultCity: stri
 
   let city = defaultCity;
   const lowerClean = clean.toLowerCase();
-  if (lowerClean.includes("kaalfontein") || lowerClean.includes("eboni")) {
+  if (lowerClean.includes("kaalfontein") || lowerClean.includes("eboni") || lowerClean.includes("ebony")) {
     city = "Kaalfontein";
-  } else if (lowerClean.includes("ivory park") || lowerClean.includes("kopanong") || lowerClean.includes("midrand")) {
+  } else if (lowerClean.includes("ivory park") || lowerClean.includes("kopanong")) {
     city = "Ivory Park";
-  } else if (lowerClean.includes("tembisa") || lowerClean.includes("kempton park")) {
+  } else if (lowerClean.includes("clayville")) {
+    city = "Clayville";
+  } else if (lowerClean.includes("rabie ridge") || lowerClean.includes("rabie")) {
+    city = "Rabie Ridge";
+  } else if (lowerClean.includes("midrand")) {
+    city = "Midrand";
+  } else if (lowerClean.includes("kempton park") || lowerClean.includes("kempton")) {
+    city = "Kempton Park";
+  } else if (lowerClean.includes("tembisa") || lowerClean.includes("thembisa")) {
     city = "Tembisa";
   } else {
     city = getSupportedCity(clean);

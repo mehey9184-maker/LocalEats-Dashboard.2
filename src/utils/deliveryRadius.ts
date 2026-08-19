@@ -1,5 +1,3 @@
-import { SupabaseClient } from "@supabase/supabase-js";
-
 /**
  * Calculates straight-line distance in kilometers between two GPS coordinates
  * using the Haversine formula.
@@ -97,7 +95,7 @@ export function validateDeliveryRadius(
  * with client-side fallback if the database function is not yet provisioned.
  */
 export async function checkDeliveryRadiusRPC(
-  supabase: SupabaseClient,
+  supabase: { rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> },
   params: {
     shopLat: number;
     shopLng: number;

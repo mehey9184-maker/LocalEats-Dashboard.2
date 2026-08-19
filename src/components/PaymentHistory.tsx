@@ -108,7 +108,8 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
           .from("payments")
           .select("*")
           .eq("shop_id", shopId)
-          .order("payment_date", { ascending: false });
+          .order("payment_date", { ascending: false })
+          .limit(100);
 
         if (error) throw error;
         setPayments(data || []);

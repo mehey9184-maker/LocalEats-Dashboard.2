@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { SupabaseClient } from "@supabase/supabase-js";
 import {
   Activity,
   WifiOff,
@@ -18,7 +17,8 @@ import {
   Globe,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getFreshChannel } from "../lib/supabase";
+import { validateFirestoreConnection } from "../lib/firebase";
+import { supabase as supabaseClient } from "../lib/supabase";
 import { useErrorHandler } from "../hooks/useErrorHandler";
 import { ServiceLoadingState } from "../hooks/useAppInitializer";
 import { getWebSocketCloseCodeInfo, LoggedNetworkError, logNetworkError } from "../utils/errorHandler";
@@ -26,7 +26,7 @@ import { getWebSocketCloseCodeInfo, LoggedNetworkError, logNetworkError } from "
 interface DiagnosticUtilityModalProps {
   isOpen: boolean;
   onClose: () => void;
-  supabase: SupabaseClient;
+  supabase?: unknown;
   serviceLoading?: ServiceLoadingState;
 }
 
@@ -35,7 +35,6 @@ type FilterCategory = "all" | "websocket" | "api_gateway" | "offline_sync";
 export const DiagnosticUtilityModal: React.FC<DiagnosticUtilityModalProps> = ({
   isOpen,
   onClose,
-  supabase,
   serviceLoading,
 }) => {
   const { errorLog, clearLog, isOnline, refreshLog } = useErrorHandler();
@@ -65,7 +64,7 @@ export const DiagnosticUtilityModal: React.FC<DiagnosticUtilityModalProps> = ({
     const startTime = performance.now();
 
     try {
-      const { error } = await supabase.from("shops").select("id").limit(1);
+      const { error } = await supabaseClient.from("shops").select("id").limit(1);
       const endTime = performance.now();
       const latency = Math.round(endTime - startTime);
 
@@ -96,61 +95,26 @@ export const DiagnosticUtilityModal: React.FC<DiagnosticUtilityModalProps> = ({
       setTestingPing(false);
     }
 
-    // Test WebSocket
+    // Test Firestore Realtime Channel
     setTestingWs(true);
     setWsResult({ status: "idle" });
 
     try {
-      const wsChannel = getFreshChannel("diagnostic_ws_probe");
-      const wsPromise = new Promise<void>((resolve, reject) => {
-        let isResolved = false;
-        const timeout = setTimeout(() => {
-          if (!isResolved) {
-            isResolved = true;
-            reject({ status: "TIMED_OUT", message: "WebSocket connection timed out after 8000ms", closeCode: 4004 });
-          }
-        }, 8000);
-
-        wsChannel.subscribe((status, err) => {
-          if (isResolved) return;
-          if (status === "SUBSCRIBED") {
-            isResolved = true;
-            clearTimeout(timeout);
-            setWsResult({ status: "success", message: "WebSocket channel established successfully" });
-            resolve();
-          } else if (status === "CHANNEL_ERROR" || status === "CLOSED" || status === "TIMED_OUT") {
-            isResolved = true;
-            clearTimeout(timeout);
-            const code = status === "TIMED_OUT" ? 4004 : 1006;
-            setWsResult({
-              status: "error",
-              message: `Realtime WebSocket state: ${status} ${err?.message || ""}`,
-              closeCode: code,
-            });
-            reject({ status, message: err?.message || status, closeCode: code });
-          }
-        });
-      });
-
-      await wsPromise;
-      await supabase.removeChannel(wsChannel);
+      const isLive = await validateFirestoreConnection();
+      if (isLive) {
+        setWsResult({ status: "success", message: "Google Cloud Firestore connection active and verified" });
+      } else {
+        setWsResult({ status: "error", message: "Firestore is reconnecting in background" });
+      }
     } catch (err: unknown) {
-      const errObj = err as { closeCode?: number; message?: string };
-      const closeCode = errObj?.closeCode || 1006;
       setWsResult({
         status: "error",
-        message: errObj?.message || "WebSocket failed to connect",
-        closeCode,
-      });
-      logNetworkError("diagnostic_websocket_probe", err, {
-        closeCode,
-        type: "websocket",
-        closeReason: errObj?.message || "Probe failed",
+        message: err instanceof Error ? err.message : "Firestore probe notice",
       });
     } finally {
       setTestingWs(false);
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {

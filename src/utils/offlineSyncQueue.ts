@@ -1,8 +1,8 @@
-// LocalEats Service Worker Offline Sync Queue
+// LocalEats Offline Sync Queue
 // Stores offline order updates & inventory modifications in IndexedDB
-// Automatically syncs when network connectivity returns via SW Background Sync
+// Automatically syncs when network connectivity returns
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import { updateFirestoreOrder, updateFirestoreMenuItem } from "../lib/firebase";
 
 export interface OfflineMutation {
   id: string;
@@ -104,7 +104,7 @@ export async function removeQueuedMutation(id: string): Promise<void> {
   }
 }
 
-export async function processOfflineSyncQueue(supabase: SupabaseClient): Promise<number> {
+export async function processOfflineSyncQueue(): Promise<number> {
   if (!navigator.onLine) {
     console.log("[OfflineSyncQueue] Browser is offline. Delaying sync.");
     return 0;
@@ -113,7 +113,7 @@ export async function processOfflineSyncQueue(supabase: SupabaseClient): Promise
   const mutations = await getQueuedMutations();
   if (mutations.length === 0) return 0;
 
-  console.log(`[OfflineSyncQueue] Synchronizing ${mutations.length} pending mutations...`);
+  console.log(`[OfflineSyncQueue] Synchronizing ${mutations.length} pending mutations to Firestore...`);
   let syncedCount = 0;
 
   for (const item of mutations) {
@@ -125,7 +125,7 @@ export async function processOfflineSyncQueue(supabase: SupabaseClient): Promise
         if (delivery_status !== undefined) updateObj.delivery_status = delivery_status;
         if (cancellation_reason) updateObj.cancellation_reason = cancellation_reason;
 
-        const { error } = await supabase.from("orders").update(updateObj).eq("id", id);
+        const { error } = await updateFirestoreOrder(id as string | number, updateObj);
         if (!error) {
           await removeQueuedMutation(item.id);
           syncedCount++;
@@ -137,7 +137,7 @@ export async function processOfflineSyncQueue(supabase: SupabaseClient): Promise
         if (typeof stock_quantity === "number") updateObj.stock_quantity = stock_quantity;
         if (typeof price === "number") updateObj.price = price;
 
-        const { error } = await supabase.from("products").update(updateObj).eq("id", id);
+        const { error } = await updateFirestoreMenuItem(id as string | number, updateObj);
         if (!error) {
           await removeQueuedMutation(item.id);
           syncedCount++;

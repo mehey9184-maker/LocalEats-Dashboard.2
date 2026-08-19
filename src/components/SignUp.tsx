@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase, DASHBOARD_URL } from '../lib/supabase';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface SignUpProps {
   onSignInClick: () => void;
@@ -11,8 +11,62 @@ export const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Calculate password strength score (0 to 4)
+  const getPasswordStrength = (pwd: string) => {
+    if (!pwd) return 0;
+    let score = 0;
+    if (pwd.length >= 6) score += 1;
+    if (pwd.length >= 10) score += 1;
+    if (/[0-9]/.test(pwd) && /[a-zA-Z]/.test(pwd)) score += 1;
+    if (/[^a-zA-Z0-9]/.test(pwd)) score += 1;
+    return score;
+  };
+
+  const strength = getPasswordStrength(password);
+  const strengthLabels = ['Too short', 'Weak', 'Fair', 'Good', 'Strong'];
+  const strengthColors = ['bg-slate-200', 'bg-red-500', 'bg-amber-500', 'bg-blue-500', 'bg-emerald-500'];
+
+  const formatSignUpError = (err: unknown): string => {
+    if (!err) return 'Unable to create account. Please try again.';
+    const raw = typeof err === 'string' ? err : (err as Error)?.message || JSON.stringify(err);
+    const lower = raw.toLowerCase();
+
+    if (
+      lower.includes('user_already_exists') ||
+      lower.includes('user already registered') ||
+      lower.includes('already registered') ||
+      lower.includes('email address is already in use')
+    ) {
+      return 'An account with this email address already exists. Please sign in instead.';
+    }
+
+    if (
+      lower.includes('password should be at least') ||
+      lower.includes('password is too short') ||
+      lower.includes('weak_password') ||
+      lower.includes('password must be')
+    ) {
+      return 'Password must be at least 6 characters long. Please enter a stronger password.';
+    }
+
+    if (lower.includes('invalid email') || lower.includes('unable to validate email')) {
+      return 'Please enter a valid email address.';
+    }
+
+    if (lower.includes('network') || lower.includes('fetch') || lower.includes('timeout')) {
+      return 'Network request failed. Please check your connection and try again.';
+    }
+
+    if (!raw || raw === '{}' || raw === 'null') {
+      return 'Unable to create account. Please check your details and try again.';
+    }
+
+    return raw;
+  };
 
   const handleQuickCreate = async () => {
     setLoading(true);
@@ -30,10 +84,10 @@ export const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
             : DASHBOARD_URL
         },
       });
-      if (error) setError(error.message);
+      if (error) setError(formatSignUpError(error));
       else onSuccess('mehey9184@gmail.com');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+      setError(formatSignUpError(err));
     } finally {
       setLoading(false);
     }
@@ -41,6 +95,12 @@ export const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
 
   const handleSignUp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -59,13 +119,13 @@ export const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
       });
 
       if (error) {
-        setError(error.message);
+        setError(formatSignUpError(error));
       } else {
         onSuccess(email);
       }
     } catch (err: unknown) {
       console.error('Sign up error:', err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+      setError(formatSignUpError(err));
     }
     setLoading(false);
   };
@@ -98,8 +158,20 @@ export const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
 
             <form className="space-y-6" onSubmit={handleSignUp}>
               {error && (
-                <div className="p-3 bg-error-container text-error text-sm rounded-xl font-medium">
-                  {error}
+                <div className="p-4 bg-error-container/80 text-error text-sm rounded-2xl font-medium border border-error/20 flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
+                  {error.includes('already exists') && (
+                    <button
+                      type="button"
+                      onClick={onSignInClick}
+                      className="text-xs font-bold underline text-left hover:opacity-80 mt-1"
+                    >
+                      Click here to Sign In now →
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -117,7 +189,7 @@ export const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
               <div className="space-y-2">
                 <label className="block text-sm font-semibold text-on-surface ml-1" htmlFor="name">Full Name</label>
                 <input 
-                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50" 
+                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50 font-medium" 
                   id="name" 
                   placeholder="John Doe" 
                   type="text"
@@ -128,9 +200,9 @@ export const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
               </div>
 
               <div className="space-y-2">
-                <label className="block text-sm font-semibold text-on-surface ml-1" htmlFor="email">Email</label>
+                <label className="block text-sm font-semibold text-on-surface ml-1" htmlFor="email">Email Address</label>
                 <input 
-                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50" 
+                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50 font-medium" 
                   id="email" 
                   placeholder="name@example.com" 
                   type="email"
@@ -142,15 +214,55 @@ export const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
 
               <div className="space-y-2">
                 <label className="block text-sm font-semibold text-on-surface ml-1" htmlFor="password">Password</label>
-                <input 
-                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50" 
-                  id="password" 
-                  placeholder="••••••••" 
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
+                <div className="relative">
+                  <input 
+                    className="w-full h-14 pl-6 pr-14 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50 font-medium" 
+                    id="password" 
+                    placeholder="At least 6 characters" 
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-on-surface-variant hover:text-primary transition-colors focus:outline-none"
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+
+                {/* Password Strength Indicator */}
+                {password.length > 0 && (
+                  <div className="mt-2 space-y-1.5 px-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-on-surface-variant font-medium">Password strength:</span>
+                      <span className="font-bold text-on-surface">{strengthLabels[strength]}</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5 h-1.5">
+                      {[1, 2, 3, 4].map((level) => (
+                        <div
+                          key={level}
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            strength >= level ? strengthColors[strength] : 'bg-surface-container-high'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-on-surface-variant flex items-center gap-1">
+                      {password.length >= 6 ? (
+                        <span className="text-emerald-600 flex items-center gap-1 font-medium">
+                          <CheckCircle2 size={12} /> Minimum 6 characters met
+                        </span>
+                      ) : (
+                        <span>Password must be at least 6 characters</span>
+                      )}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <button 

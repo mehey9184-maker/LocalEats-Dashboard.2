@@ -3,6 +3,7 @@ import { ShoppingBag, Bike, X, ArrowRight, ShieldAlert, Users, KeyRound, Copy, C
 import { motion, AnimatePresence } from "framer-motion";
 import { Order } from "../types";
 import { toast } from "sonner";
+import { isRiderOnline } from "../utils/availabilityChecker";
 
 export interface RiderConnection {
   id: string;
@@ -161,7 +162,7 @@ export const NoLinkedRiderModal: React.FC<NoLinkedRiderModalProps> = ({
                         <option value="">-- Choose Linked Rider --</option>
                         {activeRiders.map((r) => {
                           const rId = r.rider_id || String(r.id);
-                          const isOnline = r.is_online || r.status === "online" || r.connection_code === "IN-HOUSE";
+                          const isOnline = isRiderOnline(r);
                           return (
                             <option key={rId} value={rId}>
                               {r.rider_name || "Courier"} ({isOnline ? "🟢 Online" : "⚪ Offline"}) {r.rider_phone ? `- ${r.rider_phone}` : ""}

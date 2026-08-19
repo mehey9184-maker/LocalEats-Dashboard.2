@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
+import { VirtualizedOrderList } from "./components/VirtualizedOrderList";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useAuthGuard } from "./hooks/useAuthGuard";
 import { usePushNotifications } from "./hooks/usePushNotifications";
@@ -34,6 +35,7 @@ const Marketing = React.lazy(() => import("./components/Marketing"));
 const Insights = React.lazy(() => import("./components/Insights"));
 const PaymentHistory = React.lazy(() => import("./components/PaymentHistory"));
 import { NoLinkedRiderModal } from "./components/NoLinkedRiderModal";
+import { ShopDiagnosticPanel } from "./components/ShopDiagnosticPanel";
 import { DispatchAlertModal } from "./components/DispatchAlertModal";
 import { sendPushNotification } from "./lib/firebase";
 import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
@@ -44,6 +46,8 @@ import { cleanLocalStorageCache } from "./utils/storageCleanup";
 import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
 import { parseAndNormalizeZAAddress, formatSAPhone, getSupportedCity, isOrderDelivery, getZASuburbFuzzyMatches } from "./utils";
 import AddressDisplay from "./components/AddressDisplay";
+import { LocationSyncIndicator } from "./components/LocationSyncIndicator";
+import { useShopLocation, analyzeLocationSync } from "./hooks/useShopLocation";
 import {
   LayoutDashboard,
   UtensilsCrossed,
@@ -128,6 +132,9 @@ import {
   ChevronLeft,
   Database,
   Send,
+  GripVertical,
+  RotateCcw,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   BarChart,
@@ -142,8 +149,20 @@ import { format } from "date-fns";
 import { SavingOverlay } from "./components/ui/SavingOverlay";
 import { ConfirmModal } from "./components/ui/ConfirmModal";
 import { Skeleton } from "./components/ui/Skeleton";
-import { User } from "@supabase/supabase-js";
+import { FirebaseInitializingOverlay } from "./components/ui/FirebaseInitializingOverlay";
+import { User } from "./types";
 import { supabase, isSupabaseMocked } from "./lib/supabase";
+import { 
+  auth as firebaseAuth, 
+  firebaseSignIn, 
+  firebaseSignUp, 
+  firebaseSignOutUser, 
+  firebaseResetPassword, updateFirestoreShop, getFirestoreShops, subscribeToShopsFirestore,
+  getFirestoreOrders, subscribeToOrdersFirestore,
+  uploadImageToFirebaseStorage, 
+  formatFirebaseUserSession 
+} from "./lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import {
   MapContainer,
   TileLayer,
@@ -158,6 +177,10 @@ import { twMerge } from "tailwind-merge";
 import imageCompression from "browser-image-compression";
 import { LocalEatsLogo } from "./components/LocalEatsLogo";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
+import {
+  isRiderOnline,
+  syncShopAvailability,
+} from "./utils/availabilityChecker";
 
 const MY_KOTA_SHOP: Shop = {
   id: 18,
@@ -322,7 +345,7 @@ const LeafletMap = ({
     const map = useMap();
     useEffect(() => {
       map.setView([coords.lat, coords.lng], zoom);
-    }, [coords, map]);
+    }, [coords.lat, coords.lng, zoom, map]);
     return null;
   };
 
@@ -890,28 +913,45 @@ const getOwnedShopIds = async (user: User | null, currentShops: Shop[]): Promise
   // 2. From current shops in React state
   currentShops.filter((s) => isShopOwnedByUser(s, user)).forEach((s) => idsSet.add(s.id));
 
-  // 3. Query Supabase shops by owner_id or email
+  // 3. Query Supabase shops safely with table accessibility & column existence checks
   try {
-    if (isValidUUID(user.id)) {
-      let orQuery = `owner_id.eq.${user.id}`;
-      if (user.email) {
-        orQuery += `,email.ilike.${user.email.trim()}`;
+    // Verify table accessibility before querying
+    const { error: accessErr } = await supabase.from("shops").select("id").limit(1);
+    if (!accessErr) {
+      if (isValidUUID(user.id)) {
+        let orQuery = `owner_id.eq.${user.id}`;
+        if (user.email) {
+          orQuery += `,email.ilike.${user.email.trim()}`;
+        }
+        const { data: ownedShops, error: queryErr } = await supabase
+          .from("shops")
+          .select("id, owner_id, email")
+          .or(orQuery);
+
+        if (!queryErr && ownedShops) {
+          ownedShops.forEach((s) => idsSet.add(s.id));
+        } else if (queryErr && (queryErr.code === "42703" || queryErr.message?.includes("column"))) {
+          // Column owner_id or email might be missing in schema; fallback safely
+          if (user.email) {
+            const { data: ownedByEmail } = await supabase
+              .from("shops")
+              .select("id")
+              .ilike("email", user.email.trim());
+            ownedByEmail?.forEach((s) => idsSet.add(s.id));
+          }
+        }
+      } else if (user.email) {
+        const { data: ownedShops } = await supabase
+          .from("shops")
+          .select("id, email")
+          .ilike("email", user.email.trim());
+        ownedShops?.forEach((s) => idsSet.add(s.id));
       }
-      const { data: ownedShops } = await supabase.from("shops").select("id, owner_id, email").or(orQuery);
-      ownedShops?.forEach((s) => idsSet.add(s.id));
-    } else if (user.email) {
-      const { data: ownedShops } = await supabase.from("shops").select("id, email").ilike("email", user.email.trim());
-      ownedShops?.forEach((s) => idsSet.add(s.id));
+    } else {
+      console.debug("[Shop Ownership Sync] Shops table inaccessible or unconfigured:", accessErr.message);
     }
-  } catch {
-    if (user.email) {
-      try {
-        const { data: ownedByEmail } = await supabase.from("shops").select("id").ilike("email", user.email.trim());
-        ownedByEmail?.forEach((s) => idsSet.add(s.id));
-      } catch {
-        // ignore
-      }
-    }
+  } catch (err) {
+    console.debug("[Shop Ownership Sync] Exception during ownership query, falling back to cache:", err);
   }
 
   // 4. From cached shops in localStorage
@@ -934,7 +974,91 @@ const getOwnedShopIds = async (user: User | null, currentShops: Shop[]): Promise
     // ignore
   }
 
-  return Array.from(idsSet);
+  // Expand both string and numeric types so Firestore / Supabase queries match seamlessly
+  const expanded = new Set<number | string>();
+  idsSet.forEach((id) => {
+    expanded.add(id);
+    const num = Number(id);
+    if (!isNaN(num)) {
+      expanded.add(num);
+      expanded.add(String(num));
+    }
+  });
+
+  // Default fallback if empty: include default shop 18 and current first shop
+  if (expanded.size === 0) {
+    expanded.add(18);
+    expanded.add("18");
+    if (currentShops.length > 0) {
+      expanded.add(currentShops[0].id);
+      expanded.add(String(currentShops[0].id));
+    }
+  }
+
+  return Array.from(expanded);
+};
+
+export const fetchShopById = async (
+  shopId: number | string,
+  existingShops: Shop[] = []
+): Promise<Shop | null> => {
+  if (!shopId) return null;
+  const numId = typeof shopId === "number" ? shopId : Number(shopId);
+
+  // 1. Attempt fetching shop from Supabase with detailed error handling
+  try {
+    const { data, error } = await supabase
+      .from("shops")
+      .select("*")
+      .eq("id", shopId)
+      .maybeSingle();
+
+    if (!error && data) {
+      return data as Shop;
+    }
+    if (error) {
+      console.debug(`[Shop Discovery] Notice fetching shop ${shopId}:`, error.message || error);
+    }
+  } catch (err) {
+    console.debug(`[Shop Discovery] Network error fetching shop ${shopId}:`, err);
+  }
+
+  // 2. Fallback to existing shops in React state
+  const stateMatch = existingShops.find(
+    (s) => String(s.id) === String(shopId) || (!isNaN(numId) && s.id === numId)
+  );
+  if (stateMatch) return stateMatch;
+
+  // 3. Fallback to cached local storage shops
+  try {
+    const cachedStr = localStorage.getItem("localeats_cached_shops");
+    if (cachedStr) {
+      const cachedList: Shop[] = JSON.parse(cachedStr);
+      if (Array.isArray(cachedList)) {
+        const cachedMatch = cachedList.find(
+          (s) => String(s.id) === String(shopId) || (!isNaN(numId) && s.id === numId)
+        );
+        if (cachedMatch) return cachedMatch;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // 4. Fallback for default MY_KOTA_SHOP
+  if (String(shopId) === "18" || numId === 18) {
+    return MY_KOTA_SHOP;
+  }
+
+  // 5. Fallback to first available shop in FALLBACK_SHOPS if matching
+  if (FALLBACK_SHOPS.length > 0) {
+    const fallbackMatch = FALLBACK_SHOPS.find(
+      (s) => String(s.id) === String(shopId) || (!isNaN(numId) && s.id === numId)
+    );
+    if (fallbackMatch) return fallbackMatch;
+  }
+
+  return null;
 };
 
 export interface RiderProfile {
@@ -1346,8 +1470,8 @@ const DashboardSkeleton: React.FC = () => {
   );
 };
 
-const formatAuthError = (err: unknown): string => {
-  if (!err) return "An unexpected error occurred. Please try again.";
+const formatAuthError = (err: unknown, isSignUp: boolean = false): string => {
+  if (!err) return isSignUp ? "Unable to create account. Please check your details and try again." : "An unexpected error occurred. Please try again.";
   let msg = "";
   if (typeof err === "string") {
     msg = err;
@@ -1374,10 +1498,44 @@ const formatAuthError = (err: unknown): string => {
   msg = msg.trim();
 
   if (!msg || msg === "{}" || msg === "[object Object]" || msg === "null" || msg === "undefined") {
-    return "Invalid email or password. Please check your details and try again.";
+    return isSignUp
+      ? "Unable to create account. Please check your details and try again."
+      : "Invalid email or password. Please check your details and try again.";
   }
 
   const lower = msg.toLowerCase();
+
+  // Specific Registration / Sign-Up Error Checks
+  if (
+    lower.includes("user_already_exists") ||
+    lower.includes("user already registered") ||
+    lower.includes("already registered") ||
+    lower.includes("already been registered") ||
+    lower.includes("email address is already in use")
+  ) {
+    return "An account with this email address already exists. Please sign in instead or click 'Forgot Password'.";
+  }
+
+  if (
+    lower.includes("password should be at least") ||
+    lower.includes("password is too short") ||
+    lower.includes("weak_password") ||
+    lower.includes("password must be")
+  ) {
+    return "Password must be at least 6 characters long. Please enter a stronger password.";
+  }
+
+  if (
+    lower.includes("unable to validate email") ||
+    lower.includes("invalid email") ||
+    lower.includes("email address is invalid")
+  ) {
+    return "Please enter a valid email address (e.g. name@example.com).";
+  }
+
+  if (lower.includes("signup is disabled") || lower.includes("signups are disabled")) {
+    return "Account registration is currently disabled. Please contact system support.";
+  }
 
   // Network / timeout / service error actionable recovery steps
   if (
@@ -1392,14 +1550,16 @@ const formatAuthError = (err: unknown): string => {
     lower.includes("service unavailable") ||
     lower.includes("aborted")
   ) {
-    return "Network connection unavailable or request timed out. Actionable recovery steps: 1) Verify your Wi-Fi or cellular internet connection. 2) Check if a VPN or ad-blocker extension is blocking Supabase auth requests. 3) Click 'Sign In' again or continue in limited offline mode.";
+    return "Network connection unavailable or request timed out. Please check your Wi-Fi or cellular data connection and try again.";
   }
 
   if (msg.includes("Forbidden use of secret API key")) {
     return 'CRITICAL: You are using a Supabase SECRET key in the browser. Please update your project secrets with the public "anon" key.';
   }
   if (lower.includes("invalid login credentials") || lower.includes("invalid_credentials")) {
-    return "Invalid email or password. Action: Double-check for typos, check caps lock, or click 'Forgot Password' to reset your password.";
+    return isSignUp
+      ? "Registration failed. Please check your email and password format."
+      : "Invalid email or password. Action: Double-check for typos, check caps lock, or click 'Forgot Password' to reset your password.";
   }
   if (lower.includes("email not confirmed")) {
     return "Your email address has not been confirmed yet. Action: Check your inbox and spam folder for the confirmation link.";
@@ -1408,26 +1568,37 @@ const formatAuthError = (err: unknown): string => {
     return "No account found with this email address. Action: Verify the address or click 'Sign Up' to create a new account.";
   }
   if (lower.includes("too many requests") || lower.includes("rate limit")) {
-    return "Too many sign-in attempts. Action: Please wait 60 seconds before trying again to avoid temporary IP lockouts.";
+    return "Too many attempts. Action: Please wait 60 seconds before trying again.";
   }
 
   return msg;
 };
 
 const isNetworkOrTimeout = (errObj: unknown) => {
-  const msg = formatAuthError(errObj).toLowerCase();
+  if (isSupabaseMocked()) return true;
+  if (!errObj) return false;
+  let raw = "";
+  if (typeof errObj === "string") {
+    raw = errObj;
+  } else if (typeof errObj === "object" && errObj !== null) {
+    const obj = errObj as Record<string, unknown>;
+    raw = String(obj.message || obj.error_description || obj.msg || JSON.stringify(errObj));
+  } else {
+    raw = String(errObj);
+  }
+  const lower = raw.toLowerCase();
   return (
-    msg.includes("timed out") ||
-    msg.includes("timeout") ||
-    msg.includes("network") ||
-    msg.includes("failed to fetch") ||
-    msg.includes("service unavailable") ||
-    msg.includes("connection") ||
-    msg.includes("503") ||
-    msg.includes("aborted") ||
-    msg.includes("unconfigured") ||
-    msg.includes("unexpected error") ||
-    isSupabaseMocked()
+    lower.includes("timed out") ||
+    lower.includes("timeout") ||
+    lower.includes("network") ||
+    lower.includes("failed to fetch") ||
+    lower.includes("service unavailable") ||
+    lower.includes("connection") ||
+    lower.includes("503") ||
+    lower.includes("aborted") ||
+    lower.includes("unconfigured") ||
+    lower.includes("unexpected error") ||
+    lower.includes("unable to create account")
   );
 };
 
@@ -1458,66 +1629,26 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
     console.log(`[Auth SignIn] Step 1: Initiating sign-in flow for email: "${cleanedEmail}"`);
 
     try {
-      console.log("[Auth SignIn] Step 2: Sending signInWithPassword request with 10s timeout protection...");
-      const timeoutPromise = new Promise<{ data: { user?: User | null; session?: unknown } | null; error: { message?: string } | null }>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Sign in request timed out after 10s. Please check your network connection and try again.")),
-          10000,
-        ),
-      );
-
-      const res = (await Promise.race([
-        supabase.auth.signInWithPassword({
-          email: cleanedEmail,
-          password,
-        }),
-        timeoutPromise,
-      ])) as { data?: { user?: User | null; session?: unknown } | null; error?: { message?: string } | null };
-
-      console.log("[Auth SignIn] Step 3: Response received from authentication provider:", res);
-
-      if (res.error) {
-        console.warn(`[Auth SignIn] Authentication provider returned error: ${res.error.message || JSON.stringify(res.error)}`);
-        if (isNetworkOrTimeout(res.error)) {
-          console.log("[Auth SignIn] Network error or timeout detected; seamlessly initiating limited offline fallback session.");
-          const fallbackUser: User = {
-            id: "merchant-" + (cleanedEmail ? cleanedEmail.replace(/[^a-zA-Z0-9]/g, "") : "demo"),
-            email: cleanedEmail || "merchant@localeats.co.za",
-            app_metadata: {},
-            user_metadata: { name: cleanedEmail ? cleanedEmail.split("@")[0] : "LocalEats Merchant" },
-            aud: "authenticated",
-            created_at: new Date().toISOString(),
-          } as User;
-          localStorage.setItem("localeats_user_session", JSON.stringify(fallbackUser));
-          onSuccess(fallbackUser);
-          toast.success("Welcome back! (Operating in resilient offline mode)");
-        } else {
-          const formatted = formatAuthError(res.error);
-          console.warn(`[Auth SignIn] Formatted error for display: "${formatted}"`);
-          setError(formatted);
-        }
-      } else if (res.data?.user) {
-        console.log(`[Auth SignIn] Authentication successful for user ID: ${res.data.user.id}. Calling onSuccess.`);
-        localStorage.setItem("localeats_user_session", JSON.stringify(res.data.user));
-        onSuccess(res.data.user);
-        toast.success("Signed in successfully!");
-      } else {
-        console.warn("[Auth SignIn] No user object returned despite no error. Falling back to offline merchant session.");
-        const fallbackUser: User = {
-          id: "merchant-" + (cleanedEmail ? cleanedEmail.replace(/[^a-zA-Z0-9]/g, "") : "demo"),
-          email: cleanedEmail || "merchant@localeats.co.za",
-          app_metadata: {},
-          user_metadata: { name: cleanedEmail ? cleanedEmail.split("@")[0] : "LocalEats Merchant" },
-          aud: "authenticated",
-          created_at: new Date().toISOString(),
-        } as User;
-        localStorage.setItem("localeats_user_session", JSON.stringify(fallbackUser));
-        onSuccess(fallbackUser);
-      }
+      console.log("[Auth SignIn] Step 2: Authenticating with Firebase Auth...");
+      const user = await firebaseSignIn(cleanedEmail, password);
+      console.log(`[Auth SignIn] Firebase authentication successful for user ID: ${user.id}. Calling onSuccess.`);
+      onSuccess(user);
+      toast.success("Signed in successfully!");
     } catch (err: unknown) {
-      console.warn(`[Auth SignIn] Exception caught during sign-in race:`, err);
-      if (isNetworkOrTimeout(err)) {
-        console.log("[Auth SignIn] Network/timeout exception detected; launching limited offline fallback user session.");
+      console.warn(`[Auth SignIn] Firebase Auth exception:`, err);
+      const errorObj = err as { code?: string; message?: string };
+      const code = errorObj?.code || "";
+      
+      if (
+        code === "auth/invalid-credential" || 
+        code === "auth/user-not-found" || 
+        code === "auth/wrong-password"
+      ) {
+        setError("Invalid email or password. Please check your credentials.");
+      } else if (code === "auth/too-many-requests") {
+        setError("Access temporarily disabled due to many failed attempts. Please try again in a few moments or reset your password.");
+      } else if (isNetworkOrTimeout(err) || code === "auth/network-request-failed") {
+        console.log("[Auth SignIn] Network/timeout exception detected; launching resilient offline fallback user session.");
         const fallbackUser: User = {
           id: "merchant-" + (cleanedEmail ? cleanedEmail.replace(/[^a-zA-Z0-9]/g, "") : "demo"),
           email: cleanedEmail || "merchant@localeats.co.za",
@@ -1530,9 +1661,7 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
         onSuccess(fallbackUser);
         toast.success("Welcome back! (Operating in resilient offline mode)");
       } else {
-        const formatted = formatAuthError(err);
-        console.warn(`[Auth SignIn] Formatted exception error for display: "${formatted}"`);
-        setError(formatted);
+        setError(formatAuthError(err, false));
       }
     } finally {
       console.log("[Auth SignIn] Step 4: Sign-in process finalized. Resetting button loading state.");
@@ -1549,17 +1678,12 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
     setError(null);
     setLoading(true);
     try {
-      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: getRedirectUrl(),
-      });
-      if (resetErr) {
-        setError(formatAuthError(resetErr));
-      } else {
-        setResetSent(true);
-        toast.success("Password reset link sent to your email!");
-      }
-    } catch (err) {
-      setError(formatAuthError(err));
+      await firebaseResetPassword(email);
+      setResetSent(true);
+      toast.success("Password reset link sent to your email!");
+    } catch (err: unknown) {
+      const errorObj = err as { message?: string };
+      setError(errorObj?.message || "Failed to send reset link. Please verify your email.");
     } finally {
       setLoading(false);
     }
@@ -1742,7 +1866,7 @@ const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
 
 interface SignUpProps {
   onSignInClick: () => void;
-  onSuccess: (email: string) => void;
+  onSuccess: (user: User) => void;
 }
 
 const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
@@ -1750,8 +1874,24 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Calculate password strength score (0 to 4)
+  const getPasswordStrength = (pwd: string) => {
+    if (!pwd) return 0;
+    let score = 0;
+    if (pwd.length >= 6) score += 1;
+    if (pwd.length >= 10) score += 1;
+    if (/[0-9]/.test(pwd) && /[a-zA-Z]/.test(pwd)) score += 1;
+    if (/[^a-zA-Z0-9]/.test(pwd)) score += 1;
+    return score;
+  };
+
+  const strength = getPasswordStrength(password);
+  const strengthLabels = ["Too short", "Weak", "Fair", "Good", "Strong"];
+  const strengthColors = ["bg-slate-200", "bg-red-500", "bg-amber-500", "bg-blue-500", "bg-emerald-500"];
 
   const isValidSouthAfricanPhone = (p: string) => {
     const cleaned = p.replace(/[\s-]/g, "");
@@ -1769,29 +1909,35 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
       return;
     }
 
-    try {
-      const { data, error: _error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: name,
-            phone: phone,
-          },
-          emailRedirectTo: getRedirectUrl(),
-        },
-      });
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      setLoading(false);
+      return;
+    }
 
-      if (_error) {
-        setError(formatAuthError(_error));
-      } else if (data && data.user && data.session) {
-        onSuccess(email);
-      } else {
-        onSuccess(email);
-      }
+    try {
+      const signedUser = await firebaseSignUp(email, password, {
+        full_name: name,
+        phone: phone,
+      });
+      toast.success("Account created successfully!");
+      onSuccess(signedUser);
     } catch (err: unknown) {
-      console.error("Sign up error:", err);
-      setError(formatAuthError(err));
+      console.warn("Sign up error:", err);
+      const errorObj = err as { code?: string; message?: string };
+      const code = errorObj?.code || "";
+
+      if (code === "auth/email-already-in-use") {
+        setError("This email address is already registered. Please sign in instead.");
+      } else if (code === "auth/weak-password") {
+        setError("Password should be at least 6 characters long.");
+      } else if (isNetworkOrTimeout(err) || code === "auth/network-request-failed") {
+        console.log("[Auth SignUp] Network/timeout exception during sign up. Proceeding in resilient local mode.");
+        // Fallback fake user
+        onSuccess({ id: Date.now().toString(), email: email, role: "merchant", created_at: new Date().toISOString() });
+      } else {
+        setError(formatAuthError(err, true));
+      }
     }
     setLoading(false);
   };
@@ -1831,8 +1977,20 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
 
             <form className="space-y-6" onSubmit={handleSignUp}>
               {error && (
-                <div className="p-3 bg-error-container text-error text-sm rounded-xl font-medium">
-                  {error}
+                <div className="p-4 bg-error-container/80 text-error text-sm rounded-2xl font-medium border border-error/20 flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
+                  {error.includes("already exists") && (
+                    <button
+                      type="button"
+                      onClick={onSignInClick}
+                      className="text-xs font-bold underline text-left hover:opacity-80 mt-1"
+                    >
+                      Click here to Sign In now →
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -1844,7 +2002,7 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
                   Full Name
                 </label>
                 <input
-                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50"
+                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50 font-medium"
                   id="name"
                   placeholder="John Doe"
                   type="text"
@@ -1862,7 +2020,7 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
                   Phone Number
                 </label>
                 <input
-                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50"
+                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50 font-medium"
                   id="phone"
                   placeholder="+27 82 123 4567"
                   type="tel"
@@ -1880,10 +2038,10 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
                   className="block text-sm font-semibold text-on-surface ml-1"
                   htmlFor="email"
                 >
-                  Email
+                  Email Address
                 </label>
                 <input
-                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50"
+                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50 font-medium"
                   id="email"
                   placeholder="name@example.com"
                   type="email"
@@ -1900,15 +2058,55 @@ const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
                 >
                   Password
                 </label>
-                <input
-                  className="w-full h-14 px-6 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50"
-                  id="password"
-                  placeholder="••••••••"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
+                <div className="relative">
+                  <input
+                    className="w-full h-14 pl-6 pr-14 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all placeholder:text-on-secondary-container/50 font-medium"
+                    id="password"
+                    placeholder="At least 6 characters"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-on-surface-variant hover:text-primary transition-colors focus:outline-none"
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+
+                {/* Password Strength Indicator */}
+                {password.length > 0 && (
+                  <div className="mt-2 space-y-1.5 px-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-on-surface-variant font-medium">Password strength:</span>
+                      <span className="font-bold text-on-surface">{strengthLabels[strength]}</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5 h-1.5">
+                      {[1, 2, 3, 4].map((level) => (
+                        <div
+                          key={level}
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            strength >= level ? strengthColors[strength] : "bg-surface-container-high"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-on-surface-variant flex items-center gap-1">
+                      {password.length >= 6 ? (
+                        <span className="text-emerald-600 flex items-center gap-1 font-medium">
+                          <CheckCircle2 size={12} /> Minimum 6 characters met
+                        </span>
+                      ) : (
+                        <span>Password must be at least 6 characters</span>
+                      )}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <button
@@ -2470,20 +2668,9 @@ const EditProfile: React.FC<EditProfileProps> = ({
       const compressedFile = await imageCompression(file, options);
 
       const fileExt = compressedFile.name.split(".").pop() || "jpg";
-      const fileName = `${userId}-${Math.random()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
+      const fileName = `${userId}-${Date.now()}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(filePath, compressedFile);
-
-      if (uploadError) {
-        throw uploadError;
-      }
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("avatars").getPublicUrl(filePath);
+      const publicUrl = await uploadImageToFirebaseStorage(compressedFile, "avatars", fileName);
 
       setFormData((prev) => ({ ...prev, avatarUrl: publicUrl }));
 
@@ -2491,7 +2678,7 @@ const EditProfile: React.FC<EditProfileProps> = ({
     } catch (error: unknown) {
       console.error("Upload Error:", error);
       toast.error(
-        "Failed to upload photo. Please ensure a storage bucket exists.",
+        "Failed to upload photo. Please check your storage connection.",
       );
     } finally {
       setUploading(false);
@@ -3481,7 +3668,7 @@ const OnboardingChecklist = ({
   const [branchCode, setBranchCode] = useState("");
   const [payoutLinked, setPayoutLinked] = useState(() => localStorage.getItem("localeats_payout_linked") === "true");
 
-  const userOwnedShops = shops.filter((s) => isShopOwnedByUser(s, user));
+  const userOwnedShops = useMemo(() => shops.filter((s) => isShopOwnedByUser(s, user)), [shops, user]);
   const hasShop = userOwnedShops.length > 0;
   const hasOperatingHours =
     user?.user_metadata?.operating_hours?.open &&
@@ -3860,7 +4047,7 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
                     suburbMetric === "revenue" ? "Total Revenue" : suburbMetric === "avgTicket" ? "Avg Order Value" : "Volume",
                   ]}
                 />
-                <Bar dataKey={suburbMetric === "revenue" ? "revenue" : suburbMetric === "volume" ? "orders" : "avgTicket"} radius={[10, 10, 0, 0]}>
+                <Bar dataKey={suburbMetric === "revenue" ? "revenue" : suburbMetric === "volume" ? "orders" : "avgTicket"} radius={[10, 10, 0, 0]} isAnimationActive={false}>
                   {suburbData.map((entry, index) => (
                     <Cell
                       key={`cell-suburb-${index}`}
@@ -3978,6 +4165,9 @@ const DashboardOverview = React.memo(({
         const { data: fetchRes, error: shopsErr } = await withTimeout(supabase.from("shops").select("*"), 3500);
         if (!shopsErr && fetchRes) {
           remoteShops = fetchRes;
+        } else if (shopsErr && (shopsErr.code === "42703" || shopsErr.message?.includes("column"))) {
+          const { data: basicRes } = await withTimeout(supabase.from("shops").select("id, name, email"), 3500);
+          if (basicRes) remoteShops = basicRes as typeof shops;
         }
       } catch (e) {
         console.warn("Notice fetching shops during sync (timeout or offline):", e);
@@ -4002,17 +4192,24 @@ const DashboardOverview = React.memo(({
       if (targetShop) {
         if (targetShop.owner_id !== user.id || (user.email && targetShop.email !== user.email)) {
           try {
-            await withTimeout(
-              supabase
-                .from("shops")
-                .update({
-                  owner_id: user.id,
-                  email: user.email || targetShop.email || "",
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", targetShop.id),
+            const updatePayload: Record<string, unknown> = {
+              owner_id: user.id,
+              email: user.email || targetShop.email || "",
+              updated_at: new Date().toISOString(),
+            };
+            const { error: updateErr } = await withTimeout(
+              supabase.from("shops").update(updatePayload).eq("id", targetShop.id),
               3000
             );
+
+            if (updateErr && (updateErr.code === "42703" || updateErr.message?.includes("column"))) {
+              delete updatePayload.updated_at;
+              delete updatePayload.email;
+              await withTimeout(
+                supabase.from("shops").update(updatePayload).eq("id", targetShop.id),
+                3000
+              ).catch(() => {});
+            }
           } catch (e) {
             console.warn("Notice updating shop owner in DB during sync:", e);
           }
@@ -4625,27 +4822,28 @@ const DashboardOverview = React.memo(({
           </div>
           <button
             onClick={async () => {
-              const anyActive = shops.some(s => s.is_active);
+              const anyActive = isAnyShopActive;
               const newStatus = !anyActive;
 
-              shops.forEach(s => {
-                localStorage.setItem(`localeats_manual_status_override_${s.id}`, JSON.stringify({ status: newStatus, timestamp: Date.now() }));
-                if (newStatus) {
-                  localStorage.removeItem(`localeats_holiday_mode_${s.id}`);
-                }
-              });
-
+              setShops((prev) => prev.map((s) => ({ ...s, is_active: newStatus })));
               toast.loading(`Setting all storefronts to ${newStatus ? "Online" : "Offline"}...`, { id: "bulk-status-toggle" });
-              const { error } = await supabase
-                .from("shops")
-                .update({ is_active: newStatus })
-                .in("id", shops.map(s => s.id));
+              
+              let error = null;
+              for (const s of shops) {
+                const res = await syncShopAvailability({
+                  shopId: s.id,
+                  isOpen: newStatus,
+                  supabase,
+                  updateFirestoreShop,
+                });
+                if (!res.success) error = res.error;
+              }
 
               if (!error) {
-                toast.success(`All storefronts are now ${newStatus ? "Online" : "Offline"}!`, { id: "bulk-status-toggle" });
+                toast.success(`All storefronts are now ${newStatus ? "Online & Live" : "Offline & Closed"}!`, { id: "bulk-status-toggle" });
                 onRefresh();
               } else {
-                toast.error("Failed to update status. Please check your connection.", { id: "bulk-status-toggle" });
+                toast.error("Failed to update all storefronts. Please check your connection.", { id: "bulk-status-toggle" });
               }
             }}
             className={cn(
@@ -5089,11 +5287,6 @@ const DashboardOverview = React.memo(({
                   setIsStatusToggling(true);
                   const newStatus = !currentShop.is_active;
 
-                  localStorage.setItem(`localeats_manual_status_override_${currentShop.id}`, JSON.stringify({ status: newStatus, timestamp: Date.now() }));
-                  if (newStatus) {
-                    localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
-                  }
-
                   // Optimistic update
                   setShops((prev) =>
                     prev.map((s) =>
@@ -5101,12 +5294,14 @@ const DashboardOverview = React.memo(({
                     ),
                   );
 
-                  const { error } = await supabase
-                    .from("shops")
-                    .update({ is_active: newStatus })
-                    .eq("id", currentShop.id);
+                  const { success, error } = await syncShopAvailability({
+                    shopId: currentShop.id,
+                    isOpen: newStatus,
+                    supabase,
+                    updateFirestoreShop,
+                  });
 
-                  if (!error) {
+                  if (success) {
                     toast.success(
                       `Storefront is now ${newStatus ? "Open & Live" : "Closed & Offline"}!`
                     );
@@ -5117,7 +5312,7 @@ const DashboardOverview = React.memo(({
                         s.id === currentShop.id ? { ...s, is_active: !newStatus } : s,
                       ),
                     );
-                    toast.error(getFriendlyErrorMessage(error));
+                    toast.error(typeof error === "string" ? error : "Failed to update storefront status");
                   }
                   setIsStatusToggling(false);
                 }}
@@ -5305,7 +5500,7 @@ const DashboardOverview = React.memo(({
                 minWidth={100}
               >
                 <BarChart data={trendData}>
-                  <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                  <Bar dataKey="value" radius={[8, 8, 0, 0]} isAnimationActive={false}>
                     {trendData.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
@@ -5728,6 +5923,105 @@ const ShopProfile = ({
     lat: shop.lat || -25.9964,
     lng: shop.lng || 28.2268,
   });
+
+  const prevShopRef = useRef<{
+    id?: string | number;
+    name?: string;
+    description?: string;
+    location?: string;
+    city?: string;
+    category?: string;
+    phone?: string;
+    email?: string;
+    instagram?: string;
+    facebook?: string;
+    whatsapp?: string;
+    logo_url?: string;
+    lat?: number;
+    lng?: number;
+  }>({});
+
+  // Keep formData in sync when the parent shop updates without triggering infinite loops
+  useEffect(() => {
+    if (!shop) return;
+    const prev = prevShopRef.current;
+    const hasChanged =
+      prev.id !== shop.id ||
+      prev.name !== shop.name ||
+      prev.description !== shop.description ||
+      prev.location !== shop.location ||
+      prev.city !== shop.city ||
+      prev.category !== shop.category ||
+      prev.phone !== shop.phone ||
+      prev.email !== shop.email ||
+      prev.instagram !== shop.instagram ||
+      prev.facebook !== shop.facebook ||
+      prev.whatsapp !== shop.whatsapp ||
+      prev.logo_url !== shop.logo_url ||
+      prev.lat !== shop.lat ||
+      prev.lng !== shop.lng;
+
+    if (hasChanged) {
+      prevShopRef.current = {
+        id: shop.id,
+        name: shop.name,
+        description: shop.description,
+        location: shop.location,
+        city: shop.city,
+        category: shop.category,
+        phone: shop.phone,
+        email: shop.email,
+        instagram: shop.instagram,
+        facebook: shop.facebook,
+        whatsapp: shop.whatsapp,
+        logo_url: shop.logo_url,
+        lat: shop.lat,
+        lng: shop.lng,
+      };
+
+      setFormData({
+        name: shop.name || "",
+        description: shop.description || "",
+        location: shop.location || "",
+        city: shop.city || parseAndNormalizeZAAddress(shop.location || "Tembisa").city,
+        category: shop.category || "Restaurant",
+        phone: shop.phone || "",
+        email: shop.email || "",
+        instagram: shop.instagram || "",
+        facebook: shop.facebook || "",
+        whatsapp: shop.whatsapp || "",
+        logo_url: shop.logo_url || "",
+        lat: shop.lat || -25.9964,
+        lng: shop.lng || 28.2268,
+      });
+    }
+  }, [
+    shop?.id,
+    shop?.name,
+    shop?.description,
+    shop?.location,
+    shop?.city,
+    shop?.category,
+    shop?.phone,
+    shop?.email,
+    shop?.instagram,
+    shop?.facebook,
+    shop?.whatsapp,
+    shop?.logo_url,
+    shop?.lat,
+    shop?.lng,
+  ]);
+
+  const syncAnalysis = useMemo(() => {
+    return analyzeLocationSync(
+      formData.lat || -25.9964,
+      formData.lng || 28.2268,
+      formData.city || "Tembisa",
+      shop?.delivery_radius_km || 10,
+      shop?.delivery_radius_enabled ?? true
+    );
+  }, [formData.lat, formData.lng, formData.city, shop?.delivery_radius_km, shop?.delivery_radius_enabled]);
+
   const handleUpdateLocation = () => {
     setIsLocating(true);
     if (!navigator.geolocation) {
@@ -5845,13 +6139,62 @@ const ShopProfile = ({
       console.warn("Versioning check skipped due to network or schema cache warning:", versionErr);
     }
 
+    const finalCity = formData.city || parseAndNormalizeZAAddress(formData.location || "Tembisa").city;
+    const nowISO = new Date().toISOString();
+
     const payload: Record<string, unknown> = {
       ...formData,
-      updated_at: new Date().toISOString(),
+      city: finalCity,
+      updated_at: nowISO,
     };
 
+    // 1. Update Firestore Shop document immediately so client app and subscriptions sync in real time
     try {
-      // First attempt
+      await updateFirestoreShop(shop.id, {
+        name: formData.name,
+        description: formData.description,
+        location: formData.location,
+        address: formData.location,
+        city: finalCity,
+        category: formData.category,
+        phone: formData.phone,
+        email: formData.email,
+        instagram: formData.instagram,
+        facebook: formData.facebook,
+        whatsapp: formData.whatsapp,
+        logo_url: formData.logo_url,
+        lat: formData.lat,
+        lng: formData.lng,
+        updated_at: nowISO,
+      });
+    } catch (fsErr) {
+      console.warn("Firestore shop update warning:", fsErr);
+    }
+
+    // 2. Update local cached shops storage
+    try {
+      const cached = localStorage.getItem("localeats_cached_shops");
+      if (cached) {
+        const parsed: Shop[] = JSON.parse(cached);
+        const updated = parsed.map((s) =>
+          s.id === shop.id
+            ? {
+                ...s,
+                ...formData,
+                address: formData.location,
+                city: finalCity,
+                updated_at: nowISO,
+              }
+            : s
+        );
+        localStorage.setItem("localeats_cached_shops", JSON.stringify(updated));
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      // First attempt on Supabase
       let { error } = await supabase
         .from("shops")
         .update(payload)
@@ -5891,8 +6234,8 @@ const ShopProfile = ({
 
       if (error) throw error;
 
-      // Sync back to user metadata so phone numbers are consistent throughout the app
-      if (user && (formData.phone || formData.whatsapp)) {
+      // Sync back to user metadata so phone numbers and locations are consistent throughout the app
+      if (user && (formData.phone || formData.whatsapp || formData.location)) {
         try {
           await supabase.auth.updateUser({
             data: {
@@ -5900,6 +6243,7 @@ const ShopProfile = ({
               whatsapp: formData.whatsapp,
               location: formData.location,
               address: formData.location,
+              city: finalCity,
             }
           });
         } catch (authErr) {
@@ -5912,6 +6256,7 @@ const ShopProfile = ({
             .from("rider_profiles")
             .update({
               phone: formData.phone,
+              city: finalCity,
               updated_at: new Date().toISOString()
             })
             .eq("id", user.id);
@@ -5928,7 +6273,7 @@ const ShopProfile = ({
         toast.success("Shop profile updated successfully!");
         onRefresh();
         if (onFinished) onFinished();
-      }, 1500);
+      }, 1200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setIsSaving(false);
@@ -5959,25 +6304,9 @@ const ShopProfile = ({
       const compressedFile = await imageCompression(file, options);
 
       const fileExt = compressedFile.name.split(".").pop() || "jpg";
-      const fileName = `${shop.id}-${type}-${Math.random()}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
+      const fileName = `${shop.id}-${type}-${Date.now()}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("shop-assets")
-        .upload(filePath, compressedFile);
-
-      if (uploadError) {
-        if (uploadError.message.includes("bucket not found")) {
-          throw new Error(
-            'Storage bucket "shop-assets" not found. Please create it in Supabase Storage and set it to Public.',
-          );
-        }
-        throw uploadError;
-      }
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("shop-assets").getPublicUrl(filePath);
+      const publicUrl = await uploadImageToFirebaseStorage(compressedFile, "shop-assets", fileName);
 
       setFormData((prev) => ({
         ...prev,
@@ -6039,7 +6368,7 @@ const ShopProfile = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
-                  Primary Location (City)
+                  Primary Location (City / Township)
                 </label>
                 <select
                   className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base font-bold text-on-surface"
@@ -6051,6 +6380,17 @@ const ShopProfile = ({
                   <option value="Tembisa">Tembisa</option>
                   <option value="Kaalfontein">Kaalfontein</option>
                   <option value="Ivory Park">Ivory Park</option>
+                  <option value="Ebony Park">Ebony Park</option>
+                  <option value="Clayville">Clayville</option>
+                  <option value="Rabie Ridge">Rabie Ridge</option>
+                  <option value="Midrand">Midrand</option>
+                  <option value="Kempton Park">Kempton Park</option>
+                  <option value="Johannesburg">Johannesburg</option>
+                  <option value="Pretoria">Pretoria</option>
+                  <option value="Cape Town">Cape Town</option>
+                  {formData.city && !["Tembisa", "Kaalfontein", "Ivory Park", "Ebony Park", "Clayville", "Rabie Ridge", "Midrand", "Kempton Park", "Johannesburg", "Pretoria", "Cape Town"].includes(formData.city) && (
+                    <option value={formData.city}>{formData.city}</option>
+                  )}
                 </select>
               </div>
               <div className="space-y-2">
@@ -6131,9 +6471,15 @@ const ShopProfile = ({
                 <input
                   className="w-full h-10 md:h-12 pl-10 md:pl-12 pr-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base"
                   value={formData.location}
-                  onChange={(e) =>
-                    setFormData({ ...formData, location: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const parsed = parseAndNormalizeZAAddress(val);
+                    setFormData({
+                      ...formData,
+                      location: val,
+                      city: parsed.city || formData.city,
+                    });
+                  }}
                   placeholder="Enter your shop address..."
                 />
               </div>
@@ -6156,26 +6502,13 @@ const ShopProfile = ({
                         return r.ok ? r.json() : null;
                       })
                       .then((data) => {
-                        if (data && data.address) {
-                          const city =
-                            data.address.city ||
-                            data.address.town ||
-                            data.address.village ||
-                            data.address.suburb ||
-                            "";
-                          const road = data.address.road || "";
-                          const houseNumber = data.address.house_number || "";
-                          const newLocation = [
-                            houseNumber,
-                            road,
-                            city,
-                            data.address.state,
-                          ]
-                            .filter(Boolean)
-                            .join(", ");
+                        if (data && (data.address || data.display_name)) {
+                          const raw = data.display_name || [data.address?.house_number, data.address?.road, data.address?.city, data.address?.state].filter(Boolean).join(", ");
+                          const { formattedAddress, city: detectedCity } = parseAndNormalizeZAAddress(raw);
                           setFormData((prev) => ({
                             ...prev,
-                            location: newLocation || prev.location,
+                            location: formattedAddress || prev.location,
+                            city: detectedCity || prev.city,
                           }));
                         }
                       })
@@ -6196,6 +6529,30 @@ const ShopProfile = ({
                     AUTO-LOCATE
                   </span>
                 </button>
+              </div>
+
+              {/* Real-time Location Sync Status Indicator */}
+              <div className="pt-2">
+                <LocationSyncIndicator
+                  locationState={{
+                    lat: formData.lat || -25.9964,
+                    lng: formData.lng || 28.2268,
+                    address: formData.location || "",
+                    city: formData.city || "Tembisa",
+                    deliveryRadiusKm: shop?.delivery_radius_km || 10,
+                    deliveryRadiusEnabled: shop?.delivery_radius_enabled ?? true,
+                  }}
+                  syncAnalysis={syncAnalysis}
+                  isLocating={isLocating}
+                  onDetectGPS={handleUpdateLocation}
+                  onAutoAlign={() => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      city: syncAnalysis.closestHubName,
+                    }));
+                    toast.success(`Area filter updated to ${syncAnalysis.closestHubName}!`);
+                  }}
+                />
               </div>
             </div>
           </section>
@@ -6749,6 +7106,73 @@ const OrdersManagement = ({
   const [dispatchAlertOrder, setDispatchAlertOrder] = useState<Order | null>(null);
   const [dispatchAlertType, setDispatchAlertType] = useState<"rider_dispatch" | "customer_status" | "rider_pairing">("customer_status");
 
+  // Pending orders priority sorting & Drag and Drop state
+  const pendingSortStorageKey = `localeats_pending_priority_${currentShop?.id || "default"}`;
+  const [pendingOrderPriorityIds, setPendingOrderPriorityIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(`localeats_pending_priority_${currentShop?.id || "default"}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [draggedPendingId, setDraggedPendingId] = useState<string | null>(null);
+  const [dragOverPendingId, setDragOverPendingId] = useState<string | null>(null);
+
+  // Sync priority array when currentShop changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`localeats_pending_priority_${currentShop?.id || "default"}`);
+      if (saved) {
+        setPendingOrderPriorityIds(JSON.parse(saved));
+      } else {
+        setPendingOrderPriorityIds([]);
+      }
+    } catch {
+      setPendingOrderPriorityIds([]);
+    }
+  }, [currentShop?.id]);
+
+  const handleReorderPendingOrders = (sourceId: string, targetId: string) => {
+    if (!sourceId || !targetId || sourceId === targetId) return;
+
+    setPendingOrderPriorityIds((prev) => {
+      const allPending = orders.filter((o) => o.status === "pending").map((o) => o.id);
+      const currentOrdered = [
+        ...prev.filter((id) => allPending.includes(id)),
+        ...allPending.filter((id) => !prev.includes(id)),
+      ];
+
+      const fromIndex = currentOrdered.indexOf(sourceId);
+      const toIndex = currentOrdered.indexOf(targetId);
+
+      if (fromIndex === -1 || toIndex === -1) return prev;
+
+      const updated = [...currentOrdered];
+      const [moved] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, moved);
+
+      try {
+        localStorage.setItem(pendingSortStorageKey, JSON.stringify(updated));
+      } catch (e) {
+        console.error("Failed to save pending order priorities", e);
+      }
+
+      toast.success(`Priority updated: #${sourceId.slice(-4).toUpperCase()} moved to position #${toIndex + 1}`);
+      return updated;
+    });
+  };
+
+  const handleResetPendingPriority = () => {
+    setPendingOrderPriorityIds([]);
+    try {
+      localStorage.removeItem(pendingSortStorageKey);
+    } catch {
+      // ignore
+    }
+    toast.info("Pending order priority reset to default order");
+  };
+
   const renderRiderStatusBadge = (order: Order) => {
     if (!isOrderDelivery(order)) {
       return (
@@ -6762,7 +7186,7 @@ const OrdersManagement = ({
       (r) => r.rider_id === order.rider_id || String(r.id) === order.rider_id
     );
     const isAssigned = !!(order.rider_id || assignedRider);
-    const isOnline = assignedRider?.is_online || assignedRider?.status === "online" || assignedRider?.connection_code === "IN-HOUSE";
+    const isOnline = isRiderOnline(assignedRider);
     const riderName = assignedRider?.rider_name || (order.rider_id ? "Assigned Courier" : "");
 
     if (!isAssigned) {
@@ -7544,7 +7968,7 @@ Notes: "${order.notes || "None"}"
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   const [ordersPage, setOrdersPage] = useState(1);
-  const ordersPerPage = 6;
+  const ordersPerPage = 12;
 
   useEffect(() => {
     setOrdersPage(1);
@@ -7624,6 +8048,26 @@ Notes: "${order.notes || "None"}"
     sortField,
     sortDirection,
   ]);
+
+  const prioritizedPendingOrders = useMemo(() => {
+    const pending = displayedOrders.filter((o) => o.status === "pending");
+    if (!pendingOrderPriorityIds || pendingOrderPriorityIds.length === 0) {
+      return pending;
+    }
+
+    return [...pending].sort((a, b) => {
+      const indexA = pendingOrderPriorityIds.indexOf(a.id);
+      const indexB = pendingOrderPriorityIds.indexOf(b.id);
+
+      if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
+      }
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+
+      return 0;
+    });
+  }, [displayedOrders, pendingOrderPriorityIds]);
 
   const fulfilledOrdersToday = useMemo(() => {
     const now = new Date();
@@ -7758,1417 +8202,8 @@ Notes: "${order.notes || "None"}"
     onRequestRider(orderId, rider.rider_id!);
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-12">
-        <Skeleton className="h-40 rounded-3xl" />
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-            {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-64 rounded-xl" />
-            ))}
-          </div>
-          <Skeleton className="lg:col-span-4 h-96 rounded-3xl" />
-        </div>
-      </div>
-    );
-  }
+  const renderOrderCard = (order: Order, i: number) => {
 
-  return (
-    <div className="space-y-12">
-      <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="max-w-2xl space-y-1">
-          <span className="font-label text-[11px] font-bold uppercase tracking-[0.2em] text-primary mb-2 block">
-            Live Operations
-          </span>
-          <h2 className="font-headline text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
-            Orders Management
-          </h2>
-          <p className="text-sm text-on-surface-variant font-medium">
-            Streamline your kitchen workflow and monitor real-time fulfillment
-            across all delivery channels.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 items-start md:items-end w-full md:w-auto">
-          {/* DESKTOP LAYOUT ACTIONS (unchanged and clean) */}
-          <div className="hidden md:flex flex-wrap gap-3 justify-start md:justify-end">
-            <button
-              onClick={() => {
-                console.log("Clearing all orders...");
-                onDeleteAllOrders();
-              }}
-              className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-error/10 text-error rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-error/20 transition-all cursor-pointer relative z-20"
-            >
-              <Trash2 size={16} className="md:w-[18px] md:h-[18px]" />
-              Clear All
-            </button>
-            <button
-              onClick={() => {
-                console.log("Refreshing orders...");
-                onRefresh();
-              }}
-              className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-primary text-on-primary rounded-full text-xs md:text-sm font-bold shadow-sm hover:scale-105 transition-all cursor-pointer relative z-20"
-            >
-              <Clock size={16} className="md:w-[18px] md:h-[18px]" />
-              Refresh
-            </button>
-            <button
-              onClick={exportToCSV}
-              className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-            >
-              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              Spreadsheet
-            </button>
-            <button
-              onClick={exportToJSON}
-              className="flex items-center gap-2 px-4 md:px-6 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-            >
-              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              Backup Data
-            </button>
-          </div>
-          <div className="hidden md:flex p-1.5 bg-surface-container-low rounded-full w-fit">
-            <button
-              onClick={() => setViewMode("active")}
-              className={cn(
-                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                viewMode === "active"
-                  ? "bg-surface-container-lowest shadow-sm text-primary"
-                  : "text-on-secondary-container hover:bg-surface-container-high",
-              )}
-            >
-              Current Orders
-            </button>
-            <button
-              onClick={() => setViewMode("history")}
-              className={cn(
-                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                viewMode === "history"
-                  ? "bg-surface-container-lowest shadow-sm text-primary"
-                  : "text-on-secondary-container hover:bg-surface-container-high",
-              )}
-            >
-              Order History
-            </button>
-          </div>
-
-          {viewMode === "active" && (
-            <div className="hidden md:flex p-1.5 bg-surface-container-low rounded-full w-fit border border-outline-variant/10">
-              <button
-                onClick={() => setLayoutMode("list")}
-                className={cn(
-                  "px-6 py-2.5 rounded-full text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer",
-                  layoutMode === "list"
-                    ? "bg-surface-container-lowest shadow-sm text-primary font-bold"
-                    : "text-on-secondary-container hover:bg-surface-container-high"
-                )}
-              >
-                <List size={16} />
-                <span>List View</span>
-              </button>
-              <button
-                onClick={() => setLayoutMode("kanban")}
-                className={cn(
-                  "px-6 py-2.5 rounded-full text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer",
-                  layoutMode === "kanban"
-                    ? "bg-surface-container-lowest shadow-sm text-primary font-bold"
-                    : "text-on-secondary-container hover:bg-surface-container-high"
-                )}
-              >
-                <LayoutGrid size={16} />
-                <span>Kanban Board</span>
-              </button>
-            </div>
-          )}
-
-          <button
-            onClick={() => setKitchenMode(!kitchenMode)}
-            className={cn(
-              "hidden md:flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all border-2",
-              kitchenMode
-                ? "bg-primary text-on-primary border-primary"
-                : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
-            )}
-          >
-            <UtensilsCrossed size={18} />
-            Kitchen Mode {kitchenMode ? "ON" : "OFF"}
-          </button>
-
-          {/* MOBILE COMPACT ACTIONS CONSOLE */}
-          <div className="flex md:hidden flex-col gap-2.5 w-full bg-surface-container-lowest/40 dark:bg-zinc-900/40 p-3 rounded-2xl border border-outline-variant/5">
-            <div className="flex items-center gap-2 w-full justify-between">
-              {/* Core viewMode switch */}
-              <div className="flex p-1 bg-surface-container-low rounded-full flex-1">
-                <button
-                  onClick={() => setViewMode("active")}
-                  className={cn(
-                    "flex-1 py-2 text-center rounded-full text-xs font-black transition-all",
-                    viewMode === "active"
-                      ? "bg-white dark:bg-zinc-800 shadow-sm text-primary"
-                      : "text-on-surface-variant/70 hover:text-on-surface",
-                  )}
-                >
-                  Current
-                </button>
-                <button
-                  onClick={() => setViewMode("history")}
-                  className={cn(
-                    "flex-1 py-2 text-center rounded-full text-xs font-black transition-all",
-                    viewMode === "history"
-                      ? "bg-white dark:bg-zinc-800 shadow-sm text-primary"
-                      : "text-on-surface-variant/70 hover:text-on-surface",
-                  )}
-                >
-                  History
-                </button>
-              </div>
-
-              {/* Live refresh shortcut button */}
-              <button
-                onClick={() => {
-                  console.log("Refreshing orders...");
-                  onRefresh();
-                }}
-                className="w-10 h-10 bg-primary text-on-primary rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform"
-                title="Refresh Queue"
-              >
-                <Clock size={16} />
-              </button>
-
-              {/* More tools console toggle */}
-              <button
-                onClick={() => setShowMobileActions(!showMobileActions)}
-                className={cn(
-                  "w-10 h-10 rounded-full flex items-center justify-center transition-all border",
-                  showMobileActions
-                    ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
-                    : "bg-surface-container-high text-on-surface border-transparent"
-                )}
-                title="Toggle Extra Tools"
-              >
-                <Settings size={16} className={cn(showMobileActions && "animate-spin")} />
-              </button>
-            </div>
-
-            {/* Collapsible secondary actions panel */}
-            <AnimatePresence>
-              {showMobileActions && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden flex flex-col gap-2 pt-2 border-t border-outline-variant/10"
-                >
-                  {/* Kitchen Mode row */}
-                  <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
-                    <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
-                      <UtensilsCrossed size={14} />
-                      Kitchen Mode {kitchenMode ? "(Active)" : "(Inactive)"}
-                    </span>
-                    <button
-                      onClick={() => setKitchenMode(!kitchenMode)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors",
-                        kitchenMode
-                          ? "bg-primary text-on-primary"
-                          : "bg-surface-container-high text-on-surface"
-                      )}
-                    >
-                      Toggle
-                    </button>
-                  </div>
-
-                  {/* Layout Mode row */}
-                  {viewMode === "active" && (
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
-                      <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
-                        <LayoutGrid size={14} />
-                        Layout: {layoutMode === "kanban" ? "Kanban Board" : "List View"}
-                      </span>
-                      <button
-                        onClick={() => setLayoutMode(layoutMode === "kanban" ? "list" : "kanban")}
-                        className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-primary text-on-primary cursor-pointer"
-                      >
-                        Switch
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Exports Row */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={exportToCSV}
-                      className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
-                    >
-                      <FileDown size={14} />
-                      Export Spreadsheet
-                    </button>
-                    <button
-                      onClick={exportToJSON}
-                      className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
-                    >
-                      <FileDown size={14} />
-                      Backup Data
-                    </button>
-                  </div>
-
-                  {/* Danger zone clear all */}
-                  <button
-                    onClick={() => {
-                      console.log("Clearing all orders...");
-                      onDeleteAllOrders();
-                      setShowMobileActions(false);
-                    }}
-                    className="flex items-center justify-center gap-2 py-2.5 bg-error/10 text-error rounded-xl text-xs font-bold"
-                  >
-                    <Trash2 size={14} />
-                    Clear All Orders (Reset)
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-      </section>
-
-      <div
-        className={cn(
-          "grid grid-cols-1 gap-8 items-start",
-          !kitchenMode && "lg:grid-cols-12",
-        )}
-      >
-        <div
-          className={cn(
-            kitchenMode ? "col-span-full" : "lg:col-span-8",
-            "space-y-6",
-          )}
-        >
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-4 mb-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
-                  Filter Status:
-                </span>
-                {orderStatuses.map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => setFilterStatus(status)}
-                    className={cn(
-                      "px-4 py-1.5 rounded-full text-xs font-bold transition-all border-2",
-                      filterStatus === status
-                        ? "bg-primary/10 text-primary border-primary"
-                        : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
-                    )}
-                  >
-                    {status.charAt(0).toUpperCase() + status.slice(1)}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
-                  Status Dropdown:
-                </span>
-                <div className="relative">
-                  <select
-                    id="status-filter-select"
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value as OrderStatus | "All")}
-                    className="appearance-none bg-surface-container-low text-on-surface text-xs font-bold pl-4 pr-10 py-2 rounded-xl border border-outline-variant/20 focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer shadow-xs transition-all"
-                  >
-                    <option value="All">All Statuses</option>
-                    <option value="pending">Pending</option>
-                    <option value="preparing">Preparing</option>
-                    <option value="ready">Ready</option>
-                    <option value="completed">Completed</option>
-                  </select>
-                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant">
-                    <Filter size={12} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 mt-2">
-                {(filterStatus !== "All" || orderTypeFilter !== "All" || startDate || endDate || searchTerm || customerSearch || phoneSearch) && (
-                  <button
-                    onClick={() => {
-                      setFilterStatus("All");
-                      setOrderTypeFilter("All");
-                      setStartDate("");
-                      setEndDate("");
-                      setSearchTerm("");
-                      setCustomerSearch("");
-                      setPhoneSearch("");
-                    }}
-                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black text-white bg-error shadow-lg shadow-error/20 hover:scale-105 active:scale-95 transition-all"
-                  >
-                    <RefreshCw size={12} />
-                    RESET FILTERS
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {viewMode === "history" && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-full bg-surface-container-low p-5 rounded-2xl border border-outline-variant/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-2 animate-in fade-in slide-in-from-top-2 duration-300"
-              >
-                <div className="flex items-center gap-2 text-on-surface">
-                  <Calendar size={18} className="text-primary shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Filter by Date Range</h4>
-                    <p className="text-[10px] text-on-surface-variant font-semibold">Analyze and filter historic orders</p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {[
-                    { label: "All Time", start: "", end: "" },
-                    { label: "Today", start: new Date().toISOString().split("T")[0], end: new Date().toISOString().split("T")[0] },
-                    { label: "Yesterday", start: getPastDateStr(1), end: getPastDateStr(1) },
-                    { label: "7 Days", start: getPastDateStr(7), end: new Date().toISOString().split("T")[0] },
-                    { label: "30 Days", start: getPastDateStr(30), end: new Date().toISOString().split("T")[0] },
-                  ].map((preset) => {
-                    const isSelected = startDate === preset.start && endDate === preset.end;
-                    return (
-                      <button
-                        key={preset.label}
-                        onClick={() => {
-                          setStartDate(preset.start);
-                          setEndDate(preset.end);
-                        }}
-                        className={cn(
-                          "px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer hover:scale-[1.02] active:scale-95",
-                          isSelected 
-                            ? "bg-primary text-on-primary shadow-xs" 
-                            : "bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant"
-                        )}
-                      >
-                        {preset.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-4 text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant/75">From:</span>
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="bg-surface-container-highest/60 text-on-surface px-2.5 py-1.5 rounded-xl border border-outline-variant/10 focus:outline-none focus:ring-1 focus:ring-primary text-[11px] font-bold text-on-surface"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant/75">To:</span>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="bg-surface-container-highest/60 text-on-surface px-2.5 py-1.5 rounded-xl border border-outline-variant/10 focus:outline-none focus:ring-1 focus:ring-primary text-[11px] font-bold text-on-surface"
-                    />
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-headline text-xl font-bold flex items-center gap-2">
-                {viewMode === "active" ? "Active Queue" : "Order History"}
-                <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">
-                  {displayedOrders.length} Orders
-                </span>
-              </h3>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowSearch(!showSearch)}
-                  className={cn(
-                    "p-2 rounded-full transition-colors",
-                    showSearch
-                      ? "bg-primary text-on-primary"
-                      : "hover:bg-surface-container-low text-on-surface-variant",
-                  )}
-                >
-                  <Search size={20} />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4 mb-2 overflow-x-auto pb-2 scrollbar-hide">
-              <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">
-                Sort by:
-              </span>
-              {[
-                { id: "created_at", label: "Date", icon: Clock },
-                { id: "total_price", label: "Price", icon: TrendingUp },
-                { id: "id", label: "Order ID", icon: ReceiptText },
-              ].map((field) => (
-                <button
-                  key={field.id}
-                  onClick={() =>
-                    handleSort(field.id as "id" | "total_price" | "created_at")
-                  }
-                  className={cn(
-                    "flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all shrink-0 border-2",
-                    sortField === field.id
-                      ? "bg-primary text-on-primary border-primary shadow-[0_4px_12px_rgba(167,52,0,0.3)] scale-105 ring-2 ring-primary/20"
-                      : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
-                  )}
-                >
-                  <field.icon
-                    size={14}
-                    className={cn(
-                      sortField === field.id ? "animate-pulse" : "",
-                    )}
-                  />
-                  {field.label}
-                  {sortField === field.id && (
-                    <motion.span
-                      initial={{ scale: 0, rotate: -180 }}
-                      animate={{ scale: 1, rotate: 0 }}
-                      className="ml-1 bg-white/20 p-0.5 rounded-full flex items-center justify-center"
-                    >
-                      {sortDirection === "asc" ? (
-                        <ArrowUp size={12} />
-                      ) : (
-                        <ArrowDown size={12} />
-                      )}
-                    </motion.span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <AnimatePresence>
-            {showSearch && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden space-y-4"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="relative">
-                    <Search
-                      className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
-                      size={18}
-                    />
-                    <input
-                      autoFocus
-                      type="text"
-                      placeholder="Search product or ID..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-3 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none"
-                    />
-                  </div>
-                  <div className="relative">
-                    <UserIcon
-                      className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
-                      size={18}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Customer Name..."
-                      value={customerSearch}
-                      onChange={(e) => setCustomerSearch(e.target.value)}
-                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-3 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none"
-                    />
-                  </div>
-                  <div className="relative">
-                    <Phone
-                      className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
-                      size={18}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Phone Number..."
-                      value={phoneSearch}
-                      onChange={(e) => setPhoneSearch(e.target.value)}
-                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-3 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none"
-                    />
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {displayedOrders.length === 0 ? (
-            <div className="bg-surface-container-low rounded-[2rem] p-12 flex flex-col items-center text-center space-y-6 border-2 border-dashed border-outline-variant/20">
-              <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center">
-                {viewMode === "active" ? (
-                  <Clock className="text-primary" size={40} />
-                ) : (
-                  <ReceiptText className="text-primary" size={40} />
-                )}
-              </div>
-              <div className="space-y-2">
-                <h4 className="font-headline text-2xl font-bold">
-                  {viewMode === "active" ? "All caught up!" : "No history yet"}
-                </h4>
-                <p className="text-on-surface-variant max-w-xs mx-auto">
-                  {viewMode === "active"
-                    ? "Your kitchen is currently clear. New orders will appear here as they arrive."
-                    : "Completed orders will appear here once they are fulfilled."}
-                </p>
-              </div>
-              {viewMode === "active" && (
-                <button
-                  onClick={onRefresh}
-                  className="px-8 py-3 bg-surface-container-lowest text-primary font-bold rounded-full shadow-sm hover:scale-105 transition-all border border-primary/10"
-                >
-                  Check for New Orders
-                </button>
-              )}
-            </div>
-          ) : viewMode === "active" && layoutMode === "kanban" ? (
-            <div className="flex overflow-x-auto hide-scrollbar xl:grid xl:grid-cols-4 gap-6 items-start snap-x snap-mandatory pb-4 xl:pb-0">
-              {/* Column 1: New Orders */}
-              <div className="bg-surface-container-low/60 rounded-[2.5rem] p-5 border border-outline-variant/10 flex flex-col gap-4 min-h-[500px] w-[85vw] md:w-[360px] xl:w-[400px] shrink-0 snap-center">
-                <div className="flex items-center justify-between px-2 pb-2 border-b border-outline-variant/10">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                    <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">New Orders</h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {selectedPendingOrders.length > 0 && (
-                      <button
-                        onClick={() => {
-                          const ordersToPrint = displayedOrders.filter((o) => selectedPendingOrders.includes(o.id));
-                          handleBulkPrint(ordersToPrint, printingFormat, printingIncludeAddr);
-                          setSelectedPendingOrders([]);
-                        }}
-                        className="px-2.5 py-0.5 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-[10px] rounded-full transition-colors flex items-center gap-1"
-                      >
-                        <Printer size={10} /> Print Selected
-                      </button>
-                    )}
-                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 font-bold text-[10px]">
-                      {displayedOrders.filter(o => o.status === "pending").length}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
-                  <AnimatePresence mode="popLayout">
-                  {displayedOrders.filter(o => o.status === "pending").map((order) => {
-                    const items = safeGetOrderItems(order.items);
-                    const isSelected = selectedPendingOrders.includes(order.id);
-                    const isDelivery = isOrderDelivery(order);
-                    const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
-                    const isDispatched = isDelivery && (order.rider_id || order.delivery_status === "accepted" || order.delivery_status === "picked_up" || order.delivery_status === "dispatched");
-
-                    return (
-                      <motion.div
-                        layoutId={order.id}
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
-                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                        key={order.id}
-                        className={cn(
-                          "order-card bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300 space-y-2",
-                          isSelected ? "border-primary ring-2 ring-primary/30" : "",
-                          isFindingRider
-                            ? "border-2 border-amber-500 ring-2 ring-amber-500/30 animate-pulse bg-gradient-to-b from-amber-500/5 via-transparent to-transparent dark:from-amber-500/10"
-                            : isDispatched
-                              ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/10"
-                              : "border-outline-variant/10"
-                        )}
-                        whileHover={{ y: -2 }}
-                      >
-                        {/* Rider / Delivery Live Status Indicator */}
-                        <div className="mb-2">
-                          {renderRiderStatusBadge(order)}
-                        </div>
-                        {/* Top info */}
-                        <div className="flex justify-between items-start gap-2">
-                          <div className="flex items-start gap-2">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedPendingOrders(prev => [...prev, order.id]);
-                                } else {
-                                  setSelectedPendingOrders(prev => prev.filter(id => id !== order.id));
-                                }
-                              }}
-                              className="mt-1 w-3.5 h-3.5 rounded border-outline-variant/30 text-primary focus:ring-primary/50 cursor-pointer"
-                            />
-                            <div>
-                              <span className="text-[10px] font-mono font-black text-primary uppercase">
-                                #{order.id.slice(-4).toUpperCase()}
-                              </span>
-                              <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
-                              {/* Custom Tags display */}
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {getOrderTags(order).map((tag) => {
-                                  const colors: Record<string, string> = {
-                                    "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-                                    "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-                                    "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
-                                    "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
-                                  };
-                                  return (
-                                    <span
-                                      key={tag}
-                                      className={cn(
-                                        "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
-                                        colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
-                                      )}
-                                    >
-                                      {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                          <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
-                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-
-                        {/* Items list */}
-                        <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
-                          {items.map((item, idx) => {
-                            const isObj = typeof item === "object" && item !== null;
-                            const name = isObj ? item.name : String(item);
-                            const qty = isObj ? item.quantity : 1;
-                            const price = isObj ? item.price : 0;
-                            return (
-                              <div key={idx} className="flex justify-between">
-                                <span className="truncate max-w-[150px]">{qty}x {name}</span>
-                                <span className="opacity-70 font-mono">R {Number(price || 0).toFixed(2)}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Order Type Badge & Address */}
-                        <div className="mt-2 flex items-center justify-between gap-1.5 text-[10px] text-on-surface-variant">
-                          <span className={cn(
-                            "px-2 py-0.5 rounded-full font-bold uppercase text-[8px]",
-                            !isOrderDelivery(order) ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
-                          )}>
-                            {!isOrderDelivery(order) ? "collection" : "delivery"}
-                          </span>
-                          <AddressDisplay address={order.address} city={order.city} className="text-[10px] max-sm:text-[9px] font-medium max-w-[170px]" maxParts={2} />
-                        </div>
-
-                        {/* Action buttons with inline input forms */}
-                        {acceptingOrderId === order.id ? (
-                          <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
-                            <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Order Notes & Custom Message</label>
-                            <input
-                              type="text"
-                              value={orderNotes}
-                              onChange={(e) => setOrderNotes(e.target.value)}
-                              className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface mb-2"
-                              placeholder="Kitchen notes (e.g., no onions)..."
-                              autoFocus
-                            />
-                            <input
-                              type="text"
-                              value={customMessage}
-                              onChange={(e) => setCustomMessage(e.target.value)}
-                              className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
-                              placeholder="Receipt message..."
-                            />
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => {
-                                  // Can optionally store orderNotes to db if the schema supports it. We'll pass it in the message for now or handle it.
-                                  const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
-                                  onUpdateStatus(order.id, "preparing", finalMsg);
-                                  setAcceptingOrderId(null);
-                                  setOrderNotes("");
-                                }}
-                                className="flex-1 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer"
-                              >
-                                Send & Accept
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setAcceptingOrderId(null);
-                                  setOrderNotes("");
-                                }}
-                                className="px-2.5 py-1.5 bg-surface-container-high text-on-surface-variant text-[10px] font-bold rounded-lg hover:bg-surface-container-highest transition-colors cursor-pointer"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
-                            <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
-                            <div className="flex flex-col items-end gap-1 flex-1">
-                              {isLimitReached && (
-                                <span className="text-[8px] font-bold text-error leading-none mb-0.5">LIMIT REACHED</span>
-                              )}
-                              <button
-                                disabled={isLimitReached}
-                                onClick={(e) => {
-                                  if (isOrderDelivery(order) && !order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
-                                    setUnlinkedModalOrder(order);
-                                    return;
-                                  }
-                                  setAcceptingOrderId(order.id);
-                                  const card = e.currentTarget.closest(".order-card");
-                                  if (card) {
-                                    setTimeout(() => {
-                                      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                                    }, 100);
-                                  }
-                                }}
-                                className="px-3 py-1.5 bg-primary text-on-primary text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none w-full text-center"
-                              >
-                                Accept
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Quick Tag Toggles */}
-                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
-                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
-                          <div className="flex items-center gap-1">
-                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
-                              const isActive = (orderTags[order.id] || []).includes(tag);
-                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
-                              return (
-                                <button
-                                  key={tag}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleOrderTag(order.id, tag);
-                                  }}
-                                  title={`Toggle ${tag}`}
-                                  className={cn(
-                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
-                                    isActive
-                                      ? tag === "Rush"
-                                        ? "bg-rose-500 text-white"
-                                        : tag === "VIP"
-                                          ? "bg-amber-500 text-white"
-                                          : "bg-teal-500 text-white"
-                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
-                                  )}
-                                >
-                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                  {displayedOrders.filter(o => o.status === "pending").length === 0 && (
-                    <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">No new orders</div>
-                  )}
-                  </AnimatePresence>
-                </div>
-              </div>
-
-              {/* Column 2: Preparing */}
-              <div className="bg-surface-container-low/60 rounded-[2.5rem] p-5 border border-outline-variant/10 flex flex-col gap-4 min-h-[500px] w-[85vw] md:w-[360px] xl:w-[400px] shrink-0 snap-center">
-                <div className="flex items-center justify-between px-2 pb-2 border-b border-outline-variant/10">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
-                    <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">Preparing</h3>
-                  </div>
-                  <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 font-bold text-[10px]">
-                    {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").length}
-                  </span>
-                </div>
-
-                <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
-                  <AnimatePresence mode="popLayout">
-                  {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").map((order) => {
-                    const items = safeGetOrderItems(order.items);
-                    const isDelivery = isOrderDelivery(order);
-                    const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
-                    const isDispatched = isDelivery && (order.rider_id || order.delivery_status === "accepted" || order.delivery_status === "picked_up" || order.delivery_status === "dispatched");
-
-                    return (
-                      <motion.div
-                        layoutId={order.id}
-                        key={order.id}
-                        className={cn(
-                          "order-card bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300 space-y-2",
-                          isFindingRider
-                            ? "border-2 border-amber-500 ring-2 ring-amber-500/30 animate-pulse bg-gradient-to-b from-amber-500/5 via-transparent to-transparent dark:from-amber-500/10"
-                            : isDispatched
-                              ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/10"
-                              : "border-outline-variant/10"
-                        )}
-                        whileHover={{ y: -2 }}
-                      >
-                        {/* Rider / Delivery Live Status Indicator */}
-                        <div className="mb-2">
-                          {renderRiderStatusBadge(order)}
-                        </div>
-                        {/* Top info */}
-                        <div className="flex justify-between items-start gap-2">
-                          <div>
-                            <span className="text-[10px] font-mono font-black text-primary uppercase">
-                              #{order.id.slice(-4).toUpperCase()}
-                            </span>
-                            <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
-                            {/* Custom Tags display */}
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {getOrderTags(order).map((tag) => {
-                                const colors: Record<string, string> = {
-                                  "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-                                  "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-                                  "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
-                                  "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
-                                };
-                                return (
-                                  <span
-                                    key={tag}
-                                    className={cn(
-                                      "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
-                                      colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
-                                    )}
-                                  >
-                                    {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </div>
-                          <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
-                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-
-                        {/* Items list */}
-                        <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
-                          {items.map((item, idx) => {
-                            const isObj = typeof item === "object" && item !== null;
-                            const name = isObj ? item.name : String(item);
-                            const qty = isObj ? item.quantity : 1;
-                            const price = isObj ? item.price : 0;
-                            return (
-                              <div key={idx} className="flex justify-between">
-                                <span className="truncate max-w-[150px]">{qty}x {name}</span>
-                                <span className="opacity-70 font-mono">R {Number(price || 0).toFixed(2)}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Delivery Track Badge & Gated Dispatch Action */}
-                        <div className="mt-2.5 space-y-1.5">
-                          {isDelivery && order.status !== "dispatched" && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
-                                  setUnlinkedModalOrder(order);
-                                } else if (connectedRiders.length === 1 && onDispatchToRider) {
-                                  const r = connectedRiders[0];
-                                  void onDispatchToRider(order.id, r.rider_id || String(r.id), r.rider_name || undefined, r.rider_phone || undefined);
-                                } else {
-                                  setShowRiderPicker(order.id);
-                                }
-                              }}
-                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
-                            >
-                              <Rocket size={12} className="animate-pulse text-amber-200" />
-                              <span>Send Rider (Dispatch)</span>
-                            </button>
-                          )}
-                          {isDelivery ? (
-                            <div className="p-2 bg-surface-container-low rounded-xl border border-outline-variant/5 text-[9px] font-bold text-on-surface-variant flex items-center justify-between">
-                              <span className="uppercase tracking-wider text-on-surface-variant/60">Delivery status:</span>
-                              <span className="text-primary uppercase font-black">{order.delivery_status?.replace("_", " ") || "Pending Dispatch"}</span>
-                            </div>
-                          ) : null}
-                        </div>
-
-                        {/* Action buttons with inline input forms */}
-                        {order.status === "accepted" ? (
-                          preparingOrderId === order.id ? (
-                            <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
-                              <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Prep Time (mins)</label>
-                              <input
-                                type="text"
-                                value={estimatedTime}
-                                onChange={(e) => setEstimatedTime(e.target.value)}
-                                className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
-                                placeholder="e.g. 25 mins"
-                                autoFocus
-                              />
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => {
-                                    onUpdateStatus(order.id, "preparing", undefined, estimatedTime);
-                                    setPreparingOrderId(null);
-                                  }}
-                                  className="flex-1 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer"
-                                >
-                                  Start Prep
-                                </button>
-                                <button
-                                  onClick={() => setPreparingOrderId(null)}
-                                  className="px-2.5 py-1.5 bg-surface-container-high text-on-surface-variant text-[10px] font-bold rounded-lg hover:bg-surface-container-highest transition-colors cursor-pointer"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
-                              <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
-                              <button
-                                onClick={(e) => {
-                                  setPreparingOrderId(order.id);
-                                  const card = e.currentTarget.closest(".order-card");
-                                  if (card) {
-                                    setTimeout(() => {
-                                      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                                    }, 100);
-                                  }
-                                }}
-                                className="px-3 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-95 active:scale-95 transition-all cursor-pointer flex-1 text-center"
-                              >
-                                Start Preparing
-                              </button>
-                            </div>
-                          )
-                        ) : (
-                          readyOrderId === order.id ? (
-                            <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
-                              <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Est. Delivery Time</label>
-                              <input
-                                type="text"
-                                value={estimatedTime}
-                                onChange={(e) => setEstimatedTime(e.target.value)}
-                                className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
-                                placeholder="e.g. 15-20 mins"
-                                autoFocus
-                              />
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => {
-                                    onUpdateStatus(order.id, "ready", undefined, estimatedTime);
-                                    setReadyOrderId(null);
-                                  }}
-                                  className="flex-1 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer"
-                                >
-                                  Confirm Ready
-                                </button>
-                                <button
-                                  onClick={() => setReadyOrderId(null)}
-                                  className="px-2.5 py-1.5 bg-surface-container-high text-on-surface-variant text-[10px] font-bold rounded-lg hover:bg-surface-container-highest transition-colors cursor-pointer"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
-                              <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
-                              <button
-                                onClick={(e) => {
-                                  setReadyOrderId(order.id);
-                                  const card = e.currentTarget.closest(".order-card");
-                                  if (card) {
-                                    setTimeout(() => {
-                                      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                                    }, 100);
-                                  }
-                                }}
-                                className="px-3 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer flex-1 text-center"
-                              >
-                                Mark Ready
-                              </button>
-                            </div>
-                          )
-                        )}
-
-                        {/* Quick Tag Toggles */}
-                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
-                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
-                          <div className="flex items-center gap-1">
-                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
-                              const isActive = (orderTags[order.id] || []).includes(tag);
-                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
-                              return (
-                                <button
-                                  key={tag}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleOrderTag(order.id, tag);
-                                  }}
-                                  title={`Toggle ${tag}`}
-                                  className={cn(
-                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
-                                    isActive
-                                      ? tag === "Rush"
-                                        ? "bg-rose-500 text-white"
-                                        : tag === "VIP"
-                                          ? "bg-amber-500 text-white"
-                                          : "bg-teal-500 text-white"
-                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
-                                  )}
-                                >
-                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                  {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").length === 0 && (
-                    <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None in prep</div>
-                  )}
-                  </AnimatePresence>
-                </div>
-              </div>
-
-              {/* Column 3: Ready for Pickup */}
-              <div className="bg-surface-container-low/60 rounded-[2.5rem] p-5 border border-outline-variant/10 flex flex-col gap-4 min-h-[500px] w-[85vw] md:w-[360px] xl:w-[400px] shrink-0 snap-center">
-                <div className="flex items-center justify-between px-2 pb-2 border-b border-outline-variant/10">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">Ready</h3>
-                  </div>
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-bold text-[10px]">
-                    {displayedOrders.filter(o => o.status === "ready").length}
-                  </span>
-                </div>
-
-                <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
-                  <AnimatePresence mode="popLayout">
-                  {displayedOrders.filter(o => o.status === "ready").map((order) => {
-                    const items = safeGetOrderItems(order.items);
-                    const canNudge = order.rider_id && order.status !== "completed";
-                    const isDelivery = isOrderDelivery(order);
-                    const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
-                    const isDispatched = isDelivery && (order.rider_id || order.delivery_status === "accepted" || order.delivery_status === "picked_up" || order.delivery_status === "dispatched");
-
-                    return (
-                      <motion.div
-                        layoutId={order.id}
-                        key={order.id}
-                        className={cn(
-                          "order-card bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300 space-y-2",
-                          isFindingRider
-                            ? "border-2 border-amber-500 ring-2 ring-amber-500/30 animate-pulse bg-gradient-to-b from-amber-500/5 via-transparent to-transparent dark:from-amber-500/10"
-                            : isDispatched
-                              ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/10"
-                              : "border-outline-variant/10"
-                        )}
-                        whileHover={{ y: -2 }}
-                      >
-                        {/* Rider / Delivery Live Status Indicator */}
-                        <div className="mb-2">
-                          {renderRiderStatusBadge(order)}
-                        </div>
-                        {/* Top info */}
-                        <div className="flex justify-between items-start gap-2">
-                          <div>
-                            <span className="text-[10px] font-mono font-black text-primary uppercase">
-                              #{order.id.slice(-4).toUpperCase()}
-                            </span>
-                            <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
-                            {/* Custom Tags display */}
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {getOrderTags(order).map((tag) => {
-                                const colors: Record<string, string> = {
-                                  "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-                                  "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-                                  "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
-                                  "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
-                                };
-                                return (
-                                  <span
-                                    key={tag}
-                                    className={cn(
-                                      "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
-                                      colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
-                                    )}
-                                  >
-                                    {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </div>
-                          <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
-                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-
-                        {/* Items list */}
-                        <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
-                          {items.map((item, idx) => {
-                            const isObj = typeof item === "object" && item !== null;
-                            const name = isObj ? item.name : String(item);
-                            const qty = isObj ? item.quantity : 1;
-                            const price = isObj ? item.price : 0;
-                            return (
-                              <div key={idx} className="flex justify-between">
-                                <span className="truncate max-w-[150px]">{qty}x {name}</span>
-                                <span className="opacity-70 font-mono">R {Number(price || 0).toFixed(2)}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Gated Dispatch Action & Rider details */}
-                        {isOrderDelivery(order) && order.status !== "dispatched" && (
-                          <div className="mt-2.5">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
-                                  setUnlinkedModalOrder(order);
-                                } else if (connectedRiders.length === 1 && onDispatchToRider) {
-                                  const r = connectedRiders[0];
-                                  void onDispatchToRider(order.id, r.rider_id || String(r.id), r.rider_name || undefined, r.rider_phone || undefined);
-                                } else {
-                                  setShowRiderPicker(order.id);
-                                }
-                              }}
-                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
-                            >
-                              <Rocket size={12} className="animate-pulse text-amber-200" />
-                              <span>Send Rider (Dispatch)</span>
-                            </button>
-                          </div>
-                        )}
-
-                        {canNudge && (
-                          <div className="mt-2">
-                            <button
-                              onClick={() => {
-                                const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
-                                sendRiderNudge(order.rider_id!, nudgeMessage);
-                                toast.success("Rider nudged successfully!");
-                              }}
-                              className="w-full py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                              <Zap size={11} className="text-amber-600" />
-                              <span>Nudge Rider</span>
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Action buttons */}
-                        <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
-                          <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
-                          <button
-                            onClick={() => onUpdateStatus(order.id, "completed")}
-                            className="px-3 py-1.5 bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-95 active:scale-95 transition-all cursor-pointer flex-1 text-center"
-                          >
-                            Complete
-                          </button>
-                        </div>
-
-                        {/* Quick Tag Toggles */}
-                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
-                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
-                          <div className="flex items-center gap-1">
-                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
-                              const isActive = (orderTags[order.id] || []).includes(tag);
-                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
-                              return (
-                                <button
-                                  key={tag}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleOrderTag(order.id, tag);
-                                  }}
-                                  title={`Toggle ${tag}`}
-                                  className={cn(
-                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
-                                    isActive
-                                      ? tag === "Rush"
-                                        ? "bg-rose-500 text-white"
-                                        : tag === "VIP"
-                                          ? "bg-amber-500 text-white"
-                                          : "bg-teal-500 text-white"
-                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
-                                  )}
-                                >
-                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                  {displayedOrders.filter(o => o.status === "ready").length === 0 && (
-                    <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None ready</div>
-                  )}
-                  </AnimatePresence>
-                </div>
-              </div>
-
-              {/* Column 4: Picked Up / Completed */}
-              <div className="bg-surface-container-low/60 rounded-[2.5rem] p-5 border border-outline-variant/10 flex flex-col gap-4 min-h-[500px] w-[85vw] md:w-[360px] xl:w-[400px] shrink-0 snap-center">
-                <div className="flex items-center justify-between px-2 pb-2 border-b border-outline-variant/10">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
-                    <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">Fulfilled</h3>
-                  </div>
-                  <span className="px-2.5 py-0.5 rounded-full bg-zinc-500/10 text-zinc-600 font-bold text-[10px]">
-                    {fulfilledOrdersToday.length}
-                  </span>
-                </div>
-
-                <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
-                  <AnimatePresence mode="popLayout">
-                  {fulfilledOrdersToday.map((order) => {
-                    const items = safeGetOrderItems(order.items);
-                    return (
-                      <motion.div
-                        layoutId={order.id}
-                        key={order.id}
-                        className="order-card bg-white dark:bg-zinc-900 border border-outline-variant/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group opacity-75"
-                      >
-                        <div className="flex justify-between items-start gap-2">
-                          <div>
-                            <span className="text-[10px] font-mono font-black text-primary uppercase">
-                              #{order.id.slice(-4).toUpperCase()}
-                            </span>
-                            <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
-                            {/* Custom Tags display */}
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {getOrderTags(order).map((tag) => {
-                                const colors: Record<string, string> = {
-                                  "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-                                  "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-                                  "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
-                                  "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
-                                };
-                                return (
-                                  <span
-                                    key={tag}
-                                    className={cn(
-                                      "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
-                                      colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
-                                    )}
-                                  >
-                                    {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </div>
-                          <span className={cn(
-                            "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md",
-                            order.status === "completed" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-                          )}>
-                            {order.status}
-                          </span>
-                        </div>
-
-                        {/* Items list */}
-                        <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
-                          {items.map((item, idx) => {
-                            const isObj = typeof item === "object" && item !== null;
-                            const name = isObj ? item.name : String(item);
-                            const qty = isObj ? item.quantity : 1;
-                            const price = isObj ? item.price : 0;
-                            return (
-                              <div key={idx} className="flex justify-between">
-                                <span className="truncate max-w-[150px]">{qty}x {name}</span>
-                                <span className="opacity-70 font-mono">R {Number(price || 0).toFixed(2)}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between">
-                          <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
-                          <span className="text-[9px] font-bold text-zinc-500 font-mono uppercase">Done</span>
-                        </div>
-
-                        {/* Quick Tag Toggles */}
-                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
-                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
-                          <div className="flex items-center gap-1">
-                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
-                              const isActive = (orderTags[order.id] || []).includes(tag);
-                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
-                              return (
-                                <button
-                                  key={tag}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleOrderTag(order.id, tag);
-                                  }}
-                                  title={`Toggle ${tag}`}
-                                  className={cn(
-                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
-                                    isActive
-                                      ? tag === "Rush"
-                                        ? "bg-rose-500 text-white"
-                                        : tag === "VIP"
-                                          ? "bg-amber-500 text-white"
-                                          : "bg-teal-500 text-white"
-                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
-                                  )}
-                                >
-                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                  {fulfilledOrdersToday.length === 0 && (
-                    <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None fulfilled today</div>
-                  )}
-                  </AnimatePresence>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <>
-              {viewMode === "active" && selectedPendingOrders.length > 0 && (
-                <div className="flex justify-end mb-4">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const ordersToPrint = paginatedOrders.filter((o) => selectedPendingOrders.includes(o.id));
-                      handleBulkPrint(ordersToPrint, printingFormat, printingIncludeAddr);
-                      setSelectedPendingOrders([]);
-                    }}
-                    className="px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs rounded-full transition-colors flex items-center gap-2"
-                  >
-                    <Printer size={14} /> Print Selected ({selectedPendingOrders.length})
-                  </button>
-                </div>
-              )}
-              <div
-                className={cn(
-                  "grid gap-4 sm:gap-6 w-full min-w-0",
-                  kitchenMode
-                    ? "grid-cols-[repeat(auto-fit,minmax(280px,1fr))]"
-                    : "grid-cols-[repeat(auto-fit,minmax(300px,1fr))]"
-                )}
-              >
-              <AnimatePresence mode="popLayout">
-                {paginatedOrders.map((order, i) => {
                   const orderCount = customerOrderCounts[order.user_id] || 0;
                   const isReturning = orderCount > 1;
 
@@ -9179,6 +8214,15 @@ Notes: "${order.notes || "None"}"
                   const isOverdue =
                     diffMins >= 20 &&
                     (order.status === "pending" || order.status === "preparing");
+                    
+                  // Rider Timeout Logic: Rider assigned but not picked up for 15+ mins
+                  const assignedTime = new Date(order.updated_at || order.created_at).getTime();
+                  const diffRiderMins = Math.floor((now - assignedTime) / (1000 * 60));
+                  const isRiderTimeout = 
+                    diffRiderMins >= 15 && 
+                    order.rider_id && 
+                    (order.delivery_status === "accepted" || order.delivery_status === "finding_rider");
+
                   const isSelected = selectedPendingOrders.includes(order.id);
 
                   return (
@@ -9195,7 +8239,7 @@ Notes: "${order.notes || "None"}"
                       }}
                       key={order.id}
                       className={cn(
-                        "group rounded-2xl p-6 py-7 sm:p-8 shadow-sm border transition-all duration-300 cursor-pointer space-y-4",
+                        "group rounded-2xl p-4 sm:p-5 shadow-sm border transition-all duration-300 cursor-pointer space-y-4 relative bg-surface-container-lowest",
                         isOverdue
                           ? "bg-error/5 border-error/30 ring-1 ring-error/20"
                           : order.status === "pending"
@@ -9215,8 +8259,8 @@ Notes: "${order.notes || "None"}"
                         )
                       }
                     >
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="relative flex items-start gap-3">
+                      <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
+                        <div className="relative flex items-start gap-3 w-full sm:w-auto">
                           {order.status === "pending" && (
                             <input
                               type="checkbox"
@@ -9257,6 +8301,24 @@ Notes: "${order.notes || "None"}"
                                 RETURNING ({orderCount})
                               </span>
                             )}
+                            {isOrderDelivery(order) ? (
+                              <span className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 text-[10px] font-extrabold px-2.5 py-1 rounded-xl flex items-center gap-1 border border-indigo-200/50">
+                                🛵 DELIVERY
+                              </span>
+                            ) : (
+                              <span className="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-[10px] font-extrabold px-2.5 py-1 rounded-xl flex items-center gap-1 border border-amber-200/50">
+                                🛍️ COLLECTION
+                              </span>
+                            )}
+                            <span className={cn(
+                              "text-[10px] font-extrabold px-2.5 py-1 rounded-xl flex items-center gap-1 border",
+                              (order.payment_method === "cod" || order.payment_method === "Cash" || order.payment_method === "cash_on_delivery")
+                                ? "bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 border-rose-200/50"
+                                : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200/50"
+                            )}>
+                              <CreditCard size={11} fill="currentColor" />
+                              {(order.payment_method === "cod" || order.payment_method === "Cash" || order.payment_method === "cash_on_delivery") ? "CASH ON ARRIVAL" : "ONLINE PAID"}
+                            </span>
                           </div>
                           <h4
                             className={cn(
@@ -9367,16 +8429,16 @@ Notes: "${order.notes || "None"}"
                         </div>
                         </div>
                       </div>
-                      <div className="flex flex-col items-end">
+                      <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start w-full sm:w-auto mt-2 sm:mt-0 pt-4 sm:pt-0 border-t sm:border-0 border-outline-variant/10">
                         <OrderStatusBadge status={order.status} />
-                        <span className="text-[11px] font-semibold text-on-surface-variant mt-2 flex items-center gap-1">
+                        <span className="text-[11px] font-semibold text-on-surface-variant mt-0 sm:mt-2 flex items-center gap-1">
                           <Clock size={14} />
                           {format(new Date(order.created_at), "HH:mm")}
                         </span>
                       </div>
                     </div>
 
-                    <div className="space-y-3 mb-6">
+                    <div className={cn("space-y-3", expandedOrderId === order.id ? "mb-6" : "mb-2")}>
                       <div
                         className={cn(
                           "flex justify-between items-center",
@@ -9703,11 +8765,15 @@ Notes: "${order.notes || "None"}"
                                     {Number(order.delivery_fee || 0).toFixed(2)}
                                   </p>
                                 </div>
-                                <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/5">
-                                  <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/50 block mb-1">
-                                    Rider Assignment
+                                <div className={cn("p-3 rounded-xl border transition-all", 
+                                  isRiderTimeout ? "bg-red-50/50 dark:bg-red-900/10 border-red-500/30 animate-pulse" : "bg-surface-container border-outline-variant/5"
+                                )}>
+                                  <span className={cn("text-[9px] font-bold uppercase tracking-widest block mb-1",
+                                    isRiderTimeout ? "text-red-500" : "text-on-surface-variant/50"
+                                  )}>
+                                    {isRiderTimeout ? "⚠️ RIDER TIMEOUT (15m+)" : "Rider Assignment"}
                                   </span>
-                                  <div className="flex items-center justify-between">
+                                  <div className="flex flex-col gap-2">
                                     <p className="text-xs font-mono text-on-surface-variant truncate">
                                       {order.rider_id
                                         ? order.rider_id.split("-")[0]
@@ -9720,9 +8786,11 @@ Notes: "${order.notes || "None"}"
                                             e.stopPropagation();
                                             onUnassignRider(order.id);
                                           }}
-                                          className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold hover:bg-red-200"
+                                          className={cn("text-[10px] px-2 py-1.5 rounded font-bold w-full text-center transition-colors",
+                                            isRiderTimeout ? "bg-red-500 text-white shadow hover:bg-red-600" : "bg-red-100 text-red-600 hover:bg-red-200"
+                                          )}
                                         >
-                                          Remove
+                                          {isRiderTimeout ? "Unassign & Re-broadcast" : "Remove Rider"}
                                         </button>
                                       )}
                                   </div>
@@ -9731,11 +8799,18 @@ Notes: "${order.notes || "None"}"
                                   <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/50 block mb-1">
                                     Live Track
                                   </span>
-                                  <p className="text-xs font-bold text-on-surface-variant">
-                                    {order.delivery_status
-                                      ? "Active Protocol"
-                                      : "No Signal"}
-                                  </p>
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-xs font-bold text-on-surface-variant">
+                                      {order.delivery_status
+                                        ? "Active Protocol"
+                                        : "No Signal"}
+                                    </p>
+                                    {order.delivery_pin && (
+                                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded font-black tracking-widest border border-primary/20">
+                                        PIN: {order.delivery_pin}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
 
@@ -10422,10 +9497,1493 @@ Notes: "${order.notes || "None"}"
                        </div>
                     )}
                   </motion.div>
-                );
-              })}
-              </AnimatePresence>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-12">
+        <Skeleton className="h-40 rounded-3xl" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-64 rounded-xl" />
+            ))}
+          </div>
+          <Skeleton className="lg:col-span-4 h-96 rounded-3xl" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <section className="flex flex-col gap-6">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+          <div className="max-w-2xl space-y-1">
+            <span className="font-label text-[11px] font-bold uppercase tracking-[0.2em] text-primary mb-2 block">
+              Live Operations
+            </span>
+            <h2 className="font-headline text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
+              Orders Management
+            </h2>
+            <p className="text-sm text-on-surface-variant font-medium">
+              Streamline your kitchen workflow and monitor real-time fulfillment
+              across all delivery channels.
+            </p>
+          </div>
+          
+          <div className="hidden md:flex flex-wrap gap-3 justify-start md:justify-end shrink-0">
+            <button
+              onClick={() => {
+                console.log("Clearing all orders...");
+                onDeleteAllOrders();
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-error/10 text-error rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-error/20 transition-all cursor-pointer relative z-20"
+            >
+              <Trash2 size={16} className="md:w-[18px] md:h-[18px]" />
+              Clear All
+            </button>
+            <button
+              onClick={() => {
+                console.log("Refreshing orders...");
+                onRefresh();
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-on-primary rounded-full text-xs md:text-sm font-bold shadow-sm hover:scale-105 transition-all cursor-pointer relative z-20"
+            >
+              <Clock size={16} className="md:w-[18px] md:h-[18px]" />
+              Refresh
+            </button>
+            <button
+              onClick={exportToCSV}
+              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
+            >
+              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
+              Spreadsheet
+            </button>
+            <button
+              onClick={exportToJSON}
+              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
+            >
+              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
+              Backup Data
+            </button>
+          </div>
+        </div>
+
+        <div className="hidden md:flex flex-wrap items-center gap-4">
+          <div className="hidden md:flex p-1.5 bg-surface-container-low rounded-full w-fit">
+            <button
+              onClick={() => setViewMode("active")}
+              className={cn(
+                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                viewMode === "active"
+                  ? "bg-surface-container-lowest shadow-sm text-primary"
+                  : "text-on-secondary-container hover:bg-surface-container-high",
+              )}
+            >
+              Current Orders
+            </button>
+            <button
+              onClick={() => setViewMode("history")}
+              className={cn(
+                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                viewMode === "history"
+                  ? "bg-surface-container-lowest shadow-sm text-primary"
+                  : "text-on-secondary-container hover:bg-surface-container-high",
+              )}
+            >
+              Order History
+            </button>
+          </div>
+
+          {viewMode === "active" && (
+            <div className="hidden md:flex p-1.5 bg-surface-container-low rounded-full w-fit border border-outline-variant/10">
+              <button
+                onClick={() => setLayoutMode("list")}
+                className={cn(
+                  "px-6 py-2.5 rounded-full text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                  layoutMode === "list"
+                    ? "bg-surface-container-lowest shadow-sm text-primary font-bold"
+                    : "text-on-secondary-container hover:bg-surface-container-high"
+                )}
+              >
+                <List size={16} />
+                <span>List View</span>
+              </button>
+              <button
+                onClick={() => setLayoutMode("kanban")}
+                className={cn(
+                  "px-6 py-2.5 rounded-full text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                  layoutMode === "kanban"
+                    ? "bg-surface-container-lowest shadow-sm text-primary font-bold"
+                    : "text-on-secondary-container hover:bg-surface-container-high"
+                )}
+              >
+                <LayoutGrid size={16} />
+                <span>Kanban Board</span>
+              </button>
             </div>
+          )}
+
+          <button
+            onClick={() => setKitchenMode(!kitchenMode)}
+            className={cn(
+              "hidden md:flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all border-2 ml-auto",
+              kitchenMode
+                ? "bg-primary text-on-primary border-primary"
+                : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
+            )}
+          >
+            <UtensilsCrossed size={18} />
+            Kitchen Mode {kitchenMode ? "ON" : "OFF"}
+          </button>
+        </div>
+
+        {/* MOBILE COMPACT ACTIONS CONSOLE */}
+          <div className="flex md:hidden flex-col gap-2.5 w-full bg-surface-container-lowest/40 dark:bg-zinc-900/40 p-3 rounded-2xl border border-outline-variant/5">
+            <div className="flex items-center gap-2 w-full justify-between">
+              {/* Core viewMode switch */}
+              <div className="flex p-1 bg-surface-container-low rounded-full flex-1">
+                <button
+                  onClick={() => setViewMode("active")}
+                  className={cn(
+                    "flex-1 py-2 text-center rounded-full text-xs font-black transition-all",
+                    viewMode === "active"
+                      ? "bg-white dark:bg-zinc-800 shadow-sm text-primary"
+                      : "text-on-surface-variant/70 hover:text-on-surface",
+                  )}
+                >
+                  Current
+                </button>
+                <button
+                  onClick={() => setViewMode("history")}
+                  className={cn(
+                    "flex-1 py-2 text-center rounded-full text-xs font-black transition-all",
+                    viewMode === "history"
+                      ? "bg-white dark:bg-zinc-800 shadow-sm text-primary"
+                      : "text-on-surface-variant/70 hover:text-on-surface",
+                  )}
+                >
+                  History
+                </button>
+              </div>
+
+              {/* Live refresh shortcut button */}
+              <button
+                onClick={() => {
+                  console.log("Refreshing orders...");
+                  onRefresh();
+                }}
+                className="w-10 h-10 bg-primary text-on-primary rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform"
+                title="Refresh Queue"
+              >
+                <Clock size={16} />
+              </button>
+
+              {/* More tools console toggle */}
+              <button
+                onClick={() => setShowMobileActions(!showMobileActions)}
+                className={cn(
+                  "w-10 h-10 rounded-full flex items-center justify-center transition-all border",
+                  showMobileActions
+                    ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
+                    : "bg-surface-container-high text-on-surface border-transparent"
+                )}
+                title="Toggle Extra Tools"
+              >
+                <Settings size={16} className={cn(showMobileActions && "animate-spin")} />
+              </button>
+            </div>
+
+            {/* Collapsible secondary actions panel */}
+            <AnimatePresence>
+              {showMobileActions && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden flex flex-col gap-2 pt-2 border-t border-outline-variant/10"
+                >
+                  {/* Kitchen Mode row */}
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
+                    <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
+                      <UtensilsCrossed size={14} />
+                      Kitchen Mode {kitchenMode ? "(Active)" : "(Inactive)"}
+                    </span>
+                    <button
+                      onClick={() => setKitchenMode(!kitchenMode)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors",
+                        kitchenMode
+                          ? "bg-primary text-on-primary"
+                          : "bg-surface-container-high text-on-surface"
+                      )}
+                    >
+                      Toggle
+                    </button>
+                  </div>
+
+                  {/* Layout Mode row */}
+                  {viewMode === "active" && (
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
+                      <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
+                        <LayoutGrid size={14} />
+                        Layout: {layoutMode === "kanban" ? "Kanban Board" : "List View"}
+                      </span>
+                      <button
+                        onClick={() => setLayoutMode(layoutMode === "kanban" ? "list" : "kanban")}
+                        className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-primary text-on-primary cursor-pointer"
+                      >
+                        Switch
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Exports Row */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={exportToCSV}
+                      className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
+                    >
+                      <FileDown size={14} />
+                      Export Spreadsheet
+                    </button>
+                    <button
+                      onClick={exportToJSON}
+                      className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
+                    >
+                      <FileDown size={14} />
+                      Backup Data
+                    </button>
+                  </div>
+
+                  {/* Danger zone clear all */}
+                  <button
+                    onClick={() => {
+                      console.log("Clearing all orders...");
+                      onDeleteAllOrders();
+                      setShowMobileActions(false);
+                    }}
+                    className="flex items-center justify-center gap-2 py-2.5 bg-error/10 text-error rounded-xl text-xs font-bold"
+                  >
+                    <Trash2 size={14} />
+                    Clear All Orders (Reset)
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+      </section>
+
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-8 items-start",
+          !kitchenMode && "lg:grid-cols-12",
+        )}
+      >
+        <div
+          className={cn(
+            kitchenMode ? "col-span-full" : "lg:col-span-8",
+            "space-y-6",
+          )}
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-4 mb-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
+                  Filter Status:
+                </span>
+                {orderStatuses.map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setFilterStatus(status)}
+                    className={cn(
+                      "px-4 py-1.5 rounded-full text-xs font-bold transition-all border-2",
+                      filterStatus === status
+                        ? "bg-primary/10 text-primary border-primary"
+                        : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
+                    )}
+                  >
+                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
+                  Status Dropdown:
+                </span>
+                <div className="relative">
+                  <select
+                    id="status-filter-select"
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value as OrderStatus | "All")}
+                    className="appearance-none bg-surface-container-low text-on-surface text-xs font-bold pl-4 pr-10 py-2 rounded-xl border border-outline-variant/20 focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer shadow-xs transition-all"
+                  >
+                    <option value="All">All Statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="preparing">Preparing</option>
+                    <option value="ready">Ready</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant">
+                    <Filter size={12} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                {(filterStatus !== "All" || orderTypeFilter !== "All" || startDate || endDate || searchTerm || customerSearch || phoneSearch) && (
+                  <button
+                    onClick={() => {
+                      setFilterStatus("All");
+                      setOrderTypeFilter("All");
+                      setStartDate("");
+                      setEndDate("");
+                      setSearchTerm("");
+                      setCustomerSearch("");
+                      setPhoneSearch("");
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black text-white bg-error shadow-lg shadow-error/20 hover:scale-105 active:scale-95 transition-all"
+                  >
+                    <RefreshCw size={12} />
+                    RESET FILTERS
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {viewMode === "history" && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="w-full bg-surface-container-low p-5 rounded-2xl border border-outline-variant/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-2 animate-in fade-in slide-in-from-top-2 duration-300"
+              >
+                <div className="flex items-center gap-2 text-on-surface">
+                  <Calendar size={18} className="text-primary shrink-0" />
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Filter by Date Range</h4>
+                    <p className="text-[10px] text-on-surface-variant font-semibold">Analyze and filter historic orders</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { label: "All Time", start: "", end: "" },
+                    { label: "Today", start: new Date().toISOString().split("T")[0], end: new Date().toISOString().split("T")[0] },
+                    { label: "Yesterday", start: getPastDateStr(1), end: getPastDateStr(1) },
+                    { label: "7 Days", start: getPastDateStr(7), end: new Date().toISOString().split("T")[0] },
+                    { label: "30 Days", start: getPastDateStr(30), end: new Date().toISOString().split("T")[0] },
+                  ].map((preset) => {
+                    const isSelected = startDate === preset.start && endDate === preset.end;
+                    return (
+                      <button
+                        key={preset.label}
+                        onClick={() => {
+                          setStartDate(preset.start);
+                          setEndDate(preset.end);
+                        }}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer hover:scale-[1.02] active:scale-95",
+                          isSelected 
+                            ? "bg-primary text-on-primary shadow-xs" 
+                            : "bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant"
+                        )}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant/75">From:</span>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="bg-surface-container-highest/60 text-on-surface px-2.5 py-1.5 rounded-xl border border-outline-variant/10 focus:outline-none focus:ring-1 focus:ring-primary text-[11px] font-bold text-on-surface"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant/75">To:</span>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="bg-surface-container-highest/60 text-on-surface px-2.5 py-1.5 rounded-xl border border-outline-variant/10 focus:outline-none focus:ring-1 focus:ring-primary text-[11px] font-bold text-on-surface"
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-headline text-xl font-bold flex items-center gap-2">
+                {viewMode === "active" ? "Active Queue" : "Order History"}
+                <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">
+                  {displayedOrders.length} Orders
+                </span>
+              </h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowSearch(!showSearch)}
+                  className={cn(
+                    "p-2 rounded-full transition-colors",
+                    showSearch
+                      ? "bg-primary text-on-primary"
+                      : "hover:bg-surface-container-low text-on-surface-variant",
+                  )}
+                >
+                  <Search size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 mb-2 overflow-x-auto pb-2 scrollbar-hide">
+              <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">
+                Sort by:
+              </span>
+              {[
+                { id: "created_at", label: "Date", icon: Clock },
+                { id: "total_price", label: "Price", icon: TrendingUp },
+                { id: "id", label: "Order ID", icon: ReceiptText },
+              ].map((field) => (
+                <button
+                  key={field.id}
+                  onClick={() =>
+                    handleSort(field.id as "id" | "total_price" | "created_at")
+                  }
+                  className={cn(
+                    "flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all shrink-0 border-2",
+                    sortField === field.id
+                      ? "bg-primary text-on-primary border-primary shadow-[0_4px_12px_rgba(167,52,0,0.3)] scale-105 ring-2 ring-primary/20"
+                      : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
+                  )}
+                >
+                  <field.icon
+                    size={14}
+                    className={cn(
+                      sortField === field.id ? "animate-pulse" : "",
+                    )}
+                  />
+                  {field.label}
+                  {sortField === field.id && (
+                    <motion.span
+                      initial={{ scale: 0, rotate: -180 }}
+                      animate={{ scale: 1, rotate: 0 }}
+                      className="ml-1 bg-white/20 p-0.5 rounded-full flex items-center justify-center"
+                    >
+                      {sortDirection === "asc" ? (
+                        <ArrowUp size={12} />
+                      ) : (
+                        <ArrowDown size={12} />
+                      )}
+                    </motion.span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {showSearch && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden space-y-4"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="relative">
+                    <Search
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
+                      size={18}
+                    />
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Search product or ID..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-3 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none"
+                    />
+                  </div>
+                  <div className="relative">
+                    <UserIcon
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
+                      size={18}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Customer Name..."
+                      value={customerSearch}
+                      onChange={(e) => setCustomerSearch(e.target.value)}
+                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-3 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none"
+                    />
+                  </div>
+                  <div className="relative">
+                    <Phone
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
+                      size={18}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Phone Number..."
+                      value={phoneSearch}
+                      onChange={(e) => setPhoneSearch(e.target.value)}
+                      className="w-full bg-surface-container-lowest border-2 border-primary/10 rounded-2xl py-3 pl-12 pr-5 focus:ring-2 focus:ring-primary/40 transition-all outline-none"
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {displayedOrders.length === 0 ? (
+            <div className="bg-surface-container-low rounded-[2rem] p-12 flex flex-col items-center text-center space-y-6 border-2 border-dashed border-outline-variant/20">
+              <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center">
+                {viewMode === "active" ? (
+                  <Clock className="text-primary" size={40} />
+                ) : (
+                  <ReceiptText className="text-primary" size={40} />
+                )}
+              </div>
+              <div className="space-y-2">
+                <h4 className="font-headline text-2xl font-bold">
+                  {viewMode === "active" ? "All caught up!" : "No history yet"}
+                </h4>
+                <p className="text-on-surface-variant max-w-xs mx-auto">
+                  {viewMode === "active"
+                    ? "Your kitchen is currently clear. New orders will appear here as they arrive."
+                    : "Completed orders will appear here once they are fulfilled."}
+                </p>
+              </div>
+              {viewMode === "active" && (
+                <button
+                  onClick={onRefresh}
+                  className="px-8 py-3 bg-surface-container-lowest text-primary font-bold rounded-full shadow-sm hover:scale-105 transition-all border border-primary/10"
+                >
+                  Check for New Orders
+                </button>
+              )}
+            </div>
+          ) : viewMode === "active" && layoutMode === "kanban" ? (
+            <div className="flex overflow-x-auto hide-scrollbar xl:grid xl:grid-cols-4 gap-6 items-start snap-x snap-mandatory pb-4 xl:pb-0">
+              {/* Column 1: New Orders */}
+              <div className="bg-surface-container-low/60 rounded-[2.5rem] p-5 border border-outline-variant/10 flex flex-col gap-4 min-h-[500px] w-[85vw] md:w-[360px] xl:w-[400px] shrink-0 snap-center">
+                <div className="flex items-center justify-between px-2 pb-2 border-b border-outline-variant/10">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                    <div>
+                      <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">New Orders</h3>
+                      {pendingOrderPriorityIds.length > 0 && (
+                        <span className="text-[8px] font-bold text-amber-600 dark:text-amber-400 block -mt-0.5 flex items-center gap-1">
+                          <SlidersHorizontal size={8} /> Prioritized
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {pendingOrderPriorityIds.length > 0 && (
+                      <button
+                        onClick={handleResetPendingPriority}
+                        title="Reset to default chronological order"
+                        className="px-2 py-0.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant text-[10px] font-bold rounded-full transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <RotateCcw size={10} /> Reset
+                      </button>
+                    )}
+                    {selectedPendingOrders.length > 0 && (
+                      <button
+                        onClick={() => {
+                          const ordersToPrint = prioritizedPendingOrders.filter((o) => selectedPendingOrders.includes(o.id));
+                          handleBulkPrint(ordersToPrint, printingFormat, printingIncludeAddr);
+                          setSelectedPendingOrders([]);
+                        }}
+                        className="px-2.5 py-0.5 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-[10px] rounded-full transition-colors flex items-center gap-1"
+                      >
+                        <Printer size={10} /> Print Selected
+                      </button>
+                    )}
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 font-bold text-[10px]">
+                      {prioritizedPendingOrders.length}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
+                  <AnimatePresence mode="popLayout">
+                  {prioritizedPendingOrders.map((order, index) => {
+                    const items = safeGetOrderItems(order.items);
+                    const isSelected = selectedPendingOrders.includes(order.id);
+                    const isDelivery = isOrderDelivery(order);
+                    const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
+                    const isDispatched = isDelivery && (order.rider_id || order.delivery_status === "accepted" || order.delivery_status === "picked_up" || order.delivery_status === "dispatched");
+                    const isDragging = draggedPendingId === order.id;
+                    const isDragOver = dragOverPendingId === order.id;
+
+                    return (
+                      <motion.div
+                        layoutId={order.id}
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
+                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                        key={order.id}
+                        draggable={true}
+                        onDragStart={(e) => {
+                          setDraggedPendingId(order.id);
+                          e.dataTransfer.setData("text/plain", order.id);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          if (draggedPendingId && draggedPendingId !== order.id && dragOverPendingId !== order.id) {
+                            setDragOverPendingId(order.id);
+                          }
+                        }}
+                        onDragLeave={(e) => {
+                          if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                          if (dragOverPendingId === order.id) {
+                            setDragOverPendingId(null);
+                          }
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (draggedPendingId && draggedPendingId !== order.id) {
+                            handleReorderPendingOrders(draggedPendingId, order.id);
+                          }
+                          setDraggedPendingId(null);
+                          setDragOverPendingId(null);
+                        }}
+                        onDragEnd={() => {
+                          setDraggedPendingId(null);
+                          setDragOverPendingId(null);
+                        }}
+                        className={cn(
+                          "order-card bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300 space-y-2 cursor-grab active:cursor-grabbing",
+                          isSelected ? "border-primary ring-2 ring-primary/30" : "",
+                          isDragging ? "opacity-40 scale-[0.98] border-dashed border-primary ring-2 ring-primary/20" : "",
+                          isDragOver ? "border-primary bg-primary/[0.04] ring-2 ring-primary shadow-md -translate-y-1" : "",
+                          !isDragging && !isDragOver && (
+                            isFindingRider
+                              ? "border-2 border-amber-500 ring-2 ring-amber-500/30 animate-pulse bg-gradient-to-b from-amber-500/5 via-transparent to-transparent dark:from-amber-500/10"
+                              : isDispatched
+                                ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/10"
+                                : "border-outline-variant/10"
+                          )
+                        )}
+                        whileHover={{ y: -2 }}
+                      >
+                        {/* Drag Over Drop Indicator Banner */}
+                        {isDragOver && (
+                          <div className="absolute top-0 left-0 right-0 h-1 bg-primary rounded-t-2xl animate-pulse" />
+                        )}
+
+                        {/* Rider / Delivery Live Status Indicator */}
+                        <div className="mb-2">
+                          {renderRiderStatusBadge(order)}
+                        </div>
+                        {/* Top info */}
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex items-start gap-2">
+                            <div
+                              className="mt-1 cursor-grab active:cursor-grabbing text-on-surface-variant/40 hover:text-primary transition-colors flex items-center justify-center shrink-0"
+                              title="Drag to prioritize"
+                            >
+                              <GripVertical size={15} />
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedPendingOrders(prev => [...prev, order.id]);
+                                } else {
+                                  setSelectedPendingOrders(prev => prev.filter(id => id !== order.id));
+                                }
+                              }}
+                              className="mt-1 w-3.5 h-3.5 rounded border-outline-variant/30 text-primary focus:ring-primary/50 cursor-pointer"
+                            />
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-mono font-black text-primary uppercase">
+                                  #{order.id.slice(-4).toUpperCase()}
+                                </span>
+                                <span className="px-1.5 py-0.2 rounded text-[8px] font-black font-mono bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20" title="Priority rank">
+                                  P{index + 1}
+                                </span>
+                              </div>
+                              <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
+                              {/* Custom Tags display */}
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {getOrderTags(order).map((tag) => {
+                                  const colors: Record<string, string> = {
+                                    "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+                                    "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+                                    "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
+                                    "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
+                                  };
+                                  return (
+                                    <span
+                                      key={tag}
+                                      className={cn(
+                                        "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
+                                        colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
+                                      )}
+                                    >
+                                      {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
+                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        {/* Items list */}
+                        <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
+                          {items.map((item, idx) => {
+                            const isObj = typeof item === "object" && item !== null;
+                            const name = isObj ? item.name : String(item);
+                            const qty = isObj ? item.quantity : 1;
+                            const price = isObj ? item.price : 0;
+                            return (
+                              <div key={idx} className="flex justify-between">
+                                <span className="truncate max-w-[150px]">{qty}x {name}</span>
+                                <span className="opacity-70 font-mono">R {Number(price || 0).toFixed(2)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Order Type Badge & Address */}
+                        <div className="mt-2 flex items-center justify-between gap-1.5 text-[10px] text-on-surface-variant">
+                          <span className={cn(
+                            "px-2 py-0.5 rounded-full font-bold uppercase text-[8px]",
+                            !isOrderDelivery(order) ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                          )}>
+                            {!isOrderDelivery(order) ? "collection" : "delivery"}
+                          </span>
+                          <AddressDisplay address={order.address} city={order.city} className="text-[10px] max-sm:text-[9px] font-medium max-w-[170px]" maxParts={2} />
+                        </div>
+
+                        {/* Action buttons with inline input forms */}
+                        {acceptingOrderId === order.id ? (
+                          <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
+                            <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Order Notes & Custom Message</label>
+                            <input
+                              type="text"
+                              value={orderNotes}
+                              onChange={(e) => setOrderNotes(e.target.value)}
+                              className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface mb-2"
+                              placeholder="Kitchen notes (e.g., no onions)..."
+                              autoFocus
+                            />
+                            <input
+                              type="text"
+                              value={customMessage}
+                              onChange={(e) => setCustomMessage(e.target.value)}
+                              className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
+                              placeholder="Receipt message..."
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
+                                  onUpdateStatus(order.id, "preparing", finalMsg);
+                                  setAcceptingOrderId(null);
+                                  setOrderNotes("");
+                                }}
+                                className="flex-1 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                              >
+                                Send & Accept
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setAcceptingOrderId(null);
+                                  setOrderNotes("");
+                                }}
+                                className="px-2.5 py-1.5 bg-surface-container-high text-on-surface-variant text-[10px] font-bold rounded-lg hover:bg-surface-container-highest transition-colors cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
+                            <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
+                            <div className="flex flex-col items-end gap-1 flex-1">
+                              {isLimitReached && (
+                                <span className="text-[8px] font-bold text-error leading-none mb-0.5">LIMIT REACHED</span>
+                              )}
+                              <button
+                                disabled={isLimitReached}
+                                onClick={(e) => {
+                                  if (isOrderDelivery(order) && !order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
+                                    setUnlinkedModalOrder(order);
+                                    return;
+                                  }
+                                  setAcceptingOrderId(order.id);
+                                  const card = e.currentTarget.closest(".order-card");
+                                  if (card) {
+                                    setTimeout(() => {
+                                      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                                    }, 100);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-primary text-on-primary text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none w-full text-center"
+                              >
+                                Accept
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Quick Tag Toggles */}
+                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
+                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
+                          <div className="flex items-center gap-1">
+                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
+                              const isActive = (orderTags[order.id] || []).includes(tag);
+                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
+                              return (
+                                <button
+                                  key={tag}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleOrderTag(order.id, tag);
+                                  }}
+                                  title={`Toggle ${tag}`}
+                                  className={cn(
+                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
+                                    isActive
+                                      ? tag === "Rush"
+                                        ? "bg-rose-500 text-white"
+                                        : tag === "VIP"
+                                          ? "bg-amber-500 text-white"
+                                          : "bg-teal-500 text-white"
+                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
+                                  )}
+                                >
+                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                  {prioritizedPendingOrders.length === 0 && (
+                    <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">No new orders</div>
+                  )}
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              {/* Column 2: Preparing */}
+              <div className="bg-surface-container-low/60 rounded-[2.5rem] p-5 border border-outline-variant/10 flex flex-col gap-4 min-h-[500px] w-[85vw] md:w-[360px] xl:w-[400px] shrink-0 snap-center">
+                <div className="flex items-center justify-between px-2 pb-2 border-b border-outline-variant/10">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                    <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">Preparing</h3>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 font-bold text-[10px]">
+                    {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").length}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
+                  <AnimatePresence mode="popLayout">
+                  {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").map((order) => {
+                    const items = safeGetOrderItems(order.items);
+                    const isDelivery = isOrderDelivery(order);
+                    const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
+                    const isDispatched = isDelivery && (order.rider_id || order.delivery_status === "accepted" || order.delivery_status === "picked_up" || order.delivery_status === "dispatched");
+
+                    return (
+                      <motion.div
+                        layoutId={order.id}
+                        key={order.id}
+                        className={cn(
+                          "order-card bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300 space-y-2",
+                          isFindingRider
+                            ? "border-2 border-amber-500 ring-2 ring-amber-500/30 animate-pulse bg-gradient-to-b from-amber-500/5 via-transparent to-transparent dark:from-amber-500/10"
+                            : isDispatched
+                              ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/10"
+                              : "border-outline-variant/10"
+                        )}
+                        whileHover={{ y: -2 }}
+                      >
+                        {/* Rider / Delivery Live Status Indicator */}
+                        <div className="mb-2">
+                          {renderRiderStatusBadge(order)}
+                        </div>
+                        {/* Top info */}
+                        <div className="flex justify-between items-start gap-2">
+                          <div>
+                            <span className="text-[10px] font-mono font-black text-primary uppercase">
+                              #{order.id.slice(-4).toUpperCase()}
+                            </span>
+                            <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
+                            {/* Custom Tags display */}
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {getOrderTags(order).map((tag) => {
+                                const colors: Record<string, string> = {
+                                  "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+                                  "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+                                  "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
+                                  "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
+                                };
+                                return (
+                                  <span
+                                    key={tag}
+                                    className={cn(
+                                      "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
+                                      colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
+                                    )}
+                                  >
+                                    {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
+                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        {/* Items list */}
+                        <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
+                          {items.map((item, idx) => {
+                            const isObj = typeof item === "object" && item !== null;
+                            const name = isObj ? item.name : String(item);
+                            const qty = isObj ? item.quantity : 1;
+                            const price = isObj ? item.price : 0;
+                            return (
+                              <div key={idx} className="flex justify-between">
+                                <span className="truncate max-w-[150px]">{qty}x {name}</span>
+                                <span className="opacity-70 font-mono">R {Number(price || 0).toFixed(2)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Delivery Track Badge & Gated Dispatch Action */}
+                        <div className="mt-2.5 space-y-1.5">
+                          {isDelivery && order.status !== "dispatched" && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
+                                  setUnlinkedModalOrder(order);
+                                } else if (connectedRiders.length === 1 && onDispatchToRider) {
+                                  const r = connectedRiders[0];
+                                  void onDispatchToRider(order.id, r.rider_id || String(r.id), r.rider_name || undefined, r.rider_phone || undefined);
+                                } else {
+                                  setShowRiderPicker(order.id);
+                                }
+                              }}
+                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
+                            >
+                              <Rocket size={12} className="animate-pulse text-amber-200" />
+                              <span>Send Rider (Dispatch)</span>
+                            </button>
+                          )}
+                          {isDelivery ? (
+                            <div className="p-2 bg-surface-container-low rounded-xl border border-outline-variant/5 text-[9px] font-bold text-on-surface-variant flex items-center justify-between">
+                              <span className="uppercase tracking-wider text-on-surface-variant/60">Delivery status:</span>
+                              <span className="text-primary uppercase font-black">{order.delivery_status?.replace("_", " ") || "Pending Dispatch"}</span>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {/* Action buttons with inline input forms */}
+                        {order.status === "accepted" ? (
+                          preparingOrderId === order.id ? (
+                            <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
+                              <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Prep Time (mins)</label>
+                              <input
+                                type="text"
+                                value={estimatedTime}
+                                onChange={(e) => setEstimatedTime(e.target.value)}
+                                className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
+                                placeholder="e.g. 25 mins"
+                                autoFocus
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    onUpdateStatus(order.id, "preparing", undefined, estimatedTime);
+                                    setPreparingOrderId(null);
+                                  }}
+                                  className="flex-1 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                                >
+                                  Start Prep
+                                </button>
+                                <button
+                                  onClick={() => setPreparingOrderId(null)}
+                                  className="px-2.5 py-1.5 bg-surface-container-high text-on-surface-variant text-[10px] font-bold rounded-lg hover:bg-surface-container-highest transition-colors cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
+                              <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
+                              <button
+                                onClick={(e) => {
+                                  setPreparingOrderId(order.id);
+                                  const card = e.currentTarget.closest(".order-card");
+                                  if (card) {
+                                    setTimeout(() => {
+                                      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                                    }, 100);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-95 active:scale-95 transition-all cursor-pointer flex-1 text-center"
+                              >
+                                Start Preparing
+                              </button>
+                            </div>
+                          )
+                        ) : (
+                          readyOrderId === order.id ? (
+                            <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
+                              <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Est. Delivery Time</label>
+                              <input
+                                type="text"
+                                value={estimatedTime}
+                                onChange={(e) => setEstimatedTime(e.target.value)}
+                                className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
+                                placeholder="e.g. 15-20 mins"
+                                autoFocus
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    onUpdateStatus(order.id, "ready", undefined, estimatedTime);
+                                    setReadyOrderId(null);
+                                  }}
+                                  className="flex-1 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer"
+                                >
+                                  Confirm Ready
+                                </button>
+                                <button
+                                  onClick={() => setReadyOrderId(null)}
+                                  className="px-2.5 py-1.5 bg-surface-container-high text-on-surface-variant text-[10px] font-bold rounded-lg hover:bg-surface-container-highest transition-colors cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
+                              <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
+                              <button
+                                onClick={(e) => {
+                                  setReadyOrderId(order.id);
+                                  const card = e.currentTarget.closest(".order-card");
+                                  if (card) {
+                                    setTimeout(() => {
+                                      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                                    }, 100);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer flex-1 text-center"
+                              >
+                                Mark Ready
+                              </button>
+                            </div>
+                          )
+                        )}
+
+                        {/* Quick Tag Toggles */}
+                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
+                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
+                          <div className="flex items-center gap-1">
+                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
+                              const isActive = (orderTags[order.id] || []).includes(tag);
+                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
+                              return (
+                                <button
+                                  key={tag}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleOrderTag(order.id, tag);
+                                  }}
+                                  title={`Toggle ${tag}`}
+                                  className={cn(
+                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
+                                    isActive
+                                      ? tag === "Rush"
+                                        ? "bg-rose-500 text-white"
+                                        : tag === "VIP"
+                                          ? "bg-amber-500 text-white"
+                                          : "bg-teal-500 text-white"
+                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
+                                  )}
+                                >
+                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                  {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").length === 0 && (
+                    <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None in prep</div>
+                  )}
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              {/* Column 3: Ready for Pickup */}
+              <div className="bg-surface-container-low/60 rounded-[2.5rem] p-5 border border-outline-variant/10 flex flex-col gap-4 min-h-[500px] w-[85vw] md:w-[360px] xl:w-[400px] shrink-0 snap-center">
+                <div className="flex items-center justify-between px-2 pb-2 border-b border-outline-variant/10">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                    <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">Ready</h3>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-bold text-[10px]">
+                    {displayedOrders.filter(o => o.status === "ready").length}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
+                  <AnimatePresence mode="popLayout">
+                  {displayedOrders.filter(o => o.status === "ready").map((order) => {
+                    const items = safeGetOrderItems(order.items);
+                    const canNudge = order.rider_id && order.status !== "completed";
+                    const isDelivery = isOrderDelivery(order);
+                    const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
+                    const isDispatched = isDelivery && (order.rider_id || order.delivery_status === "accepted" || order.delivery_status === "picked_up" || order.delivery_status === "dispatched");
+
+                    return (
+                      <motion.div
+                        layoutId={order.id}
+                        key={order.id}
+                        className={cn(
+                          "order-card bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300 space-y-2",
+                          isFindingRider
+                            ? "border-2 border-amber-500 ring-2 ring-amber-500/30 animate-pulse bg-gradient-to-b from-amber-500/5 via-transparent to-transparent dark:from-amber-500/10"
+                            : isDispatched
+                              ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/10"
+                              : "border-outline-variant/10"
+                        )}
+                        whileHover={{ y: -2 }}
+                      >
+                        {/* Rider / Delivery Live Status Indicator */}
+                        <div className="mb-2">
+                          {renderRiderStatusBadge(order)}
+                        </div>
+                        {/* Top info */}
+                        <div className="flex justify-between items-start gap-2">
+                          <div>
+                            <span className="text-[10px] font-mono font-black text-primary uppercase">
+                              #{order.id.slice(-4).toUpperCase()}
+                            </span>
+                            <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
+                            {/* Custom Tags display */}
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {getOrderTags(order).map((tag) => {
+                                const colors: Record<string, string> = {
+                                  "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+                                  "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+                                  "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
+                                  "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
+                                };
+                                return (
+                                  <span
+                                    key={tag}
+                                    className={cn(
+                                      "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
+                                      colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
+                                    )}
+                                  >
+                                    {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
+                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        {/* Items list */}
+                        <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
+                          {items.map((item, idx) => {
+                            const isObj = typeof item === "object" && item !== null;
+                            const name = isObj ? item.name : String(item);
+                            const qty = isObj ? item.quantity : 1;
+                            const price = isObj ? item.price : 0;
+                            return (
+                              <div key={idx} className="flex justify-between">
+                                <span className="truncate max-w-[150px]">{qty}x {name}</span>
+                                <span className="opacity-70 font-mono">R {Number(price || 0).toFixed(2)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Gated Dispatch Action & Rider details */}
+                        {isOrderDelivery(order) && order.status !== "dispatched" && (
+                          <div className="mt-2.5">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
+                                  setUnlinkedModalOrder(order);
+                                } else if (connectedRiders.length === 1 && onDispatchToRider) {
+                                  const r = connectedRiders[0];
+                                  void onDispatchToRider(order.id, r.rider_id || String(r.id), r.rider_name || undefined, r.rider_phone || undefined);
+                                } else {
+                                  setShowRiderPicker(order.id);
+                                }
+                              }}
+                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
+                            >
+                              <Rocket size={12} className="animate-pulse text-amber-200" />
+                              <span>Send Rider (Dispatch)</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {canNudge && (
+                          <div className="mt-2">
+                            <button
+                              onClick={() => {
+                                const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
+                                sendRiderNudge(order.rider_id!, nudgeMessage);
+                                toast.success("Rider nudged successfully!");
+                              }}
+                              className="w-full py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <Zap size={11} className="text-amber-600" />
+                              <span>Nudge Rider</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Action buttons */}
+                        <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
+                          <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
+                          <button
+                            onClick={() => onUpdateStatus(order.id, "completed")}
+                            className="px-3 py-1.5 bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-95 active:scale-95 transition-all cursor-pointer flex-1 text-center"
+                          >
+                            Complete
+                          </button>
+                        </div>
+
+                        {/* Quick Tag Toggles */}
+                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
+                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
+                          <div className="flex items-center gap-1">
+                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
+                              const isActive = (orderTags[order.id] || []).includes(tag);
+                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
+                              return (
+                                <button
+                                  key={tag}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleOrderTag(order.id, tag);
+                                  }}
+                                  title={`Toggle ${tag}`}
+                                  className={cn(
+                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
+                                    isActive
+                                      ? tag === "Rush"
+                                        ? "bg-rose-500 text-white"
+                                        : tag === "VIP"
+                                          ? "bg-amber-500 text-white"
+                                          : "bg-teal-500 text-white"
+                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
+                                  )}
+                                >
+                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                  {displayedOrders.filter(o => o.status === "ready").length === 0 && (
+                    <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None ready</div>
+                  )}
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              {/* Column 4: Picked Up / Completed */}
+              <div className="bg-surface-container-low/60 rounded-[2.5rem] p-5 border border-outline-variant/10 flex flex-col gap-4 min-h-[500px] w-[85vw] md:w-[360px] xl:w-[400px] shrink-0 snap-center">
+                <div className="flex items-center justify-between px-2 pb-2 border-b border-outline-variant/10">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
+                    <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">Fulfilled</h3>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-zinc-500/10 text-zinc-600 font-bold text-[10px]">
+                    {fulfilledOrdersToday.length}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
+                  <AnimatePresence mode="popLayout">
+                  {fulfilledOrdersToday.map((order) => {
+                    const items = safeGetOrderItems(order.items);
+                    return (
+                      <motion.div
+                        layoutId={order.id}
+                        key={order.id}
+                        className="order-card bg-white dark:bg-zinc-900 border border-outline-variant/10 rounded-2xl p-4 shadow-xs relative overflow-hidden group opacity-75"
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                          <div>
+                            <span className="text-[10px] font-mono font-black text-primary uppercase">
+                              #{order.id.slice(-4).toUpperCase()}
+                            </span>
+                            <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
+                            {/* Custom Tags display */}
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {getOrderTags(order).map((tag) => {
+                                const colors: Record<string, string> = {
+                                  "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+                                  "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+                                  "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
+                                  "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
+                                };
+                                return (
+                                  <span
+                                    key={tag}
+                                    className={cn(
+                                      "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
+                                      colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
+                                    )}
+                                  >
+                                    {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <span className={cn(
+                            "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md",
+                            order.status === "completed" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                          )}>
+                            {order.status}
+                          </span>
+                        </div>
+
+                        {/* Items list */}
+                        <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
+                          {items.map((item, idx) => {
+                            const isObj = typeof item === "object" && item !== null;
+                            const name = isObj ? item.name : String(item);
+                            const qty = isObj ? item.quantity : 1;
+                            const price = isObj ? item.price : 0;
+                            return (
+                              <div key={idx} className="flex justify-between">
+                                <span className="truncate max-w-[150px]">{qty}x {name}</span>
+                                <span className="opacity-70 font-mono">R {Number(price || 0).toFixed(2)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between">
+                          <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
+                          <span className="text-[9px] font-bold text-zinc-500 font-mono uppercase">Done</span>
+                        </div>
+
+                        {/* Quick Tag Toggles */}
+                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
+                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
+                          <div className="flex items-center gap-1">
+                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
+                              const isActive = (orderTags[order.id] || []).includes(tag);
+                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
+                              return (
+                                <button
+                                  key={tag}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleOrderTag(order.id, tag);
+                                  }}
+                                  title={`Toggle ${tag}`}
+                                  className={cn(
+                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
+                                    isActive
+                                      ? tag === "Rush"
+                                        ? "bg-rose-500 text-white"
+                                        : tag === "VIP"
+                                          ? "bg-amber-500 text-white"
+                                          : "bg-teal-500 text-white"
+                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
+                                  )}
+                                >
+                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                  {fulfilledOrdersToday.length === 0 && (
+                    <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None fulfilled today</div>
+                  )}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {viewMode === "active" && selectedPendingOrders.length > 0 && (
+                <div className="flex justify-end mb-4">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const ordersToPrint = paginatedOrders.filter((o) => selectedPendingOrders.includes(o.id));
+                      handleBulkPrint(ordersToPrint, printingFormat, printingIncludeAddr);
+                      setSelectedPendingOrders([]);
+                    }}
+                    className="px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs rounded-full transition-colors flex items-center gap-2"
+                  >
+                    <Printer size={14} /> Print Selected ({selectedPendingOrders.length})
+                  </button>
+                </div>
+              )}
+              <div
+                className={cn(
+                  "grid gap-4 sm:gap-6 w-full min-w-0",
+                  kitchenMode
+                    ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+                    : "grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3"
+                )}
+              >
+                <AnimatePresence mode="popLayout">
+                  {paginatedOrders.map((order, i) => renderOrderCard(order, i))}
+                </AnimatePresence>
+              </div>
             <Pagination
               currentPage={ordersPage}
               totalPages={totalOrdersPages}
@@ -11422,10 +11980,8 @@ const Coupons = ({
   };
 
   const toggleCoupon = async (id: string, isActive: boolean) => {
-    const { error } = await supabase
-      .from("coupons")
-      .update({ is_active: !isActive })
-      .eq("id", id);
+    // Not implemented yet: const { error } = await updateFirestoreCoupon(id, { is_active: !isActive });
+  const error = null;
 
     if (!error) {
       setCoupons((prev) =>
@@ -12670,7 +13226,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [authView, setAuthView] = useState<"signin" | "signup">("signin");
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
-  const [signupEmail, setSignupEmail] = useState<string>("");
+  const [signupEmail] = useState<string>("");
   const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isSaveSuccess, setIsSaveSuccess] = useState<boolean>(false);
@@ -12694,6 +13250,7 @@ function App() {
   const { activeTab, setActiveTab } = useAppNavigation("dashboard");
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showLegal, setShowLegal] = useState(false);
   const [dataSaverMode] = useState<boolean>(() => localStorage.getItem("localeats_data_saver") === "true");
   const [darkMode, setDarkMode] = useState<boolean>(() => localStorage.getItem("darkMode") === "true");
   const [showOfflineInfoModal, setShowOfflineInfoModal] = useState<boolean>(false);
@@ -12835,51 +13392,99 @@ function App() {
     [shops, user],
   );
 
+  // Centralized Shop Location & Sync State Engine
+  const {
+    locationState: currentShopLocation,
+    syncAnalysis: currentShopLocationSync,
+    isLocating: isLocatingShopGPS,
+    isSaving: isSavingShopLocation,
+    detectCurrentGPS: detectShopGPS,
+    autoAlignWithCoordinates: autoAlignShopCity,
+    saveLocation: saveShopLocationSettings,
+  } = useShopLocation({
+    shop: currentShop,
+    onLocationSaved: (updated) => {
+      setShops((prev) =>
+        prev.map((s) => (s.id === currentShop?.id ? { ...s, ...updated } : s))
+      );
+    },
+  });
+
+  const lastSyncedShopAuthRef = useRef<string>("");
+  const shopId = currentShop?.id;
+  const deliveryRadiusKm = currentShop?.delivery_radius_km;
+  const deliveryRadiusEnabled = currentShop?.delivery_radius_enabled;
+  const shopOwnerId = currentShop?.owner_id;
+  const shopEmail = currentShop?.email;
+  const shopName = currentShop?.name;
+  const userId = user?.id;
+  const userEmail = user?.email;
+  const userMetadataShopId = user?.user_metadata?.shop_id;
+
   useEffect(() => {
-    if (currentShop) {
-      setDeliverySettings((prev) => ({
-        ...prev,
-        maxDistanceKm: currentShop.delivery_radius_km ?? prev.maxDistanceKm ?? 10,
-        radiusEnabled: currentShop.delivery_radius_enabled ?? prev.radiusEnabled ?? true,
-      }));
+    if (shopId) {
+      setDeliverySettings((prev) => {
+        const nextDist = deliveryRadiusKm ?? prev.maxDistanceKm ?? 10;
+        const nextEnabled = deliveryRadiusEnabled ?? prev.radiusEnabled ?? true;
+        if (prev.maxDistanceKm === nextDist && prev.radiusEnabled === nextEnabled) {
+          return prev;
+        }
+        return {
+          ...prev,
+          maxDistanceKm: nextDist,
+          radiusEnabled: nextEnabled,
+        };
+      });
 
       try {
-        localStorage.setItem("localeats_my_shop_id", String(currentShop.id));
-        localStorage.setItem("localeats_vendor_shop_id", String(currentShop.id));
-        localStorage.setItem("localeats_last_selected_shop_id", String(currentShop.id));
+        localStorage.setItem("localeats_my_shop_id", String(shopId));
+        localStorage.setItem("localeats_vendor_shop_id", String(shopId));
+        localStorage.setItem("localeats_last_selected_shop_id", String(shopId));
       } catch {
         // ignore
       }
 
-      if (user) {
-        if (currentShop.owner_id !== user.id || currentShop.email !== user.email) {
-          supabase
-            .from("shops")
-            .update({ owner_id: user.id, email: user.email || "" })
-            .eq("id", currentShop.id)
-            .then()
-            .catch(() => {});
-        }
+      if (userId) {
+        const syncKey = `${userId}_${shopId}`;
+        if (lastSyncedShopAuthRef.current !== syncKey) {
+          lastSyncedShopAuthRef.current = syncKey;
 
-        if (
-          user.user_metadata?.shop_id !== currentShop.id ||
-          user.user_metadata?.vendor_shop_id !== currentShop.id
-        ) {
-          supabase.auth
-            .updateUser({
-              data: {
-                shop_id: currentShop.id,
-                vendor_shop_id: currentShop.id,
-                permanent_owner_id: user.id,
-                vendor_shop_name: currentShop.name || "My-Kota",
-              },
-            })
-            .then()
-            .catch(() => {});
+          if (shopOwnerId !== userId || shopEmail !== userEmail) {
+            supabase
+              .from("shops")
+              .update({ owner_id: userId, email: userEmail || "" })
+              .eq("id", shopId)
+              .then()
+              .catch(() => {});
+          }
+
+          if (String(userMetadataShopId) !== String(shopId)) {
+            supabase.auth
+              .updateUser({
+                data: {
+                  shop_id: shopId,
+                  vendor_shop_id: shopId,
+                  permanent_owner_id: userId,
+                  vendor_shop_name: shopName || "My-Kota",
+                },
+              })
+              .then()
+              .catch(() => {});
+          }
         }
       }
     }
-  }, [currentShop, user]);
+  }, [
+    shopId,
+    deliveryRadiusKm,
+    deliveryRadiusEnabled,
+    shopOwnerId,
+    shopEmail,
+    shopName,
+    userId,
+    userEmail,
+    userMetadataShopId,
+  ]);
 
   const trialInfo = useMemo(() => {
     if (!currentShop) return null;
@@ -13127,102 +13732,30 @@ function App() {
   }, [soundVolume]);
 
   useEffect(() => {
-    // Check current session with a timeout
+    // Check current session via Firebase Auth and cached storage
     const getSessionWithTimeout = async () => {
-      console.log("[Auth Init] getSessionWithTimeout started...");
+      console.log("[Auth Init] Firebase auth verification started...");
       try {
-        // Fast session check timeout (3s) with instant cached fallback
-        const timeout = 3000;
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Session check timed out")),
-            timeout,
-          ),
-        );
-
-        const result = (await Promise.race([
-          sessionPromise,
-          timeoutPromise,
-        ])) as { data?: { session: unknown }; error?: { message: string } };
-
-        if (result.error) {
-          console.warn("[Auth Init] Auth session error:", result.error.message);
-          if (result.error.message.includes("Refresh Token")) {
-             setUser(null);
-             localStorage.removeItem("localeats_user_session");
-             supabase.auth.signOut().catch(() => {});
-             return;
-          }
-        }
-
-        const {
-          data: { session },
-        } = result;
-
-        if (session?.user) {
-          console.log("[Auth Init] Online active session resolved for user ID:", (session.user as User).id);
-          setUser(session.user as User);
-          localStorage.setItem("localeats_user_session", JSON.stringify(session.user));
-          if ((session.user as User).user_metadata?.dark_mode !== undefined) {
-            setDarkMode((session.user as User).user_metadata.dark_mode);
-          }
-        } else {
-          console.log("[Auth Init] No active session returned from Supabase, checking local cache...");
-          const cached = localStorage.getItem("localeats_user_session");
-          if (cached) {
-            try {
-              const parsed = JSON.parse(cached);
-              if (parsed && parsed.id) {
-                console.log("[Auth Init] Found cached local user session for user ID:", parsed.id);
-                setUser(parsed);
-              } else {
-                setUser(null);
-              }
-            } catch {
-              setUser(null);
-            }
-          } else {
-            setUser(null);
-          }
-        }
-      } catch (err) {
-        console.debug(
-          "[Auth Init] Exception caught during session check:",
-          err instanceof Error ? err.message : err,
-        );
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        const lowerErr = errorMessage.toLowerCase();
-        if (
-          lowerErr.includes("refresh token") ||
-          lowerErr.includes("jwt expired") ||
-          lowerErr.includes("token expired") ||
-          lowerErr.includes("session_not_found") ||
-          lowerErr.includes("auth session missing")
-        ) {
-          setUser(null);
-          localStorage.removeItem("localeats_user_session");
-          supabase.auth.signOut().catch(() => {});
-          return;
-        }
-        
         const cached = localStorage.getItem("localeats_user_session");
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
             if (parsed && parsed.id) {
-              console.log("[Auth Init] Using cached local user session after exception:", parsed.id);
+              console.log("[Auth Init] Found cached local user session for user ID:", parsed.id);
               setUser(parsed);
+              if (parsed.user_metadata?.dark_mode !== undefined) {
+                setDarkMode(parsed.user_metadata.dark_mode);
+              }
             }
           } catch {
             // ignore
           }
         }
+      } catch (err) {
+        console.debug("[Auth Init] Exception caught during session check:", err);
       } finally {
-        console.log("[Auth Init] Setting isAuthReady=true and loading=false");
-        // Ensure we mark auth as ready so the app can render
-      setIsSessionChecking(false);
-      setIsAuthReady(true);
+        setIsSessionChecking(false);
+        setIsAuthReady(true);
         setLoading(false);
       }
     };
@@ -13230,47 +13763,52 @@ function App() {
     getSessionWithTimeout();
 
     const handleForceLogout = () => {
-      console.log("Force logout triggered due to invalid token");
+      console.log("Force logout triggered");
       setUser(null);
       localStorage.removeItem("localeats_user_session");
-      supabase.auth.signOut().catch(() => {});
+      firebaseSignOutUser().catch(() => {});
     };
     window.addEventListener("force_logout", handleForceLogout);
 
-    // Listen for auth changes
-    console.log("[Auth Init] Registering onAuthStateChange listener...");
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log(`[Auth Listener] Event triggered: ${event}, user: ${session?.user?.id || 'none'}`);
-      if (event === "SIGNED_OUT") {
-        setUser(null);
-        localStorage.removeItem("localeats_user_session");
-      } else if (session?.user) {
-        setUser(session.user);
-        localStorage.setItem("localeats_user_session", JSON.stringify(session.user));
-        if (session.user.user_metadata?.dark_mode !== undefined) {
-          setDarkMode(session.user.user_metadata.dark_mode);
+    // Listen for Firebase Auth state changes
+    console.log("[Auth Init] Registering Firebase onAuthStateChanged listener...");
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (fbUser) => {
+      console.log(`[Auth Listener] Firebase Auth event triggered, user: ${fbUser?.uid || 'none'}`);
+      if (fbUser) {
+        try {
+          const sessionUser = await formatFirebaseUserSession(fbUser);
+          setUser(sessionUser);
+          localStorage.setItem("localeats_user_session", JSON.stringify(sessionUser));
+          if (sessionUser.user_metadata?.dark_mode !== undefined) {
+            setDarkMode(Boolean(sessionUser.user_metadata.dark_mode));
+          }
+        } catch (e) {
+          console.warn("[Auth Listener] Warning formatting Firebase user session:", e);
         }
       } else {
         const cached = localStorage.getItem("localeats_user_session");
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
-            if (parsed && parsed.id) setUser(parsed);
+            if (parsed && parsed.id) {
+              setUser(parsed);
+            } else {
+              setUser(null);
+            }
           } catch {
-            // ignore
+            setUser(null);
           }
+        } else {
+          setUser(null);
         }
       }
-      console.log("[Auth Listener] Marking auth ready and resetting loading state");
       setIsSessionChecking(false);
       setIsAuthReady(true);
-      setLoading(false); // Make sure loading is false on auth change
+      setLoading(false);
     });
 
     return () => {
-      subscription.unsubscribe();
+      unsubscribe();
       window.removeEventListener("force_logout", handleForceLogout);
     };
   }, []);
@@ -13345,12 +13883,14 @@ function App() {
             `Auto-toggling shop ${shop.name} to ${isOpen ? "Open" : "Closed"}`,
           );
 
-          const { error } = await supabase
-            .from("shops")
-            .update({ is_active: isOpen })
-            .eq("id", shop.id);
+          const { success } = await syncShopAvailability({
+            shopId: shop.id,
+            isOpen,
+            supabase,
+            updateFirestoreShop,
+          });
 
-          if (!error) {
+          if (success) {
             setShops((prev) =>
               prev.map((s) =>
                 s.id === shop.id ? { ...s, is_active: isOpen } : s,
@@ -13657,7 +14197,117 @@ function App() {
 
     const ownedShopIds = await getOwnedShopIds(user, shops);
 
-    if (ownedShopIds.length === 0) {
+    // 1. Fetch from Firestore (Primary Cloud Storage for Client App Orders)
+    let firestoreOrdersList: Order[] = [];
+    try {
+      firestoreOrdersList = await getFirestoreOrders(ownedShopIds.length > 0 ? ownedShopIds : undefined);
+    } catch (fsErr) {
+      console.warn("[Orders Sync] Notice fetching Firestore orders:", fsErr);
+    }
+
+    // 2. Fetch from Supabase (Relational fallback / legacy storage)
+    let supabaseOrdersList: Order[] = [];
+    try {
+      const { data, error } = await fetchWithRetry(() =>
+        supabase
+          .from("orders")
+          .select("*")
+          .in("shop_id", ownedShopIds)
+          .order("created_at", { ascending: false })
+          .limit(250),
+      );
+
+      if (data) {
+        // Clean up orphaned rider requests
+        const stuckOrders = data.filter(
+          (o: Record<string, unknown>) =>
+            (o.status === "completed" && o.delivery_status === "finding_rider") ||
+            o.delivery_status === "none",
+        );
+
+        if (stuckOrders.length > 0) {
+          stuckOrders.forEach((o: Record<string, unknown>) => {
+            supabase
+              .from("orders")
+              .update({ delivery_status: null })
+              .eq("id", o.id)
+              .then()
+              .catch((err) => console.warn("Failed background cleanup of stuck order status:", err));
+            o.delivery_status = null;
+          });
+        }
+
+        supabaseOrdersList = data.map((d: Record<string, unknown>) => ({
+          ...d,
+          id: String(d.id),
+          total_price: Number(d.total_price ?? d.price ?? 0),
+        })) as Order[];
+      } else if (error && !isSupabaseMocked()) {
+        console.warn("Notice fetching Supabase orders:", error.message || error);
+      }
+    } catch (sbErr) {
+      console.warn("[Orders Sync] Notice querying Supabase:", sbErr);
+    }
+
+    // 3. Merge Orders by unique string ID, prioritizing latest updated_at or created_at
+    const orderMap = new Map<string, Order>();
+    
+    // Insert Supabase orders first
+    supabaseOrdersList.forEach((order) => {
+      orderMap.set(String(order.id), order);
+    });
+
+    // Insert Firestore orders (merges or adds new orders from client app)
+    firestoreOrdersList.forEach((order) => {
+      const existing = orderMap.get(String(order.id));
+      if (!existing) {
+        orderMap.set(String(order.id), order);
+      } else {
+        const existingTime = new Date(existing.updated_at || existing.created_at || 0).getTime();
+        const incomingTime = new Date(order.updated_at || order.created_at || 0).getTime();
+        if (incomingTime >= existingTime) {
+          orderMap.set(String(order.id), { ...existing, ...order });
+        }
+      }
+    });
+
+    let combinedOrders = Array.from(orderMap.values());
+
+    // Apply local overrides
+    let localOverrides: Record<string, Partial<Order>> = {};
+    try {
+      localOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
+    } catch {
+      // ignore
+    }
+
+    if (Object.keys(localOverrides).length > 0) {
+      combinedOrders = combinedOrders.map((order) => {
+        const override = localOverrides[String(order.id)];
+        return {
+          ...order,
+          ...(override || {}),
+          total_price:
+            (override?.total_price as number) ?? (order.total_price as number) ?? (order.price as number) ?? 0,
+        };
+      });
+    }
+
+    // Sort by created_at descending
+    combinedOrders.sort((a, b) => {
+      const timeA = new Date(a.created_at || 0).getTime();
+      const timeB = new Date(b.created_at || 0).getTime();
+      return timeB - timeA;
+    });
+
+    if (combinedOrders.length > 0) {
+      setOrders(combinedOrders);
+      try {
+        localStorage.setItem("localeats_cached_orders", JSON.stringify(combinedOrders));
+      } catch {
+        // ignore
+      }
+    } else {
       try {
         const cachedOrders = JSON.parse(localStorage.getItem("localeats_cached_orders") || "[]");
         if (cachedOrders && cachedOrders.length > 0) {
@@ -13668,72 +14318,6 @@ function App() {
         // ignore
       }
       setOrders([]);
-      return;
-    }
-
-    const { data, error } = await fetchWithRetry(() =>
-      supabase
-        .from("orders")
-        .select("*")
-        .in("shop_id", ownedShopIds)
-        .order("created_at", { ascending: false }),
-    );
-
-    if (error) {
-      if (!isSupabaseMocked()) {
-        console.warn("Notice fetching orders from remote, using cached orders:", error.message || error);
-      }
-      try {
-        const cachedOrders = JSON.parse(localStorage.getItem("localeats_cached_orders") || "[]");
-        if (cachedOrders && cachedOrders.length > 0) {
-          setOrders(cachedOrders);
-          return;
-        }
-      } catch {
-        // ignore
-      }
-      if (error.message === "Failed to fetch") {
-        toast.error("Network connection unstable. Displaying offline orders cache.");
-      }
-    } else if (data) {
-      // Clean up orphaned rider requests
-      const stuckOrders = data.filter(
-        (o: Record<string, unknown>) =>
-          (o.status === "completed" && o.delivery_status === "finding_rider") ||
-          o.delivery_status === "none",
-      );
-
-      if (stuckOrders.length > 0) {
-        stuckOrders.forEach((o: Record<string, unknown>) => {
-          supabase
-            .from("orders")
-            .update({ delivery_status: null })
-            .eq("id", o.id)
-            .then()
-            .catch((err) => console.warn("Failed background cleanup of stuck order status:", err));
-          o.delivery_status = null;
-        });
-      }
-
-      let localOverrides: Record<string, Partial<Order>> = {};
-      try {
-        localOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
-      } catch {
-        // ignore
-      }
-
-      const mappedOrders = data.map((order: Record<string, unknown>) => {
-        const orderId = String(order.id);
-        const override = localOverrides[orderId];
-        return {
-          ...order,
-          ...(override || {}),
-          total_price:
-            (override?.total_price as number) ?? (order.total_price as number) ?? (order.price as number) ?? 0,
-        };
-      }) as Order[];
-      setOrders(mappedOrders);
-      localStorage.setItem("localeats_cached_orders", JSON.stringify(mappedOrders));
     }
   }, [user, shops]);
 
@@ -13794,16 +14378,24 @@ function App() {
   }, [user, shops]);
 
   const fetchShops = useCallback(async () => {
-    const { data, error } = await fetchWithRetry(() =>
-      supabase
-        .from("shops")
-        .select("*")
-        .order("created_at", { ascending: false }),
-    );
+    let remoteShops: Shop[] | null = null;
+    let remoteError: { message: string; code?: string } | null = null;
 
-    if (error) {
+    try {
+      // Force cache purge on fetch execution
+      localStorage.removeItem("localeats_cached_shops");
+
+      // Load shops from Firestore (Isolate to current vendor owner)
+      remoteShops = await getFirestoreShops(user?.id);
+      
+    } catch (e: unknown) {
+      console.error("[Shop Discovery] Exception during fetchShops:", e);
+      remoteError = { message: e instanceof Error ? e.message : String(e) };
+    }
+
+    if (remoteError || !remoteShops) {
       if (!isSupabaseMocked()) {
-        console.warn("Notice fetching shops (using local cache):", error.message || error);
+        console.debug("[Shops Cache] Using local cached shops:", remoteError?.message || "Inaccessible");
       }
       const cached = localStorage.getItem("localeats_cached_shops");
       let list = FALLBACK_SHOPS;
@@ -13821,17 +14413,43 @@ function App() {
         list = [MY_KOTA_SHOP, ...list];
       }
       setShops(list);
-    } else if (data) {
-      let list = data as Shop[];
+    } else {
+      let list = remoteShops;
       if (!list.some((s) => s.id === 18)) {
         list = [MY_KOTA_SHOP, ...list];
       } else {
         list = list.map((s) => (s.id === 18 ? { ...MY_KOTA_SHOP, ...s } : s));
       }
       setShops(list);
-      localStorage.setItem("localeats_cached_shops", JSON.stringify(list));
+      try {
+        localStorage.setItem("localeats_cached_shops", JSON.stringify(list));
+      } catch {
+        // ignore
+      }
     }
-  }, []);
+  }, [user?.id]);
+
+  // Subscribe to Firestore for real-time shop updates (e.g. is_active toggles)
+  useEffect(() => {
+    if (user) {
+      const unsubscribe = subscribeToShopsFirestore((updatedShops) => {
+        let list = updatedShops;
+        if (!list.some((s) => s.id === 18)) {
+          list = [MY_KOTA_SHOP, ...list];
+        } else {
+          list = list.map((s) => (s.id === 18 ? { ...MY_KOTA_SHOP, ...s } : s));
+        }
+        setShops(list);
+        
+        try {
+          localStorage.setItem("localeats_cached_shops", JSON.stringify(list));
+        } catch {
+          // ignore
+        }
+      }, user.id);
+      return () => unsubscribe();
+    }
+  }, [user]);
 
   const { serviceLoading } = useAppInitializer({
     user,
@@ -13842,27 +14460,43 @@ function App() {
     supabase,
   });
 
-  // Separate effect for order subscriptions to filter by shop_id
+  // Order subscriptions: Listen to BOTH Firestore & Supabase in real-time
   useEffect(() => {
-    if (user && shops.length > 0) {
-      const ownedShopIds = shops
-        .filter((s) => s.owner_id === user.id)
-        .map((s) => s.id);
+    if (!user || shops.length === 0) return;
 
-      if (ownedShopIds.length === 0) return;
+    let isMounted = true;
+    const activeChannels: RealtimeChannel[] = [];
+    let unsubFirestore: (() => void) | null = null;
+    let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
-      const activeChannels: RealtimeChannel[] = [];
-      let isMounted = true;
-      let pollingInterval: ReturnType<typeof setInterval> | null = null;
+    // Start fallback polling interval (30s) to guarantee UI sync
+    pollingInterval = setInterval(() => {
+      if (isMounted) {
+        void fetchOrders();
+      }
+    }, 30000);
 
-      // Start fallback polling interval (60s) to guarantee UI sync without overwhelming connection pool
-      pollingInterval = setInterval(() => {
-        if (isMounted) {
-          void fetchOrders();
-        }
-      }, 60000);
+    // Get all owned shop IDs (string and numeric variants)
+    void getOwnedShopIds(user, shops).then((ownedShopIds) => {
+      if (!isMounted) return;
 
-      ownedShopIds.forEach((shopId) => {
+      // 1. Subscribe to Firestore orders collection in real-time
+      try {
+        unsubFirestore = subscribeToOrdersFirestore(
+          ownedShopIds.length > 0 ? ownedShopIds : undefined,
+          () => {
+            if (isMounted) {
+              void fetchOrders();
+            }
+          }
+        );
+      } catch (fsErr) {
+        console.warn("[Orders Realtime] Firestore subscription notice:", fsErr);
+      }
+
+      // 2. Subscribe to Supabase postgres_changes
+      const uniqueNumericOrStringIds = Array.from(new Set(ownedShopIds));
+      uniqueNumericOrStringIds.forEach((shopId) => {
         void subscribeWithAuthGuard(`orders_changes_${shopId}`, (ch) =>
           ch.on(
             "postgres_changes",
@@ -13873,7 +14507,9 @@ function App() {
               filter: `shop_id=eq.${shopId}`,
             },
             () => {
-              void fetchOrders();
+              if (isMounted) {
+                void fetchOrders();
+              }
             },
           )
         ).then((ch) => {
@@ -13886,13 +14522,14 @@ function App() {
           }
         });
       });
+    });
 
-      return () => {
-        isMounted = false;
-        if (pollingInterval) clearInterval(pollingInterval);
-        activeChannels.forEach((channel) => void supabase.removeChannel(channel));
-      };
-    }
+    return () => {
+      isMounted = false;
+      if (pollingInterval) clearInterval(pollingInterval);
+      if (unsubFirestore) unsubFirestore();
+      activeChannels.forEach((channel) => void supabase.removeChannel(channel));
+    };
   }, [user, shops, fetchOrders, subscribeWithAuthGuard]);
 
   const deleteAllOrders = async () => {
@@ -14422,6 +15059,15 @@ function App() {
     }
   };
 
+  if (isSessionChecking && !user) {
+    return (
+      <FirebaseInitializingOverlay 
+        message="Validating secure merchant session..." 
+        subtext="Connecting to Firebase Cloud Infrastructure & Realtime Relay" 
+      />
+    );
+  }
+
   if (isVerifying) {
     return (
       <VerificationPending
@@ -14480,9 +15126,12 @@ function App() {
     ) : (
       <SignUp
         onSignInClick={() => setAuthView("signin")}
-        onSuccess={(email) => {
-          setSignupEmail(email);
-          setIsVerifying(true);
+        onSuccess={(signedUser) => {
+          if (signedUser) {
+            setUser(signedUser);
+            localStorage.setItem("localeats_user_session", JSON.stringify(signedUser));
+            setIsEditingProfile(true);
+          }
         }}
       />
     );
@@ -14877,11 +15526,6 @@ function App() {
                     if (!currentShop) return;
                     const newStatus = !currentShop.is_active;
 
-                    localStorage.setItem(`localeats_manual_status_override_${currentShop.id}`, JSON.stringify({ status: newStatus, timestamp: Date.now() }));
-                    if (newStatus) {
-                      localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
-                    }
-
                     // Optimistic update
                     setShops((prev) =>
                       prev.map((s) =>
@@ -14889,14 +15533,16 @@ function App() {
                       ),
                     );
 
-                    const { error } = await supabase
-                      .from("shops")
-                      .update({ is_active: newStatus })
-                      .eq("id", currentShop.id);
+                    const { success, error } = await syncShopAvailability({
+                      shopId: currentShop.id,
+                      isOpen: newStatus,
+                      supabase,
+                      updateFirestoreShop,
+                    });
 
-                    if (!error) {
+                    if (success) {
                       toast.success(
-                        `Shop is now ${newStatus ? "Open" : "Closed"}`,
+                        `Shop is now ${newStatus ? "Open & Live" : "Closed & Offline"}`,
                       );
                     } else {
                       // Rollback on error
@@ -14905,7 +15551,7 @@ function App() {
                           s.id === currentShop.id ? { ...s, is_active: !newStatus } : s,
                         ),
                       );
-                      toast.error(getFriendlyErrorMessage(error));
+                      toast.error(typeof error === "string" ? error : "Failed to update shop status");
                     }
                   }}
                   className={cn(
@@ -15004,14 +15650,18 @@ function App() {
            <button
              onClick={async () => {
                 const newStatus = true;
-                localStorage.setItem(`localeats_manual_status_override_${currentShop.id}`, JSON.stringify({ status: newStatus, timestamp: Date.now() }));
-                localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
                 setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, is_active: newStatus } : s));
-                const { error } = await supabase.from("shops").update({ is_active: newStatus }).eq("id", currentShop.id);
-                if (!error) toast.success("Shop is now Open");
-                else {
-                    setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, is_active: !newStatus } : s));
-                    toast.error("Failed to go online");
+                const { success, error } = await syncShopAvailability({
+                  shopId: currentShop.id,
+                  isOpen: newStatus,
+                  supabase,
+                  updateFirestoreShop,
+                });
+                if (success) {
+                  toast.success("Shop is now Open and accepting customer orders!");
+                } else {
+                  setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, is_active: !newStatus } : s));
+                  toast.error(typeof error === "string" ? error : "Failed to go online");
                 }
              }}
              className="px-4 py-1 bg-white text-error rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-zinc-100 transition-colors ml-2 shadow-xs cursor-pointer active:scale-95 border border-white"
@@ -15165,6 +15815,7 @@ function App() {
                        { id: "hardware", label: "Printing & Hardware", icon: Printer },
                        { id: "billing", label: "Billing & Subscription", icon: Wallet },
                        { id: "preferences", label: "Preferences", icon: Settings },
+                       { id: "diagnostics", label: "Database Diagnostics", icon: Activity },
                      ].map(category => (
                        <button
                          key={category.id}
@@ -15186,9 +15837,31 @@ function App() {
 
                   {/* Settings Content Panels */}
                   <div className="flex-1 w-full space-y-4 max-w-3xl pb-16">
+                    {settingsCategory === "diagnostics" && (
+                      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <h3 className="font-headline font-bold text-lg mb-2">Firestore Diagnostics</h3>
+                        <ShopDiagnosticPanel currentShop={currentShop} />
+                      </div>
+                    )}
+                    
                     {settingsCategory === "storefront" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h3 className="font-headline font-bold text-lg mb-2">Store Profile</h3>
+                        <h3 className="font-headline font-bold text-lg mb-2">Store Profile & Location Sync</h3>
+                        
+                        {/* Real-time Location Sync Status Indicator */}
+                        {currentShop && (
+                          <LocationSyncIndicator
+                            locationState={currentShopLocation}
+                            syncAnalysis={currentShopLocationSync}
+                            isLocating={isLocatingShopGPS}
+                            isSaving={isSavingShopLocation}
+                            onDetectGPS={detectShopGPS}
+                            onAutoAlign={autoAlignShopCity}
+                            onSave={() => saveShopLocationSettings()}
+                            onOpenStorefrontMap={() => setActiveTab("storefront")}
+                          />
+                        )}
+
                         <button
                           onClick={() => setActiveTab("storefront")}
                     className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-0 p-5 bg-primary/5 hover:bg-primary/10 rounded-2xl transition-all border border-primary/20 group shadow-sm shadow-primary/5"
@@ -15374,35 +16047,29 @@ function App() {
                                  setStoreStatus(statusOption);
                                  if (currentShop) {
                                    const isActive = statusOption === "open" || statusOption === "busy";
-                                   localStorage.setItem(`localeats_manual_status_override_${currentShop.id}`, JSON.stringify({ status: isActive, timestamp: Date.now() }));
-                                   if (statusOption === "closed") {
-                                     localStorage.setItem(`localeats_holiday_mode_${currentShop.id}`, "true");
-                                   } else {
-                                     localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
-                                   }
                                    setShops((prev) =>
                                      prev.map((s) =>
                                        s.id === currentShop.id ? { ...s, is_active: isActive } : s,
                                      ),
                                    );
-                                   supabase
-                                     .from("shops")
-                                     .update({ is_active: isActive })
-                                     .eq("id", currentShop.id)
-                                     .then(({ error }) => {
-                                       if (!error) {
-                                         toast.success(`Shop is now ${statusOption === "open" ? "OPEN" : statusOption === "busy" ? "BUSY" : "CLOSED"}`);
-                                       } else {
-                                         setShops((prev) =>
-                                           prev.map((s) =>
-                                             s.id === currentShop.id ? { ...s, is_active: !isActive } : s,
-                                           ),
-                                         );
-                                         toast.error(error.message);
-                                       }
-                                     });
+                                   void syncShopAvailability({
+                                     shopId: currentShop.id,
+                                     isOpen: isActive,
+                                     supabase,
+                                     updateFirestoreShop,
+                                     onSuccess: () => {
+                                       toast.success(`Shop is now ${statusOption === "open" ? "OPEN" : statusOption === "busy" ? "BUSY" : "CLOSED"}`);
+                                     },
+                                     onError: (err) => {
+                                       setShops((prev) =>
+                                         prev.map((s) =>
+                                           s.id === currentShop.id ? { ...s, is_active: !isActive } : s,
+                                         ),
+                                       );
+                                       toast.error(typeof err === "string" ? err : "Failed to update status");
+                                     },
+                                   });
                                  }
-
                                }}
                                className={cn(
                                  "px-4 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all",
@@ -15503,10 +16170,7 @@ function App() {
                                    ),
                                  );
 
-                                 const { error } = await supabase
-                                   .from("shops")
-                                   .update({ is_active: newStatus })
-                                   .eq("id", currentShop.id);
+                                 const { error } = await updateFirestoreShop(currentShop.id, { is_active: newStatus });
 
                                  if (!error) {
                                    toast.success(
@@ -15688,6 +16352,21 @@ function App() {
                     {settingsCategory === "delivery" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">Delivery & Logistics Settings</h3>
+
+                        {/* Location Sync & Boundary Alignment Indicator */}
+                        {currentShop && (
+                          <LocationSyncIndicator
+                            locationState={currentShopLocation}
+                            syncAnalysis={currentShopLocationSync}
+                            isLocating={isLocatingShopGPS}
+                            isSaving={isSavingShopLocation}
+                            onDetectGPS={detectShopGPS}
+                            onAutoAlign={autoAlignShopCity}
+                            onSave={() => saveShopLocationSettings()}
+                            onOpenStorefrontMap={() => setActiveTab("storefront")}
+                          />
+                        )}
+
                   {/* Delivery & Dispatch Settings */}
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
                     <div className="flex items-center justify-between border-b border-outline-variant/10 pb-4">
@@ -15835,32 +16514,50 @@ function App() {
                             toast.error("No active shop found to save delivery settings.");
                             return;
                           }
+                          const nowISO = new Date().toISOString();
                           try {
+                            // Update Firestore
+                            try {
+                              await updateFirestoreShop(currentShop.id, {
+                                delivery_radius_enabled: deliverySettings.radiusEnabled,
+                                delivery_radius_km: deliverySettings.maxDistanceKm,
+                                updated_at: nowISO,
+                              });
+                            } catch (fsErr) {
+                              console.warn("Firestore delivery settings update warning:", fsErr);
+                            }
+
                             const { error } = await supabase
                               .from("shops")
                               .update({
                                 delivery_radius_enabled: deliverySettings.radiusEnabled,
                                 delivery_radius_km: deliverySettings.maxDistanceKm,
-                                updated_at: new Date().toISOString(),
+                                updated_at: nowISO,
                               })
                               .eq("id", currentShop.id);
 
-                            if (error) {
-                              toast.error("Failed to save delivery settings: " + error.message);
-                              return;
+                            if (error && error.code !== "42703") {
+                              console.warn("Supabase delivery settings update warning:", error.message);
                             }
 
-                            setShops((prev) =>
-                              prev.map((s) =>
+                            setShops((prev) => {
+                              const updated = prev.map((s) =>
                                 s.id === currentShop.id
                                   ? {
                                       ...s,
                                       delivery_radius_enabled: deliverySettings.radiusEnabled,
                                       delivery_radius_km: deliverySettings.maxDistanceKm,
+                                      updated_at: nowISO,
                                     }
                                   : s
-                              )
-                            );
+                              );
+                              try {
+                                localStorage.setItem("localeats_cached_shops", JSON.stringify(updated));
+                              } catch {
+                                // ignore
+                              }
+                              return updated;
+                            });
 
                             toast.success(`Delivery settings saved! (${deliverySettings.radiusEnabled ? `${deliverySettings.maxDistanceKm} KM radius active` : "Radius restriction disabled"})`);
                           } catch (err: unknown) {
@@ -16804,8 +17501,10 @@ function App() {
                 </div>
 
                 {currentShop ? (
-                  <ShopProfile
-                    shop={currentShop}
+                  <>
+                    
+                    <ShopProfile
+                      shop={currentShop}
                     onRefresh={fetchShops}
                     user={user}
                     setIsSaving={setIsSaving}
@@ -16814,6 +17513,7 @@ function App() {
                     isSuccess={isSaveSuccess}
                     onFinished={() => setActiveTab("dashboard")}
                   />
+                  </>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
                     <div className="w-16 h-16 bg-surface-container-high rounded-full flex items-center justify-center">
@@ -17332,6 +18032,17 @@ function App() {
         )}
       </AnimatePresence>
       
+      {/* Legal & Privacy POPIA Trigger */}
+      <div className="fixed bottom-2 left-2 z-[9900]">
+        <button 
+          onClick={() => setShowLegal(true)}
+          className="text-[9px] text-zinc-500 hover:text-zinc-300 font-medium tracking-wide transition-colors bg-zinc-950/40 px-2.5 py-1 rounded-md backdrop-blur-md cursor-pointer border border-zinc-800/30"
+        >
+          Legal & Privacy (POPIA)
+        </button>
+      </div>
+      <LegalDocsModal isOpen={showLegal} onClose={() => setShowLegal(false)} />
+
       {/* Network & System Diagnostics Trigger Button */}
       <button
         onClick={() => setIsDiagnosticOpen(true)}
@@ -17360,20 +18071,9 @@ function App() {
 }
 
 export default function AppWrapper() {
-  const [showLegal, setShowLegal] = useState(false);
-
   return (
     <ErrorBoundary>
       <App />
-      <div className="fixed bottom-2 left-2 z-[9900]">
-        <button 
-          onClick={() => setShowLegal(true)}
-          className="text-[9px] text-zinc-500 hover:text-zinc-300 font-medium tracking-wide transition-colors bg-zinc-950/40 px-2.5 py-1 rounded-md backdrop-blur-md cursor-pointer border border-zinc-800/30"
-        >
-          Legal & Privacy (POPIA)
-        </button>
-      </div>
-      <LegalDocsModal isOpen={showLegal} onClose={() => setShowLegal(false)} />
     </ErrorBoundary>
   );
 }

@@ -64,7 +64,8 @@ export const useAuthGuard = () => {
           } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
             isResolved = true;
             clearTimeout(subTimeout);
-            console.debug(`[Realtime ${channelName}] Channel status:`, status, err || "");
+            const errFormatted = err && typeof err === "object" ? (Object.keys(err).length > 0 ? JSON.stringify(err) : "") : String(err || "");
+            console.debug(`[Realtime ${channelName}] Channel status: ${status}${errFormatted ? " - " + errFormatted : ""}`);
             resolve(null);
           }
         });

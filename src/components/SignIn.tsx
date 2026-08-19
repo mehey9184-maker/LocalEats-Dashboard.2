@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase, DASHBOARD_URL } from '../lib/supabase';
+import { firebaseSignIn, firebaseSignInWithGoogle } from '../lib/firebase';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -19,12 +19,8 @@ export const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
     setLoading(true);
     setError(null);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: 'mehey9184@gmail.com',
-        password: '123456',
-      });
-      if (error) setError(error.message);
-      else onSuccess();
+      await firebaseSignIn('mehey9184@gmail.com', '123456');
+      onSuccess();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
     } finally {
@@ -38,35 +34,26 @@ export const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
     setError(null);
     
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        setError(error.message);
-      } else {
-        onSuccess();
-      }
+      await firebaseSignIn(email, password);
+      onSuccess();
     } catch (err: unknown) {
-      if (err instanceof Error && err.message?.includes('Forbidden use of secret API key')) {
-        setError('CRITICAL: You are using a Supabase SECRET key in the browser. Please update your project secrets with the public "anon" key.');
-      } else {
-        setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
-      }
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred during sign in.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin.includes('localhost') 
-          ? window.location.origin 
-          : DASHBOARD_URL
-      }
-    });
+    setLoading(true);
+    setError(null);
+    try {
+      await firebaseSignInWithGoogle();
+      onSuccess();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Google authentication cancelled or failed.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

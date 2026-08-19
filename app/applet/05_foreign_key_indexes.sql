@@ -6,6 +6,8 @@
 
 CREATE INDEX IF NOT EXISTS idx_orders_shop_id ON public.orders(shop_id);
 CREATE INDEX IF NOT EXISTS idx_orders_rider_id ON public.orders(rider_id);
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON public.orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_shop_created_at ON public.orders(shop_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_menu_items_shop_id ON public.menu_items(shop_id);
 CREATE INDEX IF NOT EXISTS idx_announcements_shop_id ON public.announcements(shop_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_shop_id ON public.chat_messages(shop_id);

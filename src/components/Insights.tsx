@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { TrendingUp, ShoppingBag, DollarSign, Star, BarChart2 } from "lucide-react";
 import { Order, MenuItem, Shop, Review } from "../types";
-import { supabase } from "../lib/supabase";
+import { getFirestoreReviews } from "../lib/firebase";
 
 interface InsightsProps {
   orders: Order[];
@@ -37,13 +37,10 @@ export const Insights: React.FC<InsightsProps> = ({
   useEffect(() => {
     const fetchReviews = async () => {
       if (!currentShop?.id) return;
-      const { data, error } = await supabase
-        .from("reviews")
-        .select("*")
-        .eq("shop_id", currentShop.id)
-        .order("created_at", { ascending: false });
-
-      if (!error && data) setReviews(data);
+      const data = await getFirestoreReviews(currentShop.id);
+      if (data && data.length > 0) {
+        setReviews(data);
+      }
     };
     fetchReviews();
   }, [currentShop?.id]);

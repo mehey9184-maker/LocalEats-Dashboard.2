@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 import { Order, OrderStatus, MenuItem, Shop } from "../types";
-import { getOrderTransitionData, safeStripOrderColumns } from "../utils";
-import { sendPushNotification } from "../lib/firebase";
+import { getOrderTransitionData } from "../utils";
+import { sendPushNotification, updateFirestoreOrder, updateFirestoreMenuItem } from "../lib/firebase";
 import { validateDeliveryRadius, checkDeliveryRadiusRPC } from "../utils/deliveryRadius";
 import { queueOfflineMutation } from "../utils/offlineSyncQueue";
 import React from "react";
@@ -61,28 +61,8 @@ export const useOrderWorkflow = ({
       })
     );
 
-    const cleanedUpdateData = await safeStripOrderColumns(supabase, transitionData);
-
-    let { data, error } = await supabase
-      .from("orders")
-      .update(cleanedUpdateData)
-      .eq("id", id)
-      .select();
-
-    // If update failed due to unmigrated columns or schema cache error, retry with minimal core fields
-    if (error && (error.code === "42703" || error.message?.includes("column") || error.message?.includes("schema cache"))) {
-      const minimalUpdate: Record<string, unknown> = { status: transitionData.status };
-      if (transitionData.delivery_status !== undefined) {
-        minimalUpdate.delivery_status = transitionData.delivery_status;
-      }
-      const retryResult = await supabase
-        .from("orders")
-        .update(minimalUpdate)
-        .eq("id", id)
-        .select();
-      data = retryResult.data;
-      error = retryResult.error;
-    }
+    const { error } = await updateFirestoreOrder(id, transitionData);
+    const data = error ? null : [{}];
 
     // Save local override so UI remains responsive even during transient database validation failures
     try {
@@ -127,10 +107,7 @@ export const useOrderWorkflow = ({
           menuItem.stock_quantity > 0
         ) {
           const newStock = menuItem.stock_quantity - 1;
-          const { error: stockError } = await supabase
-            .from("menu_items")
-            .update({ stock_quantity: newStock })
-            .eq("id", menuItem.id);
+          const { error: stockError } = await updateFirestoreMenuItem(menuItem.id, { stock_quantity: newStock });
 
           if (stockError) {
             console.error("Failed to decrement stock:", stockError);
@@ -265,29 +242,8 @@ export const useOrderWorkflow = ({
     if (updateData.status === undefined) delete updateData.status;
     delete updateData.city; // Clean city just in case it doesn't exist on orders table
     
-    const cleanedRequestData = await safeStripOrderColumns(supabase, updateData);
-
-    let { data, error } = await supabase
-      .from("orders")
-      .update(cleanedRequestData)
-      .eq("id", id)
-      .select();
-
-    // If update failed due to column issues, retry with minimal request data
-    if (error && (error.code === "42703" || error.message?.includes("column") || error.message?.includes("schema cache"))) {
-      const minimalRequest = {
-        delivery_status: isManualInHouse ? "accepted" : "finding_rider",
-        delivery_fee: FLAT_DELIVERY_FEE,
-        rider_id: targetRiderId || null,
-      };
-      const retryResult = await supabase
-        .from("orders")
-        .update(minimalRequest)
-        .eq("id", id)
-        .select();
-      data = retryResult.data;
-      error = retryResult.error;
-    }
+    const { error } = await updateFirestoreOrder(id, updateData);
+    const data = error ? null : [{}];
 
     // Save local override
     try {
@@ -350,12 +306,7 @@ export const useOrderWorkflow = ({
       rider_phone: riderPhone || "",
     };
 
-    const cleanedData = await safeStripOrderColumns(supabase, updateData);
-
-    const { error } = await supabase
-      .from("orders")
-      .update(cleanedData)
-      .eq("id", id);
+    const { error } = await updateFirestoreOrder(id, updateData);
 
     if (error) {
       console.warn("[Dispatch] DB sync warning, saved to local cache:", error);
@@ -430,25 +381,11 @@ export const useOrderWorkflow = ({
         : `${targetOrder.notes || ''} ${pickupNote}`.trim(),
     };
 
-    const cleanedData = await safeStripOrderColumns(supabase, updateData);
-
-    await supabase.from("orders").update(cleanedData).eq("id", id);
+    await updateFirestoreOrder(id, updateData);
 
     // 1. Send Supabase Realtime Broadcast to client app
     try {
-      const channel = supabase.channel(`client_order_tracking_${id}`);
-      await channel.send({
-        type: "broadcast",
-        event: "pickup_requested",
-        payload: {
-          order_id: id,
-          title: "🛍️ No Delivery Driver Available - Self-Pickup Required",
-          body: `Order #${id.slice(-4)}: Our store currently has no available delivery driver. Please come collect your order!`,
-          acceptance_message: pickupMessage,
-          order_type: "collection",
-          delivery_status: null,
-        },
-      });
+      // broadcast via Firestore listener on client side automatically;
     } catch (bcErr) {
       console.warn("Realtime broadcast error:", bcErr);
     }

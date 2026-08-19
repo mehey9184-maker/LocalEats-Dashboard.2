@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { SupabaseClient, User } from "@supabase/supabase-js";
-import { isSupabaseMocked, getFreshChannel } from "../lib/supabase";
+import { isSupabaseMocked } from "../lib/supabase";
 import { handleCentralizedError } from "../utils/errorHandler";
 
 export interface ServiceLoadingState {
@@ -15,7 +15,7 @@ interface UseAppInitializerProps {
   fetchOrders: () => Promise<void>;
   fetchShops: () => Promise<void>;
   fetchAllMenuItems: () => Promise<void>;
-  supabase: SupabaseClient;
+  supabase?: SupabaseClient;
 }
 
 export const useAppInitializer = ({
@@ -24,7 +24,6 @@ export const useAppInitializer = ({
   fetchOrders,
   fetchShops,
   fetchAllMenuItems,
-  supabase,
 }: UseAppInitializerProps) => {
   const [serviceLoading, setServiceLoading] = useState<ServiceLoadingState>({
     shops: true,
@@ -32,16 +31,26 @@ export const useAppInitializer = ({
     menu: true,
   });
 
+  const fetchOrdersRef = useRef(fetchOrders);
+  const fetchShopsRef = useRef(fetchShops);
+  const fetchAllMenuItemsRef = useRef(fetchAllMenuItems);
+
+  useEffect(() => {
+    fetchOrdersRef.current = fetchOrders;
+    fetchShopsRef.current = fetchShops;
+    fetchAllMenuItemsRef.current = fetchAllMenuItems;
+  }, [fetchOrders, fetchShops, fetchAllMenuItems]);
+
   const loadShopsService = useCallback(async () => {
     setServiceLoading((prev) => ({ ...prev, shops: true }));
     try {
-      await fetchShops();
+      await fetchShopsRef.current();
     } catch (err) {
       handleCentralizedError(err, "Shops Service", "Failed to load restaurant list", false);
     } finally {
       setServiceLoading((prev) => ({ ...prev, shops: false }));
     }
-  }, [fetchShops]);
+  }, []);
 
   const loadOrdersService = useCallback(async () => {
     if (!user) {
@@ -50,27 +59,28 @@ export const useAppInitializer = ({
     }
     setServiceLoading((prev) => ({ ...prev, orders: true }));
     try {
-      await fetchOrders();
+      await fetchOrdersRef.current();
     } catch (err) {
       handleCentralizedError(err, "Orders Service", "Failed to load active orders", false);
     } finally {
       setServiceLoading((prev) => ({ ...prev, orders: false }));
     }
-  }, [user, fetchOrders]);
+  }, [user]);
 
   const loadMenuService = useCallback(async () => {
     setServiceLoading((prev) => ({ ...prev, menu: true }));
     try {
-      await fetchAllMenuItems();
+      await fetchAllMenuItemsRef.current();
     } catch (err) {
       handleCentralizedError(err, "Menu Service", "Failed to load menu catalog", false);
     } finally {
       setServiceLoading((prev) => ({ ...prev, menu: false }));
     }
-  }, [fetchAllMenuItems]);
+  }, []);
 
+  const userId = user?.id;
   useEffect(() => {
-    if (user || role === "customer" || role === "merchant") {
+    if (userId || role === "customer" || role === "merchant") {
       void loadOrdersService();
       void loadShopsService();
       void loadMenuService();
@@ -78,23 +88,8 @@ export const useAppInitializer = ({
       if (isSupabaseMocked()) {
         return;
       }
-
-      // Real-time subscription for shops
-      const shopsChannel = getFreshChannel("shops_changes")
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "shops" },
-          () => {
-            void fetchShops();
-          }
-        )
-        .subscribe();
-
-      return () => {
-        void supabase.removeChannel(shopsChannel);
-      };
     }
-  }, [user, role, loadOrdersService, loadShopsService, loadMenuService, fetchShops, supabase]);
+  }, [userId, role, loadOrdersService, loadShopsService, loadMenuService]);
 
   return {
     serviceLoading,

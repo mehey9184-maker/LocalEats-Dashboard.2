@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "shops": {
+      "title": "Shop",
+      "description": "Merchant stores and restaurants",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number", "description": "Numeric ID or string identifier" },
+        "owner_id": { "type": "string", "description": "Auth UID of the owner" },
+        "name": { "type": "string", "description": "Shop name" },
+        "email": { "type": "string", "description": "Shop contact email" },
+        "phone": { "type": "string", "description": "Shop phone number" },
+        "address": { "type": "string", "description": "Physical address" },
+        "city": { "type": "string", "description": "City or township" },
+        "is_active": { "type": "boolean", "description": "Whether the shop is accepting orders" },
+        "lat": { "type": "number", "description": "Latitude coordinate" },
+        "lng": { "type": "number", "description": "Longitude coordinate" },
+        "delivery_fee": { "type": "number", "description": "Standard delivery fee in Rands" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "menu_items": {
+      "title": "Menu Item",
+      "description": "Products and dishes offered by merchants",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "shop_id": { "type": "number", "description": "Linked shop ID" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "image_url": { "type": "string" },
+        "is_available": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "price", "shop_id"]
+    },
+    "orders": {
+      "title": "Order",
+      "description": "Food delivery and pickup customer orders",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "shop_id": { "type": "number" },
+        "user_id": { "type": "string" },
+        "rider_id": { "type": "string" },
+        "product_name": { "type": "string" },
+        "total_price": { "type": "number" },
+        "subtotal": { "type": "number" },
+        "delivery_fee": { "type": "number" },
+        "status": { "type": "string" },
+        "delivery_status": { "type": "string" },
+        "payment_method": { "type": "string" },
+        "pairing_cipher": { "type": "string" },
+        "customer_name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "city": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "notes": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shop_id", "product_name", "total_price"]
+    },
+    "rider_profiles": {
+      "title": "Rider Profile",
+      "description": "Delivery driver profiles and telemetry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "full_name": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "is_online": { "type": "boolean" },
+        "status": { "type": "string" },
+        "vehicle_type": { "type": "string" },
+        "verification_status": { "type": "string" },
+        "rating": { "type": "number" },
+        "current_latitude": { "type": "number" },
+        "current_longitude": { "type": "number" },
+        "total_earnings": { "type": "number" },
+        "total_deliveries": { "type": "number" },
+        "active_points": { "type": "number" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "rider_connections": {
+      "title": "Rider Connection",
+      "description": "Pairing link between merchants and delivery riders",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "shop_id": { "type": "number" },
+        "rider_id": { "type": "string" },
+        "rider_name": { "type": "string" },
+        "rider_phone": { "type": "string" },
+        "vehicle_type": { "type": "string" },
+        "rating": { "type": "number" },
+        "connection_code": { "type": "string" },
+        "pairing_cipher": { "type": "string" },
+        "status": { "type": "string" },
+        "is_verified": { "type": "boolean" },
+        "active_mission_id": { "type": "string" },
+        "expires_at": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shop_id", "rider_id"]
+    }
+  }
+}

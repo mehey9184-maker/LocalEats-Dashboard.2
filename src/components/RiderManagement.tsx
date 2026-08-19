@@ -353,7 +353,7 @@ export const RiderManagement = ({
 
   // Search & Filter state for Rider Network
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "in_house" | "paired">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline" | "in_house" | "paired">("all");
 
   // Pagination State for high-performance virtualized/paginated rider display
   const [currentPage, setCurrentPage] = useState(1);
@@ -402,6 +402,7 @@ export const RiderManagement = ({
       if (!nameMatch && !phoneMatch && !codeMatch) return false;
 
       if (statusFilter === "online") return c.is_online;
+      if (statusFilter === "offline") return !c.is_online;
       if (statusFilter === "in_house") return c.connection_code === "IN-HOUSE";
       if (statusFilter === "paired") return c.connection_code !== "IN-HOUSE";
 
@@ -1370,6 +1371,172 @@ export const RiderManagement = ({
     void fetchConnections();
   };
 
+  // Toggle single rider online / ready status
+  const toggleRiderOnlineStatus = async (conn: RiderConnection, targetStatus?: boolean) => {
+    const newStatus = targetStatus !== undefined ? targetStatus : !conn.is_online;
+    const shopId = currentShop?.id || 1;
+    const isNowOnline = newStatus;
+
+    // 1. Immediately update in-memory React state for instantaneous zero-latency UI response
+    setConnections((prev) =>
+      prev.map((c) => {
+        const isMatch =
+          c.id === conn.id ||
+          (conn.connection_code && c.connection_code === conn.connection_code) ||
+          (conn.rider_id && c.rider_id === conn.rider_id);
+
+        if (isMatch) {
+          return {
+            ...c,
+            is_online: isNowOnline,
+            status: isNowOnline ? (c.status === "busy" ? "busy" : "active") : "offline",
+            last_seen: isNowOnline ? new Date().toISOString() : c.last_seen,
+          };
+        }
+        return c;
+      })
+    );
+
+    // 2. Persist to local fallback storage caches
+    const localKey1 = `localeats_local_conns_${shopId}`;
+    const localKey2 = `localeats_rider_conns_${shopId}`;
+    [localKey1, localKey2].forEach((key) => {
+      try {
+        const stored = localStorage.getItem(key);
+        if (stored) {
+          const conns: RiderConnection[] = JSON.parse(stored);
+          const updated = conns.map((c) => {
+            const isMatch =
+              c.id === conn.id ||
+              (conn.connection_code && c.connection_code === conn.connection_code) ||
+              (conn.rider_id && c.rider_id === conn.rider_id);
+
+            if (isMatch) {
+              return {
+                ...c,
+                is_online: isNowOnline,
+                status: isNowOnline ? (c.status === "busy" ? "busy" : "active") : "offline",
+                last_seen: isNowOnline ? new Date().toISOString() : c.last_seen,
+              };
+            }
+            return c;
+          });
+          localStorage.setItem(key, JSON.stringify(updated));
+        }
+      } catch (e) {
+        console.warn("Storage update warning:", e);
+      }
+    });
+
+    // 3. Persist to Supabase / Firestore in background
+    try {
+      if (conn.rider_id) {
+        await supabase.from("rider_profiles").upsert({
+          id: conn.rider_id,
+          is_online: isNowOnline,
+          status: isNowOnline ? "active" : "offline",
+          updated_at: new Date().toISOString(),
+        });
+      }
+      if (conn.id) {
+        await supabase
+          .from("rider_connections")
+          .update({
+            is_online: isNowOnline,
+            status: isNowOnline ? "active" : "offline",
+          })
+          .eq("id", conn.id);
+      }
+    } catch (err) {
+      console.warn("Remote sync warning:", err);
+    }
+
+    if (isNowOnline) {
+      toast.success(`${conn.rider_name || "Courier"} is now Online & Ready for Orders!`);
+    } else {
+      toast.info(`${conn.rider_name || "Courier"} marked as Offline.`);
+    }
+  };
+
+  // Turn all fleet couriers online/ready or offline
+  const toggleAllRidersOnline = async (targetStatus = true) => {
+    const shopId = currentShop?.id || 1;
+    const eligibleConns = connections.filter((c) => c.rider_id || c.connection_code === "IN-HOUSE");
+
+    if (eligibleConns.length === 0) {
+      setShowInHouseModal(true);
+      toast.info("Add a courier or in-house driver to activate your delivery fleet.");
+      return;
+    }
+
+    // 1. Instant optimistic state update
+    setConnections((prev) =>
+      prev.map((c) => {
+        if (c.rider_id || c.connection_code === "IN-HOUSE") {
+          return {
+            ...c,
+            is_online: targetStatus,
+            status: targetStatus ? (c.status === "busy" ? "busy" : "active") : "offline",
+            last_seen: targetStatus ? new Date().toISOString() : c.last_seen,
+          };
+        }
+        return c;
+      })
+    );
+
+    // 2. Persist to local caches
+    const localKey1 = `localeats_local_conns_${shopId}`;
+    const localKey2 = `localeats_rider_conns_${shopId}`;
+    [localKey1, localKey2].forEach((key) => {
+      try {
+        const stored = localStorage.getItem(key);
+        if (stored) {
+          const conns: RiderConnection[] = JSON.parse(stored);
+          const updated = conns.map((c) => ({
+            ...c,
+            is_online: targetStatus,
+            status: targetStatus ? (c.status === "busy" ? "busy" : "active") : "offline",
+            last_seen: targetStatus ? new Date().toISOString() : c.last_seen,
+          }));
+          localStorage.setItem(key, JSON.stringify(updated));
+        }
+      } catch (e) {
+        console.warn("Error updating batch conns:", e);
+      }
+    });
+
+    // 3. Persist remote
+    for (const c of eligibleConns) {
+      try {
+        if (c.rider_id) {
+          await supabase.from("rider_profiles").upsert({
+            id: c.rider_id,
+            is_online: targetStatus,
+            status: targetStatus ? "active" : "offline",
+            updated_at: new Date().toISOString(),
+          });
+        }
+        if (c.id) {
+          await supabase
+            .from("rider_connections")
+            .update({
+              is_online: targetStatus,
+              status: targetStatus ? "active" : "offline",
+            })
+            .eq("id", c.id);
+        }
+      } catch {
+        // ignore background failure
+      }
+    }
+
+    if (targetStatus) {
+      toast.success(`All ${eligibleConns.length} couriers are now Online & Ready for Orders!`);
+    } else {
+      toast.info(`All couriers marked as Offline.`);
+    }
+  };
+
   const activeConnectionsCount = useMemo(() => connections.filter(
     (c) => c.rider_id || c.connection_code === "IN-HOUSE" || c.status === "active",
   ).length, [connections]);
@@ -1595,7 +1762,16 @@ export const RiderManagement = ({
 
             {/* Quick Fleet Metrics Summary Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setStatusFilter("all")}
+                className={cn(
+                  "p-4 rounded-2xl border transition-all flex items-center gap-3 text-left cursor-pointer",
+                  statusFilter === "all"
+                    ? "bg-surface-container-high border-on-surface/20 ring-2 ring-primary/20 shadow-xs"
+                    : "bg-surface-container-low border-outline-variant/10 hover:border-outline-variant/30"
+                )}
+              >
                 <div className="w-10 h-10 rounded-xl bg-zinc-900 text-white dark:bg-surface-container-high flex items-center justify-center shrink-0">
                   <Bike size={20} className="text-primary" />
                 </div>
@@ -1603,44 +1779,101 @@ export const RiderManagement = ({
                   <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Total Fleet</p>
                   <p className="text-lg font-headline font-black text-on-surface">{connections.length} Couriers</p>
                 </div>
-              </div>
+              </button>
 
-              <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 relative">
-                  <Zap size={20} />
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <button
+                type="button"
+                onClick={() => setStatusFilter(statusFilter === "online" ? "all" : "online")}
+                className={cn(
+                  "p-4 rounded-2xl border transition-all flex flex-col justify-between text-left cursor-pointer relative overflow-hidden",
+                  statusFilter === "online"
+                    ? "bg-emerald-500/10 border-emerald-500 ring-2 ring-emerald-500/30 shadow-xs"
+                    : "bg-surface-container-low border-outline-variant/10 hover:border-emerald-500/40"
+                )}
+              >
+                <div className="flex items-center gap-3 w-full">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 relative">
+                    <Zap size={20} />
+                    {connections.filter((c) => c.is_online).length > 0 && (
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Online Now</p>
+                      {statusFilter === "online" && (
+                        <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full bg-emerald-500 text-white">Active</span>
+                      )}
+                    </div>
+                    <p className={cn(
+                      "text-lg font-headline font-black",
+                      connections.filter((c) => c.is_online).length > 0 ? "text-emerald-600" : "text-amber-600"
+                    )}>
+                      {connections.filter((c) => c.is_online).length} Ready
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Online Now</p>
-                  <p className="text-lg font-headline font-black text-emerald-600">
-                    {connections.filter(c => c.is_online).length} Ready
+
+                {connections.filter((c) => c.is_online).length === 0 ? (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void toggleAllRidersOnline(true);
+                    }}
+                    className="mt-2.5 w-full py-1 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 shadow-xs transition-colors cursor-pointer"
+                    title="Turn all fleet drivers online and ready for orders"
+                  >
+                    <Zap size={11} />
+                    <span>Turn Fleet Online</span>
+                  </div>
+                ) : (
+                  <p className="text-[9px] text-emerald-700 dark:text-emerald-400 font-bold mt-1 truncate">
+                    Ready for Instant Dispatch
                   </p>
-                </div>
-              </div>
+                )}
+              </button>
 
-              <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setStatusFilter(statusFilter === "in_house" ? "all" : "in_house")}
+                className={cn(
+                  "p-4 rounded-2xl border transition-all flex items-center gap-3 text-left cursor-pointer",
+                  statusFilter === "in_house"
+                    ? "bg-indigo-500/10 border-indigo-500 ring-2 ring-indigo-500/30 shadow-xs"
+                    : "bg-surface-container-low border-outline-variant/10 hover:border-indigo-500/40"
+                )}
+              >
                 <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
                   <Users size={20} />
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">In-House Staff</p>
                   <p className="text-lg font-headline font-black text-on-surface">
-                    {connections.filter(c => c.connection_code === "IN-HOUSE").length} Staff
+                    {connections.filter((c) => c.connection_code === "IN-HOUSE").length} Staff
                   </p>
                 </div>
-              </div>
+              </button>
 
-              <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setStatusFilter(statusFilter === "paired" ? "all" : "paired")}
+                className={cn(
+                  "p-4 rounded-2xl border transition-all flex items-center gap-3 text-left cursor-pointer",
+                  statusFilter === "paired"
+                    ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/30 shadow-xs"
+                    : "bg-surface-container-low border-outline-variant/10 hover:border-amber-500/40"
+                )}
+              >
                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
                   <ShieldCheck size={20} />
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Paired Keys</p>
                   <p className="text-lg font-headline font-black text-on-surface">
-                    {connections.filter(c => c.connection_code !== "IN-HOUSE").length} Active
+                    {connections.filter((c) => c.connection_code !== "IN-HOUSE").length} Active
                   </p>
                 </div>
-              </div>
+              </button>
             </div>
 
             {/* Quick Connect / Pair Center Banner */}
@@ -1820,12 +2053,13 @@ export const RiderManagement = ({
                 {[
                   { id: "all", label: `All (${connections.length})` },
                   { id: "online", label: `🟢 Online (${connections.filter(c => c.is_online).length})` },
+                  { id: "offline", label: `⚪ Offline (${connections.filter(c => !c.is_online).length})` },
                   { id: "in_house", label: `🏠 Staff (${connections.filter(c => c.connection_code === "IN-HOUSE").length})` },
                   { id: "paired", label: `🔑 Paired (${connections.filter(c => c.connection_code !== "IN-HOUSE").length})` },
                 ].map((chip) => (
                   <button
                     key={chip.id}
-                    onClick={() => setStatusFilter(chip.id as "all" | "online" | "in_house" | "paired")}
+                    onClick={() => setStatusFilter(chip.id as "all" | "online" | "offline" | "in_house" | "paired")}
                     className={cn(
                       "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap",
                       statusFilter === chip.id
@@ -1860,26 +2094,55 @@ export const RiderManagement = ({
                   Loading courier registry...
                 </div>
               ) : filteredConnections.length === 0 ? (
-                <div className="bg-surface-container-low/30 rounded-3xl p-12 text-center border border-outline-variant/10 max-w-sm mx-auto space-y-3">
+                <div className="bg-surface-container-low/30 rounded-3xl p-10 text-center border border-outline-variant/10 max-w-md mx-auto space-y-4">
                   <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center mx-auto text-on-surface-variant/40">
                     <Bike size={24} />
                   </div>
-                  <h4 className="text-sm font-bold text-on-surface uppercase tracking-tight">
-                    {connections.length === 0 ? "No Couriers Connected Yet" : "No Matching Couriers"}
-                  </h4>
-                  <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
-                    {connections.length === 0 
-                      ? "Generate a pairing key or add an in-house driver above to activate your delivery network."
-                      : "Try clearing your search term or selecting a different filter above."}
-                  </p>
-                  {searchQuery && (
-                    <button
-                      onClick={() => { setSearchQuery(""); setStatusFilter("all"); }}
-                      className="px-4 py-2 bg-primary/10 text-primary text-xs font-bold rounded-xl hover:bg-primary/20 transition-all cursor-pointer"
-                    >
-                      Reset Filters
-                    </button>
-                  )}
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-bold text-on-surface uppercase tracking-tight">
+                      {statusFilter === "online" && connections.length > 0
+                        ? "No Couriers Online & Ready"
+                        : connections.length === 0
+                        ? "No Couriers Connected Yet"
+                        : "No Matching Couriers"}
+                    </h4>
+                    <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
+                      {statusFilter === "online" && connections.length > 0
+                        ? "None of your couriers are currently marked as online for order dispatch. You can activate all couriers with one tap."
+                        : connections.length === 0
+                        ? "Generate a pairing key or add an in-house driver above to activate your delivery network."
+                        : "Try clearing your search term or selecting a different status filter above."}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-2 flex-wrap pt-1">
+                    {statusFilter === "online" && connections.length > 0 && (
+                      <button
+                        onClick={() => void toggleAllRidersOnline(true)}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Zap size={13} />
+                        <span>Turn Fleet Online</span>
+                      </button>
+                    )}
+                    {statusFilter !== "all" && (
+                      <button
+                        onClick={() => { setSearchQuery(""); setStatusFilter("all"); }}
+                        className="px-4 py-2 bg-surface text-on-surface text-xs font-bold rounded-xl border border-outline-variant/20 hover:bg-on-surface/5 transition-all cursor-pointer"
+                      >
+                        View All Couriers ({connections.length})
+                      </button>
+                    )}
+                    {connections.length === 0 && (
+                      <button
+                        onClick={() => setShowInHouseModal(true)}
+                        className="px-4 py-2 bg-primary text-on-primary text-xs font-bold rounded-xl shadow-xs hover:bg-primary/90 transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Plus size={13} />
+                        <span>Add In-House Staff</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <>
@@ -2073,6 +2336,46 @@ export const RiderManagement = ({
                                 </button>
                               )}
                             </div>
+                          </div>
+
+                          {/* Online & Ready Interactive Dispatch Switch */}
+                          <div className={cn(
+                            "flex items-center justify-between gap-2 p-2.5 rounded-xl border transition-all",
+                            conn.is_online
+                              ? "bg-emerald-500/[0.06] border-emerald-500/20"
+                              : "bg-surface/60 border-outline-variant/10"
+                          )}>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className={cn(
+                                "w-2.5 h-2.5 rounded-full shrink-0",
+                                conn.is_online ? "bg-emerald-500 animate-ping" : "bg-zinc-400"
+                              )} />
+                              <div className="truncate">
+                                <p className="text-[11px] font-bold text-on-surface leading-tight truncate">
+                                  {conn.is_online ? "🟢 Online & Ready for Orders" : "⚪ Offline / Off-duty"}
+                                </p>
+                                <p className="text-[9px] text-on-surface-variant/70 font-medium truncate">
+                                  {conn.is_online
+                                    ? "Receives and accepts dispatch requests"
+                                    : "Tap toggle to make ready for deliveries"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => void toggleRiderOnlineStatus(conn)}
+                              className={cn(
+                                "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer border shrink-0 flex items-center gap-1",
+                                conn.is_online
+                                  ? "bg-surface hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-on-surface-variant border-outline-variant/20 shadow-xs"
+                                  : "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600 shadow-xs"
+                              )}
+                              title={conn.is_online ? "Set courier to offline" : "Make courier online & ready"}
+                            >
+                              <Zap size={11} className={conn.is_online ? "text-amber-500" : "text-white"} />
+                              <span>{conn.is_online ? "Set Offline" : "Go Online"}</span>
+                            </button>
                           </div>
 
                           {/* Stats Grid */}

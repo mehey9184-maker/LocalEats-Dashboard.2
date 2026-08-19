@@ -117,6 +117,7 @@ export interface Order {
   accepted_at?: string;
   completed_at?: string;
   estimated_delivery_time?: string;
+  updated_at?: string;
   items?: (string | { name: string; price: number; quantity: number })[];
   coupon_code?: string;
   discount_amount?: number;
@@ -130,9 +131,38 @@ export interface Order {
     | "delivered"
     | "cancelled";
   order_type?: "delivery" | "collection";
+  delivery_pin?: string;
+  rider_accepted_at?: string;
   merchant_rating?: number;
   merchant_feedback?: string;
   terminal_masked_card?: string;
   terminal_sync_status?: string;
+}
+
+export interface User {
+  id: string;
+  email?: string | null;
+  app_metadata?: Record<string, unknown>;
+  user_metadata?: {
+    full_name?: string;
+    name?: string;
+    phone?: string;
+    whatsapp?: string;
+    location?: string;
+    address?: string;
+    avatar_url?: string;
+    shop_id?: string | number;
+    vendor_shop_id?: string | number;
+    permanent_owner_id?: string;
+    vendor_shop_name?: string;
+    dark_mode?: boolean;
+    auto_schedule_enabled?: boolean;
+    operating_hours?: { open: string; close: string };
+    weekly_operating_hours?: Array<{ day: string; open: string; close: string; active: boolean }>;
+    holiday_schedule?: { start: string; end: string };
+    [key: string]: unknown;
+  };
+  aud?: string;
+  created_at?: string;
 }
 

@@ -1,5 +1,4 @@
 import { toast } from "sonner";
-import { supabase } from "../lib/supabase";
 import { captureErrorToSentry } from "./sentry";
 
 export interface LoggedNetworkError {
@@ -148,7 +147,19 @@ export const logNetworkError = (
 ): LoggedNetworkError => {
   const errObj = error as Record<string, unknown> | null;
   const code = options?.code || (errObj?.code ? String(errObj.code) : undefined);
-  const message = errObj?.message ? String(errObj.message) : (error instanceof Error ? error.message : (typeof error === "string" ? error : String(error)));
+  let message = "An unexpected notice occurred";
+  if (errObj?.message) {
+    message = String(errObj.message);
+  } else if (error instanceof Error) {
+    message = error.message;
+  } else if (typeof error === "string" && error.trim() !== "") {
+    message = error;
+  } else if (error && typeof error === "object") {
+    const json = JSON.stringify(error);
+    message = json !== "{}" ? json : "Network or database connection notice";
+  } else if (error) {
+    message = String(error);
+  }
   const details = options?.details || (errObj?.details ? String(errObj.details) : (errObj?.hint ? String(errObj.hint) : undefined));
 
   // Determine error classification type if omitted
