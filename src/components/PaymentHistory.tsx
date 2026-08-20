@@ -112,7 +112,7 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
           .limit(100);
 
         if (error) throw error;
-        setPayments(data || []);
+        setPayments((data as unknown as Payment[]) || []);
       } catch (error) {
         console.error("Error fetching payments:", error);
       } finally {

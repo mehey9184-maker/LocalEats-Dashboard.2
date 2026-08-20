@@ -35,7 +35,7 @@ import {
 } from "firebase/storage";
 import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
 import firebaseConfigData from "../../firebase-applet-config.json";
-import { User, MenuItem, Order, Shop, Review, Coupon } from "../types";
+import { User, MenuItem, Order, Shop, Review, Coupon, OrderStatus } from "../types";
 
 // Standard Firestore Error Handling Enums & Interfaces
 export enum OperationType {
@@ -586,7 +586,7 @@ export async function createFirestoreMenuItem(item: Partial<MenuItem>): Promise<
       updated_at: new Date().toISOString(),
     };
     await setDoc(mRef, payload, { merge: true });
-    return { data: payload as MenuItem, error: null };
+    return { data: payload as unknown as MenuItem, error: null };
   } catch (err) {
     handleFirestoreError(err, OperationType.CREATE, "menu_items");
     return { data: null, error: err as Error };

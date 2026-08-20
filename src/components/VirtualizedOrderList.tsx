@@ -1,5 +1,5 @@
 import React from "react";
-import { List as VirtualizedList } from "react-window";
+import { FixedSizeList as VirtualizedList, ListChildComponentProps } from "react-window";
 import { Order } from "../types";
 
 interface VirtualizedOrderListProps {
@@ -19,23 +19,27 @@ export const VirtualizedOrderList: React.FC<VirtualizedOrderListProps> = ({
 }) => {
   if (!orders || orders.length === 0) return null;
 
+  const Row = ({ index, style }: ListChildComponentProps): React.ReactElement => {
+    const order = orders[index];
+    if (!order) return <div style={style} />;
+    return (
+      <div style={style} className="pb-4">
+        {renderItem(order, index)}
+      </div>
+    );
+  };
+
   return (
     <div className={`w-full ${className}`}>
       <VirtualizedList
-        rowCount={orders.length}
-        rowHeight={itemHeight}
+        height={Math.min(orders.length * itemHeight, height)}
+        itemCount={orders.length}
+        itemSize={itemHeight}
+        width="100%"
         overscanCount={2}
-        style={{ height: Math.min(orders.length * itemHeight, height), width: "100%" }}
-        rowComponent={({ index, style }) => {
-          const order = orders[index];
-          if (!order) return null;
-          return (
-            <div style={style} className="pb-4">
-              {renderItem(order, index)}
-            </div>
-          );
-        }}
-      />
+      >
+        {Row}
+      </VirtualizedList>
     </div>
   );
 };

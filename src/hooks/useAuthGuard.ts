@@ -33,7 +33,11 @@ export const useAuthGuard = () => {
 
       if (session?.access_token) {
         try {
-          supabase.realtime.setAuth(session.access_token);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if ((supabase as any).realtime) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (supabase as any).realtime.setAuth(session.access_token);
+          }
         } catch {
           // ignore
         }
@@ -43,7 +47,8 @@ export const useAuthGuard = () => {
       const baseChannel = getFreshChannel(channelName);
 
       // 3. Attach listeners BEFORE calling .subscribe()
-      const configuredChannel = setupChannel(baseChannel);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const configuredChannel = setupChannel(baseChannel as any);
 
       // 4. Fast subscription with 2s timeout safety
       return new Promise((resolve) => {

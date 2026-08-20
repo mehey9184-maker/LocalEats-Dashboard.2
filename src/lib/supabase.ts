@@ -82,7 +82,8 @@ class FirestoreQueryBuilder {
     this.collectionName = collectionName;
   }
 
-  select() {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  select(_columns?: string, _options?: Record<string, unknown>) {
     return this;
   }
 
@@ -421,7 +422,7 @@ class FirestoreChannelAdapter {
 
   on(_event: string, schemaOptions: Record<string, unknown>, callback: (payload: unknown) => void) {
     try {
-      const targetTable = schemaOptions?.table || "orders";
+      const targetTable = (schemaOptions?.table as string) || "orders";
       const collRef = collection(db, targetTable);
       const unsub = onSnapshot(collRef, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
@@ -544,7 +545,7 @@ export const supabase = {
       }
     },
 
-    async signUp({ email, password, options }: { email: string; password: string; options?: Record<string, unknown> }) {
+    async signUp({ email, password, options }: { email: string; password: string; options?: { data?: { full_name?: string; phone?: string; shop_id?: string | number } } }) {
       try {
         const user = await firebaseSignUp(email, password, {
           full_name: options?.data?.full_name,
@@ -571,8 +572,8 @@ export const supabase = {
       }
     },
 
-    async updateUser() {
-      return { data: { user: auth.currentUser }, error: null };
+    async updateUser(attributes?: Record<string, unknown>) {
+      return { data: { user: auth.currentUser, ...attributes }, error: null };
     },
 
     async verifyOtp() {

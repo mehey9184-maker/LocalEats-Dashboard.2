@@ -15,7 +15,6 @@ import {
   TrendingUp,
   DollarSign,
   Users,
-  AlertCircle,
   Sparkles,
   Bike,
   RefreshCw,
@@ -49,6 +48,7 @@ import {
   ReceiptText,
   Printer,
   User as UserIcon,
+  LayoutDashboard,
 } from "lucide-react";
 import { supabase, isSupabaseMocked } from "./lib/supabase";
 import {
@@ -58,6 +58,8 @@ import {
   onAuthStateChanged,
   subscribeToShopsFirestore,
   subscribeToOrdersFirestore,
+  getFirestoreShops,
+  getFirestoreOrders,
 } from "./lib/firebase";
 import { useKitchenAlerter } from "./hooks/useKitchenAlerter";
 import { useAuthGuard } from "./hooks/useAuthGuard";
@@ -113,6 +115,9 @@ import {
 import {
   QueuedPrintJob,
   generateReceiptBytes,
+  getFailedPrints,
+  queueFailedPrint,
+  deleteFailedPrint,
 } from "./utils/escPosEngine";
 import {
   isValidUUID,
@@ -1840,42 +1845,6 @@ function App() {
                <Skeleton className="h-40 rounded-[2rem]" />
             </div>
             <Skeleton className="h-[400px] rounded-[2.5rem]" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Configuration check for live connection setup
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-8 text-center bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-black">
-        <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center mb-6 border border-red-500/20 animate-pulse">
-          <AlertCircle size={40} className="text-red-500" />
-        </div>
-        <h1 className="text-2xl font-black text-white mb-2 tracking-tight uppercase tracking-widest font-headline">
-          Database Connection Setup Needed
-        </h1>
-        <p className="text-zinc-400 max-w-sm mb-8 font-medium leading-relaxed font-body text-sm">
-          Your live database connection is missing configuration details. Please verify your connection keys in your project secrets under settings.
-        </p>
-        <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-2xl w-full max-w-md text-left">
-          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3 ml-1">
-            Connection Details
-          </p>
-          <div className="space-y-1 font-mono text-xs">
-            <div className="flex justify-between p-2 bg-black/30 rounded-lg">
-              <span className="text-zinc-600">Service Endpoint:</span>
-              <span className={supabaseUrl ? "text-green-500" : "text-red-500"}>
-                {supabaseUrl ? "DETECTED" : "MISSING"}
-              </span>
-            </div>
-            <div className="flex justify-between p-2 bg-black/30 rounded-lg">
-              <span className="text-zinc-600">Security Token:</span>
-              <span className={supabaseAnonKey ? "text-green-500" : "text-red-500"}>
-                {supabaseAnonKey ? "DETECTED" : "MISSING"}
-              </span>
-            </div>
           </div>
         </div>
       </div>

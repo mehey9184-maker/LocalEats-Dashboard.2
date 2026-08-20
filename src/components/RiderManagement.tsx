@@ -339,7 +339,7 @@ export const RiderManagement = ({
   const [activeCode, setActiveCode] = useState<{ code: string; expires: string } | null>(null);
   const [showCode, setShowCode] = useState(false);
   const [qrUrl, setQrUrl] = useState("");
-  const pairingCodeDuration = "never";
+  const pairingCodeDuration: "24h" | "7d" | "30d" | "never" = "never";
   const [showInHouseModal, setShowInHouseModal] = useState(false);
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [inHouseName, setInHouseName] = useState("");
@@ -451,7 +451,7 @@ export const RiderManagement = ({
       // Key Metrics Card
       const activeRiders = connections.filter((c) => c.is_online).length;
       const totalRiders = connections.length;
-      const completedOrders = orders.filter((o) => o.status === "completed" || o.status === "delivered");
+      const completedOrders = orders.filter((o) => o.status === "completed" || (o.status as string) === "delivered" || o.delivery_status === "delivered");
       const codOrders = completedOrders.filter((o) => o.payment_method?.toLowerCase().includes("cash") || o.payment_method?.toLowerCase().includes("cod"));
       const totalCodAmount = codOrders.reduce((sum, o) => sum + (Number(o.total_price) || 0), 0);
       const avgRating = connections.length > 0
@@ -481,7 +481,7 @@ export const RiderManagement = ({
       const riderRows = connections.map((conn) => {
         const riderOrders = orders.filter((o) => o.rider_id === conn.rider_id || o.rider_name === conn.rider_name);
         const riderCod = riderOrders
-          .filter((o) => (o.status === "completed" || o.status === "delivered") && (o.payment_method?.toLowerCase().includes("cash") || o.payment_method?.toLowerCase().includes("cod")))
+          .filter((o) => (o.status === "completed" || (o.status as string) === "delivered" || o.delivery_status === "delivered") && (o.payment_method?.toLowerCase().includes("cash") || o.payment_method?.toLowerCase().includes("cod")))
           .reduce((sum, o) => sum + (Number(o.total_price) || 0), 0);
 
         return [
@@ -843,9 +843,9 @@ export const RiderManagement = ({
             .select("id, is_online, full_name, phone, status, vehicle_type, rating, total_deliveries, total_earnings, current_latitude, current_longitude, updated_at")
             .in("id", riderIds);
 
-          if (profData) {
-            profData.forEach((p) => {
-              profiles[p.id] = p as RiderProfile;
+          if (profData && Array.isArray(profData)) {
+            (profData as unknown as RiderProfile[]).forEach((p) => {
+              profiles[p.id] = p;
             });
           }
         } catch {
@@ -913,13 +913,13 @@ export const RiderManagement = ({
           table: 'rider_connections',
           filter: `shop_id=eq.${shopId}`
         },
-        (payload) => {
+        (payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
           if (payload.eventType === 'UPDATE') {
-            setConnections(prev => prev.map(c => c.id === payload.new.id ? { ...c, ...payload.new } : c));
+            setConnections(prev => prev.map(c => c.id === (payload.new as { id?: string }).id ? { ...c, ...(payload.new as Partial<RiderConnection>) } : c));
           } else if (payload.eventType === 'INSERT') {
              void fetchConnections();
           } else if (payload.eventType === 'DELETE') {
-            setConnections(prev => prev.filter(c => c.id !== payload.old.id));
+            setConnections(prev => prev.filter(c => c.id !== (payload.old as { id?: string }).id));
           }
         }
       )
@@ -936,8 +936,8 @@ export const RiderManagement = ({
             table: 'rider_profiles',
             filter: `id=eq.${selectedTrackId}`
           },
-          (payload) => {
-            const newProfile = payload.new as RiderProfile;
+          (payload: { new: Record<string, unknown> }) => {
+            const newProfile = payload.new as unknown as RiderProfile;
             setConnections(prev => prev.map(c => {
                if (c.rider_id === selectedTrackId) {
                  return {
@@ -1281,7 +1281,7 @@ export const RiderManagement = ({
       });
 
       if (error) {
-        toast.error(`Sync warning: ${error.message}`);
+        toast.error(`Sync warning: ${error && typeof error === "object" && "message" in error ? String((error as { message: string }).message) : "Failed to sync"}`);
       } else {
         toast.success(`Pairing code ${conn.connection_code} verified and synced to Supabase!`);
         void fetchConnections();
@@ -1614,7 +1614,7 @@ export const RiderManagement = ({
                 <p className="text-xs text-on-surface-variant">Live delivery tracking and dispatch retries</p>
               </div>
               <button 
-                onClick={fetchConnections}
+                onClick={() => void fetchConnections()}
                 className="p-2 hover:bg-on-surface/5 rounded-xl border border-outline-variant/10 text-on-surface-variant hover:text-on-surface transition-colors"
                 title="Force Refresh Coordinates"
               >
@@ -2518,7 +2518,7 @@ export const RiderManagement = ({
               </div>
 
               <button
-                onClick={fetchConnections}
+                onClick={() => void fetchConnections()}
                 className="px-3.5 py-2 bg-surface-container-high hover:bg-surface-container text-on-surface text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer border border-outline-variant/10 shrink-0 self-start sm:self-auto"
               >
                 <RefreshCw size={14} className={loading ? "animate-spin text-primary" : "text-on-surface-variant"} />

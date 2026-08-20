@@ -1,5 +1,5 @@
-export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'completed' | 'cancelled';
-export type DeliveryStatus = 'finding_rider' | 'accepted' | 'picked_up' | 'delivered' | 'cancelled';
+export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'dispatched';
+export type DeliveryStatus = 'finding_rider' | 'accepted' | 'picked_up' | 'delivered' | 'cancelled' | 'dispatched';
 export type UserVehicle = 'Road' | 'MTB' | 'E-Bike' | 'Motor';
 
 export interface Shop {
@@ -11,6 +11,17 @@ export interface Shop {
   city?: string;
   category?: string;
   owner_id: string | null;
+  phone?: string;
+  email?: string;
+  address?: string;
+  is_active?: boolean;
+  delivery_fee?: number;
+  banner_url?: string;
+  operating_hours?: { open: string; close: string };
+  created_at?: string;
+  instagram?: string;
+  facebook?: string;
+  whatsapp?: string;
   rating?: number;
   cash_trust_enabled?: boolean;
   allow_external_riders?: boolean;
@@ -20,6 +31,8 @@ export interface Shop {
   lat?: number;
   lng?: number;
   updated_at?: string;
+  pairing_code?: string;
+  linked_rider_id?: string;
 }
 
 export interface RiderProfile {
@@ -90,6 +103,7 @@ export interface MenuItem {
   category?: string;
   description?: string;
   stock_quantity?: number | null;
+  is_unlimited?: boolean;
 }
 
 export interface Order {
@@ -99,11 +113,13 @@ export interface Order {
   product_name: string;
   product_variant?: string;
   total_price: number;
+  subtotal?: number;
   price?: number; // Database field
   lat?: number;
   lng?: number;
   status: OrderStatus;
   payment_method?: string;
+  pairing_cipher?: string;
   country?: string;
   created_at: string;
   customer_name: string;
@@ -118,11 +134,13 @@ export interface Order {
   completed_at?: string;
   estimated_delivery_time?: string;
   updated_at?: string;
+  rider_id?: string;
+  rider_name?: string;
+  rider_phone?: string;
   items?: (string | { name: string; price: number; quantity: number })[];
   coupon_code?: string;
   discount_amount?: number;
   delivery_fee?: number;
-  rider_id?: string;
   restaurant_name?: string;
   delivery_status?:
     | "finding_rider"
@@ -130,7 +148,7 @@ export interface Order {
     | "picked_up"
     | "delivered"
     | "cancelled";
-  order_type?: "delivery" | "collection";
+  order_type?: "delivery" | "collection" | "pickup";
   delivery_pin?: string;
   rider_accepted_at?: string;
   merchant_rating?: number;
@@ -174,11 +192,12 @@ export interface RiderConnection {
   rider_phone?: string | null;
   connection_code: string;
   expires_at: string;
-  status: "active" | "expired" | "offline";
+  status: "active" | "expired" | "offline" | "paused";
   is_online: boolean;
   created_at: string;
   rating?: number;
   last_seen?: string;
+  vehicle_type?: string;
   shops?: {
     name: string;
     logo_url?: string | null;
@@ -232,7 +251,7 @@ export interface Message {
   order_id: string;
   shop_id: number;
   user_id: string;
-  sender_type: "merchant" | "customer";
+  sender_type: "merchant" | "customer" | "shop" | "rider";
   content: string;
   created_at: string;
 }

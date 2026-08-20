@@ -540,8 +540,9 @@ export function useShopLocation({ shop, onLocationSaved }: UseShopLocationOption
           .update(payload)
           .eq("id", activeShopId);
 
-        if (sbError && sbError.code !== "42703") {
-          console.warn("[useShopLocation] Supabase update warning:", sbError.message);
+        const sbErr = sbError as { code?: string; message?: string } | null;
+        if (sbErr && sbErr.code !== "42703") {
+          console.warn("[useShopLocation] Supabase update warning:", sbErr.message);
         }
 
         // 3. Update localStorage cached shops

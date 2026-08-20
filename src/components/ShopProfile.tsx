@@ -1,20 +1,37 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Store,
   MapPin,
   Phone,
   Instagram,
+  Facebook,
   Upload,
   CheckCircle2,
   AlertCircle,
-  Check
+  Check,
+  MessageCircle,
+  ImageIcon,
+  RefreshCw,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { supabase } from "../lib/supabase";
+import { updateFirestoreShop } from "../lib/firebase";
 import { Shop, User } from "../types";
 import { LeafletMap } from "./LeafletMap";
-import { parseAndNormalizeZAAddress } from "../utils";
+import { LocationSyncIndicator } from "./LocationSyncIndicator";
+import {
+  parseAndNormalizeZAAddress,
+  formatSAPhone,
+} from "../utils";
+import { analyzeLocationSync } from "../hooks/useShopLocation";
+import { handleCentralizedError } from "../utils/errorHandler";
+import { DEFAULT_SHOP_LOGO, isPlaceholderImage } from "../constants";
+import imageCompression from "browser-image-compression";
+import { uploadImageToFirebaseStorage } from "../lib/firebase";
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -267,12 +284,13 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
         .eq("id", shop.id)
         .maybeSingle();
 
-      if (remoteShop?.updated_at && shop.updated_at) {
-        const remoteTime = new Date(remoteShop.updated_at).getTime();
+      const remoteShopData = remoteShop as { updated_at?: string } | null;
+      if (remoteShopData?.updated_at && shop.updated_at) {
+        const remoteTime = new Date(remoteShopData.updated_at).getTime();
         const localTime = new Date(shop.updated_at).getTime();
         if (remoteTime > localTime + 2000) {
           toast.error("Cloud shop profile updated in another session. Syncing latest state to prevent overwrite.", {
-            description: `Remote version (${new Date(remoteShop.updated_at).toLocaleTimeString()}) is newer than local state.`,
+            description: `Remote version (${new Date(remoteShopData.updated_at).toLocaleTimeString()}) is newer than local state.`,
             duration: 5000,
           });
           setIsSaving(false);
@@ -346,8 +364,9 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
         .eq("id", shop.id);
 
       // If it's a "column does not exist" error or schema cache error, try to heal
-      if (error && (error.code === "42703" || error.message?.includes("column") || error.message?.includes("schema cache"))) {
-        console.warn("Some columns do not exist in the shops table. Attempting to strip unknown columns...", error.message);
+      const errObj = error as { code?: string; message?: string } | null;
+      if (errObj && (errObj.code === "42703" || errObj.message?.includes("column") || errObj.message?.includes("schema cache"))) {
+        console.warn("Some columns do not exist in the shops table. Attempting to strip unknown columns...", errObj.message);
         // List of columns that might not exist in an older schema
         const optionalCols = ["city", "whatsapp", "instagram", "facebook", "lat", "lng", "location_details", "email", "updated_at"];
         optionalCols.forEach((col) => delete payload[col]);

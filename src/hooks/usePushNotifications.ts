@@ -99,7 +99,7 @@ export const usePushNotifications = (initialState = false): PushNotificationHook
               
               subscription = await registration.pushManager.subscribe({
                 userVisibleOnly: true,
-                applicationServerKey: convertedVapidKey,
+                applicationServerKey: convertedVapidKey as unknown as BufferSource,
               });
             }
 

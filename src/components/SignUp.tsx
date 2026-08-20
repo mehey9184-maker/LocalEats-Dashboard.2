@@ -78,7 +78,6 @@ export const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
         onSuccess({
           id: Date.now().toString(),
           email: email,
-          role: "merchant",
           created_at: new Date().toISOString(),
           app_metadata: {},
           user_metadata: { name, phone },

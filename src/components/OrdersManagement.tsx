@@ -21,16 +21,73 @@ import {
   Zap,
   Calendar,
   Eye,
-  AlertTriangle
+  AlertTriangle,
+  Inbox,
+  Volume2,
+  PauseCircle,
+  ChevronRight,
+  Activity,
+  Wifi,
+  Database,
+  Copy,
+  UtensilsCrossed,
+  CreditCard,
+  LayoutGrid,
+  FileDown,
+  ReceiptText,
+  ArrowUp,
+  ArrowDown,
+  SlidersHorizontal,
+  RotateCcw,
+  GripVertical,
+  Rocket,
+  EyeOff,
+  Star,
+  MessageCircle,
+  Timer,
+  Edit2,
+  List,
+  Settings,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
-import { Order, Shop, OrderStatus, RiderProfile, Message } from "../types";
+import {
+  checkPrinterConnectivity,
+  type PrinterDiagnosticResult,
+} from "../utils/escPosEngine";
+import { isRiderOnline } from "../utils/availabilityChecker";
+import { Order, Shop, OrderStatus, RiderProfile, Message, RiderConnection } from "../types";
 import { PrintingFormat } from "../hooks/useESCPOSThermalPrinter";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { Pagination } from "./Pagination";
 import { useAuthGuard } from "../hooks/useAuthGuard";
+import { AddressDisplay } from "./AddressDisplay";
+import { Skeleton } from "./ui/Skeleton";
+import { NoLinkedRiderModal } from "./NoLinkedRiderModal";
+import { DispatchAlertModal } from "./DispatchAlertModal";
+import { format } from "date-fns";
+
+export const isOrderDelivery = (order: Order): boolean => {
+  return order.fulfillment_method === "delivery" || !!order.address;
+};
+
+export function safeGetOrderItems(rawItems: unknown): (string | { name: string; quantity: number; price?: number })[] {
+  if (!rawItems) return [];
+  if (Array.isArray(rawItems)) return rawItems;
+  if (typeof rawItems === "string") {
+    try {
+      const parsed = JSON.parse(rawItems);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      return [rawItems];
+    }
+  }
+  return [];
+}
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -48,7 +105,7 @@ export interface OrdersManagementProps {
   setKitchenMode: (val: boolean) => void;
   soundAlerts: boolean;
   setSoundAlerts: (val: boolean) => void;
-  onRequestRider: (id: string, riderId?: string) => void;
+  onRequestRider: (id: string, riderId?: string, riderName?: string, riderPhone?: string) => void;
   onUnassignRider: (id: string) => void;
   onTabChange: (tab: string) => void;
   sendRiderNudge: (riderId: string, message: string) => Promise<void>;
@@ -256,31 +313,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   handlePrintUSBDirect,
   retryQueuedPrintDirect,
   clearPrintQueue,
-}: {
-  orders: Order[];
-  onUpdateStatus: (id: string, status: OrderStatus, message?: string, estimatedTime?: string) => Promise<void> | void;
-  onDispatchToRider?: (id: string, riderId: string, riderName?: string, riderPhone?: string) => Promise<void> | void;
-  onConvertOrderToPickup?: (id: string) => Promise<void> | void;
-  onDeleteAllOrders: () => void;
-  loading: boolean;
-  onRefresh: () => void;
-  kitchenMode: boolean;
-  setKitchenMode: (val: boolean) => void;
-  soundAlerts: boolean;
-  setSoundAlerts: (val: boolean) => void;
-  onRequestRider: (id: string, riderId?: string) => void;
-  onUnassignRider: (id: string) => void;
-  onTabChange: (tab: string) => void;
-  sendRiderNudge: (riderId: string, message: string) => Promise<void>;
-  currentShop: Shop | undefined;
-  printingFormat?: "80mm" | "58mm";
-  setPrintingFormat?: (fmt: "80mm" | "58mm") => void;
-  failedPrints?: QueuedPrintJob[];
-  printingHardwareLoading?: boolean;
-  handlePrintBluetoothDirect?: (order: Order) => Promise<void>;
-  handlePrintUSBDirect?: (order: Order) => Promise<void>;
-  retryQueuedPrintDirect?: (job: QueuedPrintJob) => Promise<void>;
-  clearPrintQueue?: () => Promise<void>;
 }) => {
   const { subscribeWithAuthGuard } = useAuthGuard();
   const [viewMode, setViewMode] = useState<"active" | "history">("active");
@@ -537,8 +569,8 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             .from("rider_connections")
             .select("*")
             .eq("shop_id", shopId);
-          conns = res.data;
-          connErr = res.error;
+          conns = (res.data as unknown as RiderConnection[]) || null;
+          connErr = res.error as { message?: string } | null;
 
           if ((connErr || !conns || conns.length === 0) && numericShopId !== shopId) {
             console.log(`[App.tsx useEffect] Retrying query with numericShopId:`, numericShopId);
@@ -546,8 +578,8 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
               .from("rider_connections")
               .select("*")
               .eq("shop_id", numericShopId);
-            if (!retryRes.error && retryRes.data && retryRes.data.length > 0) {
-              conns = retryRes.data;
+            if (!retryRes.error && retryRes.data && (retryRes.data as unknown as RiderConnection[]).length > 0) {
+              conns = retryRes.data as unknown as RiderConnection[];
               connErr = null;
             }
           }
@@ -630,9 +662,9 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
               .select("id, is_online, full_name, phone, status, vehicle_type, rating, current_latitude, current_longitude")
               .in("id", riderIds);
 
-            if (!profErr && profData) {
-              profData.forEach((p) => {
-                profiles[p.id] = p as RiderProfile;
+            if (!profErr && profData && Array.isArray(profData)) {
+              (profData as unknown as RiderProfile[]).forEach((p) => {
+                profiles[p.id] = p;
               });
             }
           } catch {
@@ -641,7 +673,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
         }
 
         const now = new Date();
-        const processed = finalConns.map((conn) => {
+        const processed: RiderConnection[] = finalConns.map((conn) => {
           const profile = conn.rider_id ? profiles[conn.rider_id] : null;
           const isInHouse = conn.connection_code === "IN-HOUSE";
           const isBound = Boolean(conn.rider_id);
@@ -651,7 +683,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             is_online: profile?.is_online || (isInHouse ? true : (isBound ? (conn.is_online ?? true) : false)),
             rider_name: profile?.full_name || conn.rider_name || "In-House Express Fleet",
             rider_phone: profile?.phone || conn.rider_phone || currentShop.phone || "+27 82 000 0000",
-            status: profile?.status || (isExpired ? "expired" : isInHouse ? "idle" : conn.status || "active"),
+            status: (profile?.status === "online" ? "active" : profile?.status || (isExpired ? "expired" : isInHouse ? "active" : conn.status || "active")) as RiderConnection["status"],
             vehicle_type: profile?.vehicle_type || "Road",
             rating: profile?.rating || 5.0,
             current_latitude: profile?.current_latitude,
@@ -725,8 +757,9 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
         .eq('rider_id', riderId)
         .not('merchant_rating', 'is', null);
 
-      if (ratingsData && ratingsData.length > 0) {
-        const avgRating = ratingsData.reduce((acc, curr) => acc + (curr.merchant_rating || 0), 0) / ratingsData.length;
+      const items = (ratingsData as unknown as { merchant_rating: number }[]) || [];
+      if (Array.isArray(items) && items.length > 0) {
+        const avgRating = items.reduce((acc, curr) => acc + (curr.merchant_rating || 0), 0) / items.length;
         await supabase.from('rider_profiles').update({ rating: avgRating }).eq('id', riderId);
       }
     } catch {
@@ -1607,7 +1640,7 @@ Notes: "${order.notes || "None"}"
                                   e.stopPropagation();
                                   const newEta = prompt("Enter estimated delivery time (e.g. 20-30 mins):", order.estimated_delivery_time || "25 mins");
                                   if (newEta !== null) {
-                                    onUpdateOrderStatus(order.id, order.status, undefined, newEta);
+                                    onUpdateStatus(order.id, order.status, undefined, newEta);
                                   }
                                 }}
                                 className="p-1 text-primary hover:bg-primary/5 rounded shadow-sm"
@@ -1698,14 +1731,14 @@ Notes: "${order.notes || "None"}"
                                           {typeof item === "object" &&
                                           item !== null &&
                                           "name" in item
-                                            ? item.name
+                                            ? ((item as unknown) as Record<string, unknown>).name as string
                                             : String(item)}
                                         </td>
                                         <td className="px-4 py-3 text-center text-on-surface-variant">
                                           {typeof item === "object" &&
                                           item !== null &&
                                           "quantity" in item
-                                            ? item.quantity
+                                            ? ((item as unknown) as Record<string, unknown>).quantity as number
                                             : 1}
                                         </td>
                                         <td className="px-4 py-3 text-right text-on-surface-variant">
@@ -1714,7 +1747,7 @@ Notes: "${order.notes || "None"}"
                                             typeof item === "object" &&
                                               item !== null &&
                                               "price" in item
-                                              ? item.price
+                                              ? ((item as unknown) as Record<string, unknown>).price as number
                                               : 0,
                                           ).toFixed(2)}
                                         </td>
@@ -1725,14 +1758,14 @@ Notes: "${order.notes || "None"}"
                                               typeof item === "object" &&
                                                 item !== null &&
                                                 "price" in item
-                                                ? item.price
+                                                ? ((item as unknown) as Record<string, unknown>).price as number
                                                 : 0,
                                             ) *
                                             Number(
                                               typeof item === "object" &&
                                                 item !== null &&
                                                 "quantity" in item
-                                                ? item.quantity
+                                                ? ((item as unknown) as Record<string, unknown>).quantity as number
                                                 : 1,
                                             )
                                           ).toFixed(2)}
@@ -2031,11 +2064,6 @@ Notes: "${order.notes || "None"}"
                                         key={status}
                                         onClick={async (e) => {
                                           e.stopPropagation();
-                                          setOrders((prev) =>
-                                            prev.map((o) =>
-                                              o.id === order.id ? { ...o, delivery_status: status as Order["delivery_status"] } : o
-                                            )
-                                          );
                                           try {
                                             const existingOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
                                             existingOverrides[order.id] = { ...existingOverrides[order.id], delivery_status: status, updated_at: new Date().toISOString() };
@@ -3217,7 +3245,7 @@ Notes: "${order.notes || "None"}"
                     />
                   </div>
                   <div className="relative">
-                    <Icon
+                    <Search
                       className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40"
                       size={18}
                     />
@@ -3457,9 +3485,9 @@ Notes: "${order.notes || "None"}"
                         <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
                           {items.map((item, idx) => {
                             const isObj = typeof item === "object" && item !== null;
-                            const name = isObj ? item.name : String(item);
-                            const qty = isObj ? item.quantity : 1;
-                            const price = isObj ? item.price : 0;
+                            const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
+                            const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
+                            const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="truncate max-w-[150px]">{qty}x {name}</span>
@@ -3671,9 +3699,9 @@ Notes: "${order.notes || "None"}"
                         <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
                           {items.map((item, idx) => {
                             const isObj = typeof item === "object" && item !== null;
-                            const name = isObj ? item.name : String(item);
-                            const qty = isObj ? item.quantity : 1;
-                            const price = isObj ? item.price : 0;
+                            const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
+                            const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
+                            const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="truncate max-w-[150px]">{qty}x {name}</span>
@@ -3933,9 +3961,9 @@ Notes: "${order.notes || "None"}"
                         <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
                           {items.map((item, idx) => {
                             const isObj = typeof item === "object" && item !== null;
-                            const name = isObj ? item.name : String(item);
-                            const qty = isObj ? item.quantity : 1;
-                            const price = isObj ? item.price : 0;
+                            const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
+                            const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
+                            const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="truncate max-w-[150px]">{qty}x {name}</span>
@@ -4100,9 +4128,9 @@ Notes: "${order.notes || "None"}"
                         <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
                           {items.map((item, idx) => {
                             const isObj = typeof item === "object" && item !== null;
-                            const name = isObj ? item.name : String(item);
-                            const qty = isObj ? item.quantity : 1;
-                            const price = isObj ? item.price : 0;
+                            const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
+                            const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
+                            const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="truncate max-w-[150px]">{qty}x {name}</span>
@@ -4214,7 +4242,7 @@ Notes: "${order.notes || "None"}"
                       </span>
                     </div>
                                   <button
-                onClick={() => setIsNotificationCenterOpen(true)}
+                onClick={() => toast.info("Notification Center coming soon.")}
                 className="p-2 text-on-surface-variant hover:text-primary transition-colors relative"
                 title="Notification Center"
               >

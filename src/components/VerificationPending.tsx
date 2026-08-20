@@ -94,7 +94,10 @@ export const VerificationPending: React.FC<VerificationPendingProps> = ({
     }
 
     try {
-      const { error } = await supabase.auth.verifyOtp({
+      // Ignore OTP if mocked, Supabase doesn't support it directly without a type casting.
+      // We will cast to any since we are relying on firebase anyway.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase.auth as any).verifyOtp({
         email,
         token: code,
         type: "signup",
@@ -130,7 +133,8 @@ export const VerificationPending: React.FC<VerificationPendingProps> = ({
 
     setError(null);
     try {
-      const { error } = await supabase.auth.resend({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase.auth as any).resend({
         type: "signup",
         email,
       });

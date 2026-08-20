@@ -1,5 +1,14 @@
 import { Shop, MenuItem } from "./types";
 
+export const isPlaceholderImage = (url?: string | null): boolean => {
+  if (!url) return true;
+  return (
+    url.includes("placeholder.com") ||
+    url.includes("via.placeholder") ||
+    url.includes("food-placeholder")
+  );
+};
+
 export const MY_KOTA_SHOP: Shop = {
   id: 18,
   name: "My-Kota",
@@ -16,6 +25,8 @@ export const MY_KOTA_SHOP: Shop = {
   lat: -32.8791,
   lng: 27.3893,
 };
+
+export const DEFAULT_SHOP_LOGO = "https://images.unsplash.com/photo-1550547660-d9450f859349?w=300";
 
 export const FALLBACK_SHOPS: Shop[] = [
   MY_KOTA_SHOP,

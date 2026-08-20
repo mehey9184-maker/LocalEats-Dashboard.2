@@ -285,7 +285,7 @@ export const useOrderWorkflow = ({
       )
     );
 
-    const updateData = {
+    const updateData: Partial<Order> = {
       status: "dispatched",
       delivery_status: "accepted",
       rider_id: riderId,
@@ -359,9 +359,9 @@ export const useOrderWorkflow = ({
       )
     );
 
-    const updateData = {
+    const updateData: Partial<Order> = {
       order_type: "collection",
-      delivery_status: null,
+      delivery_status: undefined,
       acceptance_message: pickupMessage,
       notes: targetOrder.notes?.includes(pickupNote)
         ? targetOrder.notes

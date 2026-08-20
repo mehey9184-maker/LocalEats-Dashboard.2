@@ -2,7 +2,7 @@
 
 **Application Name**: LocalEats Vendor (Merchant Dashboard & Operations Platform)  
 **Platform**: React 18+ (Vite, TypeScript, Tailwind CSS, Framer Motion, Lucide React)  
-**Backend & Persistence**: Firebase Firestore (Real-time orders, shops, menu syncing, auth) + Supabase (Defensive updates & local caching fallback)
+**Backend & Persistence**: Google Cloud Firestore & Firebase Auth (Live production database, real-time order streams, menu syncing, and authentication) with Firestore Compatibility Bridge (`src/lib/supabase.ts`)
 
 ---
 
@@ -15,6 +15,7 @@ LocalEats Vendor is the mission-critical merchant operating system for local foo
 2. **Defensive Database & Cache Resilience**: Automatic fallback to local storage cache (`localStorage`) ensuring the vendor interface never crashes or stalls during intermittent network connectivity.
 3. **High-Contrast Touch & Responsive UI**: Minimum 44-46px touch targets, warm coral accents (`#FF5A36`), bold charcoal typography, instant haptic and audible kitchen alerts.
 4. **Autonomous Operational Reliability**: Self-contained background workflows for audio kitchen alarms, ESC/POS Bluetooth/USB thermal printing, and multi-channel notification systems.
+5. **Stabilized Crash Recovery Protocol**: Max recovery attempts capped at 1; delegates fatal render errors directly to React's `ErrorBoundary` to prevent infinite reload loops and DOM manipulation clashes.
 
 ---
 
@@ -22,8 +23,8 @@ LocalEats Vendor is the mission-critical merchant operating system for local foo
 
 ```
 src/
-├── main.tsx                           # Application entry point with providers
-├── App.tsx                            # Root application view orchestrator
+├── main.tsx                           # Application entry point with stabilized 1-attempt recovery guard
+├── App.tsx                            # Root application view orchestrator & layout dispatcher
 ├── types.ts                           # Global TypeScript types (Shop, MenuItem, Order, Rider, etc.)
 ├── constants.ts                       # System constants, fallback shops & fallback menu items
 │
@@ -51,11 +52,12 @@ src/
 │   ├── LocationSyncIndicator.tsx      # GPS sync state badge with precision indicator
 │   ├── LocalEatsLogo.tsx              # Vector branded logo
 │   ├── LanguageSwitcher.tsx           # Multilingual localization switcher
-│   ├── ErrorBoundary.tsx              # Top-level React error boundary with self-healing recovery
+│   ├── ErrorBoundary.tsx              # Top-level React error boundary with safe interactive recovery UI
 │   └── ui/                            # Shared reusable primitives
 │       ├── ConfirmModal.tsx           # Generic confirmation dialog
 │       ├── SavingOverlay.tsx          # Non-blocking loading state overlay
-│       └── FirebaseInitializingOverlay.tsx # Auth & sync bootstrap spinner
+│       ├── FirebaseInitializingOverlay.tsx # Auth & sync bootstrap spinner
+│       └── Skeleton.tsx               # Shimmer loading skeletons & DashboardSkeleton layout
 │
 ├── hooks/                             # Custom React State & Business Logic Hooks
 │   ├── useKitchenAlerter.ts           # Web Audio API kitchen bell and siren generator
@@ -70,20 +72,15 @@ src/
 │   ├── availabilityChecker.ts         # Shop operational schedule & automatic open/close calculator
 │   ├── storageCleanup.ts              # LocalStorage cache sanitizer & migration guard
 │   ├── timeSync.ts                    # Network NTP time synchronization helper
-│   ├── escPosEngine.ts                # ESC/POS thermal printer byte stream generator
+│   ├── escPosEngine.ts                # ESC/POS thermal printer byte stream generator (Bluetooth & USB)
 │   ├── errorHandler.ts                # Centralized error mapping & auth validation formatters
 │   ├── shopOwnership.ts               # Multi-vendor ownership matcher & resilient shop fetcher
-│   ├── fetchWithRetry.ts              # Resilient fetch wrapper with automatic JWT refresh
+│   ├── fetchWithRetry.ts              # Resilient fetch wrapper with automatic token refresh
 │   └── sentry.ts                      # Error monitoring and telemetry handler
 │
-├── components/ui/                     # Shared Reusable UI Primitives
-│   ├── ConfirmModal.tsx               # Generic confirmation dialog
-│   ├── SavingOverlay.tsx              # Non-blocking loading state overlay
-│   ├── FirebaseInitializingOverlay.tsx # Auth & sync bootstrap spinner
-│   └── Skeleton.tsx                   # Shimmer loading skeletons & DashboardSkeleton layout
-│
-    ├── firebase.ts                    # Firebase Auth, Firestore real-time listeners & storage
-    └── supabase.ts                    # Supabase client with safe fallback wrappers
+└── lib/
+    ├── firebase.ts                    # Production Firebase Auth, Firestore real-time queries & storage
+    └── supabase.ts                    # Firestore Compatibility Bridge adapting query chaining
 ```
 
 ---
@@ -100,11 +97,11 @@ src/
 - **State Workflow**:
   - `pending` ➔ `accepted` (Kitchen preparation begins, prep timer starts)
   - `accepted` ➔ `ready` (Order packaged, nearby riders alerted for pickup)
-  - `ready` ➔ `in_transit` (Rider picked up food with PIN verification)
+  - `ready` ➔ `dispatched` / `in_transit` (Rider picked up food with PIN verification)
   - `in_transit` ➔ `delivered` (Payment settled & customer received order)
   - `rejected` / `cancelled` (With reason code logged)
 - **Audio Kitchen Alerts (`useKitchenAlerter.ts`)**: Generates Web Audio synthesized chime and continuous loop alarms until the merchant acknowledges incoming orders.
-- **Thermal Printing (`escPosEngine.ts`)**: Generates ESC/POS byte streams for 58mm and 80mm receipt printers via Web Bluetooth or Web Serial APIs.
+- **Thermal Printing (`escPosEngine.ts`)**: Generates ESC/POS byte streams for 58mm and 80mm receipt printers via Web Bluetooth or Web USB APIs with failure queues and retry mechanisms.
 
 ### 3.3 Menu & Catalog Management (`MenuManagement.tsx`)
 - Category organization (Burgers, Mains, Drinks, Desserts, Combos).
@@ -122,12 +119,13 @@ src/
 - Delivery radius, minimum order thresholds, and "Cash-on-Arrival" badges.
 
 ### 3.6 Diagnostics & Self-Healing (`ShopDiagnosticPanel.tsx`, `ErrorBoundary.tsx`)
-- Real-time ping monitors for Firestore and Supabase connectivity.
+- Real-time ping monitors for Firestore connectivity.
 - LocalStorage cache cleanup tool to resolve stale session data.
-- System error boundary with 3-stage self-healing and recovery console.
+- System error boundary with single-attempt self-healing and React ErrorBoundary recovery interface.
 
 ---
 
 ## 4. Continuity & Codebase Maintenance Protocol
 - Whenever components or utility functions are added, modified, or extracted from `App.tsx`, developers must update this document.
 - Follow modular single-responsibility principles: view components belong in `src/components/`, state hooks in `src/hooks/`, static data in `src/constants.ts`, and core types in `src/types.ts`.
+- **Runtime Symbol Integrity**: All orchestrator view imports (`LayoutDashboard`, `getFirestoreOrders`, `safeGetOrderItems`, `isRiderOnline`, `QueuedPrintJob`, `PrinterDiagnosticResult`) are strictly validated against their source modules with zero runtime reference errors and green production compilation.

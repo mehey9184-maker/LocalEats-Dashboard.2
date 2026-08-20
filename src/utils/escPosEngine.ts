@@ -228,9 +228,14 @@ export interface PrinterDiagnosticResult {
   devicesFound?: number;
 }
 
+// Helper for Web Bluetooth & USB navigator extensions
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getNav = () => navigator as unknown as { bluetooth?: any; usb?: any };
+
 export async function checkPrinterConnectivity(method: "bluetooth" | "usb" | "network" = "bluetooth"): Promise<PrinterDiagnosticResult> {
+  const nav = getNav();
   if (method === "bluetooth") {
-    if (!navigator.bluetooth) {
+    if (!nav.bluetooth) {
       return {
         supported: false,
         connected: false,
@@ -239,9 +244,8 @@ export async function checkPrinterConnectivity(method: "bluetooth" | "usb" | "ne
       };
     }
     try {
-      if ("getDevices" in navigator.bluetooth) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const devices = await (navigator.bluetooth as any).getDevices();
+      if ("getDevices" in nav.bluetooth) {
+        const devices = await nav.bluetooth.getDevices();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const connectedCount = devices.filter((d: any) => d.gatt?.connected).length;
         if (devices.length > 0) {
@@ -271,7 +275,7 @@ export async function checkPrinterConnectivity(method: "bluetooth" | "usb" | "ne
   }
 
   if (method === "usb") {
-    if (!navigator.usb) {
+    if (!nav.usb) {
       return {
         supported: false,
         connected: false,
@@ -280,8 +284,9 @@ export async function checkPrinterConnectivity(method: "bluetooth" | "usb" | "ne
       };
     }
     try {
-      const devices = await navigator.usb.getDevices();
-      const connectedCount = devices.filter(d => d.opened).length;
+      const devices = await nav.usb.getDevices();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const connectedCount = devices.filter((d: any) => d.opened).length;
       if (devices.length > 0) {
         return {
           supported: true,
@@ -317,12 +322,13 @@ export async function checkPrinterConnectivity(method: "bluetooth" | "usb" | "ne
 
 // --- Browser Bluetooth Printing Bridge ---
 export async function printViaBluetooth(binaryData: Uint8Array): Promise<void> {
-  if (!navigator.bluetooth) {
+  const nav = getNav();
+  if (!nav.bluetooth) {
     throw new Error("Web Bluetooth API is not available on this device/browser.");
   }
 
   try {
-    const device = await navigator.bluetooth.requestDevice({
+    const device = await nav.bluetooth.requestDevice({
       filters: [
         { services: ["000018f0-0000-1000-8000-00805f9b34fb"] },
         { namePrefix: "Printer" },
@@ -338,11 +344,14 @@ export async function printViaBluetooth(binaryData: Uint8Array): Promise<void> {
     if (!server) throw new Error("GATT Connection handshaking failed.");
 
     const services = await server.getPrimaryServices();
-    let writeChar: BluetoothRemoteGATTCharacteristic | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let writeChar: any = null;
 
-    for (const service of services) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const service of services as any[]) {
       const chars = await service.getCharacteristics();
-      for (const char of chars) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const char of chars as any[]) {
         if (char.properties.write || char.properties.writeWithoutResponse) {
           writeChar = char;
           break;
@@ -369,12 +378,13 @@ export async function printViaBluetooth(binaryData: Uint8Array): Promise<void> {
 
 // --- Browser Web USB Printing Bridge ---
 export async function printViaUSB(binaryData: Uint8Array): Promise<void> {
-  if (!navigator.usb) {
+  const nav = getNav();
+  if (!nav.usb) {
     throw new Error("Web USB API is not supported on this browser.");
   }
 
   try {
-    const device = await navigator.usb.requestDevice({
+    const device = await nav.usb.requestDevice({
       filters: [{ classCode: 7 }] // Class 7 mapping: PRINTER devices
     });
 

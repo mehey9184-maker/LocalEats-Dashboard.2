@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { captureErrorToSentry } from "./sentry";
+import { supabase } from "../lib/supabase";
 
 export interface LoggedNetworkError {
   id: string;

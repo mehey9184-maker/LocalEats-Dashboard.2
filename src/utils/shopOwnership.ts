@@ -80,32 +80,32 @@ export const getOwnedShopIds = async (user: User | null, currentShops: Shop[]): 
         if (user.email) {
           orQuery += `,email.ilike.${user.email.trim()}`;
         }
-        const { data: ownedShops, error: queryErr } = await supabase
+        const { data: ownedShops, error: queryErr } = (await supabase
           .from("shops")
           .select("id, owner_id, email")
-          .or(orQuery);
+          .or(orQuery)) as { data: Array<{ id: number | string; owner_id?: string; email?: string }> | null; error: { code?: string; message?: string } | null };
 
         if (!queryErr && ownedShops) {
           ownedShops.forEach((s) => idsSet.add(s.id));
         } else if (queryErr && (queryErr.code === "42703" || queryErr.message?.includes("column"))) {
           // Column owner_id or email might be missing in schema; fallback safely
           if (user.email) {
-            const { data: ownedByEmail } = await supabase
+            const { data: ownedByEmail } = (await supabase
               .from("shops")
               .select("id")
-              .ilike("email", user.email.trim());
+              .ilike("email", user.email.trim())) as { data: Array<{ id: number | string }> | null };
             ownedByEmail?.forEach((s) => idsSet.add(s.id));
           }
         }
       } else if (user.email) {
-        const { data: ownedShops } = await supabase
+        const { data: ownedShops } = (await supabase
           .from("shops")
           .select("id, email")
-          .ilike("email", user.email.trim());
+          .ilike("email", user.email.trim())) as { data: Array<{ id: number | string; email?: string }> | null };
         ownedShops?.forEach((s) => idsSet.add(s.id));
       }
     } else {
-      console.debug("[Shop Ownership Sync] Shops table inaccessible or unconfigured:", accessErr.message);
+      console.debug("[Shop Ownership Sync] Shops table inaccessible or unconfigured:", (accessErr as { message?: string })?.message);
     }
   } catch (err) {
     console.debug("[Shop Ownership Sync] Exception during ownership query, falling back to cache:", err);
@@ -174,7 +174,7 @@ export const fetchShopById = async (
       return data as Shop;
     }
     if (error) {
-      console.debug(`[Shop Discovery] Notice fetching shop ${shopId}:`, error.message || error);
+      console.debug(`[Shop Discovery] Notice fetching shop ${shopId}:`, (error as { message?: string })?.message || error);
     }
   } catch (err) {
     console.debug(`[Shop Discovery] Network error fetching shop ${shopId}:`, err);
