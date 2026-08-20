@@ -1,9 +1,0 @@
-import fs from 'fs';
-let content = fs.readFileSync('src/App.tsx', 'utf-8');
-
-content = content.replace(
-  'import { MessageSquare, Mail, Share2, Send, Zap, Users, Download, Copy, Printer, QrCode } from "lucide-react";',
-  'import { MessageSquare, Send, Zap, Users, Download, Copy, Printer, QrCode } from "lucide-react";'
-);
-
-fs.writeFileSync('src/App.tsx', content);

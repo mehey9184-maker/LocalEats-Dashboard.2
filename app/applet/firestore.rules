@@ -1,0 +1,146 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==========================================
+    // HELPER FUNCTIONS
+    // ==========================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(resourceData) {
+      return isAuthenticated() && request.auth.uid == resourceData.owner_id;
+    }
+    
+    function isShopOwner(shopId) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/shops/$(string(shopId))).data.owner_id == request.auth.uid;
+    }
+
+    function isOrderMerchant(resourceData) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/shops/$(string(resourceData.shop_id))).data.owner_id == request.auth.uid;
+    }
+
+    function areFieldsUnchanged(fieldsList) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fieldsList);
+    }
+
+    // ==========================================
+    // USERS
+    // ==========================================
+    match /users/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && 
+                    request.auth.uid == userId &&
+                    areFieldsUnchanged(['role']);
+      allow delete: if false;
+    }
+
+    // ==========================================
+    // SHOPS
+    // ==========================================
+    match /shops/{shopId} {
+      allow read: if true; 
+      allow create: if isAuthenticated() && request.resource.data.owner_id == request.auth.uid;
+      allow update: if isOwner(resource.data) && areFieldsUnchanged(['owner_id']); 
+      allow delete: if isOwner(resource.data);
+    }
+
+    // ==========================================
+    // MENU ITEMS
+    // ==========================================
+    match /menu_items/{itemId} {
+      allow read: if true;
+      allow create: if isShopOwner(request.resource.data.shop_id);
+      allow update: if isShopOwner(resource.data.shop_id) && 
+                    areFieldsUnchanged(['shop_id']); 
+      allow delete: if isShopOwner(resource.data.shop_id);
+    }
+
+    // ==========================================
+    // ORDERS
+    // ==========================================
+    match /orders/{orderId} {
+      // SECURITY TODO - PHASE 2:
+      // Unverified participant (Customer/Rider) read paths are blocked pending workflow audit.
+      // Do not invent authorization.
+      allow read: if isOrderMerchant(resource.data);
+
+      // CRITICAL SECURITY TODO:
+      // Order creation currently accepts any authenticated or unauthenticated
+      // request because the Customer application is not present in this repository.
+      // Before production security sign-off, audit the Customer application and
+      // require authenticated ownership plus server-side price validation.
+      allow create: if true;
+
+      // Merchant updates are strictly restricted to legitimate dispatch fields via whitelist
+      allow update: if isOrderMerchant(resource.data) && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rider_id', 'status', 'delivery_status', 'merchant_rating', 'updated_at']);
+      
+      allow delete: if false; 
+    }
+
+    // ==========================================
+    // RIDER PROFILES
+    // ==========================================
+    match /rider_profiles/{riderId} {
+      // TODO: Phase 2 — narrow rider profile reads by active delivery relationship.
+      allow read: if isAuthenticated(); 
+      allow create: if isAuthenticated() && request.auth.uid == riderId && request.resource.data.id == request.auth.uid;
+      allow update: if isAuthenticated() && 
+                    request.auth.uid == riderId && 
+                    areFieldsUnchanged(['id', 'total_earnings', 'total_deliveries']); 
+      allow delete: if false;
+    }
+
+    // ==========================================
+    // RIDER CONNECTIONS
+    // ==========================================
+    match /rider_connections/{connId} {
+      allow read: if isShopOwner(resource.data.shop_id) || (isAuthenticated() && request.auth.uid == resource.data.rider_id);
+      allow create: if isShopOwner(request.resource.data.shop_id) || (isAuthenticated() && request.auth.uid == request.resource.data.rider_id);
+      allow update: if (isShopOwner(resource.data.shop_id) || (isAuthenticated() && request.auth.uid == resource.data.rider_id)) &&
+                    areFieldsUnchanged(['shop_id', 'rider_id']);
+      allow delete: if isShopOwner(resource.data.shop_id) || (isAuthenticated() && request.auth.uid == resource.data.rider_id);
+    }
+    
+    // ==========================================
+    // CHAT MESSAGES
+    // ==========================================
+    match /chat_messages/{messageId} {
+      // SECURITY TODO — PHASE 2:
+      // Narrow chat reads to order participants after Customer/Rider workflow verification.
+      allow read: if isAuthenticated();
+      
+      // SECURITY TODO — PHASE 2:
+      // Customer/Rider chat creation requires audit of their applications.
+      allow create: if isAuthenticated() && 
+                    request.resource.data.sender_type == 'shop' && 
+                    isShopOwner(request.resource.data.sender_id);
+      
+      allow update, delete: if false; 
+    }
+    
+    // ==========================================
+    // COUPONS
+    // ==========================================
+    match /coupons/{couponId} {
+      allow read: if true; 
+      allow create: if isShopOwner(request.resource.data.shop_id);
+      allow update: if isShopOwner(resource.data.shop_id) && areFieldsUnchanged(['shop_id']);
+      allow delete: if isShopOwner(resource.data.shop_id);
+    }
+
+    // ==========================================
+    // FALLBACK
+    // ==========================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

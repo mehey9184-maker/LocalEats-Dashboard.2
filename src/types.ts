@@ -166,3 +166,107 @@ export interface User {
   created_at?: string;
 }
 
+export interface RiderConnection {
+  id: string;
+  shop_id: number;
+  rider_id: string | null;
+  rider_name: string | null;
+  rider_phone?: string | null;
+  connection_code: string;
+  expires_at: string;
+  status: "active" | "expired" | "offline";
+  is_online: boolean;
+  created_at: string;
+  rating?: number;
+  last_seen?: string;
+  shops?: {
+    name: string;
+    logo_url?: string | null;
+  };
+}
+
+export interface Payment {
+  id: string;
+  shop_id: number;
+  amount: number;
+  payment_method: string;
+  transaction_id: string;
+  status: string;
+  payment_date: string;
+}
+
+export interface Review {
+  id: string;
+  shop_id: number;
+  user_id: string;
+  customer_name: string;
+  rating: number;
+  comment: string;
+  response: string | null;
+  created_at: string;
+}
+
+export interface Announcement {
+  id: string;
+  shop_id: number;
+  title: string;
+  content: string;
+  type: "deal" | "info" | "event";
+  created_at: string;
+}
+
+export interface Coupon {
+  id: string;
+  shop_id: number;
+  code: string;
+  discount_type: "percentage" | "fixed";
+  discount_value: number;
+  min_order_value: number;
+  is_active: boolean;
+  expiry_date: string | null;
+  created_at: string;
+}
+
+export interface Message {
+  id: string;
+  order_id: string;
+  shop_id: number;
+  user_id: string;
+  sender_type: "merchant" | "customer";
+  content: string;
+  created_at: string;
+}
+
+export interface CampaignStats {
+  reach: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+}
+
+export interface Campaign {
+  id: string;
+  name: string;
+  type: "email" | "sms" | "social";
+  objective: string;
+  channel: string;
+  subject?: string;
+  message: string;
+  status: "Sent" | "Scheduled" | "Draft";
+  sentAt: string;
+  stats?: CampaignStats;
+}
+
+export interface MarketingCoupon {
+  id: string;
+  code: string;
+  discount_type: "percentage" | "fixed";
+  discount_value: number;
+}
+
+export interface MarketingMenuItem {
+  id: string;
+  name: string;
+  price: number;
+}
+

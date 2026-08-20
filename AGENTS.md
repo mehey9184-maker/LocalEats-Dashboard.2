@@ -1,5 +1,9 @@
 # LocalEats Platform - Persistent System Instructions
 
+## 📚 Documentation Check & Continuity Protocol
+- **Documentation Check**: Before performing any file edits, always read `Vendor_LocalEats_App_Functionality_Documentation.md`.
+- **Documentation Sync**: After completing an edit, update `Vendor_LocalEats_App_Functionality_Documentation.md` to reflect the current state, architecture, and modular structure of the application.
+
 ## 🧑‍💼 User Profile: The Business Stakeholder
 - **Perspective**: The user is the founder and business operator of LocalEats. They expect a hands-off technical relationship. 
 - **Role**: Standard CEO / Product Owner. They express goals in terms of business impact, customer conversion, trust, and operational efficiency.

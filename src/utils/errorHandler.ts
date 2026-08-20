@@ -294,6 +294,137 @@ export const mapSupabaseError = (error: unknown, fallbackMessage?: string): { me
   };
 };
 
+export const formatAuthError = (err: unknown, isSignUp: boolean = false): string => {
+  if (!err) return isSignUp ? "Unable to create account. Please check your details and try again." : "An unexpected error occurred. Please try again.";
+  let msg = "";
+  if (typeof err === "string") {
+    msg = err;
+  } else if (typeof err === "object" && err !== null) {
+    const obj = err as Record<string, unknown>;
+    if (typeof obj.message === "string" && obj.message) {
+      msg = obj.message;
+    } else if (typeof obj.error_description === "string" && obj.error_description) {
+      msg = obj.error_description;
+    } else if (typeof obj.msg === "string" && obj.msg) {
+      msg = obj.msg;
+    } else if (typeof obj.description === "string" && obj.description) {
+      msg = obj.description;
+    } else {
+      try {
+        const json = JSON.stringify(err);
+        if (json !== "{}" && json !== "[]") msg = json;
+      } catch {
+        msg = "";
+      }
+    }
+  }
+
+  msg = msg.trim();
+
+  if (!msg || msg === "{}" || msg === "[object Object]" || msg === "null" || msg === "undefined") {
+    return isSignUp
+      ? "Unable to create account. Please check your details and try again."
+      : "Invalid email or password. Please check your details and try again.";
+  }
+
+  const lower = msg.toLowerCase();
+
+  // Specific Registration / Sign-Up Errors
+  if (
+    lower.includes("user_already_exists") ||
+    lower.includes("user already registered") ||
+    lower.includes("already registered") ||
+    lower.includes("already been registered") ||
+    lower.includes("email address is already in use")
+  ) {
+    return "An account with this email address already exists. Please sign in instead or click 'Forgot Password'.";
+  }
+
+  if (
+    lower.includes("password should be at least") ||
+    lower.includes("password is too short") ||
+    lower.includes("weak_password") ||
+    lower.includes("password must be")
+  ) {
+    return "Password must be at least 6 characters long. Please enter a stronger password.";
+  }
+
+  if (
+    lower.includes("unable to validate email") ||
+    lower.includes("invalid email") ||
+    lower.includes("email address is invalid")
+  ) {
+    return "Please enter a valid email address (e.g. name@example.com).";
+  }
+
+  if (lower.includes("signup is disabled") || lower.includes("signups are disabled")) {
+    return "Account registration is currently disabled. Please contact system support.";
+  }
+
+  // Network / timeout / service error actionable recovery steps
+  if (
+    lower.includes("timed out") ||
+    lower.includes("timeout") ||
+    lower.includes("signal is aborted") ||
+    lower.includes("failed to fetch") ||
+    lower.includes("network_error") ||
+    lower.includes("network error") ||
+    lower.includes("connection") ||
+    lower.includes("503") ||
+    lower.includes("service unavailable") ||
+    lower.includes("aborted")
+  ) {
+    return "Network connection unavailable or request timed out. Please check your Wi-Fi or cellular data connection and try again.";
+  }
+
+  if (msg.includes("Forbidden use of secret API key")) {
+    return 'CRITICAL: You are using a Supabase SECRET key in the browser. Please update your project secrets with the public "anon" key.';
+  }
+  if (lower.includes("invalid login credentials") || lower.includes("invalid_credentials")) {
+    return isSignUp
+      ? "Registration failed. Please check your email and password format."
+      : "Invalid email or password. Action: Double-check for typos, check caps lock, or click 'Forgot Password' to reset your password.";
+  }
+  if (lower.includes("email not confirmed")) {
+    return "Your email address has not been confirmed yet. Action: Check your inbox and spam folder for the confirmation link.";
+  }
+  if (lower.includes("user not found")) {
+    return "No account found with this email address. Action: Verify the address or click 'Sign Up' to create a new account.";
+  }
+  if (lower.includes("too many requests") || lower.includes("rate limit")) {
+    return "Too many attempts. Action: Please wait 60 seconds before trying again.";
+  }
+
+  return msg;
+};
+
+export const isNetworkOrTimeout = (errObj: unknown): boolean => {
+  if (!errObj) return false;
+  let raw = "";
+  if (typeof errObj === "string") {
+    raw = errObj;
+  } else if (typeof errObj === "object" && errObj !== null) {
+    const obj = errObj as Record<string, unknown>;
+    raw = String(obj.message || obj.error_description || obj.msg || JSON.stringify(errObj));
+  } else {
+    raw = String(errObj);
+  }
+  const lower = raw.toLowerCase();
+  return (
+    lower.includes("timed out") ||
+    lower.includes("timeout") ||
+    lower.includes("network") ||
+    lower.includes("failed to fetch") ||
+    lower.includes("service unavailable") ||
+    lower.includes("connection") ||
+    lower.includes("503") ||
+    lower.includes("aborted") ||
+    lower.includes("unconfigured") ||
+    lower.includes("unexpected error") ||
+    lower.includes("unable to create account")
+  );
+};
+
 /**
  * Centralized error handler function to log and display friendly user notifications.
  */

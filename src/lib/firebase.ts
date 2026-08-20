@@ -8,6 +8,7 @@ import {
   updateProfile,
   signInWithPopup,
   GoogleAuthProvider,
+  onAuthStateChanged,
   User as FirebaseUser
 } from "firebase/auth";
 import { 
@@ -240,6 +241,8 @@ export async function firebaseSignOutUser(): Promise<void> {
 export async function firebaseResetPassword(email: string): Promise<void> {
   await sendPasswordResetEmail(auth, email.trim());
 }
+
+export { onAuthStateChanged };
 
 export async function updateFirebaseUserProfile(updates: { full_name?: string; phone?: string; shop_id?: string | number; [key: string]: unknown }): Promise<void> {
   const currentUser = auth.currentUser;

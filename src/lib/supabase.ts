@@ -19,6 +19,7 @@ import {
   orderBy, 
   limit, 
   onSnapshot,
+  runTransaction,
   Unsubscribe
 } from "firebase/firestore";
 import { db, auth, firebaseSignIn, firebaseSignUp, firebaseSignOutUser, firebaseResetPassword } from "./firebase";
@@ -31,6 +32,39 @@ interface QueryFilter {
   field: string;
   op: "==" | "!=" | "<" | "<=" | ">" | ">=" | "in";
   value: unknown;
+}
+
+function matchesFilter(docData: Record<string, unknown>, f: QueryFilter): boolean {
+  const actualVal = docData ? docData[f.field] : undefined;
+  const targetVal = f.value;
+
+  switch (f.op) {
+    case "==":
+      if (targetVal === null || targetVal === undefined) {
+        return actualVal === null || actualVal === undefined;
+      }
+      return actualVal === targetVal || String(actualVal) === String(targetVal);
+    case "!=":
+      if (targetVal === null || targetVal === undefined) {
+        return actualVal !== null && actualVal !== undefined;
+      }
+      return actualVal !== targetVal && String(actualVal) !== String(targetVal);
+    case ">":
+      return Number(actualVal) > Number(targetVal);
+    case ">=":
+      return Number(actualVal) >= Number(targetVal);
+    case "<":
+      return Number(actualVal) < Number(targetVal);
+    case "<=":
+      return Number(actualVal) <= Number(targetVal);
+    case "in":
+      if (Array.isArray(targetVal)) {
+        return targetVal.includes(actualVal) || targetVal.map(String).includes(String(actualVal));
+      }
+      return false;
+    default:
+      return true;
+  }
 }
 
 class FirestoreQueryBuilder {
@@ -238,12 +272,48 @@ class FirestoreQueryBuilder {
         // If updating by direct ID equality filter
         const idFilter = this.filters.find(f => f.field === "id");
         if (idFilter) {
+          const otherFilters = this.filters.filter(f => f.field !== "id");
           const docRef = doc(db, this.collectionName, String(idFilter.value));
-          await setDoc(docRef, {
+
+          // If conditional guards are present (e.g. .eq('delivery_status', 'finding_rider')),
+          // enforce strict atomic transactional consistency to prevent race conditions.
+          if (otherFilters.length > 0) {
+            try {
+              const updatedResult = await runTransaction(db, async (transaction) => {
+                const docSnap = await transaction.get(docRef);
+                if (!docSnap.exists()) {
+                  throw new Error(`Document with ID "${idFilter.value}" not found in "${this.collectionName}".`);
+                }
+                const currentData = docSnap.data() as Record<string, unknown>;
+
+                for (const f of otherFilters) {
+                  if (!matchesFilter(currentData, f)) {
+                    throw new Error(`Optimistic lock failed: condition on "${f.field}" (${f.op} ${JSON.stringify(f.value)}) did not match current value ${JSON.stringify(currentData[f.field])}.`);
+                  }
+                }
+
+                const payload = {
+                  ...this.updateData,
+                  updated_at: new Date().toISOString(),
+                };
+                transaction.update(docRef, payload);
+                return { id: idFilter.value, ...currentData, ...payload };
+              });
+              return { data: this.isSingle ? updatedResult : [updatedResult], error: null };
+            } catch (err: unknown) {
+              const errorMsg = err instanceof Error ? err.message : String(err);
+              console.warn(`[Firestore Bridge] Transactional update on "${this.collectionName}" rejected:`, errorMsg);
+              return { data: null, error: err };
+            }
+          }
+
+          // Single ID update without conditional constraints
+          const payload = {
             ...this.updateData,
             updated_at: new Date().toISOString()
-          }, { merge: true });
-          return { data: { id: idFilter.value, ...this.updateData }, error: null };
+          };
+          await setDoc(docRef, payload, { merge: true });
+          return { data: this.isSingle ? { id: idFilter.value, ...payload } : [{ id: idFilter.value, ...payload }], error: null };
         }
 
         // Multiple documents update
@@ -252,13 +322,16 @@ class FirestoreQueryBuilder {
           q = query(q, where(f.field, f.op, f.value));
         }
         const snap = await getDocs(q);
+        const updatedList: Record<string, unknown>[] = [];
         for (const docSnap of snap.docs) {
-          await updateDoc(docSnap.ref, {
+          const payload = {
             ...this.updateData,
             updated_at: new Date().toISOString()
-          }).catch(() => setDoc(docSnap.ref, this.updateData!, { merge: true }));
+          };
+          await updateDoc(docSnap.ref, payload).catch(() => setDoc(docSnap.ref, payload, { merge: true }));
+          updatedList.push({ id: docSnap.id, ...docSnap.data(), ...payload });
         }
-        return { data: snap.docs.map(d => ({ ...d.data(), ...this.updateData })), error: null };
+        return { data: this.isSingle ? (updatedList[0] || null) : updatedList, error: null };
       }
 
       // DELETE

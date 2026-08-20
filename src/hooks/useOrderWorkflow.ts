@@ -222,19 +222,6 @@ export const useOrderWorkflow = ({
 
     const updateData: Record<string, unknown> = {
       status: currentOrder?.status || "pending",
-      delivery_status: isManualInHouse ? "accepted" : "finding_rider",
-      delivery_fee: FLAT_DELIVERY_FEE,
-      price: currentOrder?.price || currentOrder?.total_price || 0,
-      total_price: currentOrder?.total_price || currentOrder?.price || 0,
-      restaurant_name: currentOrder?.restaurant_name || currentShop?.name || "Local Merchant",
-      items:
-        currentOrder?.items && currentOrder.items.length > 0
-          ? currentOrder.items
-          : currentOrder?.product_name
-            ? [{ name: currentOrder.product_name, price: currentOrder?.price || currentOrder?.total_price || 0, quantity: 1 }]
-            : [{ name: "Food Delivery", price: currentOrder?.price || currentOrder?.total_price || 0, quantity: 1 }],
-      order_type: "delivery",
-      shop_id: currentOrder?.shop_id || Number(currentShop?.id) || 0,
       rider_id: targetRiderId || null,
     };
 
