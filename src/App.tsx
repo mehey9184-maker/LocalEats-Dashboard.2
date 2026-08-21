@@ -1,3 +1,6 @@
+import { checkPrinterConnectivity, printViaBluetooth, printViaUSB } from "./utils/escPosEngine";
+import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
+import { RealtimeChannel } from "@supabase/supabase-js";
 import React, {
   useState,
   useEffect,
@@ -55,6 +58,8 @@ import {
   Loader2,
   ArrowRight,
   MoreHorizontal,
+  Heart,
+  QrCode
 } from "lucide-react";
 import { supabase, isSupabaseMocked } from "./lib/supabase";
 import {
@@ -66,6 +71,8 @@ import {
   subscribeToOrdersFirestore,
   getFirestoreShops,
   getFirestoreOrders,
+  sendPushNotification,
+  updateFirestoreShop,
 } from "./lib/firebase";
 import { useKitchenAlerter } from "./hooks/useKitchenAlerter";
 import { useAuthGuard } from "./hooks/useAuthGuard";
@@ -1929,7 +1936,6 @@ function App() {
       if (data.darkMode !== undefined) {
         setDarkMode(data.darkMode);
       }
-      void fetchRiderData();
 
       // Show success state
       setIsSaving(false);
@@ -2857,7 +2863,7 @@ function App() {
                   >
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
-                        <s size={20} />
+                        <Users size={20} />
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">
@@ -3707,7 +3713,7 @@ function App() {
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center text-orange-600 group-hover:scale-110 transition-transform">
-                        <s size={20} />
+                        <Users size={20} />
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Staff & Managers</p>
@@ -4562,7 +4568,7 @@ function App() {
                     {
                       title: "Rider Network",
                       desc: "Access a fleet of on-demand riders. Real-time GPS tracking ensures your food reaches customers hot and fresh.",
-                      icon: s,
+                      icon: Bike,
                       color: "text-blue-600 bg-blue-50",
                     },
                     {

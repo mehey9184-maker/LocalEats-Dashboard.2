@@ -30,7 +30,7 @@ export const DIETARY_TAGS = [
   "Keto",
 ];
 
-const FoodPlaceholder = ({ size = 48 }: { size?: number }) => (
+export const FoodPlaceholder = ({ size = 48 }: { size?: number }) => (
   <div className="w-full h-full bg-surface-container flex flex-col items-center justify-center text-on-surface-variant/40">
     <UtensilsCrossed size={size} />
   </div>

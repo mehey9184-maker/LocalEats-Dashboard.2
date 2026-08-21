@@ -152,7 +152,7 @@ export const useKitchenAlerter = (orders: Order[]): KitchenAlerterResult => {
   // --- 2. Screen Wake Lock Orchestration ---
   const requestWakeLock = useCallback(async () => {
     if (!("wakeLock" in navigator)) {
-      console.warn("This browser does not support native Screen Wake Locks.");
+      console.debug("This browser does not support native Screen Wake Locks.");
       return;
     }
 
@@ -167,7 +167,7 @@ export const useKitchenAlerter = (orders: Order[]): KitchenAlerterResult => {
         setIsWakeLocked(false);
       });
     } catch (err) {
-      console.warn("Screen Wake Lock allocation blocked:", err);
+      console.debug("Screen Wake Lock allocation blocked or disallowed by policy:", err);
       setIsWakeLocked(false);
     }
   }, []);

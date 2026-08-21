@@ -1,3 +1,37 @@
+import { FoodPlaceholder } from "../components/MenuManagement";
+import { isPlaceholderImage } from "../constants";
+import { updateFirestoreShop } from "../lib/firebase";
+import { syncShopAvailability } from "../utils/availabilityChecker";
+import { Skeleton } from "../components/ui/Skeleton";
+import { getSupportedCity } from "../utils";
+import { RealtimeChannel } from "@supabase/supabase-js";
+import { RiderConnection } from "../types";
+import { isShopOwnedByUser } from "../utils/shopOwnership";
+import {
+  ResponsiveContainer,
+  BarChart,
+  XAxis,
+  Tooltip,
+  Bar,
+  Cell
+} from "recharts";
+import {
+  Lock,
+  Radio,
+  ChevronLeft,
+  Database,
+  Loader2,
+  Navigation,
+  Pizza,
+  Landmark,
+  Rocket,
+  CheckCircle,
+  CreditCard,
+  MessageCircle,
+  Phone,
+  Download,
+  UtensilsCrossed
+} from "lucide-react";
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -19,7 +53,9 @@ import {
   Zap,
   ShieldCheck,
   MapPin,
-  AlertTriangle
+  AlertTriangle,
+  Activity,
+  ReceiptText
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -1675,10 +1711,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           </div>
           <button
             onClick={async () => {
-              const anyActive = isAnyShopActive;
+              const anyActive = shops.some(s => s.is_active);
               const newStatus = !anyActive;
 
-              setShops((prev) => prev.map((s) => ({ ...s, is_active: newStatus })));
+              
               toast.loading(`Setting all storefronts to ${newStatus ? "Online" : "Offline"}...`, { id: "bulk-status-toggle" });
               
               let error = null;
@@ -2141,11 +2177,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   const newStatus = !currentShop.is_active;
 
                   // Optimistic update
-                  setShops((prev) =>
-                    prev.map((s) =>
-                      s.id === currentShop.id ? { ...s, is_active: newStatus } : s,
-                    ),
-                  );
+                  
 
                   const { success, error } = await syncShopAvailability({
                     shopId: currentShop.id,
@@ -2160,11 +2192,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                     );
                   } else {
                     // Rollback
-                    setShops((prev) =>
-                      prev.map((s) =>
-                        s.id === currentShop.id ? { ...s, is_active: !newStatus } : s,
-                      ),
-                    );
+                    
                     toast.error(typeof error === "string" ? error : "Failed to update storefront status");
                   }
                   setIsStatusToggling(false);
