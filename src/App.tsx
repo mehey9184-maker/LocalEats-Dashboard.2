@@ -9,7 +9,7 @@ import L from "leaflet";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { toast } from "sonner";
+import { toast, Toaster } from "sonner";
 import {
   Store,
   TrendingUp,
@@ -44,11 +44,17 @@ import {
   Info,
   Rocket,
   Bell,
+  BellOff,
   UtensilsCrossed,
   ReceiptText,
   Printer,
   User as UserIcon,
   LayoutDashboard,
+  PauseCircle,
+  Circle,
+  Loader2,
+  ArrowRight,
+  MoreHorizontal,
 } from "lucide-react";
 import { supabase, isSupabaseMocked } from "./lib/supabase";
 import {
@@ -295,7 +301,7 @@ function App() {
     }
     return [];
   });
-  const [user, setUser] = useState<| null>(() => {
+  const [user, setUser] = useState<User | null>(() => {
     try {
       const cached = localStorage.getItem("localeats_user_session");
       if (cached) {
@@ -2481,7 +2487,7 @@ function App() {
                 {soundAlerts ? (
                   <Bell size={18} className="md:w-5 md:h-5" />
                 ) : (
-                  <Off size={18} className="md:w-5 md:h-5" />
+                  <BellOff size={18} className="md:w-5 md:h-5" />
                 )}
               </button>
 
@@ -2514,7 +2520,7 @@ function App() {
                         "radial-gradient(circle at 30% 30%, #ff9d4d 0%, #f58220 100%)",
                     }}
                   >
-                    <Icon
+                    <UserIcon
                       size={20}
                       className="text-white drop-shadow-sm"
                       strokeWidth={2.5}
@@ -2787,7 +2793,7 @@ function App() {
                   >
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                        <Icon size={20} />
+                        <UserIcon size={20} />
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">

@@ -20,6 +20,8 @@ export const COMMANDS = {
   CUT: new Uint8Array([GS, 0x56, 0x41, 0x03]), // Feed 3 lines & cut
 };
 
+export type PrintingFormat = "80mm" | "58mm";
+
 export interface QueuedPrintJob {
   id: string;
   orderId: string;

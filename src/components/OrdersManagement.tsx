@@ -58,10 +58,10 @@ import { supabase } from "../lib/supabase";
 import {
   checkPrinterConnectivity,
   type PrinterDiagnosticResult,
+  type PrintingFormat,
 } from "../utils/escPosEngine";
 import { isRiderOnline } from "../utils/availabilityChecker";
 import { Order, Shop, OrderStatus, RiderProfile, Message, RiderConnection } from "../types";
-import { PrintingFormat } from "../hooks/useESCPOSThermalPrinter";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { Pagination } from "./Pagination";
 import { useAuthGuard } from "../hooks/useAuthGuard";

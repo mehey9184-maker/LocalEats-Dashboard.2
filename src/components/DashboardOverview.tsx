@@ -26,6 +26,7 @@ import { twMerge } from "tailwind-merge";
 import { supabase } from "../lib/supabase";
 import { Order, Shop, User, MenuItem } from "../types";
 import { OrderStatusBadge } from "./OrderStatusBadge";
+import { useAuthGuard } from "../hooks/useAuthGuard";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
