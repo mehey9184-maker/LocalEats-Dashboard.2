@@ -2109,7 +2109,7 @@ function App() {
       )}
 
       {/* 2. Real-Time Connection Lost / Database Uplink Overlay */}
-      {(!dismissedOfflineOverlay && (isOffline || isHeartbeatFailed)) && (
+      {(!dismissedOfflineOverlay && (isOffline || (isHeartbeatFailed && !currentShop && shops.length === 0 && orders.length === 0))) && (
         <div className="fixed inset-0 bg-zinc-950/95 backdrop-blur-md z-[9999] flex flex-col items-center justify-center p-4 select-none">
           <div className="bg-white dark:bg-zinc-900 border border-amber-500/30 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-6">
             <div className="mx-auto w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center text-amber-500">

@@ -9,6 +9,9 @@ import {
   Square,
   UtensilsCrossed,
   RotateCw,
+  Upload,
+  Image as ImageIcon,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,8 +19,12 @@ import { MenuItem, Shop, User } from "../types";
 import { supabase } from "../lib/supabase";
 import { useAuthGuard } from "../hooks/useAuthGuard";
 import { cn } from "../lib/utils";
+import { uploadImageToCloudinary, getOptimizedCloudinaryUrl } from "../lib/cloudinary";
 import AIMenuScannerModal from "./AIMenuScannerModal";
 
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const VirtualizedList = List as any;
 
 export const DIETARY_TAGS = [
   "Halal",
@@ -186,7 +193,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     }
   }, [userOwnedShops, user]);
 
-  const [selectedShopId, setSelectedShopId] = useState<number | null>(() => {
+  const [selectedShopId, setSelectedShopId] = useState<string | number | null>(() => {
     const found = shops.find((s) => isShopOwnedByUser(s, user));
     return found ? found.id : null;
   });
@@ -247,9 +254,47 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     is_unlimited: false,
   });
   const [selectedDietaryTags, setSelectedDietaryTags] = useState<string[]>([]);
-  const [, setImageFile] = useState<File | null>(null);
-  const [, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  // Clean up object URL when component unmounts or image changes
+  useEffect(() => {
+    return () => {
+      if (imagePreview && imagePreview.startsWith("blob:")) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validation = validateImageFile(file);
+    if (!validation.isValid) {
+      toast.error(validation.error || "Please select a valid image file.");
+      e.target.value = "";
+      return;
+    }
+
+    if (imagePreview && imagePreview.startsWith("blob:")) {
+      URL.revokeObjectURL(imagePreview);
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setImageFile(file);
+    setImagePreview(previewUrl);
+  };
+
+  const handleRemoveImage = () => {
+    if (imagePreview && imagePreview.startsWith("blob:")) {
+      URL.revokeObjectURL(imagePreview);
+    }
+    setImageFile(null);
+    setImagePreview(null);
+  };
 
 
   // 1. FUSE.JS CLIENT-SIDE SEARCH INDEXING
@@ -321,7 +366,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
         if (error) throw error;
 
-        const freshItems = data || [];
+        const freshItems = (data as MenuItem[]) || [];
         setItems(freshItems);
         try {
           localStorage.setItem(`localeats_menu_${selectedShopId}`, JSON.stringify(freshItems));
@@ -393,6 +438,9 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   }, [selectedShopId, fetchMenu, subscribeWithAuthGuard]);
 
   const handleAdd = () => {
+    if (imagePreview && imagePreview.startsWith("blob:")) {
+      URL.revokeObjectURL(imagePreview);
+    }
     setEditingItem(null);
     setSelectedDietaryTags([]);
     setFormData({
@@ -410,6 +458,9 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   };
 
   const handleEdit = (item: MenuItem) => {
+    if (imagePreview && imagePreview.startsWith("blob:")) {
+      URL.revokeObjectURL(imagePreview);
+    }
     setEditingItem(item);
     const { tags, description } = parseDescriptionAndTags(item.description);
     setSelectedDietaryTags(tags);
@@ -436,6 +487,27 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
     setIsSaving(true);
     try {
+      let finalImageUrl = editingItem ? (editingItem.image_url || null) : null;
+
+      // If a new image file was selected, upload it to Cloudinary first
+      if (imageFile) {
+        setIsUploadingImage(true);
+        try {
+          finalImageUrl = await uploadImageToCloudinary(imageFile);
+        } catch (uploadErr: unknown) {
+          const errMsg = uploadErr instanceof Error ? uploadErr.message : "Failed to upload image to Cloudinary";
+          toast.error(errMsg);
+          setIsSaving(false);
+          setIsUploadingImage(false);
+          return; // Abort save so item is not saved with broken or missing URL
+        } finally {
+          setIsUploadingImage(false);
+        }
+      } else if (imagePreview === null && editingItem) {
+        // If image was explicitly removed
+        finalImageUrl = null;
+      }
+
       const fullDescription = formData.description + (selectedDietaryTags.length > 0 ? ` [${selectedDietaryTags.join(", ")}]` : "");
       
       const payload = {
@@ -446,6 +518,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         description: fullDescription,
         stock_quantity: formData.is_unlimited ? null : parseInt(formData.stock_quantity || "0"),
         is_available: editingItem ? editingItem.is_available : true,
+        image_url: finalImageUrl,
         updated_at: new Date().toISOString()
       };
 
@@ -462,6 +535,11 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         toast.success("Item added");
       }
       
+      if (imagePreview && imagePreview.startsWith("blob:")) {
+        URL.revokeObjectURL(imagePreview);
+      }
+      setImageFile(null);
+      setImagePreview(null);
       void fetchMenu(false);
       setActiveMenuSection("list");
     } catch (err: unknown) {
@@ -469,6 +547,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       toast.error(errorMsg || "Failed to save item");
     } finally {
       setIsSaving(false);
+      setIsUploadingImage(false);
     }
   };
 
@@ -573,7 +652,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                 "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500",
                 !item.is_available && "grayscale opacity-50"
               )}
-              src={item.image_url}
+              src={getOptimizedCloudinaryUrl(item.image_url)}
               alt={item.name}
               loading="lazy"
               decoding="async"
@@ -658,7 +737,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   const VirtualRow = ({ index, style }: { index: number; style: React.CSSProperties }) => {
     const item = filteredItems[index];
     if (!item) return null;
-    return <div style={style}>{renderItemCard(item, index)}</div>;
+    return <div style={style}>{renderItemCard(item)}</div>;
   };
 
   return (
@@ -776,19 +855,19 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
           ) : filteredItems.length > 20 ? (
             /* Virtualized Window for Large Inventory */
             <div className="bg-surface-container-lowest p-2 rounded-3xl border border-outline-variant/15">
-              <List
+              <VirtualizedList
                 height={600}
                 itemCount={filteredItems.length}
                 itemSize={220}
                 width="100%"
               >
                 {VirtualRow}
-              </List>
+              </VirtualizedList>
             </div>
           ) : (
             /* Standard Grid for Standard Inventory Size */
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredItems.map((item, idx) => renderItemCard(item, idx))}
+              {filteredItems.map((item) => renderItemCard(item))}
             </div>
           )}
         </div>
@@ -841,6 +920,62 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
               </div>
             </div>
 
+            {/* Photo Upload with Cloudinary direct integration */}
+            <div>
+              <label className="block text-sm font-bold text-on-surface mb-1.5">
+                Item Photo (Cloudinary)
+              </label>
+              <div className="flex flex-col sm:flex-row items-start gap-4">
+                <div className="relative w-32 h-32 rounded-2xl bg-surface-container-high border-2 border-dashed border-outline-variant/30 flex items-center justify-center overflow-hidden shrink-0">
+                  {imagePreview && !isPlaceholderImage(imagePreview) ? (
+                    <>
+                      <img
+                        src={imagePreview.startsWith("blob:") ? imagePreview : getOptimizedCloudinaryUrl(imagePreview)}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRemoveImage}
+                        disabled={isSaving}
+                        className="absolute top-1.5 right-1.5 p-1 bg-black/60 hover:bg-black/80 text-white rounded-full transition-all cursor-pointer shadow-md"
+                        title="Remove photo"
+                      >
+                        <X size={14} />
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-on-surface-variant/50 p-2 text-center">
+                      <ImageIcon size={28} className="mb-1" />
+                      <span className="text-[10px] font-semibold">No Image</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 space-y-2">
+                  <label className="inline-flex items-center gap-2 px-4 py-2.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold rounded-xl cursor-pointer transition-all border border-outline-variant/20">
+                    <Upload size={16} className="text-primary" />
+                    <span>{imagePreview ? "Change Photo" : "Upload Photo"}</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      onChange={handleImageChange}
+                      disabled={isSaving}
+                      className="hidden"
+                    />
+                  </label>
+                  <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                    JPEG, PNG, WebP, or GIF up to 10MB. Uploads directly to Cloudinary for fast delivery.
+                  </p>
+                  {imageFile && (
+                    <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                      ✓ Ready to upload: {imageFile.name} ({(imageFile.size / 1024).toFixed(1)} KB)
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div>
               <label className="block text-sm font-bold text-on-surface mb-1">Description</label>
               <textarea
@@ -850,6 +985,35 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                 className="w-full bg-surface-container-high border-none rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary outline-none resize-none"
                 placeholder="Describe this item..."
               />
+            </div>
+
+            {/* Dietary Flags */}
+            <div>
+              <label className="block text-sm font-bold text-on-surface mb-1.5">Dietary Flags</label>
+              <div className="flex flex-wrap gap-1.5">
+                {DIETARY_TAGS.map((tag) => {
+                  const isSelected = selectedDietaryTags.includes(tag);
+                  return (
+                    <button
+                      type="button"
+                      key={tag}
+                      onClick={() => {
+                        setSelectedDietaryTags((prev) =>
+                          isSelected ? prev.filter((t) => t !== tag) : [...prev, tag]
+                        );
+                      }}
+                      className={cn(
+                        "px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer",
+                        isSelected
+                          ? "bg-primary text-on-primary shadow-xs"
+                          : "bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest"
+                      )}
+                    >
+                      {tag}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             
             <div className="flex items-center gap-2 mt-2">
@@ -870,7 +1034,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
              <button
                 type="button"
                 onClick={() => setActiveMenuSection("list")}
-                className="px-6 py-2.5 bg-surface-container-high text-on-surface font-bold text-sm rounded-xl hover:bg-surface-container-highest cursor-pointer"
+                disabled={isSaving}
+                className="px-6 py-2.5 bg-surface-container-high text-on-surface font-bold text-sm rounded-xl hover:bg-surface-container-highest cursor-pointer disabled:opacity-50"
              >
                 Cancel
              </button>
@@ -882,10 +1047,10 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                 {isSaving ? (
                   <>
                     <RotateCw className="w-4 h-4 animate-spin" />
-                    Saving...
+                    <span>{isUploadingImage ? "Uploading to Cloudinary..." : "Saving Item..."}</span>
                   </>
                 ) : (
-                  "Save Item"
+                  editingItem ? "Update Item" : "Save Item"
                 )}
              </button>
           </div>
@@ -896,8 +1061,11 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       <AIMenuScannerModal
         isOpen={isAiScannerOpen}
         onClose={() => setIsAiScannerOpen(false)}
-        shopId={selectedShopId}
-        onItemsImported={() => fetchMenu(true)}
+        selectedShopId={typeof selectedShopId === "number" ? selectedShopId : selectedShopId ? Number(selectedShopId) : null}
+        onRefreshMenu={() => void fetchMenu(true)}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        supabase={supabase as any}
+        defaultCategories={categories}
       />
     </div>
   );

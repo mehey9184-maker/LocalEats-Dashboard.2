@@ -1227,10 +1227,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   }, [orders]);
 
   const [connections, setConnections] = useState<RiderConnection[]>([]);
+  const currentShopId = currentShop?.id;
 
   const fetchRiders = useCallback(async () => {
-    if (!currentShop?.id) return;
-    const shopId = currentShop.id;
+    if (!currentShopId) return;
+    const shopId = currentShopId;
     const numericShopId = typeof shopId === "number" ? shopId : (parseInt(String(shopId).replace(/\D/g, ""), 10) || shopId);
     console.log(`[App.tsx] fetchRiders initiated | currentShop.id:`, shopId, `(type: ${typeof shopId})`, `| numericShopId:`, numericShopId);
 
@@ -1267,7 +1268,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         error,
       });
 
-      const blacklistKey = `localeats_deleted_conns_${currentShop.id}`;
+      const blacklistKey = `localeats_deleted_conns_${currentShopId}`;
       let deletedSet = new Set<string>();
       try {
         const storedDel = localStorage.getItem(blacklistKey);
@@ -1288,7 +1289,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         );
         setConnections(filteredData);
         try {
-          localStorage.setItem(`localeats_rider_conns_${currentShop.id}`, JSON.stringify(filteredData));
+          localStorage.setItem(`localeats_rider_conns_${currentShopId}`, JSON.stringify(filteredData));
         } catch {
           // ignore
         }
@@ -1296,7 +1297,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         if (error) {
           console.warn("Notice fetching rider connections (using local cache):", error.message || error);
         }
-        const cached = localStorage.getItem(`localeats_rider_conns_${currentShop.id}`);
+        const cached = localStorage.getItem(`localeats_rider_conns_${currentShopId}`);
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
@@ -1317,7 +1318,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     } catch (e) {
       console.warn("Notice fetching rider connections exception:", e);
     }
-  }, [currentShop?.id]);
+  }, [currentShopId]);
 
   const connectedRidersCount = connections.filter(
     (c) => c.rider_id || c.connection_code === "IN-HOUSE" || c.status === "active",
@@ -1325,18 +1326,18 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
   useEffect(() => {
     fetchRiders();
-    if (!currentShop?.id) return;
+    if (!currentShopId) return;
     
     let activeChannel: RealtimeChannel | null = null;
     let isMounted = true;
-    void subscribeWithAuthGuard(`dashboard_riders_${currentShop.id}`, (ch) => 
+    void subscribeWithAuthGuard(`dashboard_riders_${currentShopId}`, (ch) => 
       ch.on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
+        { 
+          event: "*", 
+          schema: "public", 
           table: "rider_connections",
-          filter: `shop_id=eq.${currentShop.id}`,
+          filter: `shop_id=eq.${currentShopId}`,
         },
         () => fetchRiders(),
       )
@@ -1351,7 +1352,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       isMounted = false;
       if (activeChannel) void supabase.removeChannel(activeChannel);
     };
-  }, [currentShop?.id, fetchRiders, subscribeWithAuthGuard]);
+  }, [currentShopId, fetchRiders, subscribeWithAuthGuard]);
 
   const fetchFollowers = useCallback(async () => {
     if (!currentShop?.id) return;

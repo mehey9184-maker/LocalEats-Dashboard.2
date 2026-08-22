@@ -555,10 +555,13 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [cancelReasonPreset, setCancelReasonPreset] = useState<string>("Out of ingredients / Items unavailable");
   const [customCancelExplanation, setCustomCancelExplanation] = useState<string>("Kitchen is temporarily out of ingredients.");
 
+  const currentShopId = currentShop?.id;
+  const currentShopPhone = currentShop?.phone;
+
   useEffect(() => {
-    if (currentShop) {
+    if (currentShopId) {
       const fetchRiders = async () => {
-        const shopId = currentShop.id;
+        const shopId = currentShopId;
         const numericShopId = typeof shopId === "number" ? shopId : (parseInt(String(shopId).replace(/\D/g, ""), 10) || shopId);
         let conns: RiderConnection[] | null = null;
         let connErr: { message?: string } | null = null;
@@ -589,7 +592,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
           connErr = e;
         }
 
-        const blacklistKey = `localeats_deleted_conns_${currentShop.id}`;
+        const blacklistKey = `localeats_deleted_conns_${currentShopId}`;
         let deletedSet = new Set<string>();
         try {
           const storedDel = localStorage.getItem(blacklistKey);
@@ -613,7 +616,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             console.warn("Notice fetching rider connections (using local cache/fallback):", connErr.message || connErr);
           }
           try {
-            const cached = localStorage.getItem(`localeats_rider_conns_${currentShop.id}`);
+            const cached = localStorage.getItem(`localeats_rider_conns_${currentShopId}`);
             if (cached) {
               const parsed = JSON.parse(cached);
               if (Array.isArray(parsed) && parsed.length > 0) {
@@ -632,21 +635,21 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
           if (finalConns.length === 0) {
             finalConns = [
               {
-                id: `in_house_${currentShop.id}`,
-                shop_id: currentShop.id,
+                id: `in_house_${currentShopId}`,
+                shop_id: currentShopId,
                 rider_id: null,
                 connection_code: "IN-HOUSE",
                 status: "active",
                 created_at: new Date().toISOString(),
                 expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
                 rider_name: "In-House Express Fleet",
-                rider_phone: currentShop.phone || "+27 82 000 0000",
+                rider_phone: currentShopPhone || "+27 82 000 0000",
               } as RiderConnection,
             ];
           }
         } else {
           try {
-            localStorage.setItem(`localeats_rider_conns_${currentShop.id}`, JSON.stringify(conns));
+            localStorage.setItem(`localeats_rider_conns_${currentShopId}`, JSON.stringify(conns));
           } catch {
             // ignore
           }
@@ -682,7 +685,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             ...conn,
             is_online: profile?.is_online || (isInHouse ? true : (isBound ? (conn.is_online ?? true) : false)),
             rider_name: profile?.full_name || conn.rider_name || "In-House Express Fleet",
-            rider_phone: profile?.phone || conn.rider_phone || currentShop.phone || "+27 82 000 0000",
+            rider_phone: profile?.phone || conn.rider_phone || currentShopPhone || "+27 82 000 0000",
             status: (profile?.status === "online" ? "active" : profile?.status || (isExpired ? "expired" : isInHouse ? "active" : conn.status || "active")) as RiderConnection["status"],
             vehicle_type: profile?.vehicle_type || "Road",
             rating: profile?.rating || 5.0,
@@ -703,7 +706,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             event: "*", 
             schema: "public", 
             table: "rider_connections",
-            filter: `shop_id=eq.${currentShop.id}`
+            filter: `shop_id=eq.${currentShopId}`
           },
           () => void fetchRiders(),
         )
@@ -719,7 +722,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
         if (activeChannel) void supabase.removeChannel(activeChannel);
       };
     }
-  }, [currentShop, subscribeWithAuthGuard]);
+  }, [currentShopId, currentShopPhone, subscribeWithAuthGuard]);
   const [customMessage, setCustomMessage] = useState(
     "We have received your order and are starting to prepare it!",
   );
