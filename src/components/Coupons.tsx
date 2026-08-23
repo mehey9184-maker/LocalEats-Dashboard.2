@@ -953,6 +953,7 @@ export const CouponForm: React.FC<CouponFormProps> = ({
             type="text"
             placeholder="e.g. WELCOME10"
             value={formData.code}
+            readOnly={mode === "edit"}
             onChange={(e) =>
               setFormData({
                 ...formData,
@@ -963,7 +964,7 @@ export const CouponForm: React.FC<CouponFormProps> = ({
               "w-full px-4 py-3 rounded-2xl border border-outline-variant/10 outline-none transition-all font-mono font-bold uppercase",
               mode === "create"
                 ? "bg-surface-container-low focus:border-primary/20"
-                : "bg-on-surface/5 text-on-surface-variant/80"
+                : "bg-on-surface/5 text-on-surface-variant/80 cursor-not-allowed select-none"
             )}
           />
         </div>
