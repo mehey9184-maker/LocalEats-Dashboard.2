@@ -13,6 +13,7 @@ import {
   ImageIcon,
   RefreshCw,
   Loader2,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -70,6 +71,10 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
   const [uploadingType, setUploadingType] = useState<"logo" | null>(null);
   const [showMapPinConfirm, setShowMapPinConfirm] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [operatingHours, setOperatingHours] = useState({
+    open: shop.operating_hours?.open || "08:00",
+    close: shop.operating_hours?.close || "20:00",
+  });
   const [formData, setFormData] = useState({
     name: shop.name || "",
     description: shop.description || "",
@@ -101,6 +106,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
     logo_url?: string;
     lat?: number;
     lng?: number;
+    operating_hours?: { open: string; close: string };
   }>({});
 
   // Keep formData in sync when the parent shop updates without triggering infinite loops
@@ -121,7 +127,9 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
       prev.whatsapp !== shop.whatsapp ||
       prev.logo_url !== shop.logo_url ||
       prev.lat !== shop.lat ||
-      prev.lng !== shop.lng;
+      prev.lng !== shop.lng ||
+      prev.operating_hours?.open !== shop.operating_hours?.open ||
+      prev.operating_hours?.close !== shop.operating_hours?.close;
 
     if (hasChanged) {
       prevShopRef.current = {
@@ -139,7 +147,13 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
         logo_url: shop.logo_url,
         lat: shop.lat,
         lng: shop.lng,
+        operating_hours: shop.operating_hours,
       };
+
+      setOperatingHours({
+        open: shop.operating_hours?.open || "08:00",
+        close: shop.operating_hours?.close || "20:00",
+      });
 
       setFormData({
         name: shop.name || "",
@@ -172,6 +186,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
     shop?.logo_url,
     shop?.lat,
     shop?.lng,
+    shop?.operating_hours,
   ]);
 
   const syncAnalysis = useMemo(() => {
@@ -307,6 +322,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
 
     const payload: Record<string, unknown> = {
       ...formData,
+      operating_hours: operatingHours,
       city: finalCity,
       updated_at: nowISO,
     };
@@ -328,6 +344,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
         logo_url: formData.logo_url,
         lat: formData.lat,
         lng: formData.lng,
+        operating_hours: operatingHours,
         updated_at: nowISO,
       });
     } catch (fsErr) {
@@ -344,6 +361,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
             ? {
                 ...s,
                 ...formData,
+                operating_hours: operatingHours,
                 address: formData.location,
                 city: finalCity,
                 updated_at: nowISO,
@@ -815,6 +833,45 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                   }}
                 />
                 <p className="text-[10px] text-primary/60 ml-1 italic font-bold">This is how customers will contact you on WhatsApp.</p>
+              </div>
+            </div>
+          </section>
+
+          {/* Operating Hours Section */}
+          <section className="bg-surface-container-lowest p-5 md:p-8 rounded-2xl md:rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
+            <h3 className="text-base md:text-lg font-semibold flex items-center gap-2">
+              <Clock size={18} className="text-primary md:w-5 md:h-5" />
+              Operating Hours
+            </h3>
+            <p className="text-xs text-on-surface-variant">
+              Set when your store is open for receiving and preparing customer orders.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
+                  Opening Time
+                </label>
+                <input
+                  type="time"
+                  className="w-full h-10 px-4 rounded-xl bg-surface-container-low border border-outline-variant/20 focus:border-primary/40 focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm font-bold text-on-surface cursor-pointer"
+                  value={operatingHours.open}
+                  onChange={(e) =>
+                    setOperatingHours({ ...operatingHours, open: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
+                  Closing Time
+                </label>
+                <input
+                  type="time"
+                  className="w-full h-10 px-4 rounded-xl bg-surface-container-low border border-outline-variant/20 focus:border-primary/40 focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm font-bold text-on-surface cursor-pointer"
+                  value={operatingHours.close}
+                  onChange={(e) =>
+                    setOperatingHours({ ...operatingHours, close: e.target.value })
+                  }
+                />
               </div>
             </div>
           </section>

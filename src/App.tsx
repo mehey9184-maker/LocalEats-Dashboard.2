@@ -1872,11 +1872,6 @@ function App() {
         data: {
           full_name: data.fullName,
           phone: data.phone,
-          whatsapp: data.whatsapp,
-          location: data.location,
-          city: data.city,
-          address: data.address,
-          operating_hours: data.operatingHours,
           marketing_preferences: data.marketing,
           dark_mode: data.darkMode,
           avatar_url: data.avatarUrl,
@@ -1886,51 +1881,6 @@ function App() {
       if (error) throw error;
       if (updateRes?.user) {
         setUser(updateRes.user);
-      }
-
-      // Sync to rider profile if they have one
-      if (user) {
-        try {
-          await supabase
-            .from("rider_profiles")
-            .update({
-               full_name: data.fullName,
-               phone: data.phone,
-               updated_at: new Date().toISOString()
-            })
-            .eq("id", user.id);
-        } catch {
-          // ignore rider profile update error if user has no rider record
-        }
-      }
-
-      // Sync to shop if merchant
-      if (currentShop) {
-        const shopPayload: Record<string, unknown> = {
-          phone: data.phone,
-          whatsapp: data.whatsapp,
-          location: data.address, // Sync address too
-        };
-
-        const { error: shopUpdateErr } = await supabase
-          .from("shops")
-          .update(shopPayload)
-          .eq("id", currentShop.id);
-
-        if (shopUpdateErr && (shopUpdateErr.code === "42703" || shopUpdateErr.message?.includes("column") || shopUpdateErr.message?.includes("schema cache"))) {
-          // Fallback if columns don't exist on shops table
-          delete shopPayload.whatsapp;
-          delete shopPayload.lat;
-          delete shopPayload.lng;
-          delete shopPayload.city; // Make sure city is removed if someone adds it again later
-
-          await supabase
-            .from("shops")
-            .update(shopPayload)
-            .eq("id", currentShop.id);
-        }
-
-        fetchShops(); // Refresh shops state
       }
 
       if (data.darkMode !== undefined) {
@@ -1945,14 +1895,13 @@ function App() {
       setTimeout(() => {
         setIsSaveSuccess(false);
         setIsEditingProfile(false);
-
-      }, 1500);
-
-    } catch (error: unknown) {
+      }, 1200);
+    } catch (err: unknown) {
+      console.error("Save profile error:", err);
       setIsSaving(false);
       setIsSaveSuccess(false);
       toast.error(
-        error instanceof Error ? error.message : "Failed to update profile",
+        err instanceof Error ? err.message : "Failed to update profile settings.",
       );
     }
   };
@@ -1995,14 +1944,9 @@ function App() {
             fullName: user?.user_metadata?.full_name || "",
             email: user?.email || signupEmail,
             phone: user?.user_metadata?.phone || "",
-            whatsapp: user?.user_metadata?.whatsapp || "",
-            location: user?.user_metadata?.location || "",
-            address: user?.user_metadata?.address || "",
             avatarUrl: user?.user_metadata?.avatar_url || "",
-            operatingHours: user?.user_metadata?.operating_hours || {
-              open: "08:00",
-              close: "20:00",
-            },
+            marketing: user?.user_metadata?.marketing_preferences ?? true,
+            darkMode: user?.user_metadata?.dark_mode ?? darkMode,
           }}
         />
         <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
