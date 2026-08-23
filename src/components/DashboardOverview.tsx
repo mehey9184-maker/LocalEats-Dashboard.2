@@ -1041,9 +1041,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     toast.loading("Verifying shop ownership & database synchronization...", { id: "sync-verify" });
 
     // Helper timeout wrapper to ensure Supabase calls never hang the UI
-    const withTimeout = <T,>(promise: Promise<T>, ms = 3500): Promise<T> => {
+    const withTimeout = <T,>(promise: PromiseLike<T>, ms = 3500): Promise<T> => {
       return Promise.race([
-        promise,
+        Promise.resolve(promise),
         new Promise<T>((_, reject) => setTimeout(() => reject(new Error("Supabase query timed out")), ms)),
       ]);
     };

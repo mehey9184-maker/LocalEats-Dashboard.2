@@ -147,7 +147,8 @@ export interface Order {
     | "accepted"
     | "picked_up"
     | "delivered"
-    | "cancelled";
+    | "cancelled"
+    | "dispatched";
   order_type?: "delivery" | "collection" | "pickup";
   delivery_pin?: string;
   rider_accepted_at?: string;

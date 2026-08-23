@@ -101,10 +101,15 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
       const orderId = order?.id ? String(order.id).slice(-6) : "1001";
       const customerName = order?.customer_name || "Valued Customer";
       const address = order?.address || "Address provided in app";
-      const amount = order?.total_amount ? order.total_amount.toFixed(2) : "0.00";
+      const amount = order?.total_price != null
+        ? (typeof order.total_price === "number"
+            ? order.total_price
+            : parseFloat(String(order.total_price).replace(/[^0-9.]/g, "")) || 0
+          ).toFixed(2)
+        : "0.00";
       const paymentMethod = order?.payment_method?.toUpperCase() || "CASH";
-      const itemsSummary = order?.items
-        ? order.items.map((i) => `${i.quantity}x ${i.name}`).join(", ")
+      const itemsSummary = Array.isArray(order?.items)
+        ? order.items.map((i: Record<string, unknown> | string) => typeof i === "string" ? i : `${(i as { quantity?: number; name?: string })?.quantity || 1}x ${(i as { quantity?: number; name?: string })?.name || "Item"}`).join(", ")
         : "Standard Meal Order";
 
       let mapsUrl = "";

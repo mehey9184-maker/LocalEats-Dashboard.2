@@ -66,6 +66,7 @@ export interface RiderConnection {
   created_at: string;
   rating?: number;
   last_seen?: string;
+  vehicle_type?: string;
   total_deliveries?: number;
   total_earnings?: number;
   current_latitude?: number;
@@ -339,7 +340,7 @@ export const RiderManagement = ({
   const [activeCode, setActiveCode] = useState<{ code: string; expires: string } | null>(null);
   const [showCode, setShowCode] = useState(false);
   const [qrUrl, setQrUrl] = useState("");
-  const pairingCodeDuration: "24h" | "7d" | "30d" | "never" = "never";
+  const [pairingCodeDuration] = useState<"24h" | "7d" | "30d" | "never">("never");
   const [showInHouseModal, setShowInHouseModal] = useState(false);
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [inHouseName, setInHouseName] = useState("");
@@ -1350,22 +1351,9 @@ export const RiderManagement = ({
       console.warn("Supabase claim update warning:", err);
     }
 
-    // 3. Insert or update rider_profiles in Supabase so rider is online
-    try {
-      await supabase.from("rider_profiles").upsert({
-        id: mockRiderId,
-        full_name: riderName,
-        phone: riderPhone,
-        is_online: true,
-        status: "active",
-        vehicle_type: "Motorbike",
-        rating: 5.0,
-        total_deliveries: 1,
-        updated_at: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.warn("Supabase profile upsert warning:", err);
-    }
+    // Note: The Rider App owns the rider_profiles table.
+    // The Merchant Dashboard must not directly upsert rider identities.
+    // We only update the connection claim.
 
     toast.success(`Linked ${riderName}! Rider is now connected.`);
     void fetchConnections();
@@ -1430,14 +1418,8 @@ export const RiderManagement = ({
 
     // 3. Persist to Supabase / Firestore in background
     try {
-      if (conn.rider_id) {
-        await supabase.from("rider_profiles").upsert({
-          id: conn.rider_id,
-          is_online: isNowOnline,
-          status: isNowOnline ? "active" : "offline",
-          updated_at: new Date().toISOString(),
-        });
-      }
+      // Note: The Rider App owns the rider_profiles table.
+      // We only update the connection status.
       if (conn.id) {
         await supabase
           .from("rider_connections")
@@ -1508,14 +1490,8 @@ export const RiderManagement = ({
     // 3. Persist remote
     for (const c of eligibleConns) {
       try {
-        if (c.rider_id) {
-          await supabase.from("rider_profiles").upsert({
-            id: c.rider_id,
-            is_online: targetStatus,
-            status: targetStatus ? "active" : "offline",
-            updated_at: new Date().toISOString(),
-          });
-        }
+        // Note: The Rider App owns the rider_profiles table.
+        // We only update the connection status.
         if (c.id) {
           await supabase
             .from("rider_connections")

@@ -59,6 +59,7 @@ import {
   checkPrinterConnectivity,
   type PrinterDiagnosticResult,
   type PrintingFormat,
+  type QueuedPrintJob,
 } from "../utils/escPosEngine";
 import { isRiderOnline } from "../utils/availabilityChecker";
 import { Order, Shop, OrderStatus, RiderProfile, Message, RiderConnection } from "../types";
@@ -72,7 +73,7 @@ import { DispatchAlertModal } from "./DispatchAlertModal";
 import { format } from "date-fns";
 
 export const isOrderDelivery = (order: Order): boolean => {
-  return order.fulfillment_method === "delivery" || !!order.address;
+  return order.order_type === "delivery" || !!order.address;
 };
 
 export function safeGetOrderItems(rawItems: unknown): (string | { name: string; quantity: number; price?: number })[] {
@@ -112,7 +113,7 @@ export interface OrdersManagementProps {
   currentShop: Shop | undefined;
   printingFormat?: PrintingFormat;
   setPrintingFormat?: (format: PrintingFormat) => void;
-  failedPrints?: { id: string; orderId: string; error: string; timestamp: Date }[];
+  failedPrints?: QueuedPrintJob[];
   printingHardwareLoading?: boolean;
   handlePrintBluetoothDirect?: (order: Order) => Promise<boolean>;
   handlePrintUSBDirect?: (order: Order) => Promise<boolean>;
@@ -145,7 +146,7 @@ const ChatWindow = ({
         .eq("order_id", orderId)
         .order("created_at", { ascending: true });
 
-      if (!error && data) setMessages(data);
+      if (!error && data) setMessages(data as Message[]);
       setLoading(false);
     };
 
@@ -3370,19 +3371,21 @@ Notes: "${order.notes || "None"}"
                         transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         key={order.id}
                         draggable={true}
-                        onDragStart={(e) => {
+                        onDragStart={(e: React.DragEvent) => {
                           setDraggedPendingId(order.id);
-                          e.dataTransfer.setData("text/plain", order.id);
-                          e.dataTransfer.effectAllowed = "move";
+                          if (e.dataTransfer) {
+                            e.dataTransfer.setData("text/plain", order.id);
+                            e.dataTransfer.effectAllowed = "move";
+                          }
                         }}
-                        onDragOver={(e) => {
+                        onDragOver={(e: React.DragEvent) => {
                           e.preventDefault();
-                          e.dataTransfer.dropEffect = "move";
+                          if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
                           if (draggedPendingId && draggedPendingId !== order.id && dragOverPendingId !== order.id) {
                             setDragOverPendingId(order.id);
                           }
                         }}
-                        onDragLeave={(e) => {
+                        onDragLeave={(e: React.DragEvent) => {
                           if (e.currentTarget.contains(e.relatedTarget as Node)) return;
                           if (dragOverPendingId === order.id) {
                             setDragOverPendingId(null);
@@ -4770,7 +4773,7 @@ Notes: "${order.notes || "None"}"
                               <button
                                 type="button"
                                 disabled={printingHardwareLoading}
-                                onClick={() => retryQueuedPrintDirect?.(job)}
+                                onClick={() => retryQueuedPrintDirect?.(job.id)}
                                 className="px-2 py-1 bg-[#FF5A36] text-white text-[9px] font-black uppercase tracking-wider rounded-lg hover:opacity-90 active:scale-95 disabled:opacity-50 transition-all shrink-0 cursor-pointer"
                               >
                                 Retry

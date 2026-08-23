@@ -1,6 +1,20 @@
 import React, { useEffect } from 'react';
 import { Globe } from 'lucide-react';
 
+declare global {
+  interface Window {
+    google: {
+      translate: {
+        TranslateElement: new (
+          options: { pageLanguage: string; includedLanguages: string; layout: unknown },
+          elementId: string
+        ) => unknown;
+      };
+    };
+    googleTranslateElementInit: () => void;
+  }
+}
+
 export const LanguageSwitcher: React.FC = () => {
   useEffect(() => {
     // Check if the script is already added
@@ -12,14 +26,20 @@ export const LanguageSwitcher: React.FC = () => {
       document.body.appendChild(script);
 
       window.googleTranslateElementInit = () => {
-        new window.google.translate.TranslateElement(
-          {
-            pageLanguage: 'en',
-            includedLanguages: 'en,zu,xh,af,st,tn,ts,ss,ve,nr,nso', // 11 official languages of South Africa
-            layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE
-          },
-          'google_translate_element'
-        );
+        if (window.google && window.google.translate && window.google.translate.TranslateElement) {
+          try {
+            new window.google.translate.TranslateElement(
+              {
+                pageLanguage: 'en',
+                includedLanguages: 'en,zu,xh,af,st,tn,ts,ss,ve,nr,nso', // 11 official languages of South Africa
+                layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE
+              },
+              'google_translate_element'
+            );
+          } catch {
+            // Fail-safe translation loader
+          }
+        }
       };
     }
   }, []);

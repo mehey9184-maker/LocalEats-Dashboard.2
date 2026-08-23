@@ -42,7 +42,6 @@ export interface RiderLike {
   status?: string | null;
   connection_code?: string | null;
   verification_status?: string | null;
-  [key: string]: unknown;
 }
 
 export interface ShopLike {
@@ -50,7 +49,6 @@ export interface ShopLike {
   is_active?: boolean | null;
   opening_time?: string | null;
   closing_time?: string | null;
-  [key: string]: unknown;
 }
 
 /**

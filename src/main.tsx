@@ -6,6 +6,7 @@ import { cleanLocalStorageCache } from './utils/storageCleanup';
 import { initTimeSync } from './utils/timeSync';
 import { initGlobalErrorLogging } from './utils/errorHandler';
 import { initSentry } from './utils/sentry';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Initialize Sentry SDK
 try {
@@ -149,6 +150,8 @@ try {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>,
 );

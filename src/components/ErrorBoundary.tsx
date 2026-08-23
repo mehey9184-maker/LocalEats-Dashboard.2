@@ -65,7 +65,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-6 text-on-surface">
           <div className="w-full max-w-lg bg-surface-container rounded-2xl p-8 border border-outline-variant/20 shadow-xl flex flex-col items-center text-center">
             <div className="mb-6">
-              <LocalEatsLogo size="md" />
+              <LocalEatsLogo />
             </div>
 
             <div className="w-14 h-14 rounded-2xl bg-error/10 text-error flex items-center justify-center mb-4">

@@ -45,6 +45,11 @@ export const STATUS_STYLES: Record<OrderStatus, { bg: string; dotColor: string; 
     dotColor: "bg-red-500",
     label: "Cancelled",
   },
+  dispatched: {
+    bg: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+    dotColor: "bg-purple-500",
+    label: "Dispatched",
+  },
 };
 
 export const OrderStatusBadge: React.FC<OrderStatusBadgeProps> = ({ status, className, showDot = true }) => {

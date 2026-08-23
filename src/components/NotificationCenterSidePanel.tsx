@@ -22,12 +22,12 @@ export const NotificationCenterSidePanel: React.FC<NotificationCenterSidePanelPr
   orders,
   menuItems,
 }) => {
-  const pendingOrdersCount = orders.filter(
-    (o) => o.status === "pending" || o.status === "accepted"
-  ).length;
-  const lowStockItems = menuItems.filter(
-    (m) => typeof m.stock_count === "number" && m.stock_count < 5
-  );
+  const pendingOrdersCount = Array.isArray(orders)
+    ? orders.filter((o) => o && (o.status === "pending" || o.status === "accepted")).length
+    : 0;
+  const lowStockItems = Array.isArray(menuItems)
+    ? menuItems.filter((m) => m && typeof m.stock_quantity === "number" && m.stock_quantity < 5)
+    : [];
 
   const alerts = [];
 

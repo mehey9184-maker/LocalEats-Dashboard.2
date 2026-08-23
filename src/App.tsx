@@ -764,36 +764,40 @@ function App() {
       const autoScheduleEnabled = user.user_metadata?.auto_schedule_enabled === true;
       if (!autoScheduleEnabled) return;
 
-      const operatingHours = user.user_metadata?.operating_hours;
-      if (!operatingHours || !operatingHours.open || !operatingHours.close)
-        return;
-
       const now = getNetworkDate();
       const currentTime = getNetworkFormattedTimeHHMM();
 
-      // Determine if shop should be open based on internet time
-      let isOpen = false;
-      if (operatingHours.open <= operatingHours.close) {
-        isOpen = currentTime >= operatingHours.open && currentTime <= operatingHours.close;
-      } else {
-        isOpen = currentTime >= operatingHours.open || currentTime <= operatingHours.close;
-      }
-
-      // Force offline if within scheduled Holiday Mode range
+      // Check if within scheduled Holiday Mode range
+      let isHoliday = false;
       const holidaySchedule = user.user_metadata?.holiday_schedule;
       if (holidaySchedule && holidaySchedule.start && holidaySchedule.end) {
         const startDate = new Date(holidaySchedule.start);
         const endDate = new Date(holidaySchedule.end);
         endDate.setHours(23, 59, 59, 999); // Inclusive of the end day
         if (now >= startDate && now <= endDate) {
-          isOpen = false;
+          isHoliday = true;
         }
       }
 
       // each shop owned by the user
       for (const shop of shops) {
-        if (shop.owner_id === user.id && shop.is_active !== isOpen) {
+        if (shop.owner_id !== user.id) continue;
 
+        const operatingHours = shop.operating_hours;
+        if (!operatingHours || !operatingHours.open || !operatingHours.close)
+          continue;
+
+        // Determine if shop should be open based on internet time
+        let isOpen = false;
+        if (!isHoliday) {
+          if (operatingHours.open <= operatingHours.close) {
+            isOpen = currentTime >= operatingHours.open && currentTime <= operatingHours.close;
+          } else {
+            isOpen = currentTime >= operatingHours.open || currentTime <= operatingHours.close;
+          }
+        }
+
+        if (shop.is_active !== isOpen) {
           const overrideData = localStorage.getItem(`localeats_manual_status_override_${shop.id}`);
           if (overrideData) {
             try {
@@ -854,7 +858,7 @@ function App() {
     void checkShopHours(); // Run once on mount or when shops/user change
 
     return () => clearInterval(interval);
-  }, [user, shops, user?.user_metadata?.operating_hours, user?.user_metadata?.auto_schedule_enabled]);
+  }, [user, shops, user?.user_metadata?.auto_schedule_enabled]);
 
   // VAPID Push configuration moved to custom hook usePushNotifications
   const { pushEnabled, requestPushPermissions } = usePushNotifications(false);
