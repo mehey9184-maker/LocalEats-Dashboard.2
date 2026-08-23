@@ -442,7 +442,7 @@ export const RiderManagement = ({
       doc.setFont("helvetica", "bold");
       doc.setFontSize(15);
       doc.setTextColor(255, 255, 255);
-      doc.text("LocalEats - Courier Fleet & COD Performance Report", 14, 16);
+      doc.text("LocalEats - Rider Fleet & COD Performance Report", 14, 16);
 
       doc.setFontSize(8.5);
       doc.setFont("helvetica", "normal");
@@ -468,7 +468,7 @@ export const RiderManagement = ({
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8.5);
-      doc.text(`• Total Registered Couriers: ${totalRiders} (${activeRiders} online)`, 18, 48);
+      doc.text(`• Total Registered Riders: ${totalRiders} (${activeRiders} online)`, 18, 48);
       doc.text(`• Completed Delivery Missions: ${completedOrders.length}`, 18, 54);
       doc.text(`• Fleet Average Rating: ${avgRating} / 5.0 Stars`, 110, 48);
       doc.text(`• Total COD Cash Collected: R ${totalCodAmount.toFixed(2)}`, 110, 54);
@@ -485,10 +485,10 @@ export const RiderManagement = ({
           .reduce((sum, o) => sum + (Number(o.total_price) || 0), 0);
 
         return [
-          conn.rider_name || "Courier",
+          conn.rider_name || "Rider",
           conn.rider_phone || "N/A",
           conn.is_online ? "Online" : "Offline",
-          conn.connection_code === "IN-HOUSE" ? "In-House Fleet" : "Paired Courier",
+          conn.connection_code === "IN-HOUSE" ? "In-House Fleet" : "Paired Rider",
           riderOrders.length.toString(),
           `${(conn.rating || 5.0).toFixed(1)} / 5.0`,
           `R ${riderCod.toFixed(2)}`,
@@ -516,7 +516,7 @@ export const RiderManagement = ({
       const codRows = codOrders.map((o) => [
         o.id.slice(0, 8).toUpperCase(),
         o.customer_name || "Customer",
-        o.rider_name || "Assigned Courier",
+        o.rider_name || "Assigned Rider",
         `R ${(Number(o.total_price) || 0).toFixed(2)}`,
         o.status.toUpperCase(),
         new Date(o.created_at).toLocaleDateString("en-ZA"),
@@ -868,7 +868,7 @@ export const RiderManagement = ({
         return {
           ...item,
           is_online: profile?.is_online || (isInHouse ? true : (isBound ? (item.is_online ?? true) : false)),
-          rider_name: profile?.full_name || item.rider_name || (isInHouse ? "In-House Staff" : "Available Key"),
+          rider_name: profile?.full_name || item.rider_name || (isInHouse ? "In-House Staff" : "Available Pairing Code"),
           rider_phone: profile?.phone || item.rider_phone,
           status: ((profile?.status === "online" ? "active" : profile?.status) || (isInHouse ? "idle" : item.status || "active")) as RiderConnection["status"],
           vehicle_type: profile?.vehicle_type || "Road",
@@ -967,7 +967,7 @@ export const RiderManagement = ({
 
     const linkedRidersCount = connections.filter((c) => Boolean(c.rider_id) || c.connection_code === "IN-HOUSE").length;
     if (linkedRidersCount >= 10) {
-      toast.error("Shop courier limit reached (Maximum 10 couriers allowed per shop). Please disconnect an existing rider before generating new pairing keys.");
+      toast.error("Shop rider limit reached (Maximum 10 riders allowed per shop). Please disconnect an existing rider before generating new pairing codes.");
       return;
     }
 
@@ -996,7 +996,7 @@ export const RiderManagement = ({
       id: `local_code_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       shop_id: Number(shopId),
       rider_id: null,
-      rider_name: "Available Pairing Key",
+      rider_name: "Available Pairing Code",
       rider_phone: null,
       connection_code: code,
       expires_at: expiresAt,
@@ -1056,7 +1056,7 @@ export const RiderManagement = ({
 
     const linkedRidersCount = connections.filter((c) => Boolean(c.rider_id) || c.connection_code === "IN-HOUSE").length;
     if (linkedRidersCount >= 10) {
-      toast.error("Shop courier limit reached (Maximum 10 couriers allowed per shop). Please disconnect an existing rider first.");
+      toast.error("Shop rider limit reached (Maximum 10 riders allowed per shop). Please disconnect an existing rider first.");
       return;
     }
 
@@ -1264,7 +1264,7 @@ export const RiderManagement = ({
     toast.success(
       oldCode
         ? `Code ${oldCode} invalidated. Fresh code generated!`
-        : "Current pairing key invalidated & fresh code generated!"
+        : "Current pairing code invalidated & fresh code generated!"
     );
   };
 
@@ -1293,7 +1293,7 @@ export const RiderManagement = ({
 
   const claimPairingCode = async (connId: string, connCode: string, customName?: string, customPhone?: string) => {
     const shopId = currentShop?.id || 1;
-    const riderName = customName?.trim() || `Express Courier (${connCode})`;
+    const riderName = customName?.trim() || `Express Rider (${connCode})`;
     const riderPhone = customPhone?.trim() || `+27 82 555 ${Math.floor(1000 + Math.random() * 9000)}`;
     const mockRiderId = `rider_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
@@ -1367,7 +1367,7 @@ export const RiderManagement = ({
       console.warn("Supabase profile upsert warning:", err);
     }
 
-    toast.success(`Linked ${riderName}! Courier is now connected.`);
+    toast.success(`Linked ${riderName}! Rider is now connected.`);
     void fetchConnections();
   };
 
@@ -1452,20 +1452,20 @@ export const RiderManagement = ({
     }
 
     if (isNowOnline) {
-      toast.success(`${conn.rider_name || "Courier"} is now Online & Ready for Orders!`);
+      toast.success(`${conn.rider_name || "Rider"} is now Online & Ready for Orders!`);
     } else {
-      toast.info(`${conn.rider_name || "Courier"} marked as Offline.`);
+      toast.info(`${conn.rider_name || "Rider"} marked as Offline.`);
     }
   };
 
-  // Turn all fleet couriers online/ready or offline
+  // Turn all fleet riders online/ready or offline
   const toggleAllRidersOnline = async (targetStatus = true) => {
     const shopId = currentShop?.id || 1;
     const eligibleConns = connections.filter((c) => c.rider_id || c.connection_code === "IN-HOUSE");
 
     if (eligibleConns.length === 0) {
       setShowInHouseModal(true);
-      toast.info("Add a courier or in-house driver to activate your delivery fleet.");
+      toast.info("Add a rider or in-house driver to activate your delivery fleet.");
       return;
     }
 
@@ -1531,9 +1531,9 @@ export const RiderManagement = ({
     }
 
     if (targetStatus) {
-      toast.success(`All ${eligibleConns.length} couriers are now Online & Ready for Orders!`);
+      toast.success(`All ${eligibleConns.length} riders are now Online & Ready for Orders!`);
     } else {
-      toast.info(`All couriers marked as Offline.`);
+      toast.info(`All riders marked as Offline.`);
     }
   };
 
@@ -1554,7 +1554,7 @@ export const RiderManagement = ({
             Rider Fleet & Deliveries
           </h2>
           <p className="text-xs text-on-surface-variant font-medium">
-            Manage your store couriers, share pairing codes, track live deliveries, and configure dispatch rules.
+            Manage your store riders, share pairing codes, track live deliveries, and configure dispatch rules.
           </p>
         </div>
 
@@ -1777,7 +1777,7 @@ export const RiderManagement = ({
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Total Fleet</p>
-                  <p className="text-lg font-headline font-black text-on-surface">{connections.length} Couriers</p>
+                  <p className="text-lg font-headline font-black text-on-surface">{connections.length} Riders</p>
                 </div>
               </button>
 
@@ -1868,7 +1868,7 @@ export const RiderManagement = ({
                   <ShieldCheck size={20} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Paired Keys</p>
+                  <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Paired Codes</p>
                   <p className="text-lg font-headline font-black text-on-surface">
                     {connections.filter((c) => c.connection_code !== "IN-HOUSE").length} Active
                   </p>
@@ -1886,10 +1886,10 @@ export const RiderManagement = ({
                   <span className="text-[10px] font-bold text-on-surface-variant/70">Permanent Handshake</span>
                 </div>
                 <h3 className="text-xl font-headline font-bold text-on-surface tracking-tight mt-1">
-                  Connect New Delivery Couriers
+                  Connect New Delivery Riders
                 </h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Generate a 6-digit handshake key or scan a QR code to pair riders instantly to <span className="font-bold text-on-surface">{currentShop?.name || "your shop"}</span>.
+                  Generate a 6-digit pairing code or scan a QR code to pair riders instantly to <span className="font-bold text-on-surface">{currentShop?.name || "your shop"}</span>.
                 </p>
               </div>
 
@@ -1915,7 +1915,7 @@ export const RiderManagement = ({
                   className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-on-primary rounded-xl font-black hover:bg-primary/90 active:scale-[0.98] transition-all text-xs cursor-pointer shadow-xs"
                 >
                   <Plus size={16} />
-                  <span>Generate Key</span>
+                  <span>Generate Code</span>
                 </button>
               </div>
             </div>
@@ -1933,7 +1933,7 @@ export const RiderManagement = ({
                         Pair Driver App Now
                       </h3>
                       <p className="text-xs text-on-surface-variant font-medium mt-1 leading-relaxed">
-                        Share this 6-digit code with your courier. Once entered in their Driver App under 'Pair Shop', they will link directly to <span className="font-bold text-on-surface">{currentShop?.name || "your store"}</span>.
+                        Share this 6-digit code with your rider. Once entered in their Driver App under 'Pair Shop', they will link directly to <span className="font-bold text-on-surface">{currentShop?.name || "your store"}</span>.
                       </p>
                     </div>
 
@@ -1970,7 +1970,7 @@ export const RiderManagement = ({
                       <button
                         onClick={() => invalidateAndRegenerate(undefined, activeCode.code)}
                         className="px-3 py-3 rounded-2xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
-                        title="Clear current key from DB and generate a fresh code"
+                        title="Clear current code from DB and generate a fresh code"
                       >
                         <RotateCcw size={15} />
                         <span>Invalidate & Regenerate</span>
@@ -1988,7 +1988,7 @@ export const RiderManagement = ({
 
                     <div className="bg-surface-container-low p-3 rounded-2xl border border-outline-variant/10 text-xs space-y-1">
                       <p className="font-bold text-on-surface flex items-center gap-1.5 text-[11px]">
-                        <Smartphone size={14} className="text-primary" /> Courier Instruction Set:
+                        <Smartphone size={14} className="text-primary" /> Rider Instruction Set:
                       </p>
                       <ol className="list-decimal list-inside text-[11px] text-on-surface-variant space-y-0.5 pl-1 font-medium">
                         <li>Open <strong className="text-on-surface">LocalEats Driver App</strong> on phone</li>
@@ -1998,7 +1998,7 @@ export const RiderManagement = ({
                     </div>
 
                     <p className="text-[10px] text-on-surface-variant/70 font-medium">
-                      Key expires on <span className="font-bold text-on-surface">{new Date(activeCode.expires).toLocaleDateString()} at {new Date(activeCode.expires).toLocaleTimeString()}</span>.
+                      Pairing code expires on <span className="font-bold text-on-surface">{new Date(activeCode.expires).toLocaleDateString()} at {new Date(activeCode.expires).toLocaleTimeString()}</span>.
                     </p>
                   </div>
 
@@ -2035,7 +2035,7 @@ export const RiderManagement = ({
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search courier name, phone, or code..."
+                  placeholder="Search rider name, phone, or code..."
                   className="w-full pl-10 pr-8 py-2 text-xs bg-surface text-on-surface placeholder:text-on-surface-variant/50 border border-outline-variant/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
                 />
                 {searchQuery && (
@@ -2077,21 +2077,21 @@ export const RiderManagement = ({
             <div className="space-y-4">
               <div className="flex items-center justify-between border-b border-outline-variant/10 pb-2">
                 <h4 className="text-xs font-black uppercase text-on-surface-variant tracking-wider flex items-center gap-2">
-                  <span>Courier Roster</span>
+                  <span>Rider Roster</span>
                   <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                     {filteredConnections.length} shown
                   </span>
                 </h4>
                 {availableCodesCount > 0 && (
                   <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200/50 px-2 py-0.5 rounded-full">
-                    {availableCodesCount} unused keys
+                    {availableCodesCount} unused codes
                   </span>
                 )}
               </div>
 
               {loading ? (
                 <div className="py-12 text-center text-xs text-on-surface-variant/60 font-medium">
-                  Loading courier registry...
+                  Loading rider registry...
                 </div>
               ) : filteredConnections.length === 0 ? (
                 <div className="bg-surface-container-low/30 rounded-3xl p-10 text-center border border-outline-variant/10 max-w-md mx-auto space-y-4">
@@ -2101,16 +2101,16 @@ export const RiderManagement = ({
                   <div className="space-y-1">
                     <h4 className="text-sm font-bold text-on-surface uppercase tracking-tight">
                       {statusFilter === "online" && connections.length > 0
-                        ? "No Couriers Online & Ready"
+                        ? "No Riders Online & Ready"
                         : connections.length === 0
-                        ? "No Couriers Connected Yet"
-                        : "No Matching Couriers"}
+                        ? "No Riders Connected Yet"
+                        : "No Matching Riders"}
                     </h4>
                     <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
                       {statusFilter === "online" && connections.length > 0
-                        ? "None of your couriers are currently marked as online for order dispatch. You can activate all couriers with one tap."
+                        ? "None of your riders are currently marked as online for order dispatch. You can activate all riders with one tap."
                         : connections.length === 0
-                        ? "Generate a pairing key or add an in-house driver above to activate your delivery network."
+                        ? "Generate a pairing code or add an in-house driver above to activate your delivery network."
                         : "Try clearing your search term or selecting a different status filter above."}
                     </p>
                   </div>
@@ -2130,7 +2130,7 @@ export const RiderManagement = ({
                         onClick={() => { setSearchQuery(""); setStatusFilter("all"); }}
                         className="px-4 py-2 bg-surface text-on-surface text-xs font-bold rounded-xl border border-outline-variant/20 hover:bg-on-surface/5 transition-all cursor-pointer"
                       >
-                        View All Couriers ({connections.length})
+                        View All Riders ({connections.length})
                       </button>
                     )}
                     {connections.length === 0 && (
@@ -2175,7 +2175,7 @@ export const RiderManagement = ({
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <h4 className="font-headline font-bold text-sm text-on-surface">
-                                      Key: <span className="font-mono text-primary font-black tracking-wider text-base">{conn.connection_code}</span>
+                                      Code: <span className="font-mono text-primary font-black tracking-wider text-base">{conn.connection_code}</span>
                                     </h4>
                                     <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
                                       ⏳ Awaiting Driver Entry
@@ -2193,14 +2193,14 @@ export const RiderManagement = ({
                               <button
                                 onClick={() => deleteConnection(conn.id, conn.connection_code, conn.rider_id)}
                                 className="p-2 hover:bg-red-50 hover:text-red-600 text-on-surface-variant/40 rounded-xl transition-colors cursor-pointer shrink-0"
-                                title="Revoke Pairing Key"
+                                title="Revoke Pairing Code"
                               >
                                 <X size={14} />
                               </button>
                             </div>
 
                             <div className="bg-surface/80 rounded-xl p-2.5 border border-outline-variant/10 flex items-center justify-between text-[11px] text-on-surface-variant/80 font-mono">
-                              <span className="text-emerald-600 font-bold flex items-center gap-1">✓ Permanent Key</span>
+                              <span className="text-emerald-600 font-bold flex items-center gap-1">✓ Permanent Code</span>
                               <span className="text-amber-600 font-bold">Unclaimed</span>
                             </div>
 
@@ -2311,7 +2311,7 @@ export const RiderManagement = ({
                                   <a
                                     href={`tel:${conn.rider_phone}`}
                                     className="p-2 rounded-xl bg-surface hover:bg-on-surface/5 text-on-surface-variant hover:text-on-surface border border-outline-variant/10 transition-colors"
-                                    title="Call Courier"
+                                    title="Call Rider"
                                   >
                                     <Phone size={14} />
                                   </a>
@@ -2330,7 +2330,7 @@ export const RiderManagement = ({
                                 <button
                                   onClick={() => deleteConnection(conn.id, conn.connection_code, conn.rider_id)}
                                   className="p-2 hover:bg-red-50 hover:text-red-600 text-on-surface-variant/40 rounded-xl transition-colors cursor-pointer"
-                                  title="Disconnect courier relationship"
+                                  title="Disconnect rider relationship"
                                 >
                                   <X size={14} />
                                 </button>
@@ -2371,7 +2371,7 @@ export const RiderManagement = ({
                                   ? "bg-surface hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-on-surface-variant border-outline-variant/20 shadow-xs"
                                   : "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600 shadow-xs"
                               )}
-                              title={conn.is_online ? "Set courier to offline" : "Make courier online & ready"}
+                              title={conn.is_online ? "Set rider to offline" : "Make rider online & ready"}
                             >
                               <Zap size={11} className={conn.is_online ? "text-amber-500" : "text-white"} />
                               <span>{conn.is_online ? "Set Offline" : "Go Online"}</span>
@@ -2401,7 +2401,7 @@ export const RiderManagement = ({
                           {/* Card Footer Actions */}
                           <div className="flex items-center justify-between gap-2 pt-1 border-t border-outline-variant/5">
                             <span className="text-[10px] font-bold text-on-surface-variant/60 uppercase tracking-wider">
-                              {isInHouse ? "Permanent Staff" : `Key: ${conn.connection_code}`}
+                              {isInHouse ? "Permanent Staff" : `Code: ${conn.connection_code}`}
                             </span>
 
                             <div className="flex items-center gap-2">
@@ -2430,7 +2430,7 @@ export const RiderManagement = ({
 
                               {isExpired && (
                                 <span className="text-[9px] font-black uppercase text-red-500 bg-red-50 border border-red-100 px-2 py-0.5 rounded-lg">
-                                  Expired Key
+                                  Expired Code
                                 </span>
                               )}
                             </div>
@@ -2447,7 +2447,7 @@ export const RiderManagement = ({
                     {/* Range Status */}
                     <div className="text-on-surface-variant font-medium text-[11px]">
                       Showing <strong className="text-on-surface">{(currentPage - 1) * (pageSize || filteredConnections.length) + 1}</strong>–
-                      <strong className="text-on-surface">{Math.min(currentPage * (pageSize || filteredConnections.length), filteredConnections.length)}</strong> of <strong className="text-on-surface">{filteredConnections.length}</strong> couriers
+                      <strong className="text-on-surface">{Math.min(currentPage * (pageSize || filteredConnections.length), filteredConnections.length)}</strong> of <strong className="text-on-surface">{filteredConnections.length}</strong> riders
                     </div>
 
                     {/* Pagination buttons & Page Size selector */}
@@ -2510,10 +2510,10 @@ export const RiderManagement = ({
               <div>
                 <h3 className="text-lg font-headline font-bold text-on-surface flex items-center gap-2">
                   <Activity size={20} className="text-primary" />
-                  Courier Fleet Network Health & Diagnostics
+                  Rider Fleet Network Health & Diagnostics
                 </h3>
                 <p className="text-xs text-on-surface-variant font-medium">
-                  Real-time heartbeat monitoring distinguishing truly active sessions from idle & offline couriers.
+                  Real-time heartbeat monitoring distinguishing truly active sessions from idle & offline riders.
                 </p>
               </div>
 
@@ -2531,7 +2531,7 @@ export const RiderManagement = ({
               <div className="bg-emerald-500/5 dark:bg-emerald-500/10 p-5 rounded-2xl border border-emerald-500/20 space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-300 tracking-wider">
-                    Truly Active Couriers
+                    Truly Active Riders
                   </span>
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
                 </div>
@@ -2568,7 +2568,7 @@ export const RiderManagement = ({
               <div className="bg-zinc-500/5 dark:bg-zinc-500/10 p-5 rounded-2xl border border-zinc-500/20 space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-black uppercase text-zinc-600 dark:text-zinc-400 tracking-wider">
-                    Offline / Stale Keys
+                    Offline / Stale Codes
                   </span>
                   <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
                 </div>
@@ -2597,7 +2597,7 @@ export const RiderManagement = ({
 
               {connections.length === 0 ? (
                 <div className="py-12 text-center text-xs text-on-surface-variant">
-                  No couriers in registry. Generate a pairing code in Rider Network to add riders.
+                  No riders in registry. Generate a pairing code in Rider Network to add riders.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2677,7 +2677,7 @@ export const RiderManagement = ({
                               onClick={() => sendRiderNudge(c.rider_id!, "LocalEats Shop requested a live location ping / heartbeat update.")}
                               className="ml-auto px-2.5 py-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-lg font-bold text-[10px] transition-all cursor-pointer flex items-center gap-1"
                             >
-                              <Send size={11} /> Ping Courier Heartbeat
+                              <Send size={11} /> Ping Rider Heartbeat
                             </button>
                           )}
                         </div>
@@ -2778,7 +2778,7 @@ export const RiderManagement = ({
                         <CheckCircle2 size={14} /> Zero Quality Alerts
                       </p>
                       <p className="text-[10px] text-on-surface-variant">
-                        All couriers in your fleet are maintaining high 4.5+ star ratings!
+                        All riders in your fleet are maintaining high 4.5+ star ratings!
                       </p>
                     </div>
                   )}
@@ -2799,7 +2799,7 @@ export const RiderManagement = ({
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-bold bg-primary/10 text-primary px-2.5 py-1 rounded-xl">
-                    {connections.length} Couriers Rated
+                    {connections.length} Riders Rated
                   </span>
                 </div>
               </div>
@@ -2842,7 +2842,7 @@ export const RiderManagement = ({
                             </td>
                             <td className="py-3.5 text-on-surface-variant font-medium">
                               <span className="px-2 py-0.5 rounded-lg bg-surface-container-high text-[10px] font-bold text-on-surface">
-                                {rider.connection_code === "IN-HOUSE" ? "In-House Fleet" : "Paired Courier"}
+                                {rider.connection_code === "IN-HOUSE" ? "In-House Fleet" : "Paired Rider"}
                               </span>
                             </td>
                             <td className="py-3.5 text-center font-bold text-on-surface">
@@ -2879,13 +2879,13 @@ export const RiderManagement = ({
           </div>
         )}
 
-        {/* --- TAB 4: COURIER & TRUST --- */}
+        {/* --- TAB 4: RIDER DISPATCH & TRUST --- */}
         {activeSubTab === "controls" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
             {/* Dispatch settings */}
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-headline font-black text-on-surface">Store Courier Dispatch</h3>
+                <h3 className="text-lg font-headline font-black text-on-surface">Store Rider Dispatch</h3>
                 <p className="text-xs text-on-surface-variant">Configure independent fleet access permissions</p>
               </div>
 
@@ -2894,7 +2894,7 @@ export const RiderManagement = ({
                   <div className="space-y-1">
                     <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Allow External Pool Riders</h4>
                     <p className="text-[11px] text-on-surface-variant font-medium leading-relaxed">
-                      Enable verified public or independent couriers on the network to view and accept your orders when your in-house fleet is busy.
+                      Enable verified public or independent riders on the network to view and accept your orders when your in-house fleet is busy.
                     </p>
                   </div>
                   <button
@@ -2986,7 +2986,7 @@ export const RiderManagement = ({
                 <div className="space-y-4">
                   <div className="bg-surface-container-low p-5 rounded-3xl border border-outline-variant/10 shadow-sm space-y-4">
                     <div className="flex items-center justify-between border-b border-outline-variant/5 pb-2">
-                      <span className="text-[10px] font-black uppercase text-on-surface-variant tracking-wider">Active Courier Balance</span>
+                      <span className="text-[10px] font-black uppercase text-on-surface-variant tracking-wider">Active Rider Balance</span>
                       <span className="text-[10px] font-black text-red-500 bg-red-50 border border-red-100 px-2 py-0.5 rounded-full">
                         Safety Limit: R 500
                       </span>

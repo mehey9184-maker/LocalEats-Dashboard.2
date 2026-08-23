@@ -80,26 +80,32 @@ export const Coupons: React.FC<CouponsProps> = ({
     fetchCoupons();
   }, [currentShop?.id]);
 
-  const handleCreateCoupon = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateCoupon = async (formData: {
+    code: string;
+    discount_type: "percentage" | "fixed";
+    discount_value: string;
+    min_order_value: string;
+    expiry_date: string;
+    is_active?: boolean;
+  }) => {
     if (!currentShop?.id) return;
 
     // Guardrail: Duplicate check
     const isDuplicate = coupons.some(
-      (c) => c.code.toUpperCase() === newCoupon.code.toUpperCase()
+      (c) => c.code.toUpperCase() === formData.code.toUpperCase()
     );
     if (isDuplicate) {
-      toast.error(`A coupon with the code "${newCoupon.code.toUpperCase()}" already exists. Please choose a different code.`);
+      toast.error(`A coupon with the code "${formData.code.toUpperCase()}" already exists. Please choose a different code.`);
       return;
     }
 
     // Safety check on value ratios
-    const val = parseFloat(newCoupon.discount_value);
+    const val = parseFloat(formData.discount_value);
     if (isNaN(val) || val <= 0) {
       toast.error("Please enter a valid discount value greater than zero.");
       return;
     }
-    if (newCoupon.discount_type === "percentage" && val > 95) {
+    if (formData.discount_type === "percentage" && val > 95) {
       toast.error("Margin override blocked: Percentage discounts cannot exceed 95% off.");
       return;
     }
@@ -107,11 +113,11 @@ export const Coupons: React.FC<CouponsProps> = ({
     const { error } = await supabase.from("coupons").insert([
       {
         shop_id: currentShop.id,
-        code: newCoupon.code.toUpperCase(),
-        discount_type: newCoupon.discount_type,
+        code: formData.code.toUpperCase(),
+        discount_type: formData.discount_type,
         discount_value: val,
-        min_order_value: parseFloat(newCoupon.min_order_value) || 0,
-        expiry_date: newCoupon.expiry_date || null,
+        min_order_value: parseFloat(formData.min_order_value) || 0,
+        expiry_date: formData.expiry_date || null,
         is_active: true,
       },
     ]);
@@ -134,28 +140,36 @@ export const Coupons: React.FC<CouponsProps> = ({
         .eq("shop_id", currentShop.id)
         .order("created_at", { ascending: false });
       if (data) setCoupons(data as Coupon[]);
+      toast.success(`Coupon ${formData.code.toUpperCase()} created successfully!`);
     }
   };
 
-  const handleUpdateCoupon = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUpdateCoupon = async (formData: {
+    code: string;
+    discount_type: "percentage" | "fixed";
+    discount_value: string;
+    min_order_value: string;
+    expiry_date: string;
+    is_active: boolean;
+  }) => {
     if (!currentShop?.id || !editingCoupon) return;
 
     // Duplicate Check
     const isDuplicate = coupons.some(
-      (c) => c.code.toUpperCase() === editingCoupon.code.toUpperCase() && c.id !== editingCoupon.id
+      (c) => c.code.toUpperCase() === formData.code.toUpperCase() && c.id !== editingCoupon.id
     );
     if (isDuplicate) {
-      toast.error(`A coupon with code "${editingCoupon.code.toUpperCase()}" already exists elsewhere.`);
+      toast.error(`A coupon with code "${formData.code.toUpperCase()}" already exists elsewhere.`);
       return;
     }
 
+    const val = parseFloat(formData.discount_value);
     // Safeguard validation
-    if (editingCoupon.discount_value <= 0) {
+    if (isNaN(val) || val <= 0) {
       toast.error("Discount value must be greater than zero.");
       return;
     }
-    if (editingCoupon.discount_type === "percentage" && editingCoupon.discount_value > 95) {
+    if (formData.discount_type === "percentage" && val > 95) {
       toast.error("Margin protection warning: Maximum discount rate is limited to 95%.");
       return;
     }
@@ -163,12 +177,12 @@ export const Coupons: React.FC<CouponsProps> = ({
     const { error } = await supabase
       .from("coupons")
       .update({
-        code: editingCoupon.code.toUpperCase(),
-        discount_type: editingCoupon.discount_type,
-        discount_value: Number(editingCoupon.discount_value),
-        min_order_value: Number(editingCoupon.min_order_value) || 0,
-        expiry_date: editingCoupon.expiry_date || null,
-        is_active: editingCoupon.is_active,
+        code: formData.code.toUpperCase(),
+        discount_type: formData.discount_type,
+        discount_value: val,
+        min_order_value: parseFloat(formData.min_order_value) || 0,
+        expiry_date: formData.expiry_date || null,
+        is_active: formData.is_active,
       })
       .eq("id", editingCoupon.id);
 
@@ -183,6 +197,7 @@ export const Coupons: React.FC<CouponsProps> = ({
         .eq("shop_id", currentShop.id)
         .order("created_at", { ascending: false });
       if (data) setCoupons(data as Coupon[]);
+      toast.success("Coupon updated successfully!");
     }
   };
 
@@ -214,6 +229,7 @@ export const Coupons: React.FC<CouponsProps> = ({
     expiry_date: string;
   }) => {
     setNewCoupon(preset);
+    setShowCreateModal(true);
     toast.success(`Preset "${preset.code}" auto-loaded! Feel free to edit values before saving.`);
   };
 
@@ -811,178 +827,13 @@ export const Coupons: React.FC<CouponsProps> = ({
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="relative w-full max-w-md bg-surface-container-lowest rounded-[32px] shadow-2xl overflow-hidden border border-outline-variant/10 z-50"
             >
-              <form onSubmit={handleCreateCoupon} className="p-8 space-y-6">
-                <header className="flex justify-between items-center">
-                  <h3 className="text-2xl font-headline font-black text-on-surface tracking-tight">
-                    New Coupon Setup
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="p-2 hover:bg-surface-container rounded-full transition-colors"
-                  >
-                    <X size={20} />
-                  </button>
-                </header>
-
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
-                      Voucher Code
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="e.g. WELCOME10"
-                      value={newCoupon.code}
-                      onChange={(e) =>
-                        setNewCoupon({
-                          ...newCoupon,
-                          code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""),
-                        })
-                      }
-                      className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/20 outline-none transition-all font-mono font-bold uppercase"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
-                        Discount Type
-                      </label>
-                      <select
-                        value={newCoupon.discount_type}
-                        onChange={(e) =>
-                          setNewCoupon({
-                            ...newCoupon,
-                            discount_type: e.target.value as "percentage" | "fixed",
-                          })
-                        }
-                        className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 outline-none transition-all font-bold appearance-none cursor-pointer"
-                      >
-                        <option value="percentage">Percentage (%)</option>
-                        <option value="fixed">Fixed Flat R</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
-                        Discount Rate value
-                      </label>
-                      <input
-                        required
-                        type="number"
-                        placeholder={
-                          newCoupon.discount_type === "percentage" ? "10" : "50"
-                        }
-                        value={newCoupon.discount_value}
-                        onChange={(e) =>
-                          setNewCoupon({
-                            ...newCoupon,
-                            discount_value: e.target.value,
-                          })
-                        }
-                        className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 outline-none transition-all font-bold"
-                      />
-                    </div>
-                  </div>
-
-                  {newCoupon.discount_value && (
-                    (() => {
-                      const discountVal = parseFloat(newCoupon.discount_value);
-                      if (newCoupon.discount_type === "percentage" && discountVal > 50) {
-                        return (
-                          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 text-[10px] font-bold p-3 rounded-xl flex items-start gap-2 leading-relaxed">
-                            <Info size={16} className="shrink-0 text-amber-500 mt-0.5" />
-                            <span>
-                              <strong>High discount caution:</strong> A discount rate above 50% may result in net negative transaction fees. We suggest pairing this code with a higher minimum order threshold.
-                            </span>
-                          </div>
-                        );
-                      }
-                      if (newCoupon.discount_type === "fixed" && discountVal > 150) {
-                        return (
-                          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 text-[10px] font-bold p-3 rounded-xl flex items-start gap-2 leading-relaxed">
-                            <Info size={16} className="shrink-0 text-amber-500 mt-0.5" />
-                            <span>
-                              <strong>Large Cash Back caution:</strong> R{discountVal} flat discounts can deplete margins quickly if the actual order totals are low. A min order limit of R300+ is advised.
-                            </span>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()
-                  )}
-
-                  {newCoupon.discount_value && !isNaN(parseFloat(newCoupon.discount_value)) && (
-                    (() => {
-                      const discountVal = parseFloat(newCoupon.discount_value);
-                      const baseCart = 200;
-                      let customerPays = 200;
-                      let saved = 0;
-                      if (newCoupon.discount_type === "percentage") {
-                        saved = (baseCart * Math.min(100, discountVal)) / 100;
-                        customerPays = baseCart - saved;
-                      } else {
-                        saved = discountVal;
-                        customerPays = Math.max(0, baseCart - saved);
-                      }
-                      return (
-                        <div className="bg-surface-container-low p-3.5 rounded-2xl border border-outline-variant/10 text-[11px] space-y-1.5 label-card select-none">
-                          <p className="font-bold text-on-surface text-[10px] uppercase tracking-wider text-primary">Live Cart Scenario Estimate (R200 Basket Size)</p>
-                          <div className="grid grid-cols-2 gap-1 text-on-surface-variant font-medium">
-                            <div>Customer Discount:</div>
-                            <div className="text-right font-black text-orange-600">-R{saved.toFixed(2)}</div>
-                            <div>Estimated Basket Total:</div>
-                            <div className="text-right font-black text-emerald-600">R{customerPays.toFixed(2)}</div>
-                          </div>
-                        </div>
-                      );
-                    })()
-                  )}
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
-                      Min Order Value (R)
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="0.00"
-                      value={newCoupon.min_order_value}
-                      onChange={(e) =>
-                        setNewCoupon({
-                          ...newCoupon,
-                          min_order_value: e.target.value,
-                        })
-                      }
-                      className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/20 outline-none transition-all font-bold"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
-                      Expiry Date (Optional)
-                    </label>
-                    <input
-                      type="date"
-                      value={newCoupon.expiry_date}
-                      onChange={(e) =>
-                        setNewCoupon({
-                          ...newCoupon,
-                          expiry_date: e.target.value,
-                        })
-                      }
-                      className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/20 outline-none transition-all font-bold cursor-pointer"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-3.5 bg-primary text-on-primary font-black rounded-xl shadow-lg hover:scale-[0.99] active:scale-95 transition-all text-xs"
-                >
-                  Create Coupon Code
-                </button>
-              </form>
+              <CouponForm
+                key={newCoupon.code || "new-coupon"}
+                mode="create"
+                initialData={newCoupon}
+                onSubmit={handleCreateCoupon}
+                onClose={() => setShowCreateModal(false)}
+              />
             </motion.div>
           </motion.div>
         )}
@@ -1005,157 +856,288 @@ export const Coupons: React.FC<CouponsProps> = ({
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="relative w-full max-w-md bg-surface-container-lowest rounded-[32px] shadow-2xl overflow-hidden border border-outline-variant/10 z-50 text-left"
             >
-              <form onSubmit={handleUpdateCoupon} className="p-8 space-y-6">
-                <header className="flex justify-between items-center">
-                  <h3 className="text-xl font-headline font-black text-on-surface tracking-tight">
-                    Edit App Coupon Parameters
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setEditingCoupon(null)}
-                    className="p-2 hover:bg-surface-container rounded-full transition-colors"
-                  >
-                    <X size={20} />
-                  </button>
-                </header>
-
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
-                      Coupon Code Name (Static)
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="e.g. WELCOME10"
-                      value={editingCoupon.code}
-                      onChange={(e) =>
-                        setEditingCoupon({
-                          ...editingCoupon,
-                          code: e.target.value.toUpperCase().replace(/\s+/g, ""),
-                        })
-                      }
-                      className="w-full px-4 py-3 bg-on-surface/5 text-on-surface-variant/80 rounded-2xl border border-outline-variant/10 outline-none transition-all font-mono font-bold uppercase"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
-                        Discount Type
-                      </label>
-                      <select
-                        value={editingCoupon.discount_type}
-                        onChange={(e) =>
-                          setEditingCoupon({
-                            ...editingCoupon,
-                            discount_type: e.target.value as "percentage" | "fixed",
-                          })
-                        }
-                        className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 outline-none transition-all font-bold appearance-none cursor-pointer"
-                      >
-                        <option value="percentage">Percentage (%)</option>
-                        <option value="fixed">Fixed R</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
-                        Discount Value rate
-                      </label>
-                      <input
-                        required
-                        type="number"
-                        value={editingCoupon.discount_value}
-                        onChange={(e) =>
-                          setEditingCoupon({
-                            ...editingCoupon,
-                            discount_value: Number(e.target.value),
-                          })
-                        }
-                        className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 outline-none transition-all font-bold"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
-                      Minimum order requirement (R)
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="e.g. 150"
-                      value={editingCoupon.min_order_value || ""}
-                      onChange={(e) =>
-                        setEditingCoupon({
-                          ...editingCoupon,
-                          min_order_value: parseFloat(e.target.value) || 0,
-                        })
-                      }
-                      className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/20 outline-none transition-all font-bold"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
-                      Adjust expiration date (Optional)
-                    </label>
-                    <input
-                      type="date"
-                      value={editingCoupon.expiry_date || ""}
-                      onChange={(e) =>
-                        setEditingCoupon({
-                          ...editingCoupon,
-                          expiry_date: e.target.value || null,
-                        })
-                      }
-                      className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/20 outline-none transition-all font-bold cursor-pointer"
-                    />
-                  </div>
-
-                  {/* Active Slide switch toggler inside edit screen */}
-                  <div className="flex items-center justify-between p-3 bg-on-surface/5 rounded-2xl select-none">
-                    <div>
-                      <span className="text-xs font-bold text-on-surface block">Coupon is Active</span>
-                      <span className="text-[9px] text-on-surface-variant/80">Allows customers to apply this code on checkout.</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setEditingCoupon({
-                          ...editingCoupon,
-                          is_active: !editingCoupon.is_active,
-                        })
-                      }
-                      className={cn(
-                        "font-black px-3 py-1.5 text-[9px] uppercase rounded-xl transition-all tracking-wider",
-                        editingCoupon.is_active ? "bg-emerald-500 text-white" : "bg-zinc-300 text-zinc-700"
-                      )}
-                    >
-                      {editingCoupon.is_active ? "Active" : "Paused"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditingCoupon(null)}
-                    className="flex-1 py-3 bg-surface-container text-on-surface text-xs font-bold rounded-xl"
-                  >
-                    Discard Changes
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-3 bg-primary text-on-primary text-xs font-bold rounded-xl shadow-lg"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </form>
+              <CouponForm
+                key={editingCoupon.id}
+                mode="edit"
+                initialData={{
+                  code: editingCoupon.code,
+                  discount_type: editingCoupon.discount_type,
+                  discount_value: editingCoupon.discount_value,
+                  min_order_value: editingCoupon.min_order_value || "",
+                  expiry_date: editingCoupon.expiry_date || "",
+                  is_active: editingCoupon.is_active,
+                }}
+                onSubmit={handleUpdateCoupon}
+                onClose={() => setEditingCoupon(null)}
+              />
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
+  );
+};
+
+export interface CouponFormProps {
+  mode: "create" | "edit";
+  initialData: {
+    code: string;
+    discount_type: "percentage" | "fixed";
+    discount_value: string | number;
+    min_order_value: string | number;
+    expiry_date: string | null;
+    is_active?: boolean;
+  };
+  onSubmit: (formData: {
+    code: string;
+    discount_type: "percentage" | "fixed";
+    discount_value: string;
+    min_order_value: string;
+    expiry_date: string;
+    is_active: boolean;
+  }) => void | Promise<void>;
+  onClose: () => void;
+}
+
+export const CouponForm: React.FC<CouponFormProps> = ({
+  mode,
+  initialData,
+  onSubmit,
+  onClose,
+}) => {
+  const [formData, setFormData] = useState({
+    code: initialData.code || "",
+    discount_type: initialData.discount_type || "percentage",
+    discount_value:
+      initialData.discount_value !== undefined && initialData.discount_value !== null
+        ? String(initialData.discount_value)
+        : "",
+    min_order_value:
+      initialData.min_order_value !== undefined && initialData.min_order_value !== null
+        ? String(initialData.min_order_value)
+        : "",
+    expiry_date: initialData.expiry_date || "",
+    is_active: initialData.is_active !== undefined ? initialData.is_active : true,
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void onSubmit(formData);
+  };
+
+  const discountVal = parseFloat(formData.discount_value);
+  const hasValidDiscount = !isNaN(discountVal) && discountVal > 0;
+
+  return (
+    <form onSubmit={handleSubmit} className="p-8 space-y-6">
+      <header className="flex justify-between items-center">
+        <h3 className="text-2xl font-headline font-black text-on-surface tracking-tight">
+          {mode === "create" ? "New Coupon Setup" : "Edit App Coupon Parameters"}
+        </h3>
+        <button
+          type="button"
+          onClick={onClose}
+          className="p-2 hover:bg-surface-container rounded-full transition-colors cursor-pointer"
+        >
+          <X size={20} />
+        </button>
+      </header>
+
+      <div className="space-y-4">
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+            {mode === "create" ? "Voucher Code" : "Coupon Code Name (Static)"}
+          </label>
+          <input
+            required
+            type="text"
+            placeholder="e.g. WELCOME10"
+            value={formData.code}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""),
+              })
+            }
+            className={cn(
+              "w-full px-4 py-3 rounded-2xl border border-outline-variant/10 outline-none transition-all font-mono font-bold uppercase",
+              mode === "create"
+                ? "bg-surface-container-low focus:border-primary/20"
+                : "bg-on-surface/5 text-on-surface-variant/80"
+            )}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+              Discount Type
+            </label>
+            <select
+              value={formData.discount_type}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  discount_type: e.target.value as "percentage" | "fixed",
+                })
+              }
+              className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 outline-none transition-all font-bold appearance-none cursor-pointer"
+            >
+              <option value="percentage">Percentage (%)</option>
+              <option value="fixed">Fixed Flat R</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+              {mode === "create" ? "Discount Rate value" : "Discount Value rate"}
+            </label>
+            <input
+              required
+              type="number"
+              placeholder={formData.discount_type === "percentage" ? "10" : "50"}
+              value={formData.discount_value}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  discount_value: e.target.value,
+                })
+              }
+              className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 outline-none transition-all font-bold"
+            />
+          </div>
+        </div>
+
+        {/* Warning alerts */}
+        {hasValidDiscount && formData.discount_type === "percentage" && discountVal > 50 && (
+          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 text-[10px] font-bold p-3 rounded-xl flex items-start gap-2 leading-relaxed">
+            <Info size={16} className="shrink-0 text-amber-500 mt-0.5" />
+            <span>
+              <strong>High discount caution:</strong> A discount rate above 50% may result in net negative transaction fees. We suggest pairing this code with a higher minimum order threshold.
+            </span>
+          </div>
+        )}
+
+        {hasValidDiscount && formData.discount_type === "fixed" && discountVal > 150 && (
+          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 text-[10px] font-bold p-3 rounded-xl flex items-start gap-2 leading-relaxed">
+            <Info size={16} className="shrink-0 text-amber-500 mt-0.5" />
+            <span>
+              <strong>Large Cash Back caution:</strong> R{discountVal} flat discounts can deplete margins quickly if the actual order totals are low. A min order limit of R300+ is advised.
+            </span>
+          </div>
+        )}
+
+        {/* Live Cart Scenario Estimate */}
+        {hasValidDiscount && (
+          (() => {
+            const baseCart = 200;
+            let saved = 0;
+            if (formData.discount_type === "percentage") {
+              saved = (baseCart * Math.min(100, discountVal)) / 100;
+            } else {
+              saved = discountVal;
+            }
+            const customerPays = Math.max(0, baseCart - saved);
+            return (
+              <div className="bg-surface-container-low p-3.5 rounded-2xl border border-outline-variant/10 text-[11px] space-y-1.5 label-card select-none">
+                <p className="font-bold text-on-surface text-[10px] uppercase tracking-wider text-primary">
+                  Live Cart Scenario Estimate (R200 Basket Size)
+                </p>
+                <div className="grid grid-cols-2 gap-1 text-on-surface-variant font-medium">
+                  <div>Customer Discount:</div>
+                  <div className="text-right font-black text-orange-600">-R{saved.toFixed(2)}</div>
+                  <div>Estimated Basket Total:</div>
+                  <div className="text-right font-black text-emerald-600">R{customerPays.toFixed(2)}</div>
+                </div>
+              </div>
+            );
+          })()
+        )}
+
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+            {mode === "create" ? "Min Order Value (R)" : "Minimum order requirement (R)"}
+          </label>
+          <input
+            type="number"
+            placeholder={mode === "create" ? "0.00" : "e.g. 150"}
+            value={formData.min_order_value}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                min_order_value: e.target.value,
+              })
+            }
+            className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/20 outline-none transition-all font-bold"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+            {mode === "create" ? "Expiry Date (Optional)" : "Adjust expiration date (Optional)"}
+          </label>
+          <input
+            type="date"
+            value={formData.expiry_date}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                expiry_date: e.target.value,
+              })
+            }
+            className="w-full px-4 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 focus:border-primary/20 outline-none transition-all font-bold cursor-pointer"
+          />
+        </div>
+
+        {/* Active Slide switch toggler inside edit screen */}
+        {mode === "edit" && (
+          <div className="flex items-center justify-between p-3 bg-on-surface/5 rounded-2xl select-none">
+            <div>
+              <span className="text-xs font-bold text-on-surface block">Coupon is Active</span>
+              <span className="text-[9px] text-on-surface-variant/80">Allows customers to apply this code on checkout.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setFormData({
+                  ...formData,
+                  is_active: !formData.is_active,
+                })
+              }
+              className={cn(
+                "font-black px-3 py-1.5 text-[9px] uppercase rounded-xl transition-all tracking-wider cursor-pointer",
+                formData.is_active ? "bg-emerald-500 text-white" : "bg-zinc-300 text-zinc-700"
+              )}
+            >
+              {formData.is_active ? "Active" : "Paused"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {mode === "create" ? (
+        <button
+          type="submit"
+          className="w-full py-3.5 bg-primary text-on-primary font-black rounded-xl shadow-lg hover:scale-[0.99] active:scale-95 transition-all text-xs cursor-pointer"
+        >
+          Create Coupon Code
+        </button>
+      ) : (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-3 bg-surface-container text-on-surface text-xs font-bold rounded-xl cursor-pointer hover:bg-surface-container-high transition"
+          >
+            Discard Changes
+          </button>
+          <button
+            type="submit"
+            className="flex-1 py-3 bg-primary text-on-primary text-xs font-bold rounded-xl shadow-lg cursor-pointer hover:bg-primary/90 transition"
+          >
+            Save Changes
+          </button>
+        </div>
+      )}
+    </form>
   );
 };
