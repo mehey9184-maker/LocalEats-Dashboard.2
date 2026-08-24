@@ -1164,7 +1164,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   const weeklySales = weeklyOrders.reduce((acc, curr) => {
     const price =
       typeof curr.total_price === "string"
-        ? parseFloat(curr.total_price.replace(/[^0-9.]/g, ""))
+        ? parseFloat((curr.total_price as unknown as string).replace(/[^0-9.]/g, ""))
         : Number(curr.total_price);
     return acc + (isNaN(price) ? 0 : price);
   }, 0);
@@ -1172,7 +1172,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   const totalSales = orders.reduce((acc, curr) => {
     const price =
       typeof curr.total_price === "string"
-        ? parseFloat(curr.total_price.replace(/[^0-9.]/g, ""))
+        ? parseFloat((curr.total_price as unknown as string).replace(/[^0-9.]/g, ""))
         : Number(curr.total_price);
     return acc + (isNaN(price) ? 0 : price);
   }, 0);
@@ -1236,23 +1236,18 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     console.log(`[App.tsx] fetchRiders initiated | currentShop.id:`, shopId, `(type: ${typeof shopId})`, `| numericShopId:`, numericShopId);
 
     try {
-      // Diagnostic check: Get total count of rider_connections across all shops
-      const { count: totalTableCount } = await supabase
-        .from("rider_connections")
-        .select("*", { count: "exact", head: true });
-
       let { data, error } = await supabase
         .from("rider_connections")
         .select("*")
         .eq("shop_id", shopId);
 
-      if ((error || !data || data.length === 0) && numericShopId !== shopId) {
+      if ((error || !data || (Array.isArray(data) && data.length === 0)) && numericShopId !== shopId) {
         console.log(`[App.tsx] Retry fetchRiders with numericShopId:`, numericShopId);
         const retryRes = await supabase
           .from("rider_connections")
           .select("*")
           .eq("shop_id", numericShopId);
-        if (!retryRes.error && retryRes.data && retryRes.data.length > 0) {
+        if (!retryRes.error && retryRes.data && Array.isArray(retryRes.data) && retryRes.data.length > 0) {
           data = retryRes.data;
           error = null;
         }
@@ -1262,8 +1257,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         shopId,
         shopIdType: typeof shopId,
         numericShopId,
-        totalRecordsInTable: totalTableCount ?? "unknown",
-        shopFilteredCount: data?.length || 0,
+        shopFilteredCount: Array.isArray(data) ? data.length : 0,
         records: data,
         error,
       });
@@ -1280,7 +1274,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         // ignore
       }
 
-      if (!error && data) {
+      if (!error && data && Array.isArray(data)) {
         const filteredData = data.filter(
           (c) =>
             !deletedSet.has(c.id) &&
@@ -1295,7 +1289,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         }
       } else {
         if (error) {
-          console.warn("Notice fetching rider connections (using local cache):", error.message || error);
+          console.warn("Notice fetching rider connections (using local cache):", (error as Error).message || error);
         }
         const cached = localStorage.getItem(`localeats_rider_conns_${currentShopId}`);
         if (cached) {
@@ -1386,8 +1380,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         .order("created_at", { ascending: false })
         .limit(5);
 
-      if (!recentError && recentData) {
-        setRecentFollowers(recentData);
+      if (!recentError && recentData && Array.isArray(recentData)) {
+        setRecentFollowers(recentData as { id: string; created_at: string }[]);
       }
     } catch (err) {
       console.warn("Follower metrics fetch fallback:", err);
@@ -1455,7 +1449,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         if (day) {
           day.count++;
           const price = typeof order.total_price === "string"
-            ? parseFloat(order.total_price.replace(/[^0-9.]/g, ""))
+            ? parseFloat((order.total_price as unknown as string).replace(/[^0-9.]/g, ""))
             : Number(order.total_price || 0);
           if (!isNaN(price)) {
             day.revenue += price;

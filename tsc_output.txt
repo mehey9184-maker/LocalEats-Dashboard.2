@@ -1,0 +1,121 @@
+src/App.tsx(429,32): error TS2339: Property 'subscription_status' does not exist on type 'Shop'.
+src/App.tsx(432,35): error TS2339: Property 'trial_start_date' does not exist on type 'Shop'.
+src/App.tsx(445,36): error TS2339: Property 'next_payment_date' does not exist on type 'Shop'.
+src/App.tsx(545,20): error TS2339: Property 'user' does not exist on type 'unknown'.
+src/App.tsx(546,42): error TS2339: Property 'user' does not exist on type 'unknown'.
+src/App.tsx(592,21): error TS2339: Property 'code' does not exist on type 'unknown'.
+src/App.tsx(592,47): error TS2339: Property 'message' does not exist on type 'unknown'.
+src/App.tsx(593,116): error TS2339: Property 'message' does not exist on type 'unknown'.
+src/App.tsx(595,91): error TS2339: Property 'message' does not exist on type 'unknown'.
+src/App.tsx(830,13): error TS2322: Type '{ from(collectionName: string): FirestoreQueryBuilder; channel(channelName: string): FirestoreChannelAdapter; getChannels(): any[]; removeChannel(ch: { ...; }): void; rpc(): Promise<...>; auth: { ...; }; storage: { ...; }; }' is not assignable to type 'SupabaseClientLike'.
+  The types returned by 'from(...).update(...).eq(...)' are incompatible between these types.
+    Type 'FirestoreQueryBuilder' is missing the following properties from type 'Promise<{ error: { message: string; }; }>': finally, [Symbol.toStringTag]
+src/App.tsx(1119,9): error TS2353: Object literal may only specify known properties, and 'important' does not exist in type 'ExternalToast'.
+src/App.tsx(1226,9): error TS2739: Type 'FirestoreQueryBuilder' is missing the following properties from type 'Promise<{ data: unknown; error: unknown; }>': finally, [Symbol.toStringTag]
+src/App.tsx(1236,34): error TS2339: Property 'filter' does not exist on type 'unknown'.
+src/App.tsx(1248,35): error TS2339: Property 'map' does not exist on type 'unknown'.
+src/App.tsx(1286,7): error TS2739: Type 'FirestoreQueryBuilder' is missing the following properties from type 'Promise<{ data: unknown; error: unknown; }>': finally, [Symbol.toStringTag]
+src/App.tsx(1290,31): error TS2339: Property 'map' does not exist on type 'unknown'.
+src/App.tsx(1394,5): error TS2322: Type 'import("/app/applet/src/types").User' is not assignable to type 'import("/app/applet/node_modules/@supabase/auth-js/dist/module/lib/types").User'.
+  Property 'app_metadata' is optional in type 'User' but required in type 'User'.
+src/App.tsx(1399,5): error TS2740: Type '{ from(collectionName: string): FirestoreQueryBuilder; channel(channelName: string): FirestoreChannelAdapter; getChannels(): any[]; removeChannel(ch: { ...; }): void; rpc(): Promise<...>; auth: { ...; }; storage: { ...; }; }' is missing the following properties from type 'SupabaseClient<any, "public", "public", any, any>': supabaseUrl, supabaseKey, realtime, realtimeUrl, and 14 more.
+src/App.tsx(1499,82): error TS2339: Property 'message' does not exist on type 'unknown'.
+src/App.tsx(1504,42): error TS2339: Property 'map' does not exist on type 'unknown'.
+src/App.tsx(1546,32): error TS2367: This comparison appears to be unintentional because the types '"accepted" | "cancelled" | "dispatched" | "finding_rider" | "picked_up" | "delivered"' and '"none"' have no overlap.
+src/App.tsx(1605,19): error TS2339: Property 'message' does not exist on type 'unknown'.
+src/App.tsx(1606,19): error TS2339: Property 'message' does not exist on type 'unknown'.
+src/App.tsx(1607,19): error TS2339: Property 'message' does not exist on type 'unknown'.
+src/App.tsx(1636,52): error TS2554: Expected 0 arguments, but got 1.
+src/App.tsx(1657,17): error TS2339: Property 'data' does not exist on type 'Event'.
+src/App.tsx(1750,21): error TS2339: Property 'bluetooth' does not exist on type 'Navigator'.
+src/App.tsx(1801,42): error TS2554: Expected 0 arguments, but got 2.
+src/App.tsx(1887,17): error TS2345: Argument of type 'User' is not assignable to parameter of type 'SetStateAction<User>'.
+  Property 'id' is missing in type 'import("/app/applet/node_modules/@firebase/auth/dist/auth-public").User' but required in type 'import("/app/applet/src/types").User'.
+src/App.tsx(1952,13): error TS2322: Type 'unknown' is not assignable to type 'boolean'.
+src/App.tsx(2366,17): error TS2740: Type '{ from(collectionName: string): FirestoreQueryBuilder; channel(channelName: string): FirestoreChannelAdapter; getChannels(): any[]; removeChannel(ch: { ...; }): void; rpc(): Promise<...>; auth: { ...; }; storage: { ...; }; }' is missing the following properties from type 'SupabaseClient<any, "public", "public", any, any>': supabaseUrl, supabaseKey, realtime, realtimeUrl, and 14 more.
+src/App.tsx(2385,23): error TS2322: Type '{ from(collectionName: string): FirestoreQueryBuilder; channel(channelName: string): FirestoreChannelAdapter; getChannels(): any[]; removeChannel(ch: { ...; }): void; rpc(): Promise<...>; auth: { ...; }; storage: { ...; }; }' is not assignable to type 'SupabaseClientLike'.
+  The types returned by 'from(...).update(...).eq(...)' are incompatible between these types.
+    Type 'FirestoreQueryBuilder' is missing the following properties from type 'Promise<{ error: { message: string; }; }>': finally, [Symbol.toStringTag]
+src/App.tsx(2503,19): error TS2322: Type '{ from(collectionName: string): FirestoreQueryBuilder; channel(channelName: string): FirestoreChannelAdapter; getChannels(): any[]; removeChannel(ch: { ...; }): void; rpc(): Promise<...>; auth: { ...; }; storage: { ...; }; }' is not assignable to type 'SupabaseClientLike'.
+  The types returned by 'from(...).update(...).eq(...)' are incompatible between these types.
+    Type 'FirestoreQueryBuilder' is missing the following properties from type 'Promise<{ error: { message: string; }; }>': finally, [Symbol.toStringTag]
+src/App.tsx(2584,19): error TS2322: Type '(order: Order) => Promise<void>' is not assignable to type '(order: Order) => Promise<boolean>'.
+  Type 'Promise<void>' is not assignable to type 'Promise<boolean>'.
+    Type 'void' is not assignable to type 'boolean'.
+src/App.tsx(2585,19): error TS2322: Type '(order: Order) => Promise<void>' is not assignable to type '(order: Order) => Promise<boolean>'.
+  Type 'Promise<void>' is not assignable to type 'Promise<boolean>'.
+    Type 'void' is not assignable to type 'boolean'.
+src/App.tsx(2586,19): error TS2322: Type '(job: QueuedPrintJob) => Promise<void>' is not assignable to type '(failedPrintId: string) => Promise<boolean>'.
+  Types of parameters 'job' and 'failedPrintId' are incompatible.
+    Type 'string' is not assignable to type 'QueuedPrintJob'.
+src/App.tsx(2625,21): error TS2322: Type 'string | number' is not assignable to type 'number'.
+  Type 'string' is not assignable to type 'number'.
+src/App.tsx(2904,38): error TS2322: Type '{ from(collectionName: string): FirestoreQueryBuilder; channel(channelName: string): FirestoreChannelAdapter; getChannels(): any[]; removeChannel(ch: { ...; }): void; rpc(): Promise<...>; auth: { ...; }; storage: { ...; }; }' is not assignable to type 'SupabaseClientLike'.
+  The types returned by 'from(...).update(...).eq(...)' are incompatible between these types.
+    Type 'FirestoreQueryBuilder' is missing the following properties from type 'Promise<{ error: { message: string; }; }>': finally, [Symbol.toStringTag]
+src/App.tsx(2978,44): error TS2345: Argument of type 'User' is not assignable to parameter of type 'SetStateAction<User>'.
+  Property 'id' is missing in type 'import("/app/applet/node_modules/@firebase/auth/dist/auth-public").User' but required in type 'import("/app/applet/src/types").User'.
+src/App.tsx(3062,43): error TS2345: Argument of type 'User' is not assignable to parameter of type 'SetStateAction<User>'.
+  Property 'id' is missing in type 'import("/app/applet/node_modules/@firebase/auth/dist/auth-public").User' but required in type 'import("/app/applet/src/types").User'.
+src/App.tsx(3080,43): error TS2345: Argument of type 'User' is not assignable to parameter of type 'SetStateAction<User>'.
+  Property 'id' is missing in type 'import("/app/applet/node_modules/@firebase/auth/dist/auth-public").User' but required in type 'import("/app/applet/src/types").User'.
+src/App.tsx(3095,44): error TS2345: Argument of type 'User' is not assignable to parameter of type 'SetStateAction<User>'.
+  Property 'id' is missing in type 'import("/app/applet/node_modules/@firebase/auth/dist/auth-public").User' but required in type 'import("/app/applet/src/types").User'.
+src/App.tsx(3184,39): error TS2345: Argument of type 'User' is not assignable to parameter of type 'SetStateAction<User>'.
+  Property 'id' is missing in type 'import("/app/applet/node_modules/@firebase/auth/dist/auth-public").User' but required in type 'import("/app/applet/src/types").User'.
+src/App.tsx(3385,48): error TS2339: Property 'code' does not exist on type 'unknown'.
+src/App.tsx(3386,96): error TS2339: Property 'message' does not exist on type 'unknown'.
+src/App.tsx(3442,52): error TS2339: Property 'require_terminal_sync' does not exist on type 'Shop'.
+src/App.tsx(3466,48): error TS2339: Property 'terminal_provider' does not exist on type 'Shop'.
+src/App.tsx(3492,48): error TS2339: Property 'terminal_serial' does not exist on type 'Shop'.
+src/App.tsx(4133,62): error TS2345: Argument of type 'string' is not assignable to parameter of type '"calm" | "friendly" | "sparkle"'.
+src/App.tsx(4136,62): error TS2345: Argument of type 'string' is not assignable to parameter of type '"calm" | "friendly" | "sparkle"'.
+src/App.tsx(4164,60): error TS2367: This comparison appears to be unintentional because the types '"settings"' and '"rider"' have no overlap.
+src/App.tsx(4164,106): error TS2345: Argument of type '{ from(collectionName: string): FirestoreQueryBuilder; channel(channelName: string): FirestoreChannelAdapter; getChannels(): any[]; removeChannel(ch: { ...; }): void; rpc(): Promise<...>; auth: { ...; }; storage: { ...; }; }' is not assignable to parameter of type 'SupabaseClient<any, "public", "public", any, any>'.
+  Type '{ from(collectionName: string): FirestoreQueryBuilder; channel(channelName: string): FirestoreChannelAdapter; getChannels(): any[]; removeChannel(ch: { ...; }): void; rpc(): Promise<...>; auth: { ...; }; storage: { ...; }; }' is missing the following properties from type 'SupabaseClient<any, "public", "public", any, any>': supabaseUrl, supabaseKey, realtime, realtimeUrl, and 14 more.
+src/App.tsx(4382,73): error TS2339: Property 'message' does not exist on type 'unknown'.
+src/App.tsx(4387,87): error TS2339: Property 'id' does not exist on type 'unknown'.
+src/App.tsx(4388,98): error TS2339: Property 'id' does not exist on type 'unknown'.
+src/App.tsx(4698,132): error TS2339: Property 'badge' does not exist on type 'never'.
+src/components/ConnectivityMonitor.tsx(57,31): error TS2554: Expected 0 arguments, but got 1.
+src/components/ConnectivityMonitor.tsx(129,7): error TS2740: Type 'FirestoreChannelAdapter' is missing the following properties from type 'RealtimeChannel': topic, params, socket, bindings, and 18 more.
+src/components/ConnectivityMonitor.tsx(166,51): error TS2554: Expected 0 arguments, but got 1.
+src/components/DashboardOverview.tsx(1054,71): error TS2345: Argument of type 'FirestoreQueryBuilder' is not assignable to parameter of type 'PromiseLike<{ data: unknown; error: unknown; count?: number; }>'.
+  The types of 'then(...).then' are incompatible between these types.
+    Type '<TResult1 = unknown, TResult2 = never>(onfulfilled?: (value: unknown) => TResult1 | PromiseLike<TResult1>, onrejected?: (reason: any) => TResult2 | PromiseLike<TResult2>) => Promise<...>' is not assignable to type '<TResult1 = TResult1 | TResult2, TResult2 = never>(onfulfilled?: (value: TResult1 | TResult2) => TResult1 | PromiseLike<TResult1>, onrejected?: (reason: any) => TResult2 | PromiseLike<...>) => PromiseLike<...>'.
+      Types of parameters 'onfulfilled' and 'onfulfilled' are incompatible.
+        Types of parameters 'value' and 'value' are incompatible.
+          Type 'unknown' is not assignable to type 'TResult1 | TResult2'.
+src/components/DashboardOverview.tsx(1056,11): error TS2740: Type '{}' is missing the following properties from type 'Shop[]': length, pop, push, concat, and 29 more.
+src/components/DashboardOverview.tsx(1057,42): error TS2339: Property 'code' does not exist on type 'unknown'.
+src/components/DashboardOverview.tsx(1057,71): error TS2339: Property 'message' does not exist on type 'unknown'.
+src/components/DashboardOverview.tsx(1058,56): error TS2345: Argument of type 'FirestoreQueryBuilder' is not assignable to parameter of type 'PromiseLike<{ data: unknown; error: unknown; count?: number; }>'.
+  The types of 'then(...).then' are incompatible between these types.
+    Type '<TResult1 = unknown, TResult2 = never>(onfulfilled?: (value: unknown) => TResult1 | PromiseLike<TResult1>, onrejected?: (reason: any) => TResult2 | PromiseLike<TResult2>) => Promise<...>' is not assignable to type '<TResult1 = TResult1 | TResult2, TResult2 = never>(onfulfilled?: (value: TResult1 | TResult2) => TResult1 | PromiseLike<TResult1>, onrejected?: (reason: any) => TResult2 | PromiseLike<...>) => PromiseLike<...>'.
+      Types of parameters 'onfulfilled' and 'onfulfilled' are incompatible.
+        Types of parameters 'value' and 'value' are incompatible.
+          Type 'unknown' is not assignable to type 'TResult1 | TResult2'.
+src/components/DashboardOverview.tsx(1090,15): error TS2345: Argument of type 'FirestoreQueryBuilder' is not assignable to parameter of type 'PromiseLike<{ data: unknown; error: unknown; count?: number; }>'.
+  The types of 'then(...).then' are incompatible between these types.
+    Type '<TResult1 = unknown, TResult2 = never>(onfulfilled?: (value: unknown) => TResult1 | PromiseLike<TResult1>, onrejected?: (reason: any) => TResult2 | PromiseLike<TResult2>) => Promise<...>' is not assignable to type '<TResult1 = TResult1 | TResult2, TResult2 = never>(onfulfilled?: (value: TResult1 | TResult2) => TResult1 | PromiseLike<TResult1>, onrejected?: (reason: any) => TResult2 | PromiseLike<...>) => PromiseLike<...>'.
+      Types of parameters 'onfulfilled' and 'onfulfilled' are incompatible.
+        Types of parameters 'value' and 'value' are incompatible.
+          Type 'unknown' is not assignable to type 'TResult1 | TResult2'.
+src/components/DashboardOverview.tsx(1094,41): error TS2339: Property 'code' does not exist on type 'unknown'.
+src/components/DashboardOverview.tsx(1094,71): error TS2339: Property 'message' does not exist on type 'unknown'.
+src/components/DashboardOverview.tsx(1098,17): error TS2345: Argument of type 'FirestoreQueryBuilder' is not assignable to parameter of type 'PromiseLike<{ data: unknown; error: unknown; count?: number; }>'.
+  The types of 'then(...).then' are incompatible between these types.
+    Type '<TResult1 = unknown, TResult2 = never>(onfulfilled?: (value: unknown) => TResult1 | PromiseLike<TResult1>, onrejected?: (reason: any) => TResult2 | PromiseLike<TResult2>) => Promise<...>' is not assignable to type '<TResult1 = TResult1 | TResult2, TResult2 = never>(onfulfilled?: (value: TResult1 | TResult2) => TResult1 | PromiseLike<TResult1>, onrejected?: (reason: any) => TResult2 | PromiseLike<...>) => PromiseLike<...>'.
+      Types of parameters 'onfulfilled' and 'onfulfilled' are incompatible.
+        Types of parameters 'value' and 'value' are incompatible.
+          Type 'unknown' is not assignable to type 'TResult1 | TResult2'.
+src/components/DashboardOverview.tsx(1720,19): error TS2322: Type '{ from(collectionName: string): FirestoreQueryBuilder; channel(channelName: string): FirestoreChannelAdapter; getChannels(): any[]; removeChannel(ch: { ...; }): void; rpc(): Promise<...>; auth: { ...; }; storage: { ...; }; }' is not assignable to type 'SupabaseClientLike'.
+  The types returned by 'from(...).update(...).eq(...)' are incompatible between these types.
+    Type 'FirestoreQueryBuilder' is missing the following properties from type 'Promise<{ error: { message: string; }; }>': finally, [Symbol.toStringTag]
+src/components/DashboardOverview.tsx(2143,28): error TS2339: Property 'opening_time' does not exist on type 'Shop'.
+src/components/DashboardOverview.tsx(2143,56): error TS2339: Property 'closing_time' does not exist on type 'Shop'.
+src/components/DashboardOverview.tsx(2145,68): error TS2339: Property 'opening_time' does not exist on type 'Shop'.
+src/components/DashboardOverview.tsx(2145,97): error TS2339: Property 'closing_time' does not exist on type 'Shop'.
+src/components/DashboardOverview.tsx(2180,21): error TS2322: Type '{ from(collectionName: string): FirestoreQueryBuilder; channel(channelName: string): FirestoreChannelAdapter; getChannels(): any[]; removeChannel(ch: { ...; }): void; rpc(): Promise<...>; auth: { ...; }; storage: { ...; }; }' is not assignable to type 'SupabaseClientLike'.
+  The types returned by 'from(...).update(...).eq(...)' are incompatible between these types.
+    Type 'FirestoreQueryBuilder' is missing the following properties from type 'Promise<{ error: { message: string; }; }>': finally, [Symbol.toStringTag]

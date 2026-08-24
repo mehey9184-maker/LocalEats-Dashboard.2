@@ -687,54 +687,35 @@ export function normalizeFirestoreOrder(docData: Record<string, unknown>, docId:
  */
 export async function getFirestoreOrders(shopId?: string | number | (string | number)[]): Promise<Order[]> {
   try {
-    const coll = collection(db, "orders");
+    if (shopId === undefined) return [];
     
-    // Case 1: Specific single or multiple shop IDs provided
-    if (shopId !== undefined) {
-      const ids: (string | number)[] = Array.isArray(shopId) ? shopId : [shopId];
-      if (ids.length === 0) return [];
+    const coll = collection(db, "orders");
+    const ids: (string | number)[] = Array.isArray(shopId) ? shopId : [shopId];
+    if (ids.length === 0) return [];
 
-      const queryValues: (string | number)[] = [];
-      ids.forEach((id) => {
-        queryValues.push(id);
-        const num = Number(id);
-        if (!isNaN(num)) {
-          if (!queryValues.includes(num)) queryValues.push(num);
-          const str = String(num);
-          if (!queryValues.includes(str)) queryValues.push(str);
-        }
-      });
-
-      // Firestore 'in' query supports up to 30 elements.
-      // To catch camelCase or alternative property names from different client versions:
-      if (queryValues.length <= 30) {
-        try {
-          const q = query(
-            coll, 
-            or(
-              where("shop_id", "in", queryValues),
-              where("shopId", "in", queryValues),
-              where("vendor_id", "in", queryValues)
-            )
-          );
-          const snap = await getDocs(q);
-          return snap.docs.map((d) => normalizeFirestoreOrder(d.data() as Record<string, unknown>, d.id));
-        } catch {
-          // If query fails (e.g. index missing), fallback to client-side filtering
-        }
+    const queryValues: (string | number)[] = [];
+    ids.forEach((id) => {
+      queryValues.push(id);
+      const num = Number(id);
+      if (!isNaN(num)) {
+        if (!queryValues.includes(num)) queryValues.push(num);
+        const str = String(num);
+        if (!queryValues.includes(str)) queryValues.push(str);
       }
+    });
 
-      // Fallback: fetch all and filter in JavaScript
-      const snap = await getDocs(coll);
-      const idStrings = new Set(queryValues.map((v) => String(v)));
-      return snap.docs
-        .map((d) => normalizeFirestoreOrder(d.data() as Record<string, unknown>, d.id))
-        .filter((order) => idStrings.has(String(order.shop_id)));
+    const chunks = [];
+    for (let i = 0; i < queryValues.length; i += 30) {
+      chunks.push(queryValues.slice(i, i + 30));
     }
 
-    // Case 2: No shop filter, return all orders
-    const snap = await getDocs(coll);
-    return snap.docs.map((d) => normalizeFirestoreOrder(d.data() as Record<string, unknown>, d.id));
+    const allOrders: Order[] = [];
+    for (const chunk of chunks) {
+      const q = query(coll, where("shop_id", "in", chunk));
+      const snap = await getDocs(q);
+      allOrders.push(...snap.docs.map((d) => normalizeFirestoreOrder(d.data() as Record<string, unknown>, d.id)));
+    }
+    return allOrders;
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, "orders");
     return [];
@@ -786,58 +767,30 @@ export function subscribeToOrdersFirestore(
   shopId: string | number | (string | number)[] | undefined, 
   onUpdate: (orders: Order[]) => void
 ): Unsubscribe {
+  if (shopId === undefined) return () => {};
+
   const coll = collection(db, "orders");
-  
-  if (shopId !== undefined) {
-    const ids: (string | number)[] = Array.isArray(shopId) ? shopId : [shopId];
-    if (ids.length > 0) {
-      const queryValues: (string | number)[] = [];
-      ids.forEach((id) => {
-        queryValues.push(id);
-        const num = Number(id);
-        if (!isNaN(num)) {
-          if (!queryValues.includes(num)) queryValues.push(num);
-          const str = String(num);
-          if (!queryValues.includes(str)) queryValues.push(str);
-        }
-      });
+  const ids: (string | number)[] = Array.isArray(shopId) ? shopId : [shopId];
+  if (ids.length === 0) return () => {};
 
-      const idStrings = new Set(queryValues.map((v) => String(v)));
-
-      if (queryValues.length <= 30) {
-        try {
-          const q = query(
-            coll, 
-            or(
-              where("shop_id", "in", queryValues),
-              where("shopId", "in", queryValues),
-              where("vendor_id", "in", queryValues)
-            )
-          );
-          
-          return onSnapshot(q, (snap) => {
-            const orders = snap.docs.map((d) => normalizeFirestoreOrder(d.data() as Record<string, unknown>, d.id));
-            onUpdate(orders);
-          }, (error) => {
-            handleFirestoreError(error, OperationType.LIST, "orders");
-          });
-        } catch {
-           // Fall back to collection listener if query index is missing
-        }
-      }
-
-      return onSnapshot(coll, (snap) => {
-        const orders = snap.docs
-          .map((d) => normalizeFirestoreOrder(d.data() as Record<string, unknown>, d.id))
-          .filter((order) => idStrings.has(String(order.shop_id)));
-        onUpdate(orders);
-      }, (error) => {
-        handleFirestoreError(error, OperationType.LIST, "orders");
-      });
+  const queryValues: (string | number)[] = [];
+  ids.forEach((id) => {
+    queryValues.push(id);
+    const num = Number(id);
+    if (!isNaN(num)) {
+      if (!queryValues.includes(num)) queryValues.push(num);
+      const str = String(num);
+      if (!queryValues.includes(str)) queryValues.push(str);
     }
-  }
+  });
 
-  return onSnapshot(coll, (snap) => {
+  if (queryValues.length === 0) return () => {};
+  
+  // Firestore `in` query supports up to 30 elements
+  const slicedValues = queryValues.slice(0, 30);
+  const q = query(coll, where("shop_id", "in", slicedValues));
+  
+  return onSnapshot(q, (snap) => {
     const orders = snap.docs.map((d) => normalizeFirestoreOrder(d.data() as Record<string, unknown>, d.id));
     onUpdate(orders);
   }, (error) => {

@@ -31,6 +31,11 @@ export const useAuthGuard = () => {
       const authRes = await checkAuthWithTimeout(1200);
       const session = authRes?.data?.session;
 
+      if (!session) {
+        console.debug(`[AuthGuard] Aborting realtime subscription for ${channelName} - not authenticated`);
+        return null;
+      }
+
       if (session?.access_token) {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any

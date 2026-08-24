@@ -3371,13 +3371,13 @@ Notes: "${order.notes || "None"}"
                         transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         key={order.id}
                         draggable={true}
-                        onDragStart={(e: React.DragEvent) => {
+                        onDragStart={((e: React.DragEvent) => {
                           setDraggedPendingId(order.id);
                           if (e.dataTransfer) {
                             e.dataTransfer.setData("text/plain", order.id);
                             e.dataTransfer.effectAllowed = "move";
                           }
-                        }}
+                        }) as any}
                         onDragOver={(e: React.DragEvent) => {
                           e.preventDefault();
                           if (e.dataTransfer) e.dataTransfer.dropEffect = "move";

@@ -72,9 +72,9 @@ export const DiagnosticUtilityModal: React.FC<DiagnosticUtilityModalProps> = ({
         setPingResult({
           status: "error",
           latencyMs: latency,
-          message: error.message || "Database returned an error code",
+          message: (error as Error).message || "Database returned an error code",
         });
-        logNetworkError("diagnostic_ping_failure", error, { latencyMs: latency, type: "api_gateway" });
+        logNetworkError("diagnostic_ping_failure", error as Error, { latencyMs: latency, type: "api_gateway" });
       } else {
         setPingResult({
           status: "success",

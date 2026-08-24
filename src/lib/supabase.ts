@@ -424,7 +424,26 @@ class FirestoreChannelAdapter {
     try {
       const targetTable = (schemaOptions?.table as string) || "orders";
       const collRef = collection(db, targetTable);
-      const unsub = onSnapshot(collRef, (snapshot) => {
+      let queryRef: import("firebase/firestore").Query | import("firebase/firestore").CollectionReference = collRef;
+
+      // Translate supabase filter string (e.g., "shop_id=eq.18") to Firestore where clause
+      if (schemaOptions?.filter && typeof schemaOptions.filter === "string") {
+        const filterStr = schemaOptions.filter;
+        if (filterStr.includes("=eq.")) {
+          const [field, val] = filterStr.split("=eq.");
+          if (field && val) {
+            // Need to match both string and numeric types if it could be a shop ID
+            const numVal = Number(val);
+            if (!isNaN(numVal)) {
+              queryRef = query(collRef, where(field, "in", [val, numVal, String(numVal)]));
+            } else {
+              queryRef = query(collRef, where(field, "==", val));
+            }
+          }
+        }
+      }
+
+      const unsub = onSnapshot(queryRef, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
           callback({
             eventType: change.type === "added" ? "INSERT" : change.type === "modified" ? "UPDATE" : "DELETE",

@@ -28,11 +28,11 @@ export const LanguageSwitcher: React.FC = () => {
       window.googleTranslateElementInit = () => {
         if (window.google && window.google.translate && window.google.translate.TranslateElement) {
           try {
-            new window.google.translate.TranslateElement(
+            new (window.google.translate.TranslateElement as any)(
               {
                 pageLanguage: 'en',
                 includedLanguages: 'en,zu,xh,af,st,tn,ts,ss,ve,nr,nso', // 11 official languages of South Africa
-                layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE
+                layout: (window.google.translate.TranslateElement as any).InlineLayout.SIMPLE
               },
               'google_translate_element'
             );
