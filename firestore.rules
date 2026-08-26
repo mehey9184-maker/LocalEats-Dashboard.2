@@ -1,14 +1,55 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function to check if user is authenticated
+
+    // =====================================================================
+    // CORE AUTHENTICATION & RELATIONSHIP HELPERS
+    // =====================================================================
     function isAuthenticated() {
       return request.auth != null;
     }
-    
-    // Check if the authenticated user owns the resource being accessed
-    function isOwner(resourceData) {
-      return isAuthenticated() && request.auth.uid == resourceData.owner_id;
+
+    // Resolves shop ownership via /shops document regardless of numeric vs string shop_id
+    function isShopOwner(shopId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/shops/$(string(shopId))) &&
+        get(/databases/$(database)/documents/shops/$(string(shopId))).data.owner_id == request.auth.uid;
+    }
+
+    // Resolves order participant (Customer, Assigned Rider, or Merchant)
+    function isOrderParticipant(orderId) {
+      let orderPath = /databases/$(database)/documents/orders/$(string(orderId));
+      let orderData = exists(orderPath) ? get(orderPath).data : null;
+      return isAuthenticated() && orderData != null && (
+        orderData.user_id == request.auth.uid ||
+        orderData.rider_id == request.auth.uid ||
+        isShopOwner(orderData.shop_id)
+      );
+    }
+
+    function unchanged(field) {
+      return !(field in request.resource.data) || request.resource.data[field] == resource.data[field];
+    }
+
+    // Locks critical financial, payment, customer, and shop identity fields
+    function orderFinancialsAndCoreUnchanged() {
+      return unchanged('total_price') &&
+             unchanged('subtotal') &&
+             unchanged('delivery_fee') &&
+             unchanged('service_fee') &&
+             unchanged('payment_status') &&
+             unchanged('payment_method') &&
+             unchanged('user_id') &&
+             unchanged('shop_id');
+    }
+
+    // Locks server-authoritative rider stats, verification, and ratings
+    function riderFinancialsAndRatingsUnchanged() {
+      return unchanged('total_earnings') &&
+             unchanged('total_deliveries') &&
+             unchanged('active_points') &&
+             unchanged('rating') &&
+             unchanged('verification_status');
     }
 
     // Default fallback - Secure by default
@@ -16,41 +57,151 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // =====================================================================
+    // 1. SHOPS
+    // =====================================================================
     match /shops/{shopId} {
-      // Anyone can read public listings (for client discovery)
+      // Public read for customer storefront discovery & vendor sync
       allow read: if true;
-      // Vendor owners can create if they assign themselves as owner
       allow create: if isAuthenticated() && request.resource.data.owner_id == request.auth.uid;
-      // Vendor owners can update/delete their own shops
-      allow update, delete: if isOwner(resource.data);
+      allow update, delete: if isAuthenticated() && resource.data.owner_id == request.auth.uid;
     }
 
+    // =====================================================================
+    // 2. MENU ITEMS
+    // =====================================================================
     match /menu_items/{itemId} {
-      // Anyone can read menu items
+      // Public read for customer ordering & rider inspection
       allow read: if true;
-      // Assume owner check could be done via parent relation, but for simplicity here if it has owner_id or just relying on shop_id
-      allow create, update, delete: if isAuthenticated(); // Simplified for now, would ideally check if user owns the shop_id
+      // Write access restricted to the authenticated shop owner
+      allow create: if isShopOwner(request.resource.data.shop_id);
+      allow update: if isShopOwner(resource.data.shop_id) && unchanged('shop_id');
+      allow delete: if isShopOwner(resource.data.shop_id);
     }
 
+    // =====================================================================
+    // 3. ORDERS
+    // =====================================================================
     match /orders/{orderId} {
-      // Riders and clients need to read/update orders.
-      allow read: if true;
-      allow create, update, delete: if true;
+      // Read access: Customers read own orders, Merchants read shop orders, Riders read pool or assigned
+      allow read: if isAuthenticated() && (
+        resource.data.user_id == request.auth.uid ||
+        resource.data.rider_id == request.auth.uid ||
+        resource.data.delivery_status == "finding_rider" ||
+        isShopOwner(resource.data.shop_id)
+      );
+
+      // Order creation is strictly server-authoritative via createOrder Cloud Function
+      allow create: if false;
+
+      // Updates: Client or Merchant operational transitions only (Financials locked)
+      // Rider status transitions (claim, pickup, complete) are managed via Cloud Functions
+      allow update: if isAuthenticated() && (
+        // Customer updates (e.g. cancellation / notes before prep)
+        (resource.data.user_id == request.auth.uid &&
+         orderFinancialsAndCoreUnchanged() &&
+         unchanged('rider_id') &&
+         unchanged('delivery_status')) ||
+
+        // Merchant kitchen status workflow (e.g. accepted, preparing, ready_for_pickup)
+        (isShopOwner(resource.data.shop_id) &&
+         orderFinancialsAndCoreUnchanged() &&
+         unchanged('rider_id'))
+      );
+
+      allow delete: if false;
     }
 
-    match /rider_profiles/{riderId} {
-      allow read: if true;
-      allow create, update, delete: if true;
-    }
-
-    match /rider_connections/{connId} {
-      allow read: if true;
-      allow create, update, delete: if true;
-    }
-
+    // =====================================================================
+    // 4. USERS (PROFILES)
+    // =====================================================================
     match /users/{userId} {
-      allow read: if true;
-      allow create, update, delete: if isAuthenticated() && request.auth.uid == userId;
+      // Authenticated users read and write only their own profile
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // =====================================================================
+    // 5. RIDER PROFILES (Includes live telemetry current_latitude / current_longitude)
+    // =====================================================================
+    // ARCHITECTURAL LIMITATION NOTE:
+    // The Merchant Dashboard queries connected drivers via .in("id", riderIds) and
+    // reads live telemetry directly from rider_profiles. Firestore rules cannot perform
+    // cross-collection JOINs inside IN queries.
+    // Sensitive fields: phone, full_name, current_latitude, current_longitude.
+    // FUTURE FIX: Mirror delivery telemetry to orders/{orderId}.rider_location and
+    // embed driver display info in rider_connections.
+    match /rider_profiles/{riderId} {
+      // Authenticated platform read required for current Merchant/Client tracking
+      allow read: if isAuthenticated();
+      // Rider creates their own profile document
+      allow create: if isAuthenticated() && (request.auth.uid == riderId || request.auth.uid == request.resource.data.id);
+      // Rider updates operational status and GPS telemetry; server-managed stats remain locked
+      allow update: if isAuthenticated() && (request.auth.uid == riderId || request.auth.uid == resource.data.id) &&
+                    riderFinancialsAndRatingsUnchanged();
+      allow delete: if false;
+    }
+
+    // =====================================================================
+    // 6. RIDER CONNECTIONS
+    // =====================================================================
+    match /rider_connections/{connId} {
+      allow read: if isAuthenticated() && (
+        resource.data.rider_id == request.auth.uid ||
+        isShopOwner(resource.data.shop_id)
+      );
+
+      // Merchant creates pairing invitation for their own shop
+      allow create: if isShopOwner(request.resource.data.shop_id);
+
+      // Updates: Merchant manages pairing; Rider only updates operational status
+      allow update: if (isShopOwner(resource.data.shop_id) && unchanged('shop_id')) ||
+        (isAuthenticated() && resource.data.rider_id == request.auth.uid &&
+         unchanged('shop_id') &&
+         unchanged('rider_id') &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'active_mission_id', 'updated_at']));
+
+      // Deletion restricted to the shop owner
+      allow delete: if isShopOwner(resource.data.shop_id);
+    }
+
+    // =====================================================================
+    // 7. CHAT MESSAGES
+    // =====================================================================
+    match /chat_messages/{messageId} {
+      // Reading restricted to verified order participants
+      allow read: if isAuthenticated() && isOrderParticipant(resource.data.order_id);
+
+      // Creation validates order participation using the incoming request payload
+      allow create: if isAuthenticated() && isOrderParticipant(request.resource.data.order_id);
+
+      // Updates strictly restricted to read-receipt timestamps
+      allow update: if isAuthenticated() && isOrderParticipant(resource.data.order_id) &&
+                    unchanged('order_id') &&
+                    unchanged('sender_id') &&
+                    unchanged('content') &&
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['is_read', 'read_at', 'updated_at']);
+
+      allow delete: if false;
+    }
+
+    // =====================================================================
+    // 8. SHOP FOLLOWERS
+    // =====================================================================
+    match /shop_followers/{followId} {
+      allow read: if isAuthenticated() && (
+        resource.data.user_id == request.auth.uid ||
+        isShopOwner(resource.data.shop_id)
+      );
+      allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+    }
+
+    // =====================================================================
+    // 9. PAYMENTS (Merchant Payout History)
+    // =====================================================================
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated() && isShopOwner(resource.data.shop_id);
+      allow write: if false; // Server-only via payment gateway / Cloud Function
     }
   }
 }
