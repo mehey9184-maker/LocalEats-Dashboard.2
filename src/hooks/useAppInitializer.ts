@@ -16,6 +16,7 @@ interface UseAppInitializerProps {
   fetchShops: () => Promise<void>;
   fetchAllMenuItems: () => Promise<void>;
   supabase?: SupabaseClient;
+  authReady?: boolean;
 }
 
 export const useAppInitializer = ({
@@ -24,6 +25,7 @@ export const useAppInitializer = ({
   fetchOrders,
   fetchShops,
   fetchAllMenuItems,
+  authReady = true,
 }: UseAppInitializerProps) => {
   const [serviceLoading, setServiceLoading] = useState<ServiceLoadingState>({
     shops: true,
@@ -80,6 +82,9 @@ export const useAppInitializer = ({
 
   const userId = user?.id;
   useEffect(() => {
+    if (!authReady) return;
+    if (role === "merchant" && !userId) return;
+
     if (userId || role === "customer" || role === "merchant") {
       void loadOrdersService();
       void loadShopsService();
@@ -89,7 +94,7 @@ export const useAppInitializer = ({
         return;
       }
     }
-  }, [userId, role, loadOrdersService, loadShopsService, loadMenuService]);
+  }, [userId, role, loadOrdersService, loadShopsService, loadMenuService, authReady]);
 
   return {
     serviceLoading,

@@ -374,36 +374,6 @@ function App() {
       } catch {
         // ignore
       }
-
-      if (userId) {
-        const syncKey = `${userId}_${shopId}`;
-        if (lastSyncedShopAuthRef.current !== syncKey) {
-          lastSyncedShopAuthRef.current = syncKey;
-
-          if (shopOwnerId !== userId || shopEmail !== userEmail) {
-            supabase
-              .from("shops")
-              .update({ owner_id: userId, email: userEmail || "" })
-              .eq("id", shopId)
-              .then()
-              .catch(() => {});
-          }
-
-          if (String(userMetadataShopId) !== String(shopId)) {
-            supabase.auth
-              .updateUser({
-                data: {
-                  shop_id: shopId,
-                  vendor_shop_id: shopId,
-                  permanent_owner_id: userId,
-                  vendor_shop_name: shopName || "My-Kota",
-                },
-              })
-              .then()
-              .catch(() => {});
-          }
-        }
-      }
     }
   }, [
     shopId,
@@ -1422,6 +1392,7 @@ function App() {
     fetchShops,
     fetchAllMenuItems,
     supabase,
+    authReady: isAuthReady,
   });
 
   // Order subscriptions: Listen to BOTH Firestore & Supabase in real-time
@@ -4435,25 +4406,7 @@ function App() {
                     </p>
                     <button
                       onClick={async () => {
-                        if (!user) return;
-                        const { error, data } = await supabase.from('shops').insert({
-                          owner_id: user.id,
-                          name: "My New Shop",
-                          email: user.email || "",
-                          is_active: false
-                        }).select().single();
-                        
-                        if (error) {
-                          toast.error("Failed to create shop: " + error.message);
-                        } else {
-                          toast.success("Shop created successfully!");
-                          if (data) {
-                             setShops(prev => [data as Shop, ...prev]);
-                             localStorage.setItem("localeats_my_shop_id", String(data.id));
-                             localStorage.setItem("localeats_last_selected_shop_id", String(data.id));
-                          }
-                          await fetchShops();
-                        }
+                        toast.error("Shop creation requires backend API (Not yet implemented in Phase 3)");
                       }}
                       className="px-6 py-3 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all shadow-lg"
                     >
