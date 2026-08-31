@@ -15,8 +15,13 @@ export class MerchantApi {
    * Throws errors for authentication, authorization, or server failures.
    */
   static async getMerchantShop(): Promise<VerifiedMerchantShop | null> {
+    const apiUrl = import.meta.env.VITE_LOCALEATS_API_URL;
+    if (!apiUrl) {
+      throw new Error("LocalEats API base URL is not configured");
+    }
+
     const headers = await getApiAuthHeaders();
-    const response = await fetch("/api/v1/merchant/shop", {
+    const response = await fetch(`${apiUrl}/api/v1/merchant/shop`, {
       method: "GET",
       headers,
     });
@@ -33,6 +38,11 @@ export class MerchantApi {
         throw new Error("Authorization failed (403)");
       }
       throw new Error(`Failed to fetch merchant shop (HTTP ${response.status}): ${response.statusText}`);
+    }
+
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      throw new Error(`Expected JSON from LocalEats API but received ${contentType || "unknown"}`);
     }
 
     const data = await response.json();

@@ -74,6 +74,7 @@ import {
   getFirestoreOrders,
   sendPushNotification,
   updateFirestoreShop,
+  getFirestoreMenuItems,
 } from "./lib/firebase";
 import { useKitchenAlerter } from "./hooks/useKitchenAlerter";
 import { useAuthGuard } from "./hooks/useAuthGuard";
@@ -312,18 +313,7 @@ function App() {
     }
     return [];
   });
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const cached = localStorage.getItem("localeats_user_session");
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed && parsed.id) return parsed;
-      }
-    } catch {
-      // ignore
-    }
-    return null;
-  });
+  const [user, setUser] = useState<User | null>(null);
     const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
   // Kitchen status state available if needed
@@ -673,35 +663,18 @@ function App() {
   }, [soundVolume]);
 
   useEffect(() => {
-    // current session via Firebase Auth and cached storage
-    const getSessionWithTimeout = async () => {
-      console.log("[Auth Init] Firebase auth verification started...");
-      try {
-        const cached = localStorage.getItem("localeats_user_session");
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached);
-            if (parsed && parsed.id) {
-              console.log("[Auth Init] Found cached local user session for user ID:", parsed.id);
-              setUser(parsed);
-              if (parsed.user_metadata?.dark_mode !== undefined) {
-                setDarkMode(parsed.user_metadata.dark_mode);
-              }
-            }
-          } catch {
-            // ignore
-          }
+    // Read cached UX preferences (like dark mode) without restoring the user session
+    try {
+      const cached = localStorage.getItem("localeats_user_session");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.user_metadata?.dark_mode !== undefined) {
+          setDarkMode(parsed.user_metadata.dark_mode);
         }
-      } catch (err) {
-        console.debug("[Auth Init] Exception caught during session check:", err);
-      } finally {
-        setIsSessionChecking(false);
-        setIsAuthReady(true);
-        setLoading(false);
       }
-    };
-
-    getSessionWithTimeout();
+    } catch {
+      // ignore
+    }
 
     const handleForceLogout = () => {
       console.log("Force logout triggered");
