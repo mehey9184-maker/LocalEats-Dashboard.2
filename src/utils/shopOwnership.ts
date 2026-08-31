@@ -8,15 +8,37 @@ export const isValidUUID = (str: string | null | undefined): boolean => {
   return uuidRegex.test(str);
 };
 
-// State to hold the API-verified shop ID
-let verifiedOwnedShopIds = new Set<string | number>();
+// State to hold the API-verified shop ID tied to a specific Firebase UID
+type VerifiedOwnershipState = {
+  firebaseUid: string | null;
+  shopIds: Set<string | number>;
+};
 
-export const registerVerifiedShopId = (shopId: string | number) => {
-  verifiedOwnedShopIds.add(String(shopId));
+let verifiedState: VerifiedOwnershipState = {
+  firebaseUid: null,
+  shopIds: new Set<string | number>(),
+};
+
+export const registerVerifiedShopId = (firebaseUid: string, shopId: string | number) => {
+  if (verifiedState.firebaseUid !== firebaseUid) {
+    // Reset state if registering for a new user
+    verifiedState = {
+      firebaseUid,
+      shopIds: new Set<string | number>(),
+    };
+  }
+  verifiedState.shopIds.add(String(shopId));
   const numId = Number(shopId);
   if (!isNaN(numId)) {
-    verifiedOwnedShopIds.add(numId);
+    verifiedState.shopIds.add(numId);
   }
+};
+
+export const clearVerifiedShopOwnership = () => {
+  verifiedState = {
+    firebaseUid: null,
+    shopIds: new Set<string | number>(),
+  };
 };
 
 /**
@@ -27,8 +49,8 @@ export const registerVerifiedShopId = (shopId: string | number) => {
 export const isShopOwnedByUser = (shop: Shop, user: User | null): boolean => {
   if (!shop || !user) return false;
   
-  // Strict check against API-verified ownership state
-  if (verifiedOwnedShopIds.has(String(shop.id))) {
+  // Strict check against API-verified ownership state scoped to the user
+  if (verifiedState.firebaseUid === user.id && verifiedState.shopIds.has(String(shop.id))) {
     return true;
   }
   
@@ -77,9 +99,9 @@ export const getLegacyHintShopIds = (user: User | null): (number | string)[] => 
 export const getOwnedShopIds = async (user: User | null, currentShops: Shop[]): Promise<(number | string)[]> => {
   if (!user) return [];
   
-  // If we have API-verified shops, return them.
-  if (verifiedOwnedShopIds.size > 0) {
-    return Array.from(verifiedOwnedShopIds);
+  // If we have API-verified shops for this user, return them.
+  if (verifiedState.firebaseUid === user.id && verifiedState.shopIds.size > 0) {
+    return Array.from(verifiedState.shopIds);
   }
   
   // Fallback to hint IDs during transition so the Firestore listeners don't break,

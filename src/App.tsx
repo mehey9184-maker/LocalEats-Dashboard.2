@@ -138,6 +138,7 @@ import {
   isShopOwnedByUser,
   getOwnedShopIds,
   registerVerifiedShopId,
+  clearVerifiedShopOwnership,
 } from "./utils/shopOwnership";
 import { MerchantApi } from "./services/MerchantApi";
 import { fetchWithRetry } from "./utils/fetchWithRetry";
@@ -704,6 +705,7 @@ function App() {
 
     const handleForceLogout = () => {
       console.log("Force logout triggered");
+      clearVerifiedShopOwnership();
       setUser(null);
       localStorage.removeItem("localeats_user_session");
       firebaseSignOutUser().catch(() => {});
@@ -722,7 +724,7 @@ function App() {
           try {
             const verifiedShop = await MerchantApi.getMerchantShop();
             if (verifiedShop && verifiedShop.id) {
-              registerVerifiedShopId(verifiedShop.id);
+              registerVerifiedShopId(fbUser.uid, verifiedShop.id);
             }
           } catch (apiErr) {
             console.warn("[Auth Listener] Failed to verify shop ownership with API:", apiErr);
@@ -737,21 +739,10 @@ function App() {
           console.warn("[Auth Listener] Warning formatting Firebase user session:", e);
         }
       } else {
-        const cached = localStorage.getItem("localeats_user_session");
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached);
-            if (parsed && parsed.id) {
-              setUser(parsed);
-            } else {
-              setUser(null);
-            }
-          } catch {
-            setUser(null);
-          }
-        } else {
-          setUser(null);
-        }
+        // Phase 3.1: Clear ownership and properly clear session when unauthenticated
+        clearVerifiedShopOwnership();
+        setUser(null);
+        localStorage.removeItem("localeats_user_session");
       }
       setIsSessionChecking(false);
       setIsAuthReady(true);
