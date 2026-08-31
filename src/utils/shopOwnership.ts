@@ -34,7 +34,7 @@ export const isShopOwnedByUser = (shop: Shop, user: User | null): boolean => {
   if (user?.email && shop.email && (shop as unknown as { email?: string }).email?.toLowerCase().trim() === user.email.toLowerCase().trim()) return true;
 
   // 5. Default single-vendor shop fallback ("My-Kota" / shop ID 18)
-  if (user && (Number(shop.id) === 18 || (shop.name && shop.name.toLowerCase().includes("kota")))) return true;
+  if (user && Number(shop.id) === 18) return true;
 
   // 6. Local cache shop ID fallback
   try {
@@ -142,17 +142,15 @@ export const getOwnedShopIds = async (user: User | null, currentShops: Shop[]): 
     }
   });
 
-  // Default fallback if empty: include default shop 18 and current first shop
+  // Default fallback if empty: include default shop 18
   if (expanded.size === 0) {
     expanded.add(18);
     expanded.add("18");
-    if (currentShops.length > 0) {
-      expanded.add(currentShops[0].id);
-      expanded.add(String(currentShops[0].id));
-    }
   }
 
-  return Array.from(expanded);
+  // Ensure synthetic mock shop IDs are excluded from Firestore queries
+  const mockShopIds = new Set([9991, 9992, 9993, "9991", "9992", "9993"]);
+  return Array.from(expanded).filter((id) => !mockShopIds.has(id as number & string));
 };
 
 export const fetchShopById = async (

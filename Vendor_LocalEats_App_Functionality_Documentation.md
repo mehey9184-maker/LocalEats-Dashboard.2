@@ -45,7 +45,7 @@ The application is natively integrated with Google Cloud Firebase:
 * **Access Rules**: Public read for customer storefront discovery and vendor profile loading; write/update/delete restricted to the verified shop owner (`owner_id == auth.uid`).
 
 ### 3.3 Menu Items Model (`/menu_items/{itemId}`)
-* Child documents storing `shop_id` (numeric or string) pointing to the parent `/shops/{shopId}`.
+* Child documents storing `shop_id` (numeric or string) pointing to the parent `/shops/{shopId}`, `name`, `price`, `category`, `description` (unmodified plain text), `dietary_tags` (array of string tags, e.g. `["Vegetarian", "Spicy"]`), `stock_quantity`, `is_available`, and `image_url`.
 * Does **not** require an `owner_id` field on the menu item itself.
 * **Access Rules**:
   * `read`: Public read (`if true;`) enabling client app browsing and rider pickup inspection.

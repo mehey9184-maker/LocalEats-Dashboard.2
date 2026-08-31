@@ -126,29 +126,11 @@ export const formatSAPhone = (value: string) => {
 
 export const safeStripOrderColumns = async (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabaseClient: any,
+  _supabaseClient: any,
   data: Record<string, unknown>
 ): Promise<Record<string, unknown>> => {
   // Columns that frequently cause PGRST204 errors if unmigrated in database schema
   const unmigratedBlacklist = new Set(["city", "rider_name", "rider_phone", "whatsapp"]);
-
-  try {
-    const { data: sampleData, error } = await supabaseClient.from("orders").select().limit(1);
-    if (!error && sampleData && sampleData.length > 0) {
-      const validColumns = new Set(Object.keys(sampleData[0]));
-      const cleaned: Record<string, unknown> = {};
-      for (const key of Object.keys(data)) {
-        if (validColumns.has(key) && !unmigratedBlacklist.has(key)) {
-          cleaned[key] = data[key];
-        } else {
-          console.log(`[SafeStrip] Stripping un-migrated column: ${key}`);
-        }
-      }
-      return cleaned;
-    }
-  } catch (e) {
-    console.warn("Failed to dynamically probe order columns:", e);
-  }
 
   const defaultColumns = new Set([
     "id", "shop_id", "user_id", "product_name", "product_variant", 
@@ -158,7 +140,8 @@ export const safeStripOrderColumns = async (
     "estimated_delivery_time", "items", "coupon_code", "discount_amount", 
     "delivery_fee", "rider_id", "restaurant_name", "delivery_status", 
     "order_type", "merchant_rating", "merchant_feedback", 
-    "terminal_masked_card", "terminal_sync_status"
+    "terminal_masked_card", "terminal_sync_status", "updated_at", "is_paid",
+    "payment_status", "delivery_lat", "delivery_lng", "order_number", "customer_phone", "shop_name"
   ]);
 
   const cleaned: Record<string, unknown> = {};

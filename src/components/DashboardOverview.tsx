@@ -125,10 +125,10 @@ const StatCard = React.memo(({
       )}
     </div>
     <div className="relative z-10">
-      <p className="text-on-surface-variant/60 text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em] mb-1">
+      <p className="text-on-surface-variant/80 text-xs md:text-sm font-bold uppercase tracking-wider mb-1">
         {title}
       </p>
-      <p className="text-xl md:text-3xl font-headline font-black text-on-surface tracking-tighter">
+      <p className="text-3xl md:text-4xl font-headline font-black text-on-surface tracking-tighter">
         {value}
       </p>
     </div>
@@ -1065,13 +1065,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       const shopList = remoteShops && remoteShops.length > 0 ? remoteShops : shops;
 
       let targetShop = shopList.find(
-        (s) =>
-          s.owner_id === user.id ||
-          (user.email && s.email && s.email.toLowerCase().trim() === user.email.toLowerCase().trim()) ||
-          s.id === 18 ||
-          (s.name && s.name.toLowerCase().includes("kota")) ||
-          (user.user_metadata?.vendor_shop_id && String(s.id) === String(user.user_metadata.vendor_shop_id)) ||
-          (user.user_metadata?.shop_id && String(s.id) === String(user.user_metadata.shop_id))
+        (s) => isShopOwnedByUser(s, user)
       );
 
       if (!targetShop && shopList.length > 0) {
@@ -1087,15 +1081,15 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               updated_at: new Date().toISOString(),
             };
             const { error: updateErr } = await withTimeout(
-              supabase.from("shops").update(updatePayload).eq("id", targetShop.id),
+              supabase.from("shops").update(updatePayload).eq("id", targetShop.id) as any,
               3000
             );
 
-            if (updateErr && (updateErr.code === "42703" || updateErr.message?.includes("column"))) {
+            if (updateErr && ((updateErr as any).code === "42703" || (updateErr as any).message?.includes("column"))) {
               delete updatePayload.updated_at;
               delete updatePayload.email;
               await withTimeout(
-                supabase.from("shops").update(updatePayload).eq("id", targetShop.id),
+                supabase.from("shops").update(updatePayload).eq("id", targetShop.id) as any,
                 3000
               ).catch(() => {});
             }
@@ -1556,11 +1550,12 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       notes: specialInstructions.trim() || null,
     };
 
-    const { error } = await supabase
-      .from("orders")
-      .insert(posOrder)
-      .select()
-      .single();
+    let error = null;
+    try {
+      await OrderService.createOrder(posOrder);
+    } catch (err) {
+      error = err;
+    }
     if (error) {
       toast.error("Could not record manual order right now. Please try again.");
     } else {
@@ -1717,7 +1712,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 const res = await syncShopAvailability({
                   shopId: s.id,
                   isOpen: newStatus,
-                  supabase,
+                  supabase: supabase as any,
                   updateFirestoreShop,
                 });
                 if (!res.success) error = res.error;
@@ -2023,6 +2018,13 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
             {/* View layout mode switcher to adjust visual complexity & cognitive load */}
+            
+            <button
+              onClick={() => onNavigate("orders")}
+              className="bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest text-sm px-6 py-3 rounded-2xl shadow-md hover:shadow-lg transition-all border-none"
+            >
+              + NEW WALK-IN ORDER
+            </button>
             <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/10 shadow-xs justify-center sm:justify-start">
               <button
                 type="button"
@@ -2177,7 +2179,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   const { success, error } = await syncShopAvailability({
                     shopId: currentShop.id,
                     isOpen: newStatus,
-                    supabase,
+                    supabase: supabase as any,
                     updateFirestoreShop,
                   });
 
@@ -2229,9 +2231,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         hasMenu={hasMenu}
       />
 
-      <ConnectionsSlider
-        onNavigate={onNavigate}
-      />
+      
 
       {layoutMode === "advanced" && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">

@@ -1,3 +1,4 @@
+import { OrderService } from "../services/OrderService";
 import { toast } from "sonner";
 import { Order, OrderStatus, MenuItem, Shop } from "../types";
 import { getOrderTransitionData } from "../utils";
@@ -417,19 +418,12 @@ export const useOrderWorkflow = ({
       )
     );
 
-    const { error } = await supabase
-      .from("orders")
-      .update({
-        delivery_status: "finding_rider",
-        rider_id: null,
-      })
-      .eq("id", id);
-
-    if (error) {
+    try {
+      await OrderService.unassignRider(id);
+      toast.success("Rider unassigned and mission rebroadcasted to fleet");
+    } catch (error) {
       setOrders(previousOrders);
       toast.error("Failed to unassign rider. Please try again.");
-    } else {
-      toast.success("Rider unassigned and mission rebroadcasted to fleet");
     }
   };
 

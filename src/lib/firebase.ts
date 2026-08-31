@@ -23,6 +23,7 @@ import {
   query, 
   where,
   or,
+  documentId,
   writeBatch,
   onSnapshot,
   Unsubscribe
@@ -301,9 +302,11 @@ export async function verifyFirestoreCollections(): Promise<{
 
     // 2. Check Orders
     try {
-      const ordersSnap = await getDocs(collection(db, "orders"));
-      results.collections.orders = ordersSnap.size;
-      results.details.push(`Orders: ${ordersSnap.size} records found`);
+      if (auth.currentUser) {
+        const ordersSnap = await getDocs(query(collection(db, "orders"), where("shop_id", "in", [18, "18"])));
+        results.collections.orders = ordersSnap.size;
+        results.details.push(`Orders: ${ordersSnap.size} records found`);
+      }
     } catch (e) {
       results.details.push(`Orders collection check note: ${String(e)}`);
     }
@@ -479,10 +482,18 @@ export function subscribeToShopsFirestore(
   ownerId?: string
 ): Unsubscribe {
   const coll = collection(db, "shops");
-  const q = ownerId ? query(coll, where("owner_id", "==", ownerId)) : query(coll);
+  
+  const authUid = auth.currentUser?.uid;
+  const conditions = [];
+  
+  if (ownerId) conditions.push(where("owner_id", "==", ownerId));
+  if (authUid && authUid !== ownerId) conditions.push(where("owner_id", "==", authUid));
+  conditions.push(where(documentId(), "==", "18"));
+  
+  const q = conditions.length > 1 ? query(coll, or(...conditions)) : query(coll, conditions[0]);
 
   return onSnapshot(q, (snap) => {
-    const shops = snap.docs.map(d => ({ ...d.data(), id: d.data().id ?? d.id } as Shop));
+    const shops = snap.docs.map(d => ({ ...(d.data() as any), id: (d.data() as any).id ?? d.id } as Shop));
     onUpdate(shops);
   }, (error) => {
     handleFirestoreError(error, OperationType.LIST, "shops");
@@ -492,9 +503,18 @@ export function subscribeToShopsFirestore(
 export async function getFirestoreShops(ownerId?: string): Promise<Shop[]> {
   try {
     const coll = collection(db, "shops");
-    const q = ownerId ? query(coll, where("owner_id", "==", ownerId)) : query(coll);
+    
+    const authUid = auth.currentUser?.uid;
+    const conditions = [];
+    
+    if (ownerId) conditions.push(where("owner_id", "==", ownerId));
+    if (authUid && authUid !== ownerId) conditions.push(where("owner_id", "==", authUid));
+    conditions.push(where(documentId(), "==", "18"));
+    
+    const q = conditions.length > 1 ? query(coll, or(...conditions)) : query(coll, conditions[0]);
+    
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.data().id ?? d.id } as Shop));
+    return snap.docs.map(d => ({ ...(d.data() as any), id: (d.data() as any).id ?? d.id } as Shop));
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, "shops");
     return [];
@@ -536,18 +556,32 @@ export async function updateFirestoreShop(shopId: string | number, updates: Part
 }
 
 /**
- * Fetch Menu Items for a Shop
+ * Fetch Menu Items for a Shop (supports single shopId or array of shopIds)
  */
-export async function getFirestoreMenuItems(shopId: string | number): Promise<MenuItem[]> {
+export async function getFirestoreMenuItems(shopId: string | number | (string | number)[]): Promise<MenuItem[]> {
   try {
     const coll = collection(db, "menu_items");
-    const numShopId = Number(shopId);
-    const q = isNaN(numShopId) 
-      ? query(coll, where("shop_id", "==", shopId)) 
-      : query(coll, where("shop_id", "in", [shopId, numShopId, String(shopId)]));
+    let q;
+    if (Array.isArray(shopId)) {
+      const idsSet = new Set<string | number>();
+      shopId.forEach(id => {
+        idsSet.add(id);
+        idsSet.add(String(id));
+        const num = Number(id);
+        if (!isNaN(num)) idsSet.add(num);
+      });
+      const values = Array.from(idsSet).slice(0, 30);
+      if (values.length === 0) return [];
+      q = query(coll, where("shop_id", "in", values));
+    } else {
+      const numShopId = Number(shopId);
+      q = isNaN(numShopId) 
+        ? query(coll, where("shop_id", "==", shopId)) 
+        : query(coll, where("shop_id", "in", [shopId, numShopId, String(shopId)]));
+    }
     
     const snap = await getDocs(q);
-    const items = snap.docs.map(d => ({ ...d.data(), id: d.data().id ?? d.id } as MenuItem));
+    const items = snap.docs.map(d => ({ ...(d.data() as any), id: (d.data() as any).id ?? d.id } as MenuItem));
     return items;
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, "menu_items");
@@ -799,20 +833,34 @@ export function subscribeToOrdersFirestore(
 }
 
 /**
- * Subscribe to Menu Items with Realtime Updates
+ * Subscribe to Menu Items with Realtime Updates (supports single shopId or array of shopIds)
  */
 export function subscribeToMenuItemsFirestore(
-  shopId: string | number, 
+  shopId: string | number | (string | number)[], 
   onUpdate: (items: MenuItem[]) => void
 ): Unsubscribe {
   const coll = collection(db, "menu_items");
-  const numShopId = Number(shopId);
-  const q = isNaN(numShopId) 
-    ? query(coll, where("shop_id", "==", shopId)) 
-    : query(coll, where("shop_id", "in", [shopId, numShopId, String(shopId)]));
+  let q;
+  if (Array.isArray(shopId)) {
+    const idsSet = new Set<string | number>();
+    shopId.forEach(id => {
+      idsSet.add(id);
+      idsSet.add(String(id));
+      const num = Number(id);
+      if (!isNaN(num)) idsSet.add(num);
+    });
+    const values = Array.from(idsSet).slice(0, 30);
+    if (values.length === 0) return () => {};
+    q = query(coll, where("shop_id", "in", values));
+  } else {
+    const numShopId = Number(shopId);
+    q = isNaN(numShopId) 
+      ? query(coll, where("shop_id", "==", shopId)) 
+      : query(coll, where("shop_id", "in", [shopId, numShopId, String(shopId)]));
+  }
 
   return onSnapshot(q, (snap) => {
-    const items = snap.docs.map(d => ({ ...d.data(), id: d.data().id ?? d.id } as MenuItem));
+    const items = snap.docs.map(d => ({ ...(d.data() as any), id: (d.data() as any).id ?? d.id } as MenuItem));
     onUpdate(items);
   }, (error) => {
     handleFirestoreError(error, OperationType.LIST, "menu_items");
@@ -830,7 +878,7 @@ export async function getFirestoreReviews(shopId: string | number): Promise<Revi
       ? query(coll, where("shop_id", "==", shopId))
       : query(coll, where("shop_id", "in", [shopId, numShopId, String(shopId)]));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.data().id ?? d.id } as Review));
+    return snap.docs.map(d => ({ ...(d.data() as any), id: (d.data() as any).id ?? d.id } as Review));
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, "reviews");
     return [];
@@ -845,7 +893,7 @@ export async function getFirestoreCoupons(shopId?: string | number): Promise<Cou
     const coll = collection(db, "coupons");
     const q = shopId ? query(coll, where("shop_id", "==", Number(shopId))) : coll;
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.data().id ?? d.id } as Coupon));
+    return snap.docs.map(d => ({ ...(d.data() as any), id: (d.data() as any).id ?? d.id } as Coupon));
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, "coupons");
     return [];

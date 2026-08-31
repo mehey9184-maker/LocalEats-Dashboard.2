@@ -1,3 +1,4 @@
+import { OrderService } from '../services/OrderService';
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Clock,
@@ -46,7 +47,6 @@ import {
   MessageCircle,
   Timer,
   Edit2,
-  List,
   Settings,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
@@ -200,7 +200,8 @@ const ChatWindow = ({
       content: newMessage.trim(),
     };
 
-    const { error } = await supabase.from("chat_messages").insert(message);
+    await OrderService.sendChatMessage(message);
+    const error = null; // Polyfill for existing code below
     if (error) toast.error("Failed to send message");
     else setNewMessage("");
   };
@@ -317,7 +318,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 }) => {
   const { subscribeWithAuthGuard } = useAuthGuard();
   const [viewMode, setViewMode] = useState<"active" | "history">("active");
-  const [layoutMode, setLayoutMode] = useState<"list" | "kanban">("kanban");
+  
   const [printerDiagStatus, setPrinterDiagStatus] = useState<{
     bt: PrinterDiagnosticResult;
     usb: PrinterDiagnosticResult;
@@ -746,14 +747,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
     } catch {
       // ignore
     }
-    const { error } = await supabase.from('orders').update({ merchant_rating: rating }).eq('id', orderId);
-    if (error) {
-      console.warn("Rating update warning (saved locally):", error);
-    }
-    toast.success("Rider rated successfully!");
-    onRefresh();
-
-    // Calculate new average rating
     try {
       const { data: ratingsData } = await supabase
         .from('orders')
@@ -762,12 +755,13 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
         .not('merchant_rating', 'is', null);
 
       const items = (ratingsData as unknown as { merchant_rating: number }[]) || [];
-      if (Array.isArray(items) && items.length > 0) {
-        const avgRating = items.reduce((acc, curr) => acc + (curr.merchant_rating || 0), 0) / items.length;
-        await supabase.from('rider_profiles').update({ rating: avgRating }).eq('id', riderId);
-      }
-    } catch {
-      // ignore
+      const currentRatings = items.map(i => i.merchant_rating || 0);
+      const newRatings = [...currentRatings, rating];
+      const avgRating = newRatings.reduce((a, b) => a + b, 0) / newRatings.length;
+
+      await OrderService.rateRider(orderId, riderId, rating, avgRating);
+    } catch (error) {
+      console.warn("Rating update warning (saved locally):", error);
     }
     setRatingOrderId(null);
     setRatingValue(0);
@@ -2075,10 +2069,11 @@ Notes: "${order.notes || "None"}"
                                           } catch {
                                             // ignore
                                           }
-                                          const { error } = await supabase.from("orders").update({ delivery_status: status }).eq("id", order.id);
-                                          if (error) {
-                                            console.warn("Delivery status database sync warning (saved locally):", error);
-                                          }
+                                          try {
+      await OrderService.updateDeliveryStatus(order.id, status);
+    } catch (error) {
+      console.warn("Delivery status database sync warning (saved locally):", error);
+    }
                                           toast.success(`Delivery status: ${status.replace("_", " ")}`);
                                         }}
                                         className={cn(
@@ -2833,34 +2828,7 @@ Notes: "${order.notes || "None"}"
             </button>
           </div>
 
-          {viewMode === "active" && (
-            <div className="hidden md:flex p-1.5 bg-surface-container-low rounded-full w-fit border border-outline-variant/10">
-              <button
-                onClick={() => setLayoutMode("list")}
-                className={cn(
-                  "px-6 py-2.5 rounded-full text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer",
-                  layoutMode === "list"
-                    ? "bg-surface-container-lowest shadow-sm text-primary font-bold"
-                    : "text-on-secondary-container hover:bg-surface-container-high"
-                )}
-              >
-                <List size={16} />
-                <span>List View</span>
-              </button>
-              <button
-                onClick={() => setLayoutMode("kanban")}
-                className={cn(
-                  "px-6 py-2.5 rounded-full text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer",
-                  layoutMode === "kanban"
-                    ? "bg-surface-container-lowest shadow-sm text-primary font-bold"
-                    : "text-on-secondary-container hover:bg-surface-container-high"
-                )}
-              >
-                <LayoutGrid size={16} />
-                <span>Kanban Board</span>
-              </button>
-            </div>
-          )}
+          
 
           <button
             onClick={() => setKitchenMode(!kitchenMode)}
@@ -2966,10 +2934,10 @@ Notes: "${order.notes || "None"}"
                     <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
                       <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
                         <LayoutGrid size={14} />
-                        Layout: {layoutMode === "kanban" ? "Kanban Board" : "List View"}
+                        Layout: {true ? "Kanban Board" : "List View"}
                       </span>
                       <button
-                        onClick={() => setLayoutMode(layoutMode === "kanban" ? "list" : "kanban")}
+                        onClick={() => setLayoutMode(true ? "list" : "kanban")}
                         className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-primary text-on-primary cursor-pointer"
                       >
                         Switch
@@ -3307,7 +3275,7 @@ Notes: "${order.notes || "None"}"
                 </button>
               )}
             </div>
-          ) : viewMode === "active" && layoutMode === "kanban" ? (
+          ) : viewMode === "active" && true ? (
             <div className="flex overflow-x-auto hide-scrollbar xl:grid xl:grid-cols-4 gap-6 items-start snap-x snap-mandatory pb-4 xl:pb-0">
               {/* Column 1: New Orders */}
               <div className="bg-surface-container-low/60 rounded-[2.5rem] p-5 border border-outline-variant/10 flex flex-col gap-4 min-h-[500px] w-[85vw] md:w-[360px] xl:w-[400px] shrink-0 snap-center">
@@ -3371,13 +3339,13 @@ Notes: "${order.notes || "None"}"
                         transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         key={order.id}
                         draggable={true}
-                        onDragStart={((e: React.DragEvent) => {
+                        onDragStart={(e: any) => {
                           setDraggedPendingId(order.id);
                           if (e.dataTransfer) {
                             e.dataTransfer.setData("text/plain", order.id);
                             e.dataTransfer.effectAllowed = "move";
                           }
-                        }) as any}
+                        }}
                         onDragOver={(e: React.DragEvent) => {
                           e.preventDefault();
                           if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
@@ -3488,7 +3456,7 @@ Notes: "${order.notes || "None"}"
                         </div>
 
                         {/* Items list */}
-                        <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
+                        <div className="mt-4 text-base text-on-surface space-y-3 font-bold bg-surface-container-lowest p-4 rounded-xl border-2 border-outline-variant/10 shadow-inner">
                           {items.map((item, idx) => {
                             const isObj = typeof item === "object" && item !== null;
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
@@ -3496,8 +3464,8 @@ Notes: "${order.notes || "None"}"
                             const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
                             return (
                               <div key={idx} className="flex justify-between">
-                                <span className="truncate max-w-[150px]">{qty}x {name}</span>
-                                <span className="opacity-70 font-mono">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
                               </div>
                             );
                           })}
@@ -3557,28 +3525,23 @@ Notes: "${order.notes || "None"}"
                             </div>
                           </div>
                         ) : (
-                          <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
-                            <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
-                            <div className="flex flex-col items-end gap-1 flex-1">
+                          <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
+                            <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
+                            <div className="flex flex-col items-stretch w-full gap-2">
                               {isLimitReached && (
                                 <span className="text-[8px] font-bold text-error leading-none mb-0.5">LIMIT REACHED</span>
                               )}
                               <button
                                 disabled={isLimitReached}
-                                onClick={(e) => {
+                                onClick={async (e) => {
+                                  e.stopPropagation();
                                   if (isOrderDelivery(order) && !order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
                                     setUnlinkedModalOrder(order);
                                     return;
                                   }
-                                  setAcceptingOrderId(order.id);
-                                  const card = e.currentTarget.closest(".order-card");
-                                  if (card) {
-                                    setTimeout(() => {
-                                      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                                    }, 100);
-                                  }
+                                  await onUpdateStatus(order.id, "preparing", "Order accepted");
                                 }}
-                                className="px-3 py-1.5 bg-primary text-on-primary text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none w-full text-center"
+                                className="w-full mt-4 py-5 bg-emerald-600 text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none text-center block"
                               >
                                 Accept
                               </button>
@@ -3702,7 +3665,7 @@ Notes: "${order.notes || "None"}"
                         </div>
 
                         {/* Items list */}
-                        <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
+                        <div className="mt-4 text-base text-on-surface space-y-3 font-bold bg-surface-container-lowest p-4 rounded-xl border-2 border-outline-variant/10 shadow-inner">
                           {items.map((item, idx) => {
                             const isObj = typeof item === "object" && item !== null;
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
@@ -3710,8 +3673,8 @@ Notes: "${order.notes || "None"}"
                             const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
                             return (
                               <div key={idx} className="flex justify-between">
-                                <span className="truncate max-w-[150px]">{qty}x {name}</span>
-                                <span className="opacity-70 font-mono">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
                               </div>
                             );
                           })}
@@ -3778,8 +3741,8 @@ Notes: "${order.notes || "None"}"
                               </div>
                             </div>
                           ) : (
-                            <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
-                              <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
+                            <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
+                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
                               <button
                                 onClick={(e) => {
                                   setPreparingOrderId(order.id);
@@ -3827,8 +3790,8 @@ Notes: "${order.notes || "None"}"
                               </div>
                             </div>
                           ) : (
-                            <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
-                              <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
+                            <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
+                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
                               <button
                                 onClick={(e) => {
                                   setReadyOrderId(order.id);
@@ -3839,7 +3802,7 @@ Notes: "${order.notes || "None"}"
                                     }, 100);
                                   }
                                 }}
-                                className="px-3 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer flex-1 text-center"
+                                className="w-full mt-4 py-5 bg-teal-500 text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-teal-400 active:scale-95 transition-all cursor-pointer text-center block"
                               >
                                 Mark Ready
                               </button>
@@ -3964,7 +3927,7 @@ Notes: "${order.notes || "None"}"
                         </div>
 
                         {/* Items list */}
-                        <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
+                        <div className="mt-4 text-base text-on-surface space-y-3 font-bold bg-surface-container-lowest p-4 rounded-xl border-2 border-outline-variant/10 shadow-inner">
                           {items.map((item, idx) => {
                             const isObj = typeof item === "object" && item !== null;
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
@@ -3972,8 +3935,8 @@ Notes: "${order.notes || "None"}"
                             const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
                             return (
                               <div key={idx} className="flex justify-between">
-                                <span className="truncate max-w-[150px]">{qty}x {name}</span>
-                                <span className="opacity-70 font-mono">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
                               </div>
                             );
                           })}
@@ -4019,11 +3982,11 @@ Notes: "${order.notes || "None"}"
                         )}
 
                         {/* Action buttons */}
-                        <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between gap-2">
-                          <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
+                        <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
+                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
                           <button
                             onClick={() => onUpdateStatus(order.id, "completed")}
-                            className="px-3 py-1.5 bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-95 active:scale-95 transition-all cursor-pointer flex-1 text-center"
+                            className="w-full mt-4 py-5 bg-blue-600 text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-blue-500 active:scale-95 transition-all cursor-pointer text-center block"
                           >
                             Complete
                           </button>
@@ -4131,7 +4094,7 @@ Notes: "${order.notes || "None"}"
                         </div>
 
                         {/* Items list */}
-                        <div className="mt-3 text-xs text-on-surface-variant space-y-1 font-medium bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/5">
+                        <div className="mt-4 text-base text-on-surface space-y-3 font-bold bg-surface-container-lowest p-4 rounded-xl border-2 border-outline-variant/10 shadow-inner">
                           {items.map((item, idx) => {
                             const isObj = typeof item === "object" && item !== null;
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
@@ -4139,15 +4102,15 @@ Notes: "${order.notes || "None"}"
                             const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
                             return (
                               <div key={idx} className="flex justify-between">
-                                <span className="truncate max-w-[150px]">{qty}x {name}</span>
-                                <span className="opacity-70 font-mono">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
                               </div>
                             );
                           })}
                         </div>
 
                         <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between">
-                          <span className="font-mono font-black text-xs text-primary">R {Number(order.total_price || 0).toFixed(2)}</span>
+                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
                           <span className="text-[9px] font-bold text-zinc-500 font-mono uppercase">Done</span>
                         </div>
 

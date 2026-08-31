@@ -93,15 +93,17 @@ export interface ShopConnection {
 }
 
 export interface MenuItem {
-  id: number;
-  shop_id: number;
+  id: number | string;
+  shop_id: number | string;
   name: string;
   price: number;
   image_url: string;
   is_available: boolean;
   created_at: string;
+  updated_at?: string;
   category?: string;
   description?: string;
+  dietary_tags?: string[];
   stock_quantity?: number | null;
   is_unlimited?: boolean;
 }

@@ -12,11 +12,18 @@ import {
   Upload,
   Image as ImageIcon,
   X,
+  Store,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { MenuItem, Shop, User } from "../types";
 import { supabase } from "../lib/supabase";
+import {
+  getFirestoreMenuItems,
+  createFirestoreMenuItem,
+  updateFirestoreMenuItem,
+  subscribeToMenuItemsFirestore,
+} from "../lib/firebase";
 import { useAuthGuard } from "../hooks/useAuthGuard";
 import { cn } from "../lib/utils";
 import { uploadImageToCloudinary, getOptimizedCloudinaryUrl } from "../lib/cloudinary";
@@ -78,7 +85,7 @@ const isShopOwnedByUser = (shop: Shop, user: User | null): boolean => {
   if (user?.email && shop.email && shop.email.toLowerCase().trim() === user.email.toLowerCase().trim()) return true;
 
   // 5. Default single-vendor shop fallback ("My-Kota" / shop ID 18)
-  if (user && (shop.id === 18 || (shop.name && shop.name.toLowerCase().includes("kota")))) return true;
+  if (user && Number(shop.id) === 18) return true;
 
   // 6. Local cache shop ID fallback
   try {
@@ -193,34 +200,72 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     }
   }, [userOwnedShops, user]);
 
-  const [selectedShopId, setSelectedShopId] = useState<string | number | null>(() => {
+  const [selectedShopId, setSelectedShopId] = useState<string | number | "all">(() => {
+    try {
+      const saved = localStorage.getItem("localeats_selected_menu_shop_id");
+      if (saved) {
+        if (saved === "all") return "all";
+        const match = shops.find((s) => String(s.id) === String(saved));
+        if (match) return match.id;
+      }
+    } catch {
+      // ignore
+    }
+
+    // Check if any owned shop has items in cached menu
+    try {
+      const cachedAll = localStorage.getItem("localeats_cached_menu_items");
+      if (cachedAll) {
+        const parsedAll = JSON.parse(cachedAll);
+        if (Array.isArray(parsedAll) && parsedAll.length > 0) {
+          const shopWithItems = shops.find((s) =>
+            isShopOwnedByUser(s, user) &&
+            parsedAll.some((item: MenuItem) => String(item.shop_id) === String(s.id))
+          );
+          if (shopWithItems) return shopWithItems.id;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     const found = shops.find((s) => isShopOwnedByUser(s, user));
-    return found ? found.id : null;
+    return found ? found.id : "all";
   });
 
+  // Ensure selectedShopId stays valid if shops change, but don't reset manual user selections
   useEffect(() => {
-    const found = shops.find((s) => isShopOwnedByUser(s, user));
-    const targetId = found ? found.id : null;
-    if (selectedShopId !== targetId) {
-      setSelectedShopId(targetId);
+    if (selectedShopId !== "all") {
+      const exists = shops.some((s) => String(s.id) === String(selectedShopId));
+      if (!exists && userOwnedShops.length > 0) {
+        setSelectedShopId(userOwnedShops[0].id);
+      }
     }
-  }, [shops, user, selectedShopId]);
+  }, [shops, selectedShopId, userOwnedShops]);
 
   // STALE-WHILE-REVALIDATE Initial state read from LocalStorage
   const [items, setItems] = useState<MenuItem[]>(() => {
     const targetId = selectedShopId;
     try {
-      const cached = localStorage.getItem(`localeats_menu_${targetId}`);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (targetId !== "all") {
+        const cached = localStorage.getItem(`localeats_menu_${targetId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
       }
       const cachedAll = localStorage.getItem("localeats_cached_menu_items");
       if (cachedAll) {
         const parsedAll = JSON.parse(cachedAll);
         if (Array.isArray(parsedAll)) {
-          const matched = parsedAll.filter((i: MenuItem) => String(i.shop_id) === String(targetId));
-          if (matched.length > 0) return matched;
+          if (targetId === "all") {
+            const ownedIds = new Set(userOwnedShops.map((s) => String(s.id)));
+            const matched = parsedAll.filter((i: MenuItem) => ownedIds.has(String(i.shop_id)));
+            if (matched.length > 0) return matched;
+          } else {
+            const matched = parsedAll.filter((i: MenuItem) => String(i.shop_id) === String(targetId));
+            if (matched.length > 0) return matched;
+          }
         }
       }
     } catch {
@@ -239,13 +284,14 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   // Search and Filter states
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState("All");
-  const [selectedItems, setSelectedItems] = useState<number[]>([]);
+  const [selectedItems, setSelectedItems] = useState<(number | string)[]>([]);
 
   const [isAiScannerOpen, setIsAiScannerOpen] = useState(false);
-  const [editingPriceId, setEditingPriceId] = useState<number | null>(null);
+  const [editingPriceId, setEditingPriceId] = useState<number | string | null>(null);
 
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [formData, setFormData] = useState({
+    shop_id: (selectedShopId !== "all" ? selectedShopId : userOwnedShops[0]?.id) || 18,
     name: "",
     price: "",
     category: "Main Course",
@@ -344,10 +390,18 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     return defaultCats;
   }, [items]);
 
-  // 2. STALE-WHILE-REVALIDATE FETCH METHOD
+  // 2. STALE-WHILE-REVALIDATE DUAL (SUPABASE + FIRESTORE) FETCH METHOD
   const fetchMenu = useCallback(
     async (showLoadingSpinner = true) => {
-      if (!selectedShopId) {
+      const targetShopIds: (string | number)[] = selectedShopId === "all"
+        ? userOwnedShops.map((s) => s.id)
+        : selectedShopId ? [selectedShopId] : [];
+
+      if (targetShopIds.length === 0) {
+        console.log("[MenuManagement] ⚠️ No targetShopIds available to fetch menu items.", {
+          user,
+          availableShops: shops.map((s) => ({ id: s.id, name: s.name, owner_id: s.owner_id })),
+        });
         setIsMenuLoading(false);
         return;
       }
@@ -357,16 +411,76 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         setIsBackgroundSyncing(true);
       }
 
+      console.log("[MenuManagement] 🔍 Fetching menu items with shop_id filter:", {
+        selectedShopId,
+        targetShopIds,
+        userEmail: user?.email,
+        matchedOwnedShops: userOwnedShops.map((s) => ({ id: s.id, name: s.name, owner_id: s.owner_id })),
+      });
+
       try {
-        const { data, error } = await supabase
-          .from("menu_items")
-          .select("*")
-          .eq("shop_id", selectedShopId)
-          .order("created_at", { ascending: false });
+        // Query Supabase
+        let sbItems: MenuItem[] = [];
+        try {
+          const query = supabase.from("menu_items").select("*");
+          const { data, error } = targetShopIds.length === 1
+            ? await query.eq("shop_id", targetShopIds[0]).order("created_at", { ascending: false })
+            : await query.in("shop_id", targetShopIds).order("created_at", { ascending: false });
 
-        if (error) throw error;
+          console.log("[MenuManagement] 📦 Supabase menu_items query response:", {
+            targetShopIds,
+            itemCount: (data as any)?.length || 0,
+            data,
+            error: error ? { message: (error as any).message, details: (error as any).details, code: (error as any).code } : null,
+          });
 
-        const freshItems = (data as MenuItem[]) || [];
+          if (!error && Array.isArray(data)) {
+            sbItems = data as MenuItem[];
+          }
+        } catch (sbErr) {
+          console.warn("[MenuManagement] Supabase menu query notice:", sbErr);
+        }
+
+        // Query Firestore
+        let fsItems: MenuItem[] = [];
+        try {
+          fsItems = await getFirestoreMenuItems(targetShopIds.length === 1 ? targetShopIds[0] : targetShopIds);
+          console.log("[MenuManagement] 🔥 Firestore menu_items query response:", {
+            targetShopIds,
+            itemCount: fsItems.length,
+            items: fsItems,
+          });
+        } catch (fsErr) {
+          console.warn("[MenuManagement] Firestore menu query notice:", fsErr);
+        }
+
+        // Merge Firestore and Supabase items, deduplicating by ID or name
+        const mergedMap = new Map<string, MenuItem>();
+        fsItems.forEach((item) => {
+          const key = String(item.id || item.name);
+          mergedMap.set(key, {
+            ...item,
+            is_available: item.is_available !== false,
+            stock_quantity: item.stock_quantity ?? null,
+          });
+        });
+        sbItems.forEach((item) => {
+          const key = String(item.id || item.name);
+          mergedMap.set(key, {
+            ...item,
+            is_available: item.is_available !== false,
+            stock_quantity: item.stock_quantity ?? null,
+          });
+        });
+
+        const freshItems = Array.from(mergedMap.values());
+        console.log("[MenuManagement] ✅ Final merged menu items loaded into state:", {
+          selectedShopId,
+          targetShopIds,
+          totalCount: freshItems.length,
+          items: freshItems,
+        });
+
         setItems(freshItems);
         try {
           localStorage.setItem(`localeats_menu_${selectedShopId}`, JSON.stringify(freshItems));
@@ -380,11 +494,15 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         setIsBackgroundSyncing(false);
       }
     },
-    [selectedShopId]
+    [selectedShopId, user, shops, userOwnedShops]
   );
 
   useEffect(() => {
-    if (selectedShopId) {
+    const targetShopIds: (string | number)[] = selectedShopId === "all"
+      ? userOwnedShops.map((s) => s.id)
+      : selectedShopId ? [selectedShopId] : [];
+
+    if (targetShopIds.length > 0) {
       let hasCached = false;
       try {
         const cached = localStorage.getItem(`localeats_menu_${selectedShopId}`);
@@ -410,6 +528,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let activeChannel: any = null;
 
+      // 1. Subscribe to Supabase realtime changes
       void subscribeWithAuthGuard(`menu_items_${selectedShopId}`, (ch) =>
         ch.on(
           "postgres_changes",
@@ -417,7 +536,6 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             event: "*",
             schema: "public",
             table: "menu_items",
-            filter: `shop_id=eq.${selectedShopId}`,
           },
           () => {
             void fetchMenu(false);
@@ -430,12 +548,44 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         }
       });
 
+      // 2. Subscribe to Firestore realtime changes
+      const unsubFirestore = subscribeToMenuItemsFirestore(
+        targetShopIds.length === 1 ? targetShopIds[0] : targetShopIds,
+        (updatedFsItems) => {
+          if (!isMounted) return;
+          console.log("[MenuManagement] 🔔 Realtime Firestore update received:", {
+            selectedShopId,
+            itemCount: updatedFsItems.length,
+            items: updatedFsItems,
+          });
+          setItems((prev) => {
+            const map = new Map<string, MenuItem>();
+            prev.forEach((i) => map.set(String(i.id || i.name), i));
+            updatedFsItems.forEach((i) => {
+              map.set(String(i.id || i.name), {
+                ...i,
+                is_available: i.is_available !== false,
+                stock_quantity: i.stock_quantity ?? null,
+              });
+            });
+            const merged = Array.from(map.values());
+            try {
+              localStorage.setItem(`localeats_menu_${selectedShopId}`, JSON.stringify(merged));
+            } catch {
+              // ignore
+            }
+            return merged;
+          });
+        }
+      );
+
       return () => {
         isMounted = false;
         if (activeChannel) void supabase.removeChannel(activeChannel);
+        if (unsubFirestore) unsubFirestore();
       };
     }
-  }, [selectedShopId, fetchMenu, subscribeWithAuthGuard]);
+  }, [selectedShopId, fetchMenu, subscribeWithAuthGuard, userOwnedShops]);
 
   const handleAdd = () => {
     if (imagePreview && imagePreview.startsWith("blob:")) {
@@ -443,7 +593,9 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     }
     setEditingItem(null);
     setSelectedDietaryTags([]);
+    const defaultShopId = (selectedShopId !== "all" ? selectedShopId : userOwnedShops[0]?.id) || 18;
     setFormData({
+      shop_id: defaultShopId,
       name: "",
       price: "",
       category: "Main Course",
@@ -462,13 +614,23 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       URL.revokeObjectURL(imagePreview);
     }
     setEditingItem(item);
-    const { tags, description } = parseDescriptionAndTags(item.description);
+    // Prefer explicit dietary_tags array if present; fallback to legacy bracket parser
+    const tags = Array.isArray(item.dietary_tags) && item.dietary_tags.length > 0
+      ? item.dietary_tags
+      : parseDescriptionAndTags(item.description).tags;
     setSelectedDietaryTags(tags);
+
+    // Save description unmodified without embedded tags
+    const cleanDesc = Array.isArray(item.dietary_tags) && item.dietary_tags.length > 0
+      ? (item.description || "")
+      : (parseDescriptionAndTags(item.description).description || item.description || "");
+
     setFormData({
+      shop_id: item.shop_id || (selectedShopId !== "all" ? selectedShopId : userOwnedShops[0]?.id) || 18,
       name: item.name,
       price: item.price.toString(),
       category: item.category || "Main Course",
-      description: description,
+      description: cleanDesc,
       stock_quantity: item.stock_quantity?.toString() || "10",
       is_unlimited: item.stock_quantity === null || item.stock_quantity === -1,
     });
@@ -480,7 +642,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.price || !selectedShopId) {
+    const effectiveShopId = formData.shop_id || (selectedShopId !== "all" ? selectedShopId : userOwnedShops[0]?.id) || 18;
+    if (!formData.name.trim() || !formData.price || !effectiveShopId) {
       toast.error("Please enter a name and price.");
       return;
     }
@@ -508,14 +671,14 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         finalImageUrl = null;
       }
 
-      const fullDescription = formData.description + (selectedDietaryTags.length > 0 ? ` [${selectedDietaryTags.join(", ")}]` : "");
-      
+      // Payload separates dietary tags from description and preserves unmodified description
       const payload = {
-        shop_id: selectedShopId,
+        shop_id: effectiveShopId,
         name: formData.name,
         price: parseFloat(formData.price),
         category: formData.category,
-        description: fullDescription,
+        description: formData.description,
+        dietary_tags: selectedDietaryTags,
         stock_quantity: formData.is_unlimited ? null : parseInt(formData.stock_quantity || "0"),
         is_available: editingItem ? editingItem.is_available : true,
         image_url: finalImageUrl,
@@ -523,15 +686,39 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       };
 
       if (editingItem) {
-        const { error } = await supabase.from("menu_items").update(payload).eq("id", editingItem.id);
-        if (error) throw error;
+        // 1. Update in Supabase (if configured)
+        try {
+          await supabase.from("menu_items").update(payload).eq("id", editingItem.id);
+        } catch (sbErr) {
+          console.warn("[MenuManagement] Notice updating Supabase menu item:", sbErr);
+        }
+
+        // 2. Update in Firestore
+        try {
+          await updateFirestoreMenuItem(editingItem.id, payload);
+        } catch (fsErr) {
+          console.warn("[MenuManagement] Notice updating Firestore menu item:", fsErr);
+        }
+
         toast.success("Item updated");
       } else {
-        const { error } = await supabase.from("menu_items").insert({
-          ...payload,
-          created_at: new Date().toISOString()
-        });
-        if (error) throw error;
+        // 1. Insert in Supabase (if configured)
+        try {
+          await supabase.from("menu_items").insert({
+            ...payload,
+            created_at: new Date().toISOString()
+          });
+        } catch (sbErr) {
+          console.warn("[MenuManagement] Notice inserting Supabase menu item:", sbErr);
+        }
+
+        // 2. Insert in Firestore
+        try {
+          await createFirestoreMenuItem(payload);
+        } catch (fsErr) {
+          console.warn("[MenuManagement] Notice inserting Firestore menu item:", fsErr);
+        }
+
         toast.success("Item added");
       }
       
@@ -552,31 +739,39 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   };
 
   const toggleAvailability = async (item: MenuItem) => {
+    const nextAvailability = !item.is_available;
     // Optimistic Update
     setItems((prev) =>
-      prev.map((i) => (i.id === item.id ? { ...i, is_available: !item.is_available } : i))
+      prev.map((i) => (i.id === item.id ? { ...i, is_available: nextAvailability } : i))
     );
 
-    const { error } = await supabase
-      .from("menu_items")
-      .update({
-        is_available: !item.is_available,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", item.id);
-
-    if (error) {
-      // Rollback
-      setItems((prev) =>
-        prev.map((i) => (i.id === item.id ? { ...i, is_available: item.is_available } : i))
-      );
-      toast.error("We couldn't update availability. Please try again.");
-    } else {
-      toast.success(`${item.name} is now ${!item.is_available ? "available" : "unavailable"}`);
+    // Sync Supabase
+    try {
+      await supabase
+        .from("menu_items")
+        .update({
+          is_available: nextAvailability,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", item.id);
+    } catch (sbErr) {
+      console.warn("[MenuManagement] Notice updating Supabase availability:", sbErr);
     }
+
+    // Sync Firestore
+    try {
+      await updateFirestoreMenuItem(item.id, {
+        is_available: nextAvailability,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (fsErr) {
+      console.warn("[MenuManagement] Notice updating Firestore availability:", fsErr);
+    }
+
+    toast.success(`${item.name} is now ${nextAvailability ? "available" : "unavailable"}`);
   };
 
-  const toggleSelectItem = (id: number) => {
+  const toggleSelectItem = (id: number | string) => {
     setSelectedItems((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
@@ -590,7 +785,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     }
   };
 
-  const handleQuickPriceUpdate = async (itemId: number, newPriceStr: string) => {
+  const handleQuickPriceUpdate = async (itemId: number | string, newPriceStr: string) => {
     const val = parseFloat(newPriceStr);
     if (isNaN(val) || val < 0) {
       setEditingPriceId(null);
@@ -599,17 +794,27 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     setEditingPriceId(null);
     setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, price: val } : i)));
 
-    const { error } = await supabase
-      .from("menu_items")
-      .update({ price: val, updated_at: new Date().toISOString() })
-      .eq("id", itemId);
-
-    if (error) {
-      toast.error("Failed to update price.");
-      void fetchMenu(false);
-    } else {
-      toast.success("Price updated successfully");
+    // Sync Supabase
+    try {
+      await supabase
+        .from("menu_items")
+        .update({ price: val, updated_at: new Date().toISOString() })
+        .eq("id", itemId);
+    } catch (sbErr) {
+      console.warn("[MenuManagement] Notice updating Supabase price:", sbErr);
     }
+
+    // Sync Firestore
+    try {
+      await updateFirestoreMenuItem(itemId, {
+        price: val,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (fsErr) {
+      console.warn("[MenuManagement] Notice updating Firestore price:", fsErr);
+    }
+
+    toast.success("Price updated successfully");
   };
 
   // Render Card Component for each item
@@ -713,8 +918,29 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
             <h4 className="font-extrabold text-sm text-on-surface line-clamp-1">{item.name}</h4>
             <p className="text-xs text-on-surface-variant/80 line-clamp-2 mt-0.5">
-              {parseDescriptionAndTags(item.description).description || "No description provided."}
+              {item.dietary_tags && item.dietary_tags.length > 0
+                ? (item.description || "No description provided.")
+                : (parseDescriptionAndTags(item.description).description || item.description || "No description provided.")}
             </p>
+            {item.dietary_tags && item.dietary_tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {item.dietary_tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {userOwnedShops.length > 1 && (
+              <div className="flex items-center gap-1 mt-2 text-[10px] font-bold text-on-surface-variant/80 bg-surface-container-high/60 px-2 py-0.5 rounded-md w-fit">
+                <Store size={10} className="text-primary" />
+                <span>{shops.find((s) => String(s.id) === String(item.shop_id))?.name || `Store #${item.shop_id}`}</span>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-outline-variant/10">
@@ -783,6 +1009,56 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         </div>
       </div>
 
+      {/* Multi-Store Switcher (if merchant has more than 1 store) */}
+      {userOwnedShops.length > 1 && (
+        <div className="flex items-center gap-2 p-2 bg-surface-container-lowest rounded-2xl border border-outline-variant/15 overflow-x-auto">
+          <div className="flex items-center gap-1.5 px-2 text-xs font-bold text-on-surface-variant shrink-0">
+            <Store size={14} className="text-primary" />
+            <span>Store Filter:</span>
+          </div>
+          <button
+            onClick={() => {
+              setSelectedShopId("all");
+              try {
+                localStorage.setItem("localeats_selected_menu_shop_id", "all");
+              } catch {
+                // ignore
+              }
+            }}
+            className={cn(
+              "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer",
+              selectedShopId === "all"
+                ? "bg-primary text-on-primary shadow-xs"
+                : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
+            )}
+          >
+            All My Stores ({items.length})
+          </button>
+          {userOwnedShops.map((shop) => (
+            <button
+              key={shop.id}
+              onClick={() => {
+                setSelectedShopId(shop.id);
+                try {
+                  localStorage.setItem("localeats_selected_menu_shop_id", String(shop.id));
+                } catch {
+                  // ignore
+                }
+              }}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5",
+                String(selectedShopId) === String(shop.id)
+                  ? "bg-primary text-on-primary shadow-xs"
+                  : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
+              )}
+            >
+              <span>{shop.name}</span>
+              <span className="text-[10px] opacity-75 font-mono">#{shop.id}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Main List View */}
       {activeMenuSection === "list" && (
         <div className="space-y-4">
@@ -845,12 +1121,55 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
               <p className="text-xs font-bold text-on-surface-variant">Loading menu inventory...</p>
             </div>
           ) : filteredItems.length === 0 ? (
-            <div className="py-20 text-center space-y-3 bg-surface-container-lowest rounded-3xl border border-outline-variant/15 p-6">
+            <div className="py-16 text-center space-y-3 bg-surface-container-lowest rounded-3xl border border-outline-variant/15 p-6">
               <UtensilsCrossed size={40} className="text-on-surface-variant/40 mx-auto" />
-              <h3 className="font-extrabold text-base text-on-surface">No menu items found</h3>
+              <h3 className="font-extrabold text-base text-on-surface">
+                {searchTerm
+                  ? "No matching menu items"
+                  : selectedShopId === "all"
+                  ? "No menu items found across your stores"
+                  : `No menu items found in "${shops.find((s) => String(s.id) === String(selectedShopId))?.name || `Store #${selectedShopId}`}"`}
+              </h3>
               <p className="text-xs text-on-surface-variant max-w-sm mx-auto">
-                {searchTerm ? "No items match your Fuse.js search query." : "Start adding your items to get orders!"}
+                {searchTerm
+                  ? "No items match your search query."
+                  : "Start adding items or switch stores to view other inventory."}
               </p>
+              {userOwnedShops.length > 1 && selectedShopId !== "all" && (
+                <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    onClick={() => {
+                      setSelectedShopId("all");
+                      try {
+                        localStorage.setItem("localeats_selected_menu_shop_id", "all");
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-all cursor-pointer"
+                  >
+                    View All Stores
+                  </button>
+                  {userOwnedShops
+                    .filter((s) => String(s.id) !== String(selectedShopId))
+                    .map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => {
+                          setSelectedShopId(s.id);
+                          try {
+                            localStorage.setItem("localeats_selected_menu_shop_id", String(s.id));
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-surface-container-high text-on-surface text-xs font-bold hover:bg-surface-container-highest transition-all cursor-pointer"
+                      >
+                        Switch to {s.name}
+                      </button>
+                    ))}
+                </div>
+              )}
             </div>
           ) : filteredItems.length > 20 ? (
             /* Virtualized Window for Large Inventory */
@@ -882,6 +1201,26 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
           </h3>
 
           <div className="space-y-4">
+            {userOwnedShops.length > 1 && (
+              <div>
+                <label className="block text-sm font-bold text-on-surface mb-1 flex items-center gap-1.5">
+                  <Store size={14} className="text-primary" />
+                  <span>Assign to Store</span>
+                </label>
+                <select
+                  value={formData.shop_id}
+                  onChange={(e) => setFormData({ ...formData, shop_id: e.target.value })}
+                  className="w-full bg-surface-container-high border-none rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary outline-none text-xs font-bold"
+                >
+                  {userOwnedShops.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} (ID: {s.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-bold text-on-surface mb-1">Name</label>
               <input

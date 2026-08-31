@@ -27,7 +27,7 @@ interface TourStep {
   badge: string;
   description: string;
   highlightText: string;
-  icon: React.ComponentType<any>;
+  icon: any;
   color: string;
 }
 

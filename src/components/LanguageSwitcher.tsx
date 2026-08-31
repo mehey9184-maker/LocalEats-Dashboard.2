@@ -28,11 +28,18 @@ export const LanguageSwitcher: React.FC = () => {
       window.googleTranslateElementInit = () => {
         if (window.google && window.google.translate && window.google.translate.TranslateElement) {
           try {
-            new (window.google.translate.TranslateElement as any)(
+            type TranslateCtor = new (
+              options: { pageLanguage: string; includedLanguages: string; layout?: unknown },
+              elementId: string
+            ) => unknown;
+            const TranslateElementClass = window.google.translate.TranslateElement as unknown as TranslateCtor & {
+              InlineLayout?: { SIMPLE?: unknown };
+            };
+            new TranslateElementClass(
               {
                 pageLanguage: 'en',
                 includedLanguages: 'en,zu,xh,af,st,tn,ts,ss,ve,nr,nso', // 11 official languages of South Africa
-                layout: (window.google.translate.TranslateElement as any).InlineLayout.SIMPLE
+                layout: TranslateElementClass.InlineLayout?.SIMPLE
               },
               'google_translate_element'
             );

@@ -70,6 +70,7 @@ import {
   subscribeToShopsFirestore,
   subscribeToOrdersFirestore,
   getFirestoreShops,
+  getFirestoreShopById,
   getFirestoreOrders,
   sendPushNotification,
   updateFirestoreShop,
@@ -285,7 +286,7 @@ function App() {
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          if (!parsed.some((s: Shop) => s.id === 18)) {
+          if (!parsed.some((s: Shop) => Number(s.id) === 18)) {
             return [MY_KOTA_SHOP, ...parsed];
           }
           return parsed;
@@ -1264,6 +1265,7 @@ function App() {
     if (!user) return;
 
     const ownedShopIds = await getOwnedShopIds(user, shops);
+    console.log("[App fetchAllMenuItems] 🏬 ownedShopIds:", ownedShopIds);
 
     if (ownedShopIds.length === 0) {
       const cached = localStorage.getItem("localeats_cached_menu_items");
@@ -1282,37 +1284,83 @@ function App() {
       return;
     }
 
-    const { data, error } = await fetchWithRetry(() =>
-      supabase.from("menu_items").select("*").in("shop_id", ownedShopIds)
-    );
+    // 1. Fetch from Supabase
+    let sbItems: MenuItem[] = [];
+    try {
+      const { data, error } = await fetchWithRetry(() =>
+        supabase.from("menu_items").select("*").in("shop_id", ownedShopIds)
+      );
+      if (data && Array.isArray(data)) {
+        sbItems = data;
+      } else if (error && !isSupabaseMocked()) {
+        console.warn("[App] Notice fetching Supabase menu items:", error.message || error);
+      }
+    } catch (err) {
+      console.warn("[App] Notice fetching Supabase menu items:", err);
+    }
 
-    if (data) {
-      const normalized = data.map((item) => ({
+    // 2. Fetch from Firestore
+    const fsItems: MenuItem[] = [];
+    try {
+      for (const sId of ownedShopIds) {
+        const shopFsItems = await getFirestoreMenuItems(sId);
+        console.log(`[App fetchAllMenuItems] 🔥 Firestore response for shopId ${sId}:`, shopFsItems);
+        if (shopFsItems && shopFsItems.length > 0) {
+          fsItems.push(...shopFsItems);
+        }
+      }
+      console.log("[App fetchAllMenuItems] 🔥 Total Firestore menu_items query response:", {
+        ownedShopIds,
+        fsItemsCount: fsItems.length,
+        fsItems,
+      });
+    } catch (fsErr) {
+      console.warn("[App fetchAllMenuItems] Notice fetching Firestore menu items:", fsErr);
+    }
+
+    // 3. Merge Supabase & Firestore items
+    const mergedMap = new Map<string, MenuItem>();
+    fsItems.forEach((item) => {
+      mergedMap.set(String(item.id || item.name), {
         ...item,
         is_available: item.is_available !== false,
         stock_quantity: item.stock_quantity ?? null,
-      }));
-      setMenuItems(normalized);
-      localStorage.setItem("localeats_cached_menu_items", JSON.stringify(normalized));
-    } else {
-      if (error && !isSupabaseMocked()) {
-        console.warn("Notice fetching menu items (using local cache):", error.message || error);
+      });
+    });
+    sbItems.forEach((item) => {
+      mergedMap.set(String(item.id || item.name), {
+        ...item,
+        is_available: item.is_available !== false,
+        stock_quantity: item.stock_quantity ?? null,
+      });
+    });
+
+    const finalItems = Array.from(mergedMap.values());
+    console.log("[App fetchAllMenuItems] 📋 Final merged menu items loaded into state:", {
+      totalCount: finalItems.length,
+      items: finalItems,
+    });
+    if (finalItems.length > 0) {
+      setMenuItems(finalItems);
+      try {
+        localStorage.setItem("localeats_cached_menu_items", JSON.stringify(finalItems));
+      } catch {
+        // ignore
       }
+    } else {
       const cached = localStorage.getItem("localeats_cached_menu_items");
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
           if (parsed && parsed.length > 0) {
             setMenuItems(parsed);
-          } else {
-            setMenuItems(FALLBACK_MENU_ITEMS);
+            return;
           }
         } catch {
-          setMenuItems(FALLBACK_MENU_ITEMS);
+          // ignore
         }
-      } else {
-        setMenuItems(FALLBACK_MENU_ITEMS);
       }
+      setMenuItems(FALLBACK_MENU_ITEMS);
     }
   }, [user, shops]);
 
@@ -1348,16 +1396,16 @@ function App() {
           // ignore
         }
       }
-      if (!list.some((s) => s.id === 18)) {
+      if (!list.some((s) => Number(s.id) === 18)) {
         list = [MY_KOTA_SHOP, ...list];
       }
       setShops(list);
     } else {
       let list = remoteShops;
-      if (!list.some((s) => s.id === 18)) {
+      if (!list.some((s) => Number(s.id) === 18)) {
         list = [MY_KOTA_SHOP, ...list];
       } else {
-        list = list.map((s) => (s.id === 18 ? { ...MY_KOTA_SHOP, ...s } : s));
+        list = list.map((s) => (Number(s.id) === 18 ? { ...MY_KOTA_SHOP, ...s } : s));
       }
       setShops(list);
       try {
@@ -1373,10 +1421,10 @@ function App() {
     if (user) {
       const unsubscribe = subscribeToShopsFirestore((updatedShops) => {
         let list = updatedShops;
-        if (!list.some((s) => s.id === 18)) {
+        if (!list.some((s) => Number(s.id) === 18)) {
           list = [MY_KOTA_SHOP, ...list];
         } else {
-          list = list.map((s) => (s.id === 18 ? { ...MY_KOTA_SHOP, ...s } : s));
+          list = list.map((s) => (Number(s.id) === 18 ? { ...MY_KOTA_SHOP, ...s } : s));
         }
         setShops(list);
         
@@ -1509,10 +1557,12 @@ function App() {
         }
 
         // Delete only orders belonging to these shops
-        const { error } = await supabase
-          .from("orders")
-          .delete()
-          .in("shop_id", ownedShopIds);
+        let error = null;
+        try {
+          await OrderService.deleteAllOrdersForShops(ownedShopIds);
+        } catch (err) {
+          error = err;
+        }
 
         if (error) {
           console.error("Delete All Orders Error:", error);
@@ -2379,17 +2429,28 @@ function App() {
                       ),
                     );
 
-                    const { success, error } = await syncShopAvailability({
+                    const { success, error, freshShop } = await syncShopAvailability({
                       shopId: currentShop.id,
                       isOpen: newStatus,
                       supabase,
                       updateFirestoreShop,
+                      getFirestoreShopById,
                     });
 
                     if (success) {
                       toast.success(
                         `Shop is now ${newStatus ? "Open & Live" : "Closed & Offline"}`,
                       );
+                      // Force a re-fetch of the current state immediately after success
+                      try {
+                        const verifiedShop = freshShop || (await getFirestoreShopById(currentShop.id));
+                        if (verifiedShop) {
+                           setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
+                        }
+                        await fetchShops();
+                      } catch(e) {
+                        console.error("Failed to re-fetch after toggling:", e);
+                      }
                     } else {
                       // Rollback on error
                       setShops((prev) =>
@@ -2497,14 +2558,25 @@ function App() {
              onClick={async () => {
                 const newStatus = true;
                 setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, is_active: newStatus } : s));
-                const { success, error } = await syncShopAvailability({
+                const { success, error, freshShop } = await syncShopAvailability({
                   shopId: currentShop.id,
                   isOpen: newStatus,
                   supabase,
                   updateFirestoreShop,
+                  getFirestoreShopById,
                 });
                 if (success) {
                   toast.success("Shop is now Open and accepting customer orders!");
+                  // Force a re-fetch of the current state immediately after success
+                  try {
+                    const verifiedShop = freshShop || (await getFirestoreShopById(currentShop.id));
+                    if (verifiedShop) {
+                       setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
+                    }
+                    await fetchShops();
+                  } catch(e) {
+                    console.error("Failed to re-fetch after toggling:", e);
+                  }
                 } else {
                   setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, is_active: !newStatus } : s));
                   toast.error(typeof error === "string" ? error : "Failed to go online");
@@ -2591,6 +2663,11 @@ function App() {
                 <Marketing
                   currentShop={currentShop}
                   setShops={setShops}
+                  shops={shops}
+                  menuItems={menuItems}
+                  orders={orders}
+                  user={user}
+                  onNavigateTab={setActiveTab}
                 />
               )}
               {activeTab === "coupons" && (
@@ -2903,8 +2980,19 @@ function App() {
                                      isOpen: isActive,
                                      supabase,
                                      updateFirestoreShop,
-                                     onSuccess: () => {
+                                     getFirestoreShopById,
+                                     onSuccess: async (freshShop) => {
                                        toast.success(`Shop is now ${statusOption === "open" ? "OPEN" : statusOption === "busy" ? "BUSY" : "CLOSED"}`);
+                                       // Force a re-fetch of the current state immediately after success
+                                       try {
+                                         const verifiedShop = freshShop || (await getFirestoreShopById(currentShop.id));
+                                         if (verifiedShop) {
+                                            setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
+                                         }
+                                         await fetchShops();
+                                       } catch (e) {
+                                         console.error("Failed to re-fetch after toggling:", e);
+                                       }
                                      },
                                      onError: (err) => {
                                        setShops((prev) =>

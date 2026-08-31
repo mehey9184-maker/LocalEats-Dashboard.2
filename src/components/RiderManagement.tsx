@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { 
+import {
+  Sparkles,
+  QrCode,
+  Megaphone,
+  Check,
   Compass, 
   Bike, 
   Settings, 
@@ -339,6 +343,39 @@ export const RiderManagement = ({
   const [mapZoomOverride, setMapZoomOverride] = useState<number | null>(null);
   const [activeCode, setActiveCode] = useState<{ code: string; expires: string } | null>(null);
   const [showCode, setShowCode] = useState(false);
+  const [showPairModal, setShowPairModal] = useState(false);
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [broadcastText, setBroadcastText] = useState("");
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
+
+  const handleSendBroadcast = async () => {
+    if (!broadcastText.trim()) {
+      toast.error("Please enter a broadcast announcement.");
+      return;
+    }
+
+    setIsBroadcasting(true);
+    const onlineConns = connections.filter((c) => c.is_online && (c.rider_id || c.id));
+    const targetConns = onlineConns.length > 0 ? onlineConns : connections;
+
+    try {
+      for (const conn of targetConns) {
+        if (conn.rider_id || conn.id) {
+          await sendRiderNudge(conn.rider_id || conn.id, broadcastText.trim());
+        }
+      }
+      toast.success(`Broadcast alert sent to ${targetConns.length} riders!`, {
+        description: broadcastText.trim(),
+      });
+      setBroadcastText("");
+      setShowBroadcastModal(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Broadcast delivered with partial warnings.");
+    } finally {
+      setIsBroadcasting(false);
+    }
+  };
   const [qrUrl, setQrUrl] = useState("");
   const [pairingCodeDuration] = useState<"24h" | "7d" | "30d" | "never">("never");
   const [showInHouseModal, setShowInHouseModal] = useState(false);
@@ -563,13 +600,64 @@ export const RiderManagement = ({
     return dbAutoLookForRider !== undefined ? !!dbAutoLookForRider : localVal;
   });
 
-  const settledCodOrders = useMemo(() => {
+  const [settledCodOrders, setSettledCodOrders] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem("localeats_settled_cod_orders") || "[]") as string[];
     } catch {
       return [];
     }
-  }, []);
+  });
+
+  const handleSettleRiderCash = (riderId: string, riderName: string) => {
+    const matchingOrders = orders.filter(
+      (o) =>
+        (o.rider_id === riderId || o.rider_name === riderName) &&
+        (o.status === "completed" || (o.status as string) === "delivered" || o.delivery_status === "delivered") &&
+        (o.payment_method?.toLowerCase().includes("cash") || o.payment_method?.toLowerCase().includes("cod")) &&
+        !settledCodOrders.includes(o.id)
+    );
+
+    if (matchingOrders.length === 0) {
+      toast.info("No outstanding cash to settle for this rider.");
+      return;
+    }
+
+    const orderIdsToSettle = matchingOrders.map((o) => o.id);
+    const totalAmount = matchingOrders.reduce((sum, o) => sum + (Number(o.total_price) || 0), 0);
+    const updatedSettled = Array.from(new Set([...settledCodOrders, ...orderIdsToSettle]));
+
+    setSettledCodOrders(updatedSettled);
+    localStorage.setItem("localeats_settled_cod_orders", JSON.stringify(updatedSettled));
+
+    toast.success(`Settled R ${totalAmount.toFixed(2)} Cash Handover!`, {
+      description: `Reconciled ${matchingOrders.length} cash orders from ${riderName} into store register.`,
+    });
+  };
+
+  const handleSettleAllCash = () => {
+    const unsettledCashOrders = orders.filter(
+      (o) =>
+        (o.status === "completed" || (o.status as string) === "delivered" || o.delivery_status === "delivered") &&
+        (o.payment_method?.toLowerCase().includes("cash") || o.payment_method?.toLowerCase().includes("cod")) &&
+        !settledCodOrders.includes(o.id)
+    );
+
+    if (unsettledCashOrders.length === 0) {
+      toast.info("No outstanding cash to settle across fleet.");
+      return;
+    }
+
+    const orderIdsToSettle = unsettledCashOrders.map((o) => o.id);
+    const totalAmount = unsettledCashOrders.reduce((sum, o) => sum + (Number(o.total_price) || 0), 0);
+    const updatedSettled = Array.from(new Set([...settledCodOrders, ...orderIdsToSettle]));
+
+    setSettledCodOrders(updatedSettled);
+    localStorage.setItem("localeats_settled_cod_orders", JSON.stringify(updatedSettled));
+
+    toast.success(`Settled Total R ${totalAmount.toFixed(2)} Fleet Cash!`, {
+      description: `Reconciled all ${unsettledCashOrders.length} cash orders from all drivers into store register.`,
+    });
+  };
 
   const riderCashBalances = useMemo(() => {
     const balances: Record<string, { total: number; name: string; count: number }> = {};
@@ -1513,6 +1601,17 @@ export const RiderManagement = ({
     }
   };
 
+  
+  const totalUnsettledCashAmount = useMemo(() => {
+    const unsettledOrders = orders.filter(
+      (o) =>
+        (o.status === "completed" || (o.status as string) === "delivered" || o.delivery_status === "delivered") &&
+        (o.payment_method?.toLowerCase().includes("cash") || o.payment_method?.toLowerCase().includes("cod")) &&
+        !settledCodOrders.includes(o.id)
+    );
+    return unsettledOrders.reduce((sum, o) => sum + (Number(o.total_price) || 0), 0);
+  }, [orders, settledCodOrders]);
+
   const activeConnectionsCount = useMemo(() => connections.filter(
     (c) => c.rider_id || c.connection_code === "IN-HOUSE" || c.status === "active",
   ).length, [connections]);
@@ -1524,24 +1623,53 @@ export const RiderManagement = ({
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Visual Header */}
-      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 border-b border-outline-variant/10 pb-4">
+      <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-outline-variant/10 pb-4">
         <div className="space-y-1">
-          <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
-            Rider Fleet & Deliveries
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
+              Fleet Command Center
+            </h2>
+            <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-wider">
+              Live Fleet
+            </span>
+          </div>
           <p className="text-xs text-on-surface-variant font-medium">
-            Manage your store riders, share pairing codes, track live deliveries, and configure dispatch rules.
+            Real-time driver roster, active mission tracking, instant COD settlements, and pairing dispatch.
           </p>
         </div>
 
-        <button
-          onClick={generateRiderPerformanceReport}
-          className="px-4 py-2.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-black rounded-2xl shadow-xs transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer border border-outline-variant/20 shrink-0"
-          title="Export Rider Performance & COD Summary (PDF)"
-        >
-          <Download size={15} className="text-primary" />
-          <span>Download Report</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            onClick={() => {
+              if (!activeCode) {
+                void generateCode();
+              }
+              setShowPairModal(true);
+            }}
+            className="px-4 py-2.5 bg-primary hover:bg-primary/90 text-on-primary font-black rounded-2xl shadow-sm transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer"
+            title="Pair a new driver using 6-digit code or QR"
+          >
+            <Plus size={16} />
+            <span>Pair New Rider</span>
+          </button>
+
+          <button
+            onClick={() => setShowBroadcastModal(true)}
+            className="px-3.5 py-2.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-black rounded-2xl shadow-xs transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer border border-outline-variant/20"
+            title="Broadcast instant alert to online drivers"
+          >
+            <Megaphone size={15} className="text-amber-500" />
+            <span>Broadcast</span>
+          </button>
+
+          <button
+            onClick={generateRiderPerformanceReport}
+            className="p-2.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-black rounded-2xl shadow-xs transition-all flex items-center justify-center text-xs uppercase tracking-wider cursor-pointer border border-outline-variant/20"
+            title="Export Rider Performance & COD Summary (PDF)"
+          >
+            <Download size={16} className="text-on-surface-variant" />
+          </button>
+        </div>
       </header>
 
       {/* Sub-Tabs Switcher */}
@@ -1736,8 +1864,8 @@ export const RiderManagement = ({
         {activeSubTab === "network" && (
           <div className="space-y-6 animate-fade-in">
 
-            {/* Quick Fleet Metrics Summary Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* Unified Executive Fleet Command Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <button
                 type="button"
                 onClick={() => setStatusFilter("all")}
@@ -1748,8 +1876,8 @@ export const RiderManagement = ({
                     : "bg-surface-container-low border-outline-variant/10 hover:border-outline-variant/30"
                 )}
               >
-                <div className="w-10 h-10 rounded-xl bg-zinc-900 text-white dark:bg-surface-container-high flex items-center justify-center shrink-0">
-                  <Bike size={20} className="text-primary" />
+                <div className="w-11 h-11 rounded-2xl bg-zinc-900 text-white dark:bg-surface-container-high flex items-center justify-center shrink-0">
+                  <Bike size={22} className="text-primary" />
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Total Fleet</p>
@@ -1768,19 +1896,14 @@ export const RiderManagement = ({
                 )}
               >
                 <div className="flex items-center gap-3 w-full">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 relative">
-                    <Zap size={20} />
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 relative">
+                    <Zap size={22} />
                     {connections.filter((c) => c.is_online).length > 0 && (
-                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                      <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Online Now</p>
-                      {statusFilter === "online" && (
-                        <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full bg-emerald-500 text-white">Active</span>
-                      )}
-                    </div>
+                    <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Online Now</p>
                     <p className={cn(
                       "text-lg font-headline font-black",
                       connections.filter((c) => c.is_online).length > 0 ? "text-emerald-600" : "text-amber-600"
@@ -1790,108 +1913,109 @@ export const RiderManagement = ({
                   </div>
                 </div>
 
-                {connections.filter((c) => c.is_online).length === 0 ? (
-                  <div
+                <div className="mt-2 flex items-center justify-between w-full">
+                  <span
                     onClick={(e) => {
                       e.stopPropagation();
-                      void toggleAllRidersOnline(true);
+                      const allOnline = connections.every((c) => c.is_online);
+                      void toggleAllRidersOnline(!allOnline);
                     }}
-                    className="mt-2.5 w-full py-1 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 shadow-xs transition-colors cursor-pointer"
-                    title="Turn all fleet drivers online and ready for orders"
+                    className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-600/10 hover:bg-emerald-600 text-emerald-700 hover:text-white transition-colors"
                   >
-                    <Zap size={11} />
-                    <span>Turn Fleet Online</span>
+                    {connections.every((c) => c.is_online) && connections.length > 0 ? "Set All Offline" : "Turn All Online"}
+                  </span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveSubTab("missions")}
+                className="p-4 rounded-2xl border transition-all flex items-center gap-3 text-left cursor-pointer bg-surface-container-low border-outline-variant/10 hover:border-primary/40 group"
+              >
+                <div className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Compass size={22} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Active Deliveries</p>
+                    {activeMissions.length > 0 && (
+                      <span className="w-2 h-2 rounded-full bg-primary animate-ping" />
+                    )}
                   </div>
-                ) : (
-                  <p className="text-[9px] text-emerald-700 dark:text-emerald-400 font-bold mt-1 truncate">
-                    Ready for Instant Dispatch
-                  </p>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setStatusFilter(statusFilter === "in_house" ? "all" : "in_house")}
-                className={cn(
-                  "p-4 rounded-2xl border transition-all flex items-center gap-3 text-left cursor-pointer",
-                  statusFilter === "in_house"
-                    ? "bg-indigo-500/10 border-indigo-500 ring-2 ring-indigo-500/30 shadow-xs"
-                    : "bg-surface-container-low border-outline-variant/10 hover:border-indigo-500/40"
-                )}
-              >
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
-                  <Users size={20} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">In-House Staff</p>
                   <p className="text-lg font-headline font-black text-on-surface">
-                    {connections.filter((c) => c.connection_code === "IN-HOUSE").length} Staff
+                    {activeMissions.length} In Transit
                   </p>
                 </div>
               </button>
 
-              <button
-                type="button"
-                onClick={() => setStatusFilter(statusFilter === "paired" ? "all" : "paired")}
-                className={cn(
-                  "p-4 rounded-2xl border transition-all flex items-center gap-3 text-left cursor-pointer",
-                  statusFilter === "paired"
-                    ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/30 shadow-xs"
-                    : "bg-surface-container-low border-outline-variant/10 hover:border-amber-500/40"
+              <div className="p-4 rounded-2xl border bg-surface-container-low border-outline-variant/10 flex flex-col justify-between">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+                      <Wallet size={18} />
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-on-surface-variant/60 tracking-wider">Fleet COD Cash</p>
+                      <p className="text-base font-headline font-black text-emerald-600">
+                        R {totalUnsettledCashAmount.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {totalUnsettledCashAmount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleSettleAllCash}
+                    className="mt-2 w-full py-1 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 shadow-xs transition-colors cursor-pointer"
+                    title="Settle all outstanding cash collections into store register"
+                  >
+                    <Check size={12} />
+                    <span>Settle All (R {totalUnsettledCashAmount.toFixed(2)})</span>
+                  </button>
                 )}
-              >
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
-                  <ShieldCheck size={20} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Paired Codes</p>
-                  <p className="text-lg font-headline font-black text-on-surface">
-                    {connections.filter((c) => c.connection_code !== "IN-HOUSE").length} Active
-                  </p>
-                </div>
-              </button>
+              </div>
             </div>
 
-            {/* Quick Connect / Pair Center Banner */}
-            <div className="bg-surface-container-low text-on-surface p-5 md:p-6 rounded-[2rem] border border-outline-variant/15 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-5 relative overflow-hidden">
-              <div className="space-y-1 z-10 max-w-lg">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-widest bg-primary text-on-primary px-2.5 py-0.5 rounded-full">
-                    Instant Connect
-                  </span>
-                  <span className="text-[10px] font-bold text-on-surface-variant/70">Permanent Handshake</span>
-                </div>
-                <h3 className="text-xl font-headline font-bold text-on-surface tracking-tight mt-1">
-                  Connect New Delivery Riders
-                </h3>
-                <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Generate a 6-digit pairing code or scan a QR code to pair riders instantly to <span className="font-bold text-on-surface">{currentShop?.name || "your shop"}</span>.
-                </p>
+            {/* Quick Dispatch Control Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-surface-container-low p-3.5 rounded-2xl border border-outline-variant/10 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-on-surface flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-primary" /> Fleet Handshake
+                </span>
+                <span className="text-xs text-on-surface-variant font-medium">
+                  • Link riders with 6-digit codes or register in-house staff
+                </span>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto shrink-0 z-10">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowQRScanner(true)}
-                  className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-surface hover:bg-surface-container-high text-on-surface rounded-xl font-bold transition-all text-xs cursor-pointer border border-outline-variant/20"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-container-high text-on-surface rounded-xl font-bold text-xs cursor-pointer border border-outline-variant/20 transition-all"
                 >
-                  <Camera size={16} className="text-primary" />
+                  <Camera size={14} className="text-primary" />
                   <span>Scan QR</span>
                 </button>
 
                 <button
                   onClick={() => setShowInHouseModal(true)}
-                  className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 rounded-xl font-bold transition-all text-xs cursor-pointer border border-indigo-500/20 shadow-xs"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 rounded-xl font-bold text-xs cursor-pointer border border-indigo-500/20 transition-all"
                 >
-                  <Users size={16} />
-                  <span>+ Add Staff</span>
+                  <Users size={14} />
+                  <span>+ Staff</span>
                 </button>
 
                 <button
-                  onClick={generateCode}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-on-primary rounded-xl font-black hover:bg-primary/90 active:scale-[0.98] transition-all text-xs cursor-pointer shadow-xs"
+                  onClick={() => {
+                    if (!activeCode) {
+                      void generateCode();
+                    }
+                    setShowPairModal(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-on-primary rounded-xl font-black text-xs hover:bg-primary/90 transition-all cursor-pointer shadow-xs"
                 >
-                  <Plus size={16} />
-                  <span>Generate Code</span>
+                  <Plus size={14} />
+                  <span>Pair Code</span>
                 </button>
               </div>
             </div>
@@ -2313,6 +2437,73 @@ export const RiderManagement = ({
                               )}
                             </div>
                           </div>
+
+                          {/* Real-Time Mission Indicator */}
+                          {(() => {
+                            const activeMission = activeMissions.find(
+                              (m) => (m.rider_id && m.rider_id === conn.rider_id) || (m.rider_name && m.rider_name === conn.rider_name)
+                            );
+                            if (!activeMission) return null;
+                            return (
+                              <div className="bg-primary/5 border border-primary/20 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="w-2 h-2 rounded-full bg-primary animate-ping shrink-0" />
+                                  <p className="text-xs font-bold text-on-surface truncate">
+                                    🚴 Active Order <span className="font-mono text-primary font-black">#{activeMission.id.slice(-4).toUpperCase()}</span>
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedTrackId(conn.rider_id || conn.id)}
+                                  className="px-2.5 py-1 bg-primary text-on-primary text-[10px] font-black uppercase tracking-wider rounded-lg shadow-xs hover:bg-primary/90 transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                                >
+                                  <Navigation size={11} />
+                                  <span>Track Map</span>
+                                </button>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Cash on Hand (COD) Handshake Settlement Card */}
+                          {(() => {
+                            const riderUnsettledCashOrders = orders.filter(
+                              (o) =>
+                                (o.rider_id === conn.rider_id || o.rider_name === conn.rider_name) &&
+                                (o.status === "completed" || (o.status as string) === "delivered" || o.delivery_status === "delivered") &&
+                                (o.payment_method?.toLowerCase().includes("cash") || o.payment_method?.toLowerCase().includes("cod")) &&
+                                !settledCodOrders.includes(o.id)
+                            );
+                            const riderCashAmount = riderUnsettledCashOrders.reduce((sum, o) => sum + (Number(o.total_price) || 0), 0);
+                            if (riderCashAmount <= 0) return null;
+
+                            return (
+                              <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-600 flex items-center justify-center shrink-0">
+                                    <Wallet size={14} />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-[9px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Cash on Hand</p>
+                                    <p className="text-xs font-headline font-black text-emerald-600 truncate">
+                                      R {riderCashAmount.toFixed(2)}
+                                      <span className="text-[9px] text-emerald-700/60 font-normal ml-1">
+                                        ({riderUnsettledCashOrders.length} {riderUnsettledCashOrders.length === 1 ? "order" : "orders"})
+                                      </span>
+                                    </p>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSettleRiderCash(conn.rider_id || conn.id, conn.rider_name || "Driver")}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all shadow-xs flex items-center gap-1 cursor-pointer shrink-0"
+                                  title="Reconcile and collect cash handover from driver"
+                                >
+                                  <Check size={12} />
+                                  <span>Settle Cash</span>
+                                </button>
+                              </div>
+                            );
+                          })()}
 
                           {/* Online & Ready Interactive Dispatch Switch */}
                           <div className={cn(
@@ -3344,6 +3535,251 @@ export const RiderManagement = ({
             }} 
             onClose={() => setShowQRScanner(false)} 
           />
+        )}
+      </AnimatePresence>
+
+      {/* DEDICATED PAIRING CODE & QR MODAL */}
+      <AnimatePresence>
+        {showPairModal && (
+          <motion.div key="showPairModal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm pointer-events-auto"
+              onClick={() => setShowPairModal(false)}
+            />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="w-full max-w-lg bg-surface-container-low rounded-3xl border border-outline-variant/20 shadow-2xl relative flex flex-col pointer-events-auto overflow-hidden text-on-surface"
+            >
+              <div className="p-6 border-b border-outline-variant/10 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                    <QrCode size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">Pair Delivery Rider</h3>
+                    <p className="text-[10px] text-on-surface-variant/60 font-medium">Link driver device to {currentShop?.name || "your store"}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowPairModal(false)}
+                  className="w-8 h-8 rounded-full hover:bg-on-surface/5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {activeCode ? (
+                  <div className="space-y-4">
+                    <div className="bg-surface rounded-2xl p-5 border border-primary/20 text-center space-y-2 shadow-xs">
+                      <span className="text-[10px] font-black uppercase bg-primary/10 text-primary px-3 py-1 rounded-full tracking-widest">
+                        6-Digit Pairing Cipher
+                      </span>
+                      <div className="text-4xl sm:text-5xl font-mono font-black text-primary tracking-widest py-1">
+                        {activeCode.code}
+                      </div>
+                      <p className="text-xs text-on-surface-variant max-w-xs mx-auto font-medium">
+                        Instruct driver to open <strong className="text-on-surface">Driver App</strong>, tap <strong className="text-on-surface">"Pair Shop"</strong>, and enter this code.
+                      </p>
+                    </div>
+
+                    {/* QR Code and Quick Actions */}
+                    <div className="flex flex-col sm:flex-row items-center gap-4 bg-on-surface/5 p-4 rounded-2xl border border-outline-variant/10">
+                      {qrUrl ? (
+                        <img src={qrUrl} alt="Pairing QR Code" className="w-24 h-24 rounded-xl border border-outline-variant/20 bg-white p-1 shrink-0" />
+                      ) : (
+                        <div className="w-24 h-24 rounded-xl bg-surface flex items-center justify-center text-[10px] text-on-surface-variant shrink-0">
+                          Generating QR...
+                        </div>
+                      )}
+                      <div className="space-y-2 flex-1 w-full text-center sm:text-left">
+                        <p className="text-xs font-bold text-on-surface">Camera Scan QR</p>
+                        <p className="text-[11px] text-on-surface-variant leading-relaxed">Rider can scan this QR code directly from their driver app.</p>
+                        
+                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(activeCode.code);
+                              toast.success("Pairing code copied to clipboard!");
+                            }}
+                            className="px-3 py-1.5 bg-surface hover:bg-on-surface/5 border border-outline-variant/20 text-on-surface rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          >
+                            <Copy size={13} className="text-primary" />
+                            <span>Copy Code</span>
+                          </button>
+
+                          <a
+                            href={`https://wa.me/?text=${encodeURIComponent(`Hi! Here is your LocalEats driver pairing code for ${currentShop?.name || 'our shop'}: ${activeCode.code}. Open your Driver App and tap Pair Shop!`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          >
+                            <Share2 size={13} />
+                            <span>Share WhatsApp</span>
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-outline-variant/10">
+                      <button
+                        type="button"
+                        onClick={() => invalidateAndRegenerate(undefined, activeCode.code)}
+                        className="px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-500/10 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RotateCcw size={13} />
+                        <span>Regenerate Code</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          claimPairingCode("active_temp", activeCode.code);
+                          setShowPairModal(false);
+                        }}
+                        className="px-3 py-2 text-xs font-bold text-primary hover:bg-primary/10 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <UserPlus size={13} />
+                        <span>Simulate Link</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-8 text-center space-y-4">
+                    <p className="text-xs text-on-surface-variant">No active pairing code generated.</p>
+                    <button
+                      type="button"
+                      onClick={generateCode}
+                      className="px-5 py-2.5 bg-primary text-on-primary font-black rounded-xl text-xs uppercase tracking-wider cursor-pointer"
+                    >
+                      Generate Code
+                    </button>
+                  </div>
+                )}
+
+                <div className="bg-surface p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-bold text-on-surface">Need an in-house permanent staff member?</p>
+                    <p className="text-[10px] text-on-surface-variant">Register drivers manually without pairing codes.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPairModal(false);
+                      setShowInHouseModal(true);
+                    }}
+                    className="px-3 py-1.5 bg-indigo-500/10 text-indigo-600 border border-indigo-500/20 hover:bg-indigo-500/20 text-xs font-bold rounded-xl transition-colors shrink-0 cursor-pointer"
+                  >
+                    + Add Staff
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* FLEET BROADCAST MODAL */}
+      <AnimatePresence>
+        {showBroadcastModal && (
+          <motion.div key="showBroadcastModal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm pointer-events-auto"
+              onClick={() => setShowBroadcastModal(false)}
+            />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="w-full max-w-md bg-surface-container-low rounded-3xl border border-outline-variant/20 shadow-2xl relative flex flex-col pointer-events-auto overflow-hidden text-on-surface"
+            >
+              <div className="p-6 border-b border-outline-variant/10 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                    <Megaphone size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">Fleet Broadcast</h3>
+                    <p className="text-[10px] text-on-surface-variant/60 font-medium">Broadcast alert to all online drivers</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowBroadcastModal(false)}
+                  className="w-8 h-8 rounded-full hover:bg-on-surface/5 flex items-center justify-center text-on-surface-variant/60 hover:text-on-surface transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-2">Quick Announcement Templates</label>
+                  <div className="space-y-1.5">
+                    {[
+                      "🚀 High Volume: Multiple orders ready at pickup counter!",
+                      "⏳ Dinner Peak: Please stand by for quick batch dispatch.",
+                      "🌧️ Weather Notice: Rain in zone. Please drive safely!",
+                      "⚡ Surge Bonus: Extra tips available on instant pickups!"
+                    ].map((tpl) => (
+                      <button
+                        key={tpl}
+                        type="button"
+                        onClick={() => setBroadcastText(tpl)}
+                        className="w-full p-2.5 bg-on-surface/5 hover:bg-on-surface/10 rounded-xl border border-outline-variant/5 text-xs text-left font-semibold text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+                      >
+                        {tpl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-on-surface-variant/60 uppercase tracking-wider mb-1.5">Custom Broadcast Message</label>
+                  <textarea
+                    rows={3}
+                    value={broadcastText}
+                    onChange={(e) => setBroadcastText(e.target.value)}
+                    placeholder="Type message to broadcast to all drivers..."
+                    className="w-full px-4 py-3 bg-on-surface/5 border border-outline-variant/10 rounded-xl text-sm focus:ring-1 focus:ring-primary focus:outline-none resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="p-6 bg-on-surface/5 border-t border-outline-variant/10 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowBroadcastModal(false)}
+                  className="flex-1 py-3 bg-transparent border border-outline-variant/20 rounded-xl text-xs font-bold hover:bg-on-surface/5 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendBroadcast}
+                  disabled={isBroadcasting || !broadcastText.trim()}
+                  className="flex-1 py-3 bg-primary text-on-primary rounded-xl text-xs font-black shadow-lg shadow-primary/20 hover:bg-primary/90 transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {isBroadcasting ? (
+                    <span>Sending...</span>
+                  ) : (
+                    <>
+                      <Send size={14} />
+                      <span>Broadcast Alert</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

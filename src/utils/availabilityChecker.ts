@@ -1,3 +1,4 @@
+import { Shop } from "../types";
 /**
  * Availability Checker Utility for LocalEats
  * 
@@ -343,11 +344,14 @@ export async function syncShopAvailability(params: {
   isOpen: boolean;
   supabase?: SupabaseClientLike | null;
   updateFirestoreShop?: (shopId: string | number, updates: Record<string, unknown>) => Promise<{ error: Error | null }>;
-  onSuccess?: () => void;
+  getFirestoreShopById?: (shopId: string | number) => Promise<Shop | null>;
+  onSuccess?: (freshShop?: Shop | null) => void;
   onError?: (err: unknown) => void;
-}): Promise<{ success: boolean; error?: string }> {
-  const { shopId, isOpen, supabase, updateFirestoreShop } = params;
+}): Promise<{ success: boolean; error?: string; freshShop?: Shop | null }> {
+  const { shopId, isOpen, supabase, updateFirestoreShop, getFirestoreShopById } = params;
   const numId = Number(shopId);
+
+  console.log(`[Diagnostic] syncShopAvailability initiated: toggling shopId ${shopId} to is_active=${isOpen}`);
 
   // 1. Update local storage caches immediately for zero-latency UI
   try {
@@ -420,12 +424,47 @@ export async function syncShopAvailability(params: {
 
   if (firestoreError && supabaseError) {
     const msg = supabaseError?.message || firestoreError?.message || "Failed to sync shop status";
+    console.error(`[Diagnostic] syncShopAvailability FAILED for shopId ${shopId}:`, msg);
     params.onError?.(msg);
     return { success: false, error: msg };
   }
 
-  params.onSuccess?.();
-  return { success: true };
+  // 4. Immediately re-fetch the shop's status from the database to ensure state certainty
+  let freshShop: Shop | null = null;
+  if (getFirestoreShopById) {
+    try {
+      freshShop = await getFirestoreShopById(shopId);
+      if (freshShop) {
+        console.log(`[Diagnostic] syncShopAvailability fresh shop fetched from Firestore:`, {
+          shopId,
+          is_active: freshShop.is_active,
+        });
+        // Update cached shops with latest verified database record
+        try {
+          const cached = localStorage.getItem("localeats_cached_shops");
+          if (cached) {
+            const list = JSON.parse(cached);
+            if (Array.isArray(list)) {
+              const updated = list.map((s: { id?: string | number; [key: string]: unknown }) =>
+                String(s.id) === String(shopId) || (!isNaN(numId) && s.id === numId)
+                  ? { ...s, ...freshShop, is_active: freshShop?.is_active ?? isOpen }
+                  : s
+              );
+              localStorage.setItem("localeats_cached_shops", JSON.stringify(updated));
+            }
+          }
+        } catch {
+          // ignore cache error
+        }
+      }
+    } catch (fetchErr) {
+      console.warn("[Availability Sync] Error re-fetching shop status after update:", fetchErr);
+    }
+  }
+
+  console.log(`[Diagnostic] syncShopAvailability SUCCESS for shopId ${shopId}. is_active is now ${isOpen}`);
+  params.onSuccess?.(freshShop);
+  return { success: true, freshShop };
 }
 
 /**
