@@ -137,7 +137,9 @@ import {
   isValidUUID,
   isShopOwnedByUser,
   getOwnedShopIds,
+  registerVerifiedShopId,
 } from "./utils/shopOwnership";
+import { MerchantApi } from "./services/MerchantApi";
 import { fetchWithRetry } from "./utils/fetchWithRetry";
 
 function cn(...inputs: ClassValue[]) {
@@ -715,6 +717,17 @@ function App() {
       if (fbUser) {
         try {
           const sessionUser = await formatFirebaseUserSession(fbUser);
+          
+          // Phase 3: Fetch verified ownership from the API bridge
+          try {
+            const verifiedShop = await MerchantApi.getMerchantShop();
+            if (verifiedShop && verifiedShop.id) {
+              registerVerifiedShopId(verifiedShop.id);
+            }
+          } catch (apiErr) {
+            console.warn("[Auth Listener] Failed to verify shop ownership with API:", apiErr);
+          }
+
           setUser(sessionUser);
           localStorage.setItem("localeats_user_session", JSON.stringify(sessionUser));
           if (sessionUser.user_metadata?.dark_mode !== undefined) {

@@ -8,149 +8,83 @@ export const isValidUUID = (str: string | null | undefined): boolean => {
   return uuidRegex.test(str);
 };
 
+// State to hold the API-verified shop ID
+let verifiedOwnedShopIds = new Set<string | number>();
+
+export const registerVerifiedShopId = (shopId: string | number) => {
+  verifiedOwnedShopIds.add(String(shopId));
+  const numId = Number(shopId);
+  if (!isNaN(numId)) {
+    verifiedOwnedShopIds.add(numId);
+  }
+};
+
+/**
+ * Returns true ONLY if the API has explicitly verified this merchant owns the shop.
+ * All client-side bypasses (localStorage, email matching, shop 18, user_metadata)
+ * have been removed per Phase 3 security hardening.
+ */
 export const isShopOwnedByUser = (shop: Shop, user: User | null): boolean => {
-  if (!shop) return false;
-
-  // 1. Permanent Vendor Identifier in Supabase Auth user_metadata (Highest Priority)
-  if (user?.user_metadata?.vendor_shop_id && String(shop.id) === String(user.user_metadata.vendor_shop_id)) {
+  if (!shop || !user) return false;
+  
+  // Strict check against API-verified ownership state
+  if (verifiedOwnedShopIds.has(String(shop.id))) {
     return true;
   }
-  if (user?.user_metadata?.shop_id && String(shop.id) === String(user.user_metadata.shop_id)) {
-    return true;
-  }
-
-  // 2. Permanent Vendor Identifier in LocalStorage
-  try {
-    const vendorShopId = localStorage.getItem("localeats_vendor_shop_id");
-    if (vendorShopId && String(shop.id) === String(vendorShopId)) return true;
-  } catch {
-    // ignore
-  }
-
-  // 3. Database direct owner matching
-  if (user && shop.owner_id === user.id) return true;
-
-  // 4. Vendor Email matching
-  if (user?.email && shop.email && (shop as unknown as { email?: string }).email?.toLowerCase().trim() === user.email.toLowerCase().trim()) return true;
-
-  // 5. Default single-vendor shop fallback ("My-Kota" / shop ID 18)
-  if (user && Number(shop.id) === 18) return true;
-
-  // 6. Local cache shop ID fallback
-  try {
-    const savedShopId = localStorage.getItem("localeats_my_shop_id");
-    if (savedShopId && String(shop.id) === String(savedShopId)) return true;
-    const lastShopId = localStorage.getItem("localeats_last_selected_shop_id");
-    if (lastShopId && String(shop.id) === String(lastShopId)) return true;
-  } catch {
-    // ignore
-  }
-
+  
+  // NOTE: We no longer grant ownership based on localStorage, user_metadata, 
+  // email matching, or hardcoded IDs like 18.
   return false;
+};
+
+/**
+ * Temporarily returns "hint" shop IDs for UI and diagnostic rendering during migration.
+ * These are NOT authoritative and will not pass isShopOwnedByUser() unless confirmed by API.
+ */
+export const getLegacyHintShopIds = (user: User | null): (number | string)[] => {
+  if (!user) return [];
+  const hints = new Set<number | string>();
+  
+  try {
+    const v = localStorage.getItem("localeats_vendor_shop_id");
+    if (v) hints.add(v);
+    const m = localStorage.getItem("localeats_my_shop_id");
+    if (m) hints.add(m);
+    const l = localStorage.getItem("localeats_last_selected_shop_id");
+    if (l) hints.add(l);
+  } catch {
+    // ignore
+  }
+  
+  if (user.user_metadata?.vendor_shop_id) hints.add(user.user_metadata.vendor_shop_id);
+  if (user.user_metadata?.shop_id) hints.add(user.user_metadata.shop_id);
+  
+  // Also include the legacy default just as a UI hint so the UI doesn't crash during transition
+  hints.add(18);
+  hints.add("18");
+  
+  // Deduplicate and expand
+  const expanded = new Set<number | string>();
+  hints.forEach(id => {
+    expanded.add(id);
+    const num = Number(id);
+    if (!isNaN(num)) expanded.add(num);
+  });
+  
+  return Array.from(expanded);
 };
 
 export const getOwnedShopIds = async (user: User | null, currentShops: Shop[]): Promise<(number | string)[]> => {
   if (!user) return [];
-  const idsSet = new Set<number | string>();
-
-  // 1. Highest Priority: Permanent Identifiers in user_metadata & localStorage
-  if (user.user_metadata?.vendor_shop_id) {
-    idsSet.add(user.user_metadata.vendor_shop_id);
+  
+  // If we have API-verified shops, return them.
+  if (verifiedOwnedShopIds.size > 0) {
+    return Array.from(verifiedOwnedShopIds);
   }
-  if (user.user_metadata?.shop_id) {
-    idsSet.add(user.user_metadata.shop_id);
-  }
-  try {
-    const vendorShopId = localStorage.getItem("localeats_vendor_shop_id");
-    if (vendorShopId) idsSet.add(isNaN(Number(vendorShopId)) ? vendorShopId : Number(vendorShopId));
-  } catch {
-    // ignore
-  }
-
-  // 2. From current shops in React state
-  currentShops.filter((s) => isShopOwnedByUser(s, user)).forEach((s) => idsSet.add(s.id));
-
-  // 3. Query Supabase shops safely with table accessibility & column existence checks
-  try {
-    // Verify table accessibility before querying
-    const { error: accessErr } = await supabase.from("shops").select("id").limit(1);
-    if (!accessErr) {
-      if (isValidUUID(user.id)) {
-        let orQuery = `owner_id.eq.${user.id}`;
-        if (user.email) {
-          orQuery += `,email.ilike.${user.email.trim()}`;
-        }
-        const { data: ownedShops, error: queryErr } = (await supabase
-          .from("shops")
-          .select("id, owner_id, email")
-          .or(orQuery)) as { data: Array<{ id: number | string; owner_id?: string; email?: string }> | null; error: { code?: string; message?: string } | null };
-
-        if (!queryErr && ownedShops) {
-          ownedShops.forEach((s) => idsSet.add(s.id));
-        } else if (queryErr && (queryErr.code === "42703" || queryErr.message?.includes("column"))) {
-          // Column owner_id or email might be missing in schema; fallback safely
-          if (user.email) {
-            const { data: ownedByEmail } = (await supabase
-              .from("shops")
-              .select("id")
-              .ilike("email", user.email.trim())) as { data: Array<{ id: number | string }> | null };
-            ownedByEmail?.forEach((s) => idsSet.add(s.id));
-          }
-        }
-      } else if (user.email) {
-        const { data: ownedShops } = (await supabase
-          .from("shops")
-          .select("id, email")
-          .ilike("email", user.email.trim())) as { data: Array<{ id: number | string; email?: string }> | null };
-        ownedShops?.forEach((s) => idsSet.add(s.id));
-      }
-    } else {
-      console.debug("[Shop Ownership Sync] Shops table inaccessible or unconfigured:", (accessErr as { message?: string })?.message);
-    }
-  } catch (err) {
-    console.debug("[Shop Ownership Sync] Exception during ownership query, falling back to cache:", err);
-  }
-
-  // 4. From cached shops in localStorage
-  try {
-    const cachedShops = JSON.parse(localStorage.getItem("localeats_cached_shops") || "[]");
-    if (Array.isArray(cachedShops)) {
-      cachedShops.filter((s: Shop) => isShopOwnedByUser(s, user)).forEach((s: Shop) => idsSet.add(s.id));
-    }
-  } catch {
-    // ignore
-  }
-
-  // 5. From explicit local storage shop IDs
-  try {
-    const savedShopId = localStorage.getItem("localeats_my_shop_id");
-    if (savedShopId && !isNaN(Number(savedShopId))) idsSet.add(Number(savedShopId));
-    const lastShopId = localStorage.getItem("localeats_last_selected_shop_id");
-    if (lastShopId && !isNaN(Number(lastShopId))) idsSet.add(Number(lastShopId));
-  } catch {
-    // ignore
-  }
-
-  // Expand both string and numeric types so Firestore / Supabase queries match seamlessly
-  const expanded = new Set<number | string>();
-  idsSet.forEach((id) => {
-    expanded.add(id);
-    const num = Number(id);
-    if (!isNaN(num)) {
-      expanded.add(num);
-      expanded.add(String(num));
-    }
-  });
-
-  // Default fallback if empty: include default shop 18
-  if (expanded.size === 0) {
-    expanded.add(18);
-    expanded.add("18");
-  }
-
-  // Ensure synthetic mock shop IDs are excluded from Firestore queries
-  const mockShopIds = new Set([9991, 9992, 9993, "9991", "9992", "9993"]);
-  return Array.from(expanded).filter((id) => !mockShopIds.has(id as number & string));
+  
+  // Fallback to hint IDs during transition so the Firestore listeners don't break,
+  // but note that these IDs are NOT granted authoritative ownership in isShopOwnedByUser.
+  return getLegacyHintShopIds(user);
 };
 
 export const fetchShopById = async (
@@ -170,9 +104,6 @@ export const fetchShopById = async (
 
     if (!error && data) {
       return data as Shop;
-    }
-    if (error) {
-      console.debug(`[Shop Discovery] Notice fetching shop ${shopId}:`, (error as { message?: string })?.message || error);
     }
   } catch (err) {
     console.debug(`[Shop Discovery] Network error fetching shop ${shopId}:`, err);
@@ -215,3 +146,4 @@ export const fetchShopById = async (
 
   return null;
 };
+

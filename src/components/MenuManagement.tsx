@@ -28,6 +28,7 @@ import { useAuthGuard } from "../hooks/useAuthGuard";
 import { cn } from "../lib/utils";
 import { uploadImageToCloudinary, getOptimizedCloudinaryUrl } from "../lib/cloudinary";
 import AIMenuScannerModal from "./AIMenuScannerModal";
+import { isShopOwnedByUser, isValidUUID } from "../utils/shopOwnership";
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -57,52 +58,6 @@ const isPlaceholderImage = (url?: string) => {
     url.includes("via.placeholder") ||
     url.includes("food-placeholder")
   );
-};
-
-const isShopOwnedByUser = (shop: Shop, user: User | null): boolean => {
-  if (!shop) return false;
-
-  // 1. Permanent Vendor Identifier in Supabase Auth user_metadata (Highest Priority)
-  if (user?.user_metadata?.vendor_shop_id && String(shop.id) === String(user.user_metadata.vendor_shop_id)) {
-    return true;
-  }
-  if (user?.user_metadata?.shop_id && String(shop.id) === String(user.user_metadata.shop_id)) {
-    return true;
-  }
-
-  // 2. Permanent Vendor Identifier in LocalStorage
-  try {
-    const vendorShopId = localStorage.getItem("localeats_vendor_shop_id");
-    if (vendorShopId && String(shop.id) === String(vendorShopId)) return true;
-  } catch {
-    // ignore
-  }
-
-  // 3. Database direct owner matching
-  if (user && shop.owner_id === user.id) return true;
-
-  // 4. Vendor Email matching
-  if (user?.email && shop.email && shop.email.toLowerCase().trim() === user.email.toLowerCase().trim()) return true;
-
-  // 5. Default single-vendor shop fallback ("My-Kota" / shop ID 18)
-  if (user && Number(shop.id) === 18) return true;
-
-  // 6. Local cache shop ID fallback
-  try {
-    const savedShopId = localStorage.getItem("localeats_my_shop_id");
-    if (savedShopId && String(shop.id) === String(savedShopId)) return true;
-    const lastShopId = localStorage.getItem("localeats_last_selected_shop_id");
-    if (lastShopId && String(shop.id) === String(lastShopId)) return true;
-  } catch {
-    // ignore
-  }
-
-  return false;
-};
-
-const isValidUUID = (str?: string) => {
-  if (!str) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 };
 
 export const validateImageFile = (file: File) => {
