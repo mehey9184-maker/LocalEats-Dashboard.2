@@ -161,6 +161,7 @@ L.Icon.Default.mergeOptions({
 });
 
 function App() {
+  console.log("[App] App component function executing");
   const { subscribeWithAuthGuard } = useAuthGuard();
   const [isSessionChecking, setIsSessionChecking] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -1909,6 +1910,7 @@ function App() {
   };
 
   if (isSessionChecking && !user) {
+    console.log("[Render] loading-screen (session checking)", { isSessionChecking, isAuthReady, loading, userId: user?.id });
     return (
       <FirebaseInitializingOverlay 
         message="Validating secure merchant session..." 
@@ -1918,6 +1920,7 @@ function App() {
   }
 
   if (isVerifying) {
+    console.log("[Render] verification-pending", { isSessionChecking, isAuthReady, loading, userId: user?.id });
     return (
       <VerificationPending
         email={signupEmail}
@@ -1934,6 +1937,7 @@ function App() {
   }
 
   if (isEditingProfile) {
+    console.log("[Render] editing-profile", { isSessionChecking, isAuthReady, loading, userId: user?.id });
     return (
       <>
         <EditProfile
@@ -1957,6 +1961,7 @@ function App() {
   }
 
   if (!user) {
+    console.log("[Render] sign-in/sign-up", { authView, isSessionChecking, isAuthReady, loading, userId: user?.id });
     return authView === "signin" ? (
       <SignIn
         onSignUpClick={() => setAuthView("signup")}
@@ -1980,6 +1985,8 @@ function App() {
       />
     );
   }
+
+  console.log("[Render] authenticated-dashboard", { isSessionChecking, isAuthReady, loading, userId: user?.id, shopId: currentShop?.id });
 
   const pendingOrdersCount = orders.filter(
     (o) => o.status === "pending",

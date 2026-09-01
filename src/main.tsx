@@ -148,7 +148,12 @@ try {
 }
 
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+console.log("[Boot] main.tsx executing");
+const rootElement = document.getElementById('root');
+console.log("[Boot] root element found:", !!rootElement);
+console.log("[Boot] React render requested");
+
+ReactDOM.createRoot(rootElement!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <App />
