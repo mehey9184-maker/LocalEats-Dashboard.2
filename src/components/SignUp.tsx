@@ -74,15 +74,7 @@ export const SignUp: React.FC<SignUpProps> = ({ onSignInClick, onSuccess }) => {
       } else if (code === "auth/weak-password") {
         setError("Password should be at least 6 characters long.");
       } else if (isNetworkOrTimeout(err) || code === "auth/network-request-failed") {
-        console.log("[Auth SignUp] Network/timeout exception during sign up. Proceeding in resilient local mode.");
-        onSuccess({
-          id: Date.now().toString(),
-          email: email,
-          created_at: new Date().toISOString(),
-          app_metadata: {},
-          user_metadata: { name, phone },
-          aud: "authenticated",
-        });
+        setError("We couldn't create your account because the network connection failed. Please check your connection and try again.");
       } else {
         setError(formatAuthError(err, true));
       }

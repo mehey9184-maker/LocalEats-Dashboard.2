@@ -73,7 +73,7 @@ export interface DashboardOverviewProps {
   loading: boolean;
   shops: Shop[];
   user: User | null;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
   onNavigate: (tab: string) => void;
   onEditProfile: () => void;
   menuItems: MenuItem[];
@@ -1011,7 +1011,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   loading: boolean;
   shops: Shop[];
   user: User | null;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
   onNavigate: (tab: string) => void;
   onEditProfile: () => void;
   menuItems: MenuItem[];
@@ -1038,102 +1038,20 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       return;
     }
     setIsSyncing(true);
-    toast.loading("Verifying shop ownership & database synchronization...", { id: "sync-verify" });
-
-    // Helper timeout wrapper to ensure Supabase calls never hang the UI
-    const withTimeout = <T,>(promise: PromiseLike<T>, ms = 3500): Promise<T> => {
-      return Promise.race([
-        Promise.resolve(promise),
-        new Promise<T>((_, reject) => setTimeout(() => reject(new Error("Supabase query timed out")), ms)),
-      ]);
-    };
+    toast.loading("Refreshing authoritative shop verification...", { id: "sync-verify" });
 
     try {
-      let remoteShops: typeof shops | null = null;
-      try {
-        const { data: fetchRes, error: shopsErr } = await withTimeout(supabase.from("shops").select("*"), 3500);
-        if (!shopsErr && fetchRes) {
-          remoteShops = fetchRes;
-        } else if (shopsErr && (shopsErr.code === "42703" || shopsErr.message?.includes("column"))) {
-          const { data: basicRes } = await withTimeout(supabase.from("shops").select("id, name, email"), 3500);
-          if (basicRes) remoteShops = basicRes as typeof shops;
-        }
-      } catch (e) {
-        console.warn("Notice fetching shops during sync (timeout or offline):", e);
-      }
-
-      const shopList = remoteShops && remoteShops.length > 0 ? remoteShops : shops;
-
-      let targetShop = shopList.find(
-        (s) => isShopOwnedByUser(s, user)
-      );
-
-      if (!targetShop && shopList.length > 0) {
-        targetShop = shopList[0];
-      }
-
-      if (targetShop) {
-        if (targetShop.owner_id !== user.id || (user.email && targetShop.email !== user.email)) {
-          try {
-            const updatePayload: Record<string, unknown> = {
-              owner_id: user.id,
-              email: user.email || targetShop.email || "",
-              updated_at: new Date().toISOString(),
-            };
-            const { error: updateErr } = await withTimeout(
-              supabase.from("shops").update(updatePayload).eq("id", targetShop.id) as any,
-              3000
-            );
-
-            if (updateErr && ((updateErr as any).code === "42703" || (updateErr as any).message?.includes("column"))) {
-              delete updatePayload.updated_at;
-              delete updatePayload.email;
-              await withTimeout(
-                supabase.from("shops").update(updatePayload).eq("id", targetShop.id) as any,
-                3000
-              ).catch(() => {});
-            }
-          } catch (e) {
-            console.warn("Notice updating shop owner in DB during sync:", e);
-          }
-        }
-
-        const vendorShopId = targetShop.id;
-        try {
-          await withTimeout(
-            supabase.auth.updateUser({
-              data: {
-                shop_id: vendorShopId,
-                vendor_shop_id: vendorShopId,
-                permanent_owner_id: user.id,
-                vendor_shop_name: targetShop.name || "My-Kota",
-              },
-            }),
-            3000
-          );
-        } catch (e) {
-          console.warn("Notice updating user metadata during sync:", e);
-        }
-
-        localStorage.setItem("localeats_my_shop_id", String(vendorShopId));
-        localStorage.setItem("localeats_vendor_shop_id", String(vendorShopId));
-        localStorage.setItem("localeats_last_selected_shop_id", String(vendorShopId));
-
-        toast.success(`Verified & Synchronized "${targetShop.name}" (#${vendorShopId})!`, {
+      await Promise.resolve(onRefresh());
+      if (currentShop) {
+        toast.success(`Authoritative shop verification refreshed for "${currentShop.name}" (#${currentShop.id}).`, {
           id: "sync-verify",
         });
       } else {
-        toast.info("No existing shop records found in database.", { id: "sync-verify" });
-      }
-
-      try {
-        onRefresh();
-      } catch (e) {
-        console.warn("onRefresh error during sync:", e);
+        toast.success("Authoritative shop verification refresh completed.", { id: "sync-verify" });
       }
     } catch (err) {
       console.error("Sync & Verify failed:", err);
-      toast.success("Synchronization completed with local fallback.", { id: "sync-verify" });
+      toast.error("Could not refresh authoritative shop verification.", { id: "sync-verify" });
     } finally {
       setIsSyncing(false);
     }
@@ -1670,7 +1588,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               )}
             </div>
             <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
-              Compares local shop cache against Supabase database and automatically repairs any discrepancies in your shop records.
+              Refreshes the API-verified shop already linked to your authenticated merchant account.
             </p>
           </div>
         </div>

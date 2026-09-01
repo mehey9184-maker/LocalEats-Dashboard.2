@@ -1,6 +1,5 @@
 import { supabase } from "../lib/supabase";
 import { Shop, User } from "../types";
-import { MY_KOTA_SHOP, FALLBACK_SHOPS } from "../constants";
 
 export const isValidUUID = (str: string | null | undefined): boolean => {
   if (!str) return false;
@@ -59,44 +58,7 @@ export const isShopOwnedByUser = (shop: Shop, user: User | null): boolean => {
   return false;
 };
 
-/**
- * Temporarily returns "hint" shop IDs for UI and diagnostic rendering during migration.
- * These are NOT authoritative and will not pass isShopOwnedByUser() unless confirmed by API.
- */
-export const getLegacyHintShopIds = (user: User | null): (number | string)[] => {
-  if (!user) return [];
-  const hints = new Set<number | string>();
-  
-  try {
-    const v = localStorage.getItem("localeats_vendor_shop_id");
-    if (v) hints.add(v);
-    const m = localStorage.getItem("localeats_my_shop_id");
-    if (m) hints.add(m);
-    const l = localStorage.getItem("localeats_last_selected_shop_id");
-    if (l) hints.add(l);
-  } catch {
-    // ignore
-  }
-  
-  if (user.user_metadata?.vendor_shop_id) hints.add(user.user_metadata.vendor_shop_id);
-  if (user.user_metadata?.shop_id) hints.add(user.user_metadata.shop_id);
-  
-  // Also include the legacy default just as a UI hint so the UI doesn't crash during transition
-  hints.add(18);
-  hints.add("18");
-  
-  // Deduplicate and expand
-  const expanded = new Set<number | string>();
-  hints.forEach(id => {
-    expanded.add(id);
-    const num = Number(id);
-    if (!isNaN(num)) expanded.add(num);
-  });
-  
-  return Array.from(expanded);
-};
-
-export const getOwnedShopIds = async (user: User | null, currentShops: Shop[]): Promise<(number | string)[]> => {
+export const getOwnedShopIds = async (user: User | null, _currentShops: Shop[]): Promise<(number | string)[]> => {
   if (!user) return [];
   
   // If we have API-verified shops for this user, return them.
@@ -104,9 +66,8 @@ export const getOwnedShopIds = async (user: User | null, currentShops: Shop[]): 
     return Array.from(verifiedState.shopIds);
   }
   
-  // Fallback to hint IDs during transition so the Firestore listeners don't break,
-  // but note that these IDs are NOT granted authoritative ownership in isShopOwnedByUser.
-  return getLegacyHintShopIds(user);
+  // Operational shop selection must fail closed when the API has not verified ownership.
+  return [];
 };
 
 export const fetchShopById = async (
@@ -153,19 +114,5 @@ export const fetchShopById = async (
     // ignore
   }
 
-  // 4. Fallback for default MY_KOTA_SHOP
-  if (String(shopId) === "18" || numId === 18) {
-    return MY_KOTA_SHOP;
-  }
-
-  // 5. Fallback to first available shop in FALLBACK_SHOPS if matching
-  if (FALLBACK_SHOPS.length > 0) {
-    const fallbackMatch = FALLBACK_SHOPS.find(
-      (s) => String(s.id) === String(shopId) || (!isNaN(numId) && Number(s.id) === numId)
-    );
-    if (fallbackMatch) return fallbackMatch;
-  }
-
   return null;
 };
-

@@ -564,12 +564,11 @@ export const supabase = {
       }
     },
 
-    async signUp({ email, password, options }: { email: string; password: string; options?: { data?: { full_name?: string; phone?: string; shop_id?: string | number } } }) {
+    async signUp({ email, password, options }: { email: string; password: string; options?: { data?: { full_name?: string; phone?: string } } }) {
       try {
         const user = await firebaseSignUp(email, password, {
           full_name: options?.data?.full_name,
           phone: options?.data?.phone,
-          shop_id: options?.data?.shop_id,
         });
         return { data: { user }, error: null };
       } catch (err: unknown) {

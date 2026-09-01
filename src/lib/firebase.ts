@@ -23,7 +23,6 @@ import {
   query, 
   where,
   or,
-  documentId,
   writeBatch,
   onSnapshot,
   Unsubscribe
@@ -200,7 +199,7 @@ export async function firebaseSignInWithGoogle(): Promise<User> {
 export async function firebaseSignUp(
   email: string, 
   password: string, 
-  userData: { full_name?: string; phone?: string; shop_id?: string | number }
+  userData: { full_name?: string; phone?: string }
 ): Promise<User> {
   const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
   
@@ -215,8 +214,6 @@ export async function firebaseSignUp(
     email: email.trim(),
     full_name: userData.full_name || "",
     phone: userData.phone || "",
-    shop_id: userData.shop_id || 18,
-    vendor_shop_id: userData.shop_id || 18,
     role: "merchant",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -245,7 +242,7 @@ export async function firebaseResetPassword(email: string): Promise<void> {
 
 export { onAuthStateChanged };
 
-export async function updateFirebaseUserProfile(updates: { full_name?: string; phone?: string; shop_id?: string | number; [key: string]: unknown }): Promise<void> {
+export async function updateFirebaseUserProfile(updates: { full_name?: string; phone?: string }): Promise<void> {
   const currentUser = auth.currentUser;
   if (!currentUser) return;
 
@@ -254,9 +251,13 @@ export async function updateFirebaseUserProfile(updates: { full_name?: string; p
   }
 
   const userDocRef = doc(db, "users", currentUser.uid);
-  await setDoc(userDocRef, {
-    ...updates,
+  const profileUpdates: { full_name?: string; phone?: string; updated_at: string } = {
     updated_at: new Date().toISOString(),
+  };
+  if (updates.full_name !== undefined) profileUpdates.full_name = updates.full_name;
+  if (updates.phone !== undefined) profileUpdates.phone = updates.phone;
+  await setDoc(userDocRef, {
+    ...profileUpdates,
   }, { merge: true });
 }
 
@@ -300,16 +301,8 @@ export async function verifyFirestoreCollections(): Promise<{
       results.details.push(`Shops collection check note: ${String(e)}`);
     }
 
-    // 2. Check Orders
-    try {
-      if (auth.currentUser) {
-        const ordersSnap = await getDocs(query(collection(db, "orders"), where("shop_id", "in", [18, "18"])));
-        results.collections.orders = ordersSnap.size;
-        results.details.push(`Orders: ${ordersSnap.size} records found`);
-      }
-    } catch (e) {
-      results.details.push(`Orders collection check note: ${String(e)}`);
-    }
+    // 2. Orders require an API-verified shop context; never guess a shop ID here.
+    results.details.push("Orders count skipped: verified shop context required");
 
     // 3. Check Menu Items
     try {
@@ -368,6 +361,9 @@ export async function migrateDataToFirestore(params: {
   let ordersCount = 0;
   let menuCount = 0;
   let shopsCount = 0;
+  const hasShopId = (value: unknown): value is string | number =>
+    (typeof value === "string" && value.trim().length > 0) ||
+    (typeof value === "number" && Number.isFinite(value));
 
   console.log(`[Firestore Migration] Executing data transfer for shopId=${shopId || "all"}...`);
 
@@ -375,12 +371,16 @@ export async function migrateDataToFirestore(params: {
   if (shops.length > 0) {
     const shopBatch = writeBatch(db);
     for (const shop of shops) {
+      if (!shop.owner_id || !shop.owner_id.trim()) {
+        console.warn(`[Firestore Migration] Skipping shop ${shop.id}: no explicit owner ID provided.`);
+        continue;
+      }
       const sId = String(shop.id);
       const sRef = doc(db, "shops", sId);
       const shopData = {
         id: Number(shop.id) || shop.id,
         name: shop.name || "LocalEats Partner",
-        owner_id: shop.owner_id || auth.currentUser?.uid || "",
+        owner_id: shop.owner_id,
         email: shop.email || "",
         phone: shop.phone || "",
         address: shop.address || "",
@@ -407,11 +407,20 @@ export async function migrateDataToFirestore(params: {
   if (menuItems.length > 0) {
     const menuBatch = writeBatch(db);
     for (const item of menuItems) {
+      const resolvedShopId = hasShopId(item.shop_id)
+        ? item.shop_id
+        : hasShopId(shopId)
+          ? shopId
+          : null;
+      if (resolvedShopId === null) {
+        console.warn(`[Firestore Migration] Skipping menu item ${item.id}: no shop ID provided.`);
+        continue;
+      }
       const mId = String(item.id);
       const mRef = doc(db, "menu_items", mId);
       const menuData = {
         id: item.id,
-        shop_id: Number(item.shop_id) || Number(shopId) || 18,
+        shop_id: resolvedShopId,
         name: item.name || "Menu Item",
         price: Number(item.price) || 0,
         description: item.description || "",
@@ -433,11 +442,20 @@ export async function migrateDataToFirestore(params: {
   if (orders.length > 0) {
     const orderBatch = writeBatch(db);
     for (const order of orders) {
+      const resolvedShopId = hasShopId(order.shop_id)
+        ? order.shop_id
+        : hasShopId(shopId)
+          ? shopId
+          : null;
+      if (resolvedShopId === null) {
+        console.warn(`[Firestore Migration] Skipping order ${order.id}: no shop ID provided.`);
+        continue;
+      }
       const oId = String(order.id);
       const oRef = doc(db, "orders", oId);
       const orderData = {
         id: order.id,
-        shop_id: Number(order.shop_id) || Number(shopId) || 18,
+        shop_id: resolvedShopId,
         user_id: order.user_id || "",
         rider_id: order.rider_id || null,
         product_name: order.product_name || "Order Item",
@@ -488,8 +506,11 @@ export function subscribeToShopsFirestore(
   
   if (ownerId) conditions.push(where("owner_id", "==", ownerId));
   if (authUid && authUid !== ownerId) conditions.push(where("owner_id", "==", authUid));
-  conditions.push(where(documentId(), "==", "18"));
-  
+  if (conditions.length === 0) {
+    onUpdate([]);
+    return () => {};
+  }
+
   const q = conditions.length > 1 ? query(coll, or(...conditions)) : query(coll, conditions[0]);
 
   return onSnapshot(q, (snap) => {
@@ -509,8 +530,8 @@ export async function getFirestoreShops(ownerId?: string): Promise<Shop[]> {
     
     if (ownerId) conditions.push(where("owner_id", "==", ownerId));
     if (authUid && authUid !== ownerId) conditions.push(where("owner_id", "==", authUid));
-    conditions.push(where(documentId(), "==", "18"));
-    
+    if (conditions.length === 0) return [];
+
     const q = conditions.length > 1 ? query(coll, or(...conditions)) : query(coll, conditions[0]);
     
     const snap = await getDocs(q);

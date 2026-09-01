@@ -28,7 +28,7 @@ import { useAuthGuard } from "../hooks/useAuthGuard";
 import { cn } from "../lib/utils";
 import { uploadImageToCloudinary, getOptimizedCloudinaryUrl } from "../lib/cloudinary";
 import AIMenuScannerModal from "./AIMenuScannerModal";
-import { isShopOwnedByUser, isValidUUID } from "../utils/shopOwnership";
+import { isShopOwnedByUser } from "../utils/shopOwnership";
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -139,28 +139,22 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     () => shops.filter((s) => isShopOwnedByUser(s, user)),
     [shops, user]
   );
-
-  useEffect(() => {
-    if (user && userOwnedShops.length > 0) {
-      userOwnedShops.forEach((s) => {
-        if (s.owner_id !== user.id && isValidUUID(user.id)) {
-          supabase
-            .from("shops")
-            .update({ owner_id: user.id })
-            .eq("id", s.id)
-            .then()
-            .catch(() => {});
-        }
-      });
-    }
-  }, [userOwnedShops, user]);
+  const findVerifiedShop = useCallback(
+    (candidateShopId: string | number | null | undefined) =>
+      candidateShopId === null || candidateShopId === undefined || candidateShopId === ""
+        ? undefined
+        : userOwnedShops.find((shop) => String(shop.id) === String(candidateShopId)),
+    [userOwnedShops]
+  );
 
   const [selectedShopId, setSelectedShopId] = useState<string | number | "all">(() => {
     try {
       const saved = localStorage.getItem("localeats_selected_menu_shop_id");
       if (saved) {
         if (saved === "all") return "all";
-        const match = shops.find((s) => String(s.id) === String(saved));
+        const match = shops.find(
+          (shop) => isShopOwnedByUser(shop, user) && String(shop.id) === String(saved)
+        );
         if (match) return match.id;
       }
     } catch {
@@ -191,12 +185,14 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   // Ensure selectedShopId stays valid if shops change, but don't reset manual user selections
   useEffect(() => {
     if (selectedShopId !== "all") {
-      const exists = shops.some((s) => String(s.id) === String(selectedShopId));
+      const exists = userOwnedShops.some((s) => String(s.id) === String(selectedShopId));
       if (!exists && userOwnedShops.length > 0) {
         setSelectedShopId(userOwnedShops[0].id);
+      } else if (!exists) {
+        setSelectedShopId("all");
       }
     }
-  }, [shops, selectedShopId, userOwnedShops]);
+  }, [selectedShopId, userOwnedShops]);
 
   // STALE-WHILE-REVALIDATE Initial state read from LocalStorage
   const [items, setItems] = useState<MenuItem[]>(() => {
@@ -246,7 +242,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [formData, setFormData] = useState({
-    shop_id: (selectedShopId !== "all" ? selectedShopId : userOwnedShops[0]?.id) || 18,
+    shop_id: (selectedShopId !== "all" ? selectedShopId : userOwnedShops[0]?.id) || "",
     name: "",
     price: "",
     category: "Main Course",
@@ -548,9 +544,11 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     }
     setEditingItem(null);
     setSelectedDietaryTags([]);
-    const defaultShopId = (selectedShopId !== "all" ? selectedShopId : userOwnedShops[0]?.id) || 18;
+    const defaultShop = findVerifiedShop(
+      selectedShopId !== "all" ? selectedShopId : userOwnedShops[0]?.id
+    );
     setFormData({
-      shop_id: defaultShopId,
+      shop_id: defaultShop?.id || "",
       name: "",
       price: "",
       category: "Main Course",
@@ -580,8 +578,10 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       ? (item.description || "")
       : (parseDescriptionAndTags(item.description).description || item.description || "");
 
+    const verifiedShop = findVerifiedShop(item.shop_id);
+
     setFormData({
-      shop_id: item.shop_id || (selectedShopId !== "all" ? selectedShopId : userOwnedShops[0]?.id) || 18,
+      shop_id: verifiedShop?.id || "",
       name: item.name,
       price: item.price.toString(),
       category: item.category || "Main Course",
@@ -597,8 +597,15 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const effectiveShopId = formData.shop_id || (selectedShopId !== "all" ? selectedShopId : userOwnedShops[0]?.id) || 18;
-    if (!formData.name.trim() || !formData.price || !effectiveShopId) {
+    const candidateShopId = editingItem
+      ? formData.shop_id
+      : formData.shop_id || (selectedShopId !== "all" ? selectedShopId : userOwnedShops[0]?.id);
+    const verifiedShop = findVerifiedShop(candidateShopId);
+    if (!verifiedShop) {
+      toast.error("Select a verified shop before saving a menu item.");
+      return;
+    }
+    if (!formData.name.trim() || !formData.price) {
       toast.error("Please enter a name and price.");
       return;
     }
@@ -628,7 +635,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
       // Payload separates dietary tags from description and preserves unmodified description
       const payload = {
-        shop_id: effectiveShopId,
+        shop_id: verifiedShop.id,
         name: formData.name,
         price: parseFloat(formData.price),
         category: formData.category,

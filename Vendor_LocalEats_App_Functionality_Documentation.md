@@ -16,6 +16,7 @@ LocalEats Vendor is the mission-critical merchant operating system for local foo
 3. **High-Contrast Touch & Responsive UI**: Minimum 44-46px touch targets, warm coral accents (`#FF5A36`), bold charcoal typography, instant haptic and audible kitchen alerts.
 4. **Autonomous Operational Reliability**: Self-contained background workflows for audio kitchen alarms, ESC/POS Bluetooth/USB thermal printing, and multi-channel notification systems.
 5. **Stabilized Crash Recovery Protocol**: Max recovery attempts capped at 1; delegates fatal render errors directly to React's `ErrorBoundary` to prevent infinite reload loops and DOM manipulation clashes.
+6. **Fail-Closed Merchant Identity**: Firebase Auth is authoritative and the merchant API is the only source of the authenticated merchant's shop. Failed signup never creates a local authenticated identity or accepts shop ownership metadata. Shop state starts empty; an API null/error clears operational shop state and cache; cached menu records are restored only after their `shop_id` matches an API-verified owned shop. Migration utilities preserve string shop IDs without inferring owners or default shops.
 
 ---
 
@@ -41,6 +42,7 @@ The application is natively integrated with Google Cloud Firebase:
 * Document path: `/shops/{shopId}` (e.g. `/shops/18` for *My-Kota*).
 * Schema stores `owner_id: string` matching the merchant's Firebase Auth `uid`.
 * **Relational Ownership Resolution (`isShopOwner(shopId)`)**: Evaluates `exists(/databases/.../shops/$(string(shopId)))` and verifies `get(...).data.owner_id == request.auth.uid`.
+* **Client Ownership Resolution**: `MerchantApi.getMerchantShop()` is the only source that populates the authenticated merchant's shop state, and verified ownership is registered for the exact Firebase UID before the shop becomes current. Firestore shop listings, realtime shop subscriptions, Supabase shop scans, browser caches, and authentication metadata cannot establish or repair ownership. Cached menu data is tenant-filtered against API-verified shop IDs before restoration, and menu saves re-verify their candidate shop IDs.
 * **Type-Cast Robustness**: Uses `string(shopId)` to seamlessly support both numeric (`18`) and string (`"18"`) identifiers.
 * **Access Rules**: Public read for customer storefront discovery and vendor profile loading; write/update/delete restricted to the verified shop owner (`owner_id == auth.uid`).
 
