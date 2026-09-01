@@ -25,5 +25,10 @@
     "ts-node": "^10.9.2",
     "typescript": "^7.0.2"
   },
-  "type": "module"
+  "type": "module",
+  "overrides": {
+    "jwks-rsa": {
+      "jose": "4.15.9"
+    }
+  }
 }
