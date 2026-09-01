@@ -44,6 +44,6 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   res.status(500).json({ success: false, error: "Internal Server Error" });
 });
 
-app.listen(PORT, () => {
+app.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`LocalEats API listening on port ${PORT}`);
 });
