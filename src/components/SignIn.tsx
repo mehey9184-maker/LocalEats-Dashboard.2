@@ -53,18 +53,8 @@ export const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
       } else if (code === "auth/too-many-requests") {
         setError("Access temporarily disabled due to many failed attempts. Please try again in a few moments or reset your password.");
       } else if (isNetworkOrTimeout(err) || code === "auth/network-request-failed") {
-        console.log("[Auth SignIn] Network/timeout exception detected; launching resilient offline fallback user session.");
-        const fallbackUser: User = {
-          id: "merchant-" + (cleanedEmail ? cleanedEmail.replace(/[^a-zA-Z0-9]/g, "") : "demo"),
-          email: cleanedEmail || "merchant@localeats.co.za",
-          app_metadata: {},
-          user_metadata: { name: cleanedEmail ? cleanedEmail.split("@")[0] : "LocalEats Merchant" },
-          aud: "authenticated",
-          created_at: new Date().toISOString(),
-        } as User;
-        localStorage.setItem("localeats_user_session", JSON.stringify(fallbackUser));
-        onSuccess(fallbackUser);
-        toast.success("Welcome back! (Operating in resilient offline mode)");
+        console.warn("[Auth SignIn] Firebase Authentication network failure:", err);
+        setError("Unable to reach Firebase Authentication. Check your connection and try again.");
       } else {
         setError(formatAuthError(err, false));
       }
