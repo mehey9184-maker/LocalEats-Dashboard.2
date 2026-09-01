@@ -67,9 +67,7 @@ import {
   firebaseSignOutUser,
   formatFirebaseUserSession,
   onAuthStateChanged,
-  subscribeToShopsFirestore,
   subscribeToOrdersFirestore,
-  getFirestoreShops,
   getFirestoreShopById,
   getFirestoreOrders,
   sendPushNotification,
@@ -116,7 +114,6 @@ import { SignUp } from "./components/SignUp";
 import { VerificationPending } from "./components/VerificationPending";
 import { EditProfile, ProfileData } from "./components/EditProfile";
 import { NotificationCenterSidePanel } from "./components/NotificationCenterSidePanel";
-import { MY_KOTA_SHOP, FALLBACK_SHOPS, FALLBACK_MENU_ITEMS } from "./constants";
 import {
   syncShopAvailability,
 } from "./utils/availabilityChecker";
@@ -147,6 +144,17 @@ import { fetchWithRetry } from "./utils/fetchWithRetry";
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+const clearMerchantShopOperationalCache = () => {
+  [
+    "localeats_cached_shops",
+    "localeats_cached_menu_items",
+    "localeats_my_shop_id",
+    "localeats_vendor_shop_id",
+    "localeats_last_selected_shop_id",
+    "le_menu",
+  ].forEach((key) => localStorage.removeItem(key));
+};
 
 // Fix Leaflet marker icons
 // @ts-expect-error - Leaflet Default Icon prototype doesn't have _getIconUrl type
@@ -285,35 +293,8 @@ function App() {
     isAudioEnabled,
     enableAudio,
   } = useKitchenAlerter(orders);
-  const [shops, setShops] = useState<Shop[]>(() => {
-    try {
-      const cached = localStorage.getItem("localeats_cached_shops");
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          if (!parsed.some((s: Shop) => Number(s.id) === 18)) {
-            return [MY_KOTA_SHOP, ...parsed];
-          }
-          return parsed;
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return FALLBACK_SHOPS;
-  });
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(() => {
-    try {
-      const cached = localStorage.getItem("localeats_cached_menu_items");
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {
-      // ignore
-    }
-    return [];
-  });
+  const [shops, setShops] = useState<Shop[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [user, setUser] = useState<User | null>(null);
     const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
@@ -342,16 +323,9 @@ function App() {
     },
   });
 
-  const lastSyncedShopAuthRef = useRef<string>("");
   const shopId = currentShop?.id;
   const deliveryRadiusKm = currentShop?.delivery_radius_km;
   const deliveryRadiusEnabled = currentShop?.delivery_radius_enabled;
-  const shopOwnerId = currentShop?.owner_id;
-  const shopEmail = currentShop?.email;
-  const shopName = currentShop?.name;
-  const userId = user?.id;
-  const userEmail = user?.email;
-  const userMetadataShopId = user?.user_metadata?.shop_id;
 
   useEffect(() => {
     if (shopId) {
@@ -368,24 +342,11 @@ function App() {
         };
       });
 
-      try {
-        localStorage.setItem("localeats_my_shop_id", String(shopId));
-        localStorage.setItem("localeats_vendor_shop_id", String(shopId));
-        localStorage.setItem("localeats_last_selected_shop_id", String(shopId));
-      } catch {
-        // ignore
-      }
     }
   }, [
     shopId,
     deliveryRadiusKm,
     deliveryRadiusEnabled,
-    shopOwnerId,
-    shopEmail,
-    shopName,
-    userId,
-    userEmail,
-    userMetadataShopId,
   ]);
 
   const trialInfo = useMemo(() => {
@@ -474,20 +435,12 @@ function App() {
     }
   }, [user]);
 
-  // --- Persistent Auth Session Sync & Vendor Shop Metadata Recovery ---
+  // --- Persistent Auth Session Sync ---
   useEffect(() => {
-    const syncUserMetadataAndCache = (u: User) => {
+    const syncUserSession = (u: User) => {
       setUser(u);
       try {
         localStorage.setItem("localeats_user_session", JSON.stringify(u));
-
-        // Recover shop ID immediately from user_metadata if local storage was cleared
-        const metadataShopId = u.user_metadata?.vendor_shop_id || u.user_metadata?.shop_id;
-        if (metadataShopId) {
-          localStorage.setItem("localeats_my_shop_id", String(metadataShopId));
-          localStorage.setItem("localeats_vendor_shop_id", String(metadataShopId));
-          localStorage.setItem("localeats_last_selected_shop_id", String(metadataShopId));
-        }
       } catch {
         // ignore
       }
@@ -497,7 +450,7 @@ function App() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
-          syncUserMetadataAndCache(session.user);
+          syncUserSession(session.user);
         }
       } catch (err) {
         console.warn("[AuthSync] Initial session check warning:", err);
@@ -508,7 +461,7 @@ function App() {
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
-        syncUserMetadataAndCache(session.user);
+        syncUserSession(session.user);
       }
     });
 
@@ -595,16 +548,6 @@ function App() {
       localStorage.removeItem("le_orders");
     }
 
-    try {
-      const cachedMenu = localStorage.getItem("le_menu");
-      if (cachedMenu) {
-        const parsed = JSON.parse(cachedMenu);
-        if (Array.isArray(parsed)) setMenuItems(parsed);
-      }
-    } catch (e) {
-      console.error("Error parsing cached menu. Resetting item.", e);
-      localStorage.removeItem("le_menu");
-    }
   }, []);
 
   useEffect(() => {
@@ -650,6 +593,9 @@ function App() {
     const handleForceLogout = () => {
       console.log("Force logout triggered");
       clearVerifiedShopOwnership();
+      clearMerchantShopOperationalCache();
+      setShops([]);
+      setMenuItems([]);
       setUser(null);
       localStorage.removeItem("localeats_user_session");
       firebaseSignOutUser().catch(() => {});
@@ -667,11 +613,23 @@ function App() {
           // Phase 3: Fetch verified ownership from the API bridge
           try {
             const verifiedShop = await MerchantApi.getMerchantShop();
-            if (verifiedShop && verifiedShop.id) {
+            if (verifiedShop && verifiedShop.id !== null && verifiedShop.id !== undefined) {
               registerVerifiedShopId(fbUser.uid, verifiedShop.id);
+              const authoritativeShops = [verifiedShop as Shop];
+              setShops(authoritativeShops);
+              localStorage.setItem("localeats_cached_shops", JSON.stringify(authoritativeShops));
+            } else {
+              clearVerifiedShopOwnership();
+              clearMerchantShopOperationalCache();
+              setShops([]);
+              setMenuItems([]);
             }
           } catch (apiErr) {
             console.warn("[Auth Listener] Failed to verify shop ownership with API:", apiErr);
+            clearVerifiedShopOwnership();
+            clearMerchantShopOperationalCache();
+            setShops([]);
+            setMenuItems([]);
           }
 
           setUser(sessionUser);
@@ -685,6 +643,9 @@ function App() {
       } else {
         // Phase 3.1: Clear ownership and properly clear session when unauthenticated
         clearVerifiedShopOwnership();
+        clearMerchantShopOperationalCache();
+        setShops([]);
+        setMenuItems([]);
         setUser(null);
         localStorage.removeItem("localeats_user_session");
       }
@@ -1210,27 +1171,44 @@ function App() {
   }, [user, shops, processAndSetOrders]);
 
   const fetchAllMenuItems = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setMenuItems([]);
+      return;
+    }
 
     const ownedShopIds = await getOwnedShopIds(user, shops);
     console.log("[App fetchAllMenuItems] 🏬 ownedShopIds:", ownedShopIds);
 
     if (ownedShopIds.length === 0) {
-      const cached = localStorage.getItem("localeats_cached_menu_items");
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (parsed && parsed.length > 0) {
-            setMenuItems(parsed);
-            return;
-          }
-        } catch {
-          // ignore
-        }
-      }
-      setMenuItems(FALLBACK_MENU_ITEMS);
+      localStorage.removeItem("localeats_cached_menu_items");
+      setMenuItems([]);
       return;
     }
+
+    const ownedShopIdSet = new Set(ownedShopIds.map((id) => String(id)));
+    const restoreVerifiedCachedMenuItems = (): boolean => {
+      const cached = localStorage.getItem("localeats_cached_menu_items");
+      if (!cached) return false;
+
+      try {
+        const parsed = JSON.parse(cached);
+        if (!Array.isArray(parsed)) return false;
+
+        const verifiedItems = parsed.filter((item: MenuItem) =>
+          ownedShopIdSet.has(String(item.shop_id))
+        );
+        if (verifiedItems.length > 0) {
+          localStorage.setItem("localeats_cached_menu_items", JSON.stringify(verifiedItems));
+          setMenuItems(verifiedItems);
+          return true;
+        }
+      } catch {
+        // ignore invalid cache
+      }
+
+      localStorage.removeItem("localeats_cached_menu_items");
+      return false;
+    };
 
     // 1. Fetch from Supabase
     let sbItems: MenuItem[] = [];
@@ -1283,7 +1261,9 @@ function App() {
       });
     });
 
-    const finalItems = Array.from(mergedMap.values());
+    const finalItems = Array.from(mergedMap.values()).filter((item) =>
+      ownedShopIdSet.has(String(item.shop_id))
+    );
     console.log("[App fetchAllMenuItems] 📋 Final merged menu items loaded into state:", {
       totalCount: finalItems.length,
       items: finalItems,
@@ -1296,93 +1276,44 @@ function App() {
         // ignore
       }
     } else {
-      const cached = localStorage.getItem("localeats_cached_menu_items");
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (parsed && parsed.length > 0) {
-            setMenuItems(parsed);
-            return;
-          }
-        } catch {
-          // ignore
-        }
-      }
-      setMenuItems(FALLBACK_MENU_ITEMS);
+      if (restoreVerifiedCachedMenuItems()) return;
+      setMenuItems([]);
     }
   }, [user, shops]);
 
   const fetchShops = useCallback(async () => {
-    let remoteShops: Shop[] | null = null;
-    let remoteError: { message: string; code?: string } | null = null;
-
-    try {
-      // Force cache purge on fetch execution
-      localStorage.removeItem("localeats_cached_shops");
-
-      // Load shops from Firestore (Isolate to current vendor owner)
-      remoteShops = await getFirestoreShops(user?.id);
-      
-    } catch (e: unknown) {
-      console.error("[Shop Discovery] Exception during fetchShops:", e);
-      remoteError = { message: e instanceof Error ? e.message : String(e) };
+    if (!user) {
+      clearVerifiedShopOwnership();
+      clearMerchantShopOperationalCache();
+      setShops([]);
+      setMenuItems([]);
+      return;
     }
 
-    if (remoteError || !remoteShops) {
-      if (!isSupabaseMocked()) {
-        console.debug("[Shops Cache] Using local cached shops:", remoteError?.message || "Inaccessible");
+    try {
+      const verifiedShop = await MerchantApi.getMerchantShop();
+      if (!verifiedShop || verifiedShop.id === null || verifiedShop.id === undefined) {
+        clearVerifiedShopOwnership();
+        clearMerchantShopOperationalCache();
+        setShops([]);
+        setMenuItems([]);
+        return;
       }
-      const cached = localStorage.getItem("localeats_cached_shops");
-      let list = FALLBACK_SHOPS;
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            list = parsed;
-          }
-        } catch {
-          // ignore
-        }
-      }
-      if (!list.some((s) => Number(s.id) === 18)) {
-        list = [MY_KOTA_SHOP, ...list];
-      }
-      setShops(list);
-    } else {
-      let list = remoteShops;
-      if (!list.some((s) => Number(s.id) === 18)) {
-        list = [MY_KOTA_SHOP, ...list];
-      } else {
-        list = list.map((s) => (Number(s.id) === 18 ? { ...MY_KOTA_SHOP, ...s } : s));
-      }
-      setShops(list);
+
+      registerVerifiedShopId(user.id, verifiedShop.id);
+      const authoritativeShops = [verifiedShop as Shop];
+      setShops(authoritativeShops);
       try {
-        localStorage.setItem("localeats_cached_shops", JSON.stringify(list));
+        localStorage.setItem("localeats_cached_shops", JSON.stringify(authoritativeShops));
       } catch {
         // ignore
       }
-    }
-  }, [user?.id]);
-
-  // Subscribe to Firestore for real-time shop updates (e.g. is_active toggles)
-  useEffect(() => {
-    if (user) {
-      const unsubscribe = subscribeToShopsFirestore((updatedShops) => {
-        let list = updatedShops;
-        if (!list.some((s) => Number(s.id) === 18)) {
-          list = [MY_KOTA_SHOP, ...list];
-        } else {
-          list = list.map((s) => (Number(s.id) === 18 ? { ...MY_KOTA_SHOP, ...s } : s));
-        }
-        setShops(list);
-        
-        try {
-          localStorage.setItem("localeats_cached_shops", JSON.stringify(list));
-        } catch {
-          // ignore
-        }
-      }, user.id);
-      return () => unsubscribe();
+    } catch (error) {
+      console.warn("[Shop Discovery] API verification failed closed:", error);
+      clearVerifiedShopOwnership();
+      clearMerchantShopOperationalCache();
+      setShops([]);
+      setMenuItems([]);
     }
   }, [user]);
 
@@ -2559,10 +2490,9 @@ function App() {
                   shops={shops}
                   user={user}
                   onNavigate={setActiveTab}
-                  onRefresh={() => {
-                    fetchShops();
-                    fetchOrders();
-                    fetchAllMenuItems();
+                  onRefresh={async () => {
+                    await fetchShops();
+                    await Promise.all([fetchOrders(), fetchAllMenuItems()]);
                   }}
                   onEditProfile={() => setIsEditingProfile(true)}
                   menuItems={menuItems}
