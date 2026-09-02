@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -64,11 +64,78 @@ const initialForm = {
   story: "",
 };
 
+const formatSouthAfricanPhoneInput = (value: string): string => {
+  const usesInternationalFormat = value.trimStart().startsWith("+");
+  const digits = value.replace(/\D/g, "");
+
+  if (usesInternationalFormat) {
+    const limitedDigits = digits.slice(0, 11);
+    if (limitedDigits.length <= 2) return `+${limitedDigits}`;
+
+    const countryCode = limitedDigits.slice(0, 2);
+    const nationalNumber = limitedDigits.slice(2);
+    const groups = [
+      nationalNumber.slice(0, 2),
+      nationalNumber.slice(2, 5),
+      nationalNumber.slice(5, 9),
+    ].filter(Boolean);
+    return `+${countryCode} ${groups.join(" ")}`;
+  }
+
+  const limitedDigits = digits.slice(0, 10);
+  return [
+    limitedDigits.slice(0, 3),
+    limitedDigits.slice(3, 6),
+    limitedDigits.slice(6, 10),
+  ].filter(Boolean).join(" ");
+};
+
 const normalizeSouthAfricanPhone = (value: string): string | null => {
   const compact = value.replace(/[\s()-]/g, "");
   if (/^0\d{9}$/.test(compact)) return `+27${compact.slice(1)}`;
   if (/^\+27\d{9}$/.test(compact)) return compact;
   return null;
+};
+
+type ReverseGeocodeResponse = {
+  display_name?: unknown;
+  address?: Record<string, unknown>;
+};
+
+// Public Nominatim is a low-volume onboarding aid for the current launch. Keep
+// this helper isolated so a managed provider can replace it without UI changes.
+const reverseGeocodeAddress = async (latitude: number, longitude: number): Promise<string | null> => {
+  const url = new URL("https://nominatim.openstreetmap.org/reverse");
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("lat", String(latitude));
+  url.searchParams.set("lon", String(longitude));
+  url.searchParams.set("addressdetails", "1");
+
+  const response = await fetch(url.toString(), {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error("Address lookup failed");
+
+  const data = await response.json() as ReverseGeocodeResponse;
+  const address = data.address;
+  if (address && typeof address === "object") {
+    const readPart = (key: string): string => typeof address[key] === "string" ? address[key] as string : "";
+    const street = [readPart("house_number"), readPart("road")].filter(Boolean).join(" ");
+    const area = readPart("suburb") || readPart("neighbourhood");
+    const place = readPart("town") || readPart("city") || readPart("village") || readPart("municipality");
+    const conciseAddress = Array.from(new Set([
+      street,
+      area,
+      place,
+      readPart("province"),
+      readPart("postcode"),
+    ].filter(Boolean))).join(", ");
+    if (conciseAddress) return conciseAddress;
+  }
+
+  return typeof data.display_name === "string" && data.display_name.trim()
+    ? data.display_name.trim()
+    : null;
 };
 
 export const CreateShopOnboarding: React.FC<CreateShopOnboardingProps> = ({
@@ -85,8 +152,12 @@ export const CreateShopOnboarding: React.FC<CreateShopOnboardingProps> = ({
   const [showMap, setShowMap] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [isResolvingAddress, setIsResolvingAddress] = useState(false);
+  const [locationNotice, setLocationNotice] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [errorMessage, setErrorMessage] = useState("");
+  const addressEditVersionRef = useRef(0);
+  const locationRequestRef = useRef(0);
 
   const category = selectedCategory === "Other" ? customCategory.trim() : selectedCategory;
   const normalizedPhone = useMemo(() => normalizeSouthAfricanPhone(form.phone), [form.phone]);
@@ -151,6 +222,7 @@ export const CreateShopOnboarding: React.FC<CreateShopOnboardingProps> = ({
   };
 
   const continueFromLocation = () => {
+    if (isResolvingAddress) return;
     const errors = getLocationErrors();
     setFieldErrors(errors);
     if (Object.keys(errors).length === 0) {
@@ -177,6 +249,35 @@ export const CreateShopOnboarding: React.FC<CreateShopOnboardingProps> = ({
     setErrorMessage("");
   };
 
+  const confirmLocationAndAddress = async (nextLatitude: number, nextLongitude: number) => {
+    const requestId = ++locationRequestRef.current;
+    const addressEditVersion = addressEditVersionRef.current;
+    confirmCoordinates(nextLatitude, nextLongitude);
+    clearFieldError("location");
+    setLocationNotice("");
+    setIsResolvingAddress(true);
+
+    try {
+      const address = await reverseGeocodeAddress(nextLatitude, nextLongitude);
+      if (requestId !== locationRequestRef.current) return;
+
+      if (address && addressEditVersion === addressEditVersionRef.current) {
+        setForm((current) => ({ ...current, location: address }));
+        clearFieldError("location");
+      } else if (!address) {
+        setLocationNotice("Location found. Add the shop address so customers can recognize it.");
+      }
+    } catch {
+      if (requestId === locationRequestRef.current) {
+        setLocationNotice("Location found. Add the shop address so customers can recognize it.");
+      }
+    } finally {
+      if (requestId === locationRequestRef.current) {
+        setIsResolvingAddress(false);
+      }
+    }
+  };
+
   const useCurrentLocation = () => {
     clearFieldError("coordinates");
     setErrorMessage("");
@@ -191,9 +292,12 @@ export const CreateShopOnboarding: React.FC<CreateShopOnboardingProps> = ({
 
     setIsLocating(true);
     navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        confirmCoordinates(coords.latitude, coords.longitude);
-        setIsLocating(false);
+      async ({ coords }) => {
+        try {
+          await confirmLocationAndAddress(coords.latitude, coords.longitude);
+        } finally {
+          setIsLocating(false);
+        }
       },
       () => {
         setFieldErrors((current) => ({
@@ -393,7 +497,7 @@ export const CreateShopOnboarding: React.FC<CreateShopOnboardingProps> = ({
                 <label className="block space-y-2 text-sm font-bold">
                   Business phone number
                   <span className="block text-xs font-medium leading-5 text-on-surface-variant">We'll use this number for important shop and order communication.</span>
-                  <input type="tel" inputMode="tel" maxLength={24} value={form.phone} onChange={(event) => { updateField("phone", event.target.value); clearFieldError("phone"); }} className={inputClass} placeholder="082 123 4567" aria-invalid={Boolean(fieldErrors.phone)} />
+                  <input type="tel" inputMode="tel" maxLength={24} value={form.phone} onChange={(event) => { updateField("phone", formatSouthAfricanPhoneInput(event.target.value)); clearFieldError("phone"); }} className={inputClass} placeholder="082 123 4567" aria-invalid={Boolean(fieldErrors.phone)} />
                   {fieldErrors.phone && <span className="block text-xs font-bold text-error">{fieldErrors.phone}</span>}
                 </label>
 
@@ -413,7 +517,7 @@ export const CreateShopOnboarding: React.FC<CreateShopOnboardingProps> = ({
                 <label className="block space-y-2 text-sm font-bold">
                   Shop address
                   <span className="block text-xs font-medium leading-5 text-on-surface-variant">Enter the physical place where orders are prepared or collected.</span>
-                  <input maxLength={300} value={form.location} onChange={(event) => { updateField("location", event.target.value); clearFieldError("location"); }} className={inputClass} aria-invalid={Boolean(fieldErrors.location)} />
+                  <input maxLength={300} value={form.location} onChange={(event) => { addressEditVersionRef.current += 1; updateField("location", event.target.value); setLocationNotice(""); clearFieldError("location"); }} className={inputClass} aria-invalid={Boolean(fieldErrors.location)} />
                   {fieldErrors.location && <span className="block text-xs font-bold text-error">{fieldErrors.location}</span>}
                 </label>
 
@@ -421,7 +525,7 @@ export const CreateShopOnboarding: React.FC<CreateShopOnboardingProps> = ({
                   <p className="mb-3 text-sm font-bold">Confirm your shop location</p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <button type="button" onClick={useCurrentLocation} disabled={isLocating} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-black text-on-primary disabled:opacity-60">
-                      {isLocating ? <Loader2 size={18} className="animate-spin" /> : <LocateFixed size={18} />} Use my current location
+                      {isLocating ? <><Loader2 size={18} className="animate-spin" /> Finding your location...</> : <><LocateFixed size={18} /> Use my current location</>}
                     </button>
                     <button type="button" onClick={() => setShowMap((current) => !current)} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm font-black text-primary">
                       <MapPin size={18} /> Choose on map
@@ -429,13 +533,15 @@ export const CreateShopOnboarding: React.FC<CreateShopOnboardingProps> = ({
                   </div>
 
                   {hasConfirmedLocation && <div className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-500/10 px-4 py-3 text-sm font-black text-emerald-700 dark:text-emerald-300"><CheckCircle2 size={18} /> Location confirmed ✓</div>}
+                  {isResolvingAddress && <div className="mt-3 flex items-center gap-2 text-xs font-bold text-on-surface-variant"><Loader2 size={15} className="animate-spin" /> Finding a nearby address...</div>}
+                  {locationNotice && <span className="mt-3 block text-xs font-bold leading-5 text-on-surface-variant">{locationNotice}</span>}
                   {fieldErrors.coordinates && <span className="mt-3 block text-xs font-bold leading-5 text-error">{fieldErrors.coordinates}</span>}
 
                   {showMap && (
                     <div className="mt-4">
                       <p className="mb-2 text-xs font-medium leading-5 text-on-surface-variant">Tap the map or drag the marker to your shop's exact location.</p>
                       <div className="h-64 w-full overflow-hidden rounded-2xl sm:h-72">
-                        <LeafletMap center={mapCenter} zoom={hasConfirmedLocation ? 16 : 11} onLocationSelect={confirmCoordinates} deliveryRadiusEnabled={false} />
+                        <LeafletMap center={mapCenter} zoom={hasConfirmedLocation ? 16 : 11} onLocationSelect={(nextLatitude, nextLongitude) => { void confirmLocationAndAddress(nextLatitude, nextLongitude); }} deliveryRadiusEnabled={false} />
                       </div>
                     </div>
                   )}
@@ -443,7 +549,7 @@ export const CreateShopOnboarding: React.FC<CreateShopOnboardingProps> = ({
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <button type="button" onClick={goBack} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-outline-variant/30 px-5 py-3 font-black text-on-surface-variant"><ArrowLeft size={18} /> Back</button>
-                  <button type="button" onClick={continueFromLocation} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-black text-on-primary shadow-lg shadow-primary/20">Continue <ArrowRight size={18} /></button>
+                  <button type="button" onClick={continueFromLocation} disabled={isResolvingAddress} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-black text-on-primary shadow-lg shadow-primary/20 disabled:cursor-wait disabled:opacity-60">Continue <ArrowRight size={18} /></button>
                 </div>
               </div>
             </section>
