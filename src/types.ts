@@ -33,6 +33,14 @@ export interface Shop {
   updated_at?: string;
   pairing_code?: string;
   linked_rider_id?: string;
+  approval_status?: "pending" | "approved" | "rejected" | "suspended";
+  approval_reason?: string | null;
+  story?: string | null;
+  archived_at?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  opening_time?: string | null;
+  closing_time?: string | null;
 }
 
 export interface RiderProfile {
