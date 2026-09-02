@@ -55,6 +55,13 @@ The application is natively integrated with Google Cloud Firebase:
 * **Approval Gate**: Newly created, rejected, suspended, or otherwise unapproved shops remain outside the operational dashboard. Only `approval_status: "approved"` enables orders, menu loading, realtime subscriptions, shop-hour automation, and heartbeat activity.
 * **Merchant Review States**: The approval gate gives pending, rejected, and suspended merchants distinct business-friendly explanations while keeping operational access locked. Backend-provided approval reasons are trimmed and rendered only as plain text; the gate offers status refresh and sign-out actions without browser-controlled approval, editing, or resubmission.
 
+#### 3.2.2 Server-Side Super Admin Authorization Foundation
+* **Authoritative Request Chain**: Future `/api/v1/admin/*` handlers run only after the LocalEats API verifies a Firebase ID token with revocation checking and confirms the verified Firebase UID against `public.admin_users` with `role = 'super_admin'` and `is_active = true`.
+* **No Browser Authority**: Email, frontend role labels, local storage, request body/query/header role claims, Firestore, mock data, and cached role data cannot grant administrator access. Every sensitive admin request performs a fresh server-side `admin_users` lookup.
+* **Fail-Closed Contract**: Missing, malformed, invalid, expired, revoked, or disabled Firebase authentication returns a generic `401`. A valid Firebase identity without active super-admin authorization returns a generic `403`. Database failures return a generic server error and never degrade into an authorization denial or fallback.
+* **B2 Identity Surface**: `GET /api/v1/admin/me` is the only current admin route. It exercises the authentication and authorization middleware and returns only the verified UID, Firebase email, and server-established role. Shop-management and approval mutation routes are not implemented in B2.
+* **Known Firebase Project Mismatch**: The legacy Super Admin prototype still authenticates against `praxis-lattice-8t3g1`, while the production LocalEats API accepts the production merchant-system Firebase project. A future B5 frontend change must migrate Super Admin authentication to the same Firebase project accepted by the API; B2 does not support two Firebase projects or change either configuration.
+
 ### 3.3 Menu Items Model (`/menu_items/{itemId}`)
 * Child documents storing `shop_id` (numeric or string) pointing to the parent `/shops/{shopId}`, `name`, `price`, `category`, `description` (unmodified plain text), `dietary_tags` (array of string tags, e.g. `["Vegetarian", "Spicy"]`), `stock_quantity`, `is_available`, and `image_url`.
 * Does **not** require an `owner_id` field on the menu item itself.

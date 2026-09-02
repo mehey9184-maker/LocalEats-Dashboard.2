@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 
 import healthRoutes from "./routes/health.js";
 import merchantRoutes from "./routes/merchant.js";
+import adminRoutes from "./routes/admin.js";
 
 dotenv.config();
 
@@ -49,6 +50,7 @@ app.use(express.json());
 // Routes
 app.use("/health", healthRoutes);
 app.use("/api/v1/merchant", merchantRoutes);
+app.use("/api/v1/admin", adminRoutes);
 
 // 404 Handler
 app.use((req: Request, res: Response) => {
