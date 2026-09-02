@@ -11,13 +11,30 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 // CORS configuration
-const allowedOrigins = process.env.MERCHANT_DASHBOARD_ORIGIN 
-  ? [process.env.MERCHANT_DASHBOARD_ORIGIN] 
-  : [];
+const isAllowedOrigin = (origin?: string): boolean => {
+  if (origin === undefined) return true;
+
+  const productionOrigin = process.env.MERCHANT_DASHBOARD_ORIGIN;
+  if (productionOrigin && origin === productionOrigin) return true;
+
+  const previewHostPrefix = process.env.MERCHANT_DASHBOARD_PREVIEW_HOST_PREFIX;
+  const previewHostSuffix = process.env.MERCHANT_DASHBOARD_PREVIEW_HOST_SUFFIX;
+  if (!previewHostPrefix || !previewHostSuffix) return false;
+
+  try {
+    const parsedOrigin = new URL(origin);
+    return parsedOrigin.origin === origin
+      && parsedOrigin.protocol === "https:"
+      && parsedOrigin.hostname.startsWith(previewHostPrefix)
+      && parsedOrigin.hostname.endsWith(previewHostSuffix);
+  } catch {
+    return false;
+  }
+};
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
