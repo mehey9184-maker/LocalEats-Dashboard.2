@@ -102,6 +102,8 @@ import { LegalDocsModal } from "./components/LegalDocsModal";
 import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
 import { ShopDiagnosticPanel } from "./components/ShopDiagnosticPanel";
 import { OnboardingTour } from "./components/OnboardingTour";
+import { CreateShopOnboarding } from "./components/CreateShopOnboarding";
+import { PendingShopApproval } from "./components/PendingShopApproval";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ConnectivityMonitor } from "./components/ConnectivityMonitor";
 import { LocationSyncIndicator } from "./components/LocationSyncIndicator";
@@ -138,7 +140,7 @@ import {
   registerVerifiedShopId,
   clearVerifiedShopOwnership,
 } from "./utils/shopOwnership";
-import { MerchantApi } from "./services/MerchantApi";
+import { MerchantApi, MerchantApiError } from "./services/MerchantApi";
 import { fetchWithRetry } from "./utils/fetchWithRetry";
 
 function cn(...inputs: ClassValue[]) {
@@ -154,6 +156,25 @@ const clearMerchantShopOperationalCache = () => {
     "localeats_last_selected_shop_id",
     "le_menu",
   ].forEach((key) => localStorage.removeItem(key));
+};
+
+type MerchantShopGateState =
+  | { status: "checking" }
+  | { status: "no-shop" }
+  | { status: "ready"; shop: Shop }
+  | { status: "approval-required"; shop: Shop }
+  | { status: "error"; message: string };
+
+const getMerchantShopErrorMessage = (error: unknown): string => {
+  if (error instanceof MerchantApiError) {
+    if (error.status === 401 || error.status === 403) {
+      return "Your merchant session could not be verified. Please sign out and sign in again.";
+    }
+    if (error.status === null) {
+      return "Please check your connection and try again.";
+    }
+  }
+  return "The merchant verification service is temporarily unavailable. Please try again.";
 };
 
 // Fix Leaflet marker icons
@@ -296,6 +317,7 @@ function App() {
   const [shops, setShops] = useState<Shop[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [user, setUser] = useState<User | null>(null);
+  const [merchantShopGate, setMerchantShopGate] = useState<MerchantShopGateState>({ status: "checking" });
     const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
   // Kitchen status state available if needed
@@ -304,6 +326,78 @@ function App() {
     () => shops.find((s) => isShopOwnedByUser(s, user)) || null,
     [shops, user],
   );
+
+  const acceptAuthoritativeMerchantShop = useCallback((firebaseUid: string, shop: Shop) => {
+    registerVerifiedShopId(firebaseUid, shop.id);
+    setShops([shop]);
+    if (shop.approval_status === "approved") {
+      setMerchantShopGate({ status: "ready", shop });
+      return;
+    }
+
+    setOrders([]);
+    setMenuItems([]);
+    setMerchantShopGate({ status: "approval-required", shop });
+  }, []);
+
+  const resolveMerchantShop = useCallback(async (firebaseUid: string): Promise<Shop | null> => {
+    setOrders([]);
+    setMerchantShopGate({ status: "checking" });
+    try {
+      const verifiedShop = await MerchantApi.getMerchantShop();
+      if (!verifiedShop || verifiedShop.id === null || verifiedShop.id === undefined) {
+        clearVerifiedShopOwnership();
+        clearMerchantShopOperationalCache();
+        setShops([]);
+        setMenuItems([]);
+        setOrders([]);
+        setMerchantShopGate({ status: "no-shop" });
+        return null;
+      }
+
+      const shop = verifiedShop as Shop;
+      acceptAuthoritativeMerchantShop(firebaseUid, shop);
+      return shop;
+    } catch (error) {
+      console.warn("[Shop Discovery] API verification failed closed:", error);
+      clearVerifiedShopOwnership();
+      clearMerchantShopOperationalCache();
+      setShops([]);
+      setMenuItems([]);
+      setOrders([]);
+      setMerchantShopGate({ status: "error", message: getMerchantShopErrorMessage(error) });
+      return null;
+    }
+  }, [acceptAuthoritativeMerchantShop]);
+
+  const handleCreatedMerchantShop = useCallback(async (shop: Shop) => {
+    const firebaseUid = firebaseAuth.currentUser?.uid;
+    if (!firebaseUid) {
+      setOrders([]);
+      setMenuItems([]);
+      setMerchantShopGate({
+        status: "error",
+        message: "Your merchant session could not be verified. Please sign out and sign in again.",
+      });
+      throw new Error("Authenticated Firebase user is required to accept a created shop.");
+    }
+
+    acceptAuthoritativeMerchantShop(firebaseUid, shop);
+  }, [acceptAuthoritativeMerchantShop]);
+
+  const refreshAuthoritativeMerchantShop = useCallback(async () => {
+    const firebaseUid = firebaseAuth.currentUser?.uid;
+    if (!firebaseUid) {
+      setOrders([]);
+      setMenuItems([]);
+      setMerchantShopGate({
+        status: "error",
+        message: "Your merchant session could not be verified. Please sign out and sign in again.",
+      });
+      return;
+    }
+    await resolveMerchantShop(firebaseUid);
+  }, [resolveMerchantShop]);
 
   // Centralized Shop Location & Sync State Engine
   const {
@@ -478,7 +572,7 @@ function App() {
 
   // --- Shop Live Heartbeat & Inactivity Tracker ---
   useEffect(() => {
-    if (!user || !currentShop) return;
+    if (merchantShopGate.status !== "ready" || !user || !currentShop) return;
 
     const syncHeartbeat = async () => {
       try {
@@ -532,7 +626,7 @@ function App() {
     }, 10 * 60 * 1000);
 
     return () => clearInterval(interval);
-  }, [user, currentShop]);
+  }, [user, currentShop, merchantShopGate.status]);
 
 
 
@@ -596,6 +690,8 @@ function App() {
       clearMerchantShopOperationalCache();
       setShops([]);
       setMenuItems([]);
+      setOrders([]);
+      setMerchantShopGate({ status: "checking" });
       setUser(null);
       localStorage.removeItem("localeats_user_session");
       firebaseSignOutUser().catch(() => {});
@@ -610,27 +706,7 @@ function App() {
         try {
           const sessionUser = await formatFirebaseUserSession(fbUser);
           
-          // Phase 3: Fetch verified ownership from the API bridge
-          try {
-            const verifiedShop = await MerchantApi.getMerchantShop();
-            if (verifiedShop && verifiedShop.id !== null && verifiedShop.id !== undefined) {
-              registerVerifiedShopId(fbUser.uid, verifiedShop.id);
-              const authoritativeShops = [verifiedShop as Shop];
-              setShops(authoritativeShops);
-              localStorage.setItem("localeats_cached_shops", JSON.stringify(authoritativeShops));
-            } else {
-              clearVerifiedShopOwnership();
-              clearMerchantShopOperationalCache();
-              setShops([]);
-              setMenuItems([]);
-            }
-          } catch (apiErr) {
-            console.warn("[Auth Listener] Failed to verify shop ownership with API:", apiErr);
-            clearVerifiedShopOwnership();
-            clearMerchantShopOperationalCache();
-            setShops([]);
-            setMenuItems([]);
-          }
+          await resolveMerchantShop(fbUser.uid);
 
           setUser(sessionUser);
           localStorage.setItem("localeats_user_session", JSON.stringify(sessionUser));
@@ -639,6 +715,15 @@ function App() {
           }
         } catch (e) {
           console.warn("[Auth Listener] Warning formatting Firebase user session:", e);
+          clearVerifiedShopOwnership();
+          clearMerchantShopOperationalCache();
+          setShops([]);
+          setMenuItems([]);
+          setOrders([]);
+          setMerchantShopGate({
+            status: "error",
+            message: "Your merchant session could not be verified. Please sign out and sign in again.",
+          });
         }
       } else {
         // Phase 3.1: Clear ownership and properly clear session when unauthenticated
@@ -646,6 +731,8 @@ function App() {
         clearMerchantShopOperationalCache();
         setShops([]);
         setMenuItems([]);
+        setOrders([]);
+        setMerchantShopGate({ status: "checking" });
         setUser(null);
         localStorage.removeItem("localeats_user_session");
       }
@@ -658,7 +745,7 @@ function App() {
       unsubscribe();
       window.removeEventListener("force_logout", handleForceLogout);
     };
-  }, []);
+  }, [resolveMerchantShop]);
 
   useEffect(() => {
     // Run storage audit cleanup on initialization to purge stale caches while preserving user shop overrides
@@ -668,7 +755,7 @@ function App() {
   // Automatic Shop Opening/Closing based on synchronized internet/server hours
   useEffect(() => {
     const checkShopHours = async () => {
-      if (!user || shops.length === 0) return;
+      if (merchantShopGate.status !== "ready" || !user || shops.length === 0) return;
 
       // Auto schedule is OFF by default. Only run if merchant explicitly enabled automated schedule.
       const autoScheduleEnabled = user.user_metadata?.auto_schedule_enabled === true;
@@ -768,7 +855,7 @@ function App() {
     void checkShopHours(); // Run once on mount or when shops/user change
 
     return () => clearInterval(interval);
-  }, [user, shops, user?.user_metadata?.auto_schedule_enabled]);
+  }, [user, shops, user?.user_metadata?.auto_schedule_enabled, merchantShopGate.status]);
 
   // VAPID Push configuration moved to custom hook usePushNotifications
   const { pushEnabled, requestPushPermissions } = usePushNotifications(false);
@@ -1117,7 +1204,10 @@ function App() {
   }, []);
 
   const fetchOrders = useCallback(async () => {
-    if (!user) return;
+    if (!user || merchantShopGate.status !== "ready" || !currentShop) {
+      setOrders([]);
+      return;
+    }
 
     const ownedShopIds = await getOwnedShopIds(user, shops);
 
@@ -1168,10 +1258,10 @@ function App() {
     }
 
     processAndSetOrders(firestoreOrdersList, supabaseOrdersList);
-  }, [user, shops, processAndSetOrders]);
+  }, [user, shops, processAndSetOrders, merchantShopGate.status, currentShop]);
 
   const fetchAllMenuItems = useCallback(async () => {
-    if (!user) {
+    if (!user || merchantShopGate.status !== "ready" || !currentShop) {
       setMenuItems([]);
       return;
     }
@@ -1279,7 +1369,7 @@ function App() {
       if (restoreVerifiedCachedMenuItems()) return;
       setMenuItems([]);
     }
-  }, [user, shops]);
+  }, [user, shops, merchantShopGate.status, currentShop]);
 
   const fetchShops = useCallback(async () => {
     if (!user) {
@@ -1287,35 +1377,13 @@ function App() {
       clearMerchantShopOperationalCache();
       setShops([]);
       setMenuItems([]);
+      setOrders([]);
+      setMerchantShopGate({ status: "checking" });
       return;
     }
 
-    try {
-      const verifiedShop = await MerchantApi.getMerchantShop();
-      if (!verifiedShop || verifiedShop.id === null || verifiedShop.id === undefined) {
-        clearVerifiedShopOwnership();
-        clearMerchantShopOperationalCache();
-        setShops([]);
-        setMenuItems([]);
-        return;
-      }
-
-      registerVerifiedShopId(user.id, verifiedShop.id);
-      const authoritativeShops = [verifiedShop as Shop];
-      setShops(authoritativeShops);
-      try {
-        localStorage.setItem("localeats_cached_shops", JSON.stringify(authoritativeShops));
-      } catch {
-        // ignore
-      }
-    } catch (error) {
-      console.warn("[Shop Discovery] API verification failed closed:", error);
-      clearVerifiedShopOwnership();
-      clearMerchantShopOperationalCache();
-      setShops([]);
-      setMenuItems([]);
-    }
-  }, [user]);
+    await refreshAuthoritativeMerchantShop();
+  }, [user, refreshAuthoritativeMerchantShop]);
 
   const { serviceLoading } = useAppInitializer({
     user,
@@ -1325,11 +1393,13 @@ function App() {
     fetchAllMenuItems,
     supabase,
     authReady: isAuthReady,
+    initializeShops: false,
+    operationalReady: merchantShopGate.status === "ready" && Boolean(currentShop),
   });
 
   // Order subscriptions: Listen to BOTH Firestore & Supabase in real-time
   useEffect(() => {
-    if (!user || shops.length === 0) return;
+    if (merchantShopGate.status !== "ready" || !currentShop || !user || shops.length === 0) return;
 
     let isMounted = true;
     const activeChannels: RealtimeChannel[] = [];
@@ -1397,7 +1467,7 @@ function App() {
       if (unsubFirestore) unsubFirestore();
       activeChannels.forEach((channel) => void supabase.removeChannel(channel));
     };
-  }, [user, shops, fetchOrders, processAndSetOrders, subscribeWithAuthGuard]);
+  }, [user, shops, fetchOrders, processAndSetOrders, subscribeWithAuthGuard, merchantShopGate.status, currentShop]);
 
   const deleteAllOrders = async () => {
     if (!user) return;
@@ -1467,6 +1537,7 @@ function App() {
 
   // --- Automated Rider Matching on Order Arrival ---
   useEffect(() => {
+    if (merchantShopGate.status !== "ready" || !currentShop) return;
     if (!orders || orders.length === 0) return;
 
     // Find delivery orders that just arrived (type delivery, status pending, and delivery_status is null/none/undefined)
@@ -1487,7 +1558,7 @@ function App() {
         void requestRider(o.id);
       });
     }
-  }, [orders, requestRider]);
+  }, [orders, requestRider, merchantShopGate.status, currentShop]);
 
   // --- Real-Time Connection Heartbeat & Print Queue Manager ---
   const loadFailedPrints = useCallback(async () => {
@@ -1514,7 +1585,7 @@ function App() {
 
   // Active 30-second Supabase Connection Heartbeat Probe
   useEffect(() => {
-    if (!user) return;
+    if (merchantShopGate.status !== "ready" || !currentShop || !user) return;
     if (isSupabaseMocked()) {
       setIsHeartbeatFailed(false);
       return;
@@ -1559,10 +1630,11 @@ function App() {
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [user]);
+  }, [user, merchantShopGate.status, currentShop]);
 
   useEffect(() => {
     const triggerQueueSync = async () => {
+      if (merchantShopGate.status !== "ready" || !currentShop) return;
       const synced = await processOfflineSyncQueue(supabase);
       if (synced > 0) {
         toast.success(`Network Restored: ${synced} offline operations synchronized!`);
@@ -1602,7 +1674,7 @@ function App() {
         navigator.serviceWorker.removeEventListener("message", handleSWMessage);
       }
     };
-  }, [fetchOrders, fetchShops, fetchAllMenuItems]);
+  }, [fetchOrders, fetchShops, fetchAllMenuItems, merchantShopGate.status, currentShop]);
 
   // --- ESC/POS Printing Actions ---
   const handlePrintBluetoothDirect = async (order: Order) => {
@@ -1709,6 +1781,7 @@ function App() {
   };
 
   useEffect(() => {
+    if (merchantShopGate.status !== "ready" || !currentShop) return;
     if (!autoAcceptOrders || orders.length === 0) return;
 
     // Automatically accept any "pending" orders that aren't yet handled
@@ -1723,7 +1796,7 @@ function App() {
         }
       });
     }
-  }, [orders, autoAcceptOrders, updateOrderStatus]);
+  }, [orders, autoAcceptOrders, updateOrderStatus, merchantShopGate.status, currentShop]);
 
 
   const sendRiderNudge = async (riderId: string, message: string) => {
@@ -1762,6 +1835,7 @@ function App() {
   };
 
   const handleSignOut = async () => {
+    setOrders([]);
     await supabase.auth.signOut();
   };
 
@@ -1864,6 +1938,58 @@ function App() {
           window.location.href = "mailto:support@localeats.com";
         }}
       />
+    );
+  }
+
+  if (user && merchantShopGate.status === "checking") {
+    return (
+      <FirebaseInitializingOverlay
+        message="Verifying your merchant shop..."
+        subtext="Please wait while we securely confirm your storefront."
+      />
+    );
+  }
+
+  if (user && merchantShopGate.status === "no-shop") {
+    return (
+      <CreateShopOnboarding
+        onCreated={handleCreatedMerchantShop}
+        onSignOut={handleSignOut}
+      />
+    );
+  }
+
+  if (user && merchantShopGate.status === "approval-required") {
+    return (
+      <PendingShopApproval
+        shop={merchantShopGate.shop}
+        onRefresh={refreshAuthoritativeMerchantShop}
+        onSignOut={handleSignOut}
+      />
+    );
+  }
+
+  if (user && merchantShopGate.status === "error") {
+    return (
+      <div className="min-h-screen bg-surface px-4 py-10 text-on-surface">
+        <div className="mx-auto flex min-h-[80vh] max-w-xl items-center justify-center">
+          <section className="w-full rounded-[2rem] border border-error/15 bg-surface-container-lowest p-8 text-center shadow-xl">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-error/10 text-error">
+              <AlertTriangle size={30} />
+            </div>
+            <h1 className="font-headline text-2xl font-black">We couldn't verify your merchant shop.</h1>
+            <p className="mt-3 text-sm font-medium leading-6 text-on-surface-variant">{merchantShopGate.message}</p>
+            <div className="mt-7 grid gap-3 sm:grid-cols-2">
+              <button type="button" onClick={() => void refreshAuthoritativeMerchantShop()} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-black text-on-primary">
+                <RefreshCw size={18} /> Retry
+              </button>
+              <button type="button" onClick={() => void handleSignOut()} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-outline-variant/30 px-5 py-3 text-sm font-black text-on-surface-variant hover:bg-surface-container">
+                <LogOut size={18} /> Sign Out
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
     );
   }
 
@@ -4319,7 +4445,7 @@ function App() {
 
                 </div>
 
-                {currentShop ? (
+                {currentShop && (
                   <>
                     
                     <ShopProfile
@@ -4333,23 +4459,6 @@ function App() {
                     onFinished={() => setActiveTab("dashboard")}
                   />
                   </>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
-                    <div className="w-16 h-16 bg-surface-container-high rounded-full flex items-center justify-center">
-                      <Store className="text-on-surface-variant" size={32} />
-                    </div>
-                    <p className="text-on-surface-variant font-medium text-center max-w-md">
-                      You don't have a shop yet. Create one to start accepting orders and managing riders!
-                    </p>
-                    <button
-                      onClick={async () => {
-                        toast.error("Shop creation requires backend API (Not yet implemented in Phase 3)");
-                      }}
-                      className="px-6 py-3 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all shadow-lg"
-                    >
-                      Create My Shop
-                    </button>
-                  </div>
                 )}
               </div>
             )}
