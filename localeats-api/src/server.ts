@@ -5,33 +5,12 @@ import dotenv from "dotenv";
 import healthRoutes from "./routes/health.js";
 import merchantRoutes from "./routes/merchant.js";
 import adminRoutes from "./routes/admin.js";
+import { isAllowedOrigin } from "./corsOrigins.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-
-// CORS configuration
-const isAllowedOrigin = (origin?: string): boolean => {
-  if (origin === undefined) return true;
-
-  const productionOrigin = process.env.MERCHANT_DASHBOARD_ORIGIN;
-  if (productionOrigin && origin === productionOrigin) return true;
-
-  const previewHostPrefix = process.env.MERCHANT_DASHBOARD_PREVIEW_HOST_PREFIX;
-  const previewHostSuffix = process.env.MERCHANT_DASHBOARD_PREVIEW_HOST_SUFFIX;
-  if (!previewHostPrefix || !previewHostSuffix) return false;
-
-  try {
-    const parsedOrigin = new URL(origin);
-    return parsedOrigin.origin === origin
-      && parsedOrigin.protocol === "https:"
-      && parsedOrigin.hostname.startsWith(previewHostPrefix)
-      && parsedOrigin.hostname.endsWith(previewHostSuffix);
-  } catch {
-    return false;
-  }
-};
 
 app.use(cors({
   origin: (origin, callback) => {
