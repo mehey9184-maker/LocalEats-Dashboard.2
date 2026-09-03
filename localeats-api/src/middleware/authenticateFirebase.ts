@@ -8,24 +8,28 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
+export const getFirebaseBearerToken = (
+  authorizationHeader: string | undefined
+): string | null => {
+  if (!authorizationHeader || !authorizationHeader.startsWith("Bearer fb-")) {
+    return null;
+  }
+
+  return authorizationHeader.slice("Bearer fb-".length);
+};
+
 export const authenticateFirebase = async (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
+    const token = getFirebaseBearerToken(req.headers.authorization);
+    if (token === null) {
       res.status(401).json({ success: false, error: "Unauthorized" });
       return;
     }
 
-    if (!authHeader.startsWith("Bearer fb-")) {
-      res.status(401).json({ success: false, error: "Unauthorized" });
-      return;
-    }
-
-    const token = authHeader.replace("Bearer fb-", "");
     const decoded = await authAdmin.verifyIdToken(token);
 
     req.authUser = {
