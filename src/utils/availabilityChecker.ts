@@ -1,4 +1,5 @@
 import { Shop } from "../types";
+import { MerchantApi } from "../services/MerchantApi";
 /**
  * Availability Checker Utility for LocalEats
  * 
@@ -327,154 +328,59 @@ export function checkShopAvailability(
   };
 }
 
-export interface SupabaseClientLike {
-  from: (table: string) => {
-    update: (data: Record<string, unknown>) => {
-      eq: (col: string, val: unknown) => Promise<{ error: { message: string } | null }>;
-    };
-  };
-}
-
 /**
- * Synchronizes shop status (is_active: boolean) to BOTH Supabase and Firestore
- * to guarantee that client storefronts and merchant apps are perfectly in sync.
+ * Sends the merchant's requested shop availability to the authoritative API.
+ * The verified Firebase identity determines the shop; browser shop IDs and
+ * compatibility persistence layers never participate in the write.
  */
 export async function syncShopAvailability(params: {
-  shopId: number | string;
   isOpen: boolean;
-  supabase?: SupabaseClientLike | null;
-  updateFirestoreShop?: (shopId: string | number, updates: Record<string, unknown>) => Promise<{ error: Error | null }>;
-  getFirestoreShopById?: (shopId: string | number) => Promise<Shop | null>;
+  recordManualOverride?: boolean;
   onSuccess?: (freshShop?: Shop | null) => void;
   onError?: (err: unknown) => void;
 }): Promise<{ success: boolean; error?: string; freshShop?: Shop | null }> {
-  const { shopId, isOpen, supabase, updateFirestoreShop, getFirestoreShopById } = params;
-  const numId = Number(shopId);
-
-  console.log(`[Diagnostic] syncShopAvailability initiated: toggling shopId ${shopId} to is_active=${isOpen}`);
-
-  // 1. Update local storage caches immediately for zero-latency UI
   try {
-    localStorage.setItem(
-      `localeats_manual_status_override_${shopId}`,
-      JSON.stringify({ status: isOpen, timestamp: Date.now() })
-    );
-    if (isOpen) {
-      localStorage.removeItem(`localeats_holiday_mode_${shopId}`);
-    } else {
-      localStorage.setItem(`localeats_holiday_mode_${shopId}`, "true");
-    }
+    const freshShop = await MerchantApi.setShopAvailability(params.isOpen);
 
-    // Update cached shops
-    const cached = localStorage.getItem("localeats_cached_shops");
-    if (cached) {
-      const list = JSON.parse(cached);
-      if (Array.isArray(list)) {
-        const updated = list.map((s: { id?: string | number; [key: string]: unknown }) =>
-          String(s.id) === String(shopId) || (!isNaN(numId) && s.id === numId)
-            ? { ...s, is_active: isOpen }
-            : s
+    if (
+      params.recordManualOverride !== false &&
+      typeof freshShop.is_active === "boolean"
+    ) {
+      try {
+        localStorage.setItem(
+          `localeats_manual_status_override_${freshShop.id}`,
+          JSON.stringify({
+            status: freshShop.is_active,
+            timestamp: Date.now(),
+          })
         );
-        localStorage.setItem("localeats_cached_shops", JSON.stringify(updated));
-      }
-    }
-  } catch (e) {
-    console.warn("[Availability Sync] Local storage update warning:", e);
-  }
-
-  let firestoreError: Error | null = null;
-  let supabaseError: { message: string } | null = null;
-
-  // 2. Synchronize to Firestore
-  if (updateFirestoreShop) {
-    try {
-      const res = await updateFirestoreShop(shopId, {
-        is_active: isOpen,
-        updated_at: new Date().toISOString(),
-      });
-      if (res?.error) firestoreError = res.error;
-    } catch (e: unknown) {
-      firestoreError = e instanceof Error ? e : new Error(String(e));
-    }
-  }
-
-  // 3. Synchronize to Supabase `shops` table (Ensuring client app sees updated status)
-  if (supabase) {
-    try {
-      const { error } = await supabase
-        .from("shops")
-        .update({
-          is_active: isOpen,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", isNaN(numId) ? shopId : numId);
-
-      if (error) {
-        // Fallback without updated_at if column mismatch
-        const fallback = await supabase
-          .from("shops")
-          .update({ is_active: isOpen })
-          .eq("id", isNaN(numId) ? shopId : numId);
-        if (fallback.error) supabaseError = fallback.error;
-      }
-    } catch (e: unknown) {
-      supabaseError = e instanceof Error ? { message: e.message } : { message: String(e) };
-    }
-  }
-
-  if (firestoreError && supabaseError) {
-    const msg = supabaseError?.message || firestoreError?.message || "Failed to sync shop status";
-    console.error(`[Diagnostic] syncShopAvailability FAILED for shopId ${shopId}:`, msg);
-    params.onError?.(msg);
-    return { success: false, error: msg };
-  }
-
-  // 4. Immediately re-fetch the shop's status from the database to ensure state certainty
-  let freshShop: Shop | null = null;
-  if (getFirestoreShopById) {
-    try {
-      freshShop = await getFirestoreShopById(shopId);
-      if (freshShop) {
-        console.log(`[Diagnostic] syncShopAvailability fresh shop fetched from Firestore:`, {
-          shopId,
-          is_active: freshShop.is_active,
-        });
-        // Update cached shops with latest verified database record
-        try {
-          const cached = localStorage.getItem("localeats_cached_shops");
-          if (cached) {
-            const list = JSON.parse(cached);
-            if (Array.isArray(list)) {
-              const updated = list.map((s: { id?: string | number; [key: string]: unknown }) =>
-                String(s.id) === String(shopId) || (!isNaN(numId) && s.id === numId)
-                  ? { ...s, ...freshShop, is_active: freshShop?.is_active ?? isOpen }
-                  : s
-              );
-              localStorage.setItem("localeats_cached_shops", JSON.stringify(updated));
-            }
-          }
-        } catch {
-          // ignore cache error
+        if (freshShop.is_active) {
+          localStorage.removeItem(`localeats_holiday_mode_${freshShop.id}`);
+        } else {
+          localStorage.setItem(`localeats_holiday_mode_${freshShop.id}`, "true");
         }
+      } catch {
+        // Scheduling preferences are best-effort and never authoritative.
       }
-    } catch (fetchErr) {
-      console.warn("[Availability Sync] Error re-fetching shop status after update:", fetchErr);
     }
-  }
 
-  console.log(`[Diagnostic] syncShopAvailability SUCCESS for shopId ${shopId}. is_active is now ${isOpen}`);
-  params.onSuccess?.(freshShop);
-  return { success: true, freshShop };
+    params.onSuccess?.(freshShop);
+    return { success: true, freshShop };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to update shop status";
+    params.onError?.(message);
+    return { success: false, error: message };
+  }
 }
 
 /**
  * 1-Click Repair / Ensure Open helper
- * Immediately opens the shop across Supabase, Firestore, and LocalStorage.
+ * Requests that the authoritative merchant API open the current shop.
  */
 export async function forceOpenShop(params: {
-  shopId: number | string;
-  supabase?: SupabaseClientLike | null;
-  updateFirestoreShop?: (shopId: string | number, updates: Record<string, unknown>) => Promise<{ error: Error | null }>;
+  onSuccess?: (freshShop?: Shop | null) => void;
+  onError?: (err: unknown) => void;
 }): Promise<{ success: boolean; message: string }> {
   const res = await syncShopAvailability({
     ...params,

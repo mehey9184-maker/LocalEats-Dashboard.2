@@ -21,6 +21,201 @@ const ALLOWED_CREATE_FIELDS = new Set([
 const isValidTime = (value: unknown): value is string =>
   typeof value === "string" && /^([01]\d|2[0-3]):([0-5]\d)$/.test(value.trim());
 
+type MerchantShopRecord = Record<string, unknown> & {
+  id: string | number;
+  approval_status?: unknown;
+};
+
+type MerchantAvailabilityRepositoryError = {
+  message: string;
+  code?: string;
+};
+
+interface MerchantAvailabilityRepository {
+  findCurrentShops: (ownerId: string) => Promise<{
+    data: MerchantShopRecord[];
+    error: MerchantAvailabilityRepositoryError | null;
+  }>;
+  updateAvailability: (input: {
+    shopId: string | number;
+    ownerId: string;
+    isActive: boolean;
+  }) => Promise<{
+    data: MerchantShopRecord | null;
+    error: MerchantAvailabilityRepositoryError | null;
+  }>;
+}
+
+const merchantAvailabilityRepository: MerchantAvailabilityRepository = {
+  async findCurrentShops(ownerId) {
+    const { data, error } = await supabaseAdmin
+      .from("shops")
+      .select("*")
+      .eq("owner_id", ownerId)
+      .is("archived_at", null);
+
+    return {
+      data: (data ?? []) as MerchantShopRecord[],
+      error,
+    };
+  },
+
+  async updateAvailability({ shopId, ownerId, isActive }) {
+    let updateQuery = supabaseAdmin
+      .from("shops")
+      .update({ is_active: isActive })
+      .eq("id", shopId)
+      .eq("owner_id", ownerId)
+      .is("archived_at", null);
+
+    if (isActive) {
+      updateQuery = updateQuery.eq("approval_status", "approved");
+    }
+
+    const { data, error } = await updateQuery
+      .select("*")
+      .maybeSingle();
+
+    return {
+      data: data as MerchantShopRecord | null,
+      error,
+    };
+  },
+};
+
+interface MerchantAvailabilityRouterDependencies {
+  authenticate: typeof authenticateFirebase;
+  repository: MerchantAvailabilityRepository;
+}
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+export const createMerchantAvailabilityRouter = (
+  dependencies: Partial<MerchantAvailabilityRouterDependencies> = {}
+): Router => {
+  const availabilityRouter = Router();
+  const authenticate = dependencies.authenticate ?? authenticateFirebase;
+  const repository =
+    dependencies.repository ?? merchantAvailabilityRepository;
+
+  availabilityRouter.patch(
+    "/shop/availability",
+    authenticate,
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const uid = req.authUser?.uid;
+
+      if (!uid) {
+        res.status(401).json({ success: false, error: "Unauthorized" });
+        return;
+      }
+
+      const body: unknown = req.body;
+      if (
+        !isObjectRecord(body) ||
+        Object.keys(body).length !== 1 ||
+        typeof body.is_active !== "boolean"
+      ) {
+        res.status(400).json({
+          success: false,
+          error: "Invalid availability request",
+        });
+        return;
+      }
+
+      try {
+        const { data: shops, error: lookupError } =
+          await repository.findCurrentShops(uid);
+
+        if (lookupError) {
+          console.error(
+            "Supabase merchant availability shop lookup error:",
+            lookupError
+          );
+          res.status(500).json({
+            success: false,
+            error: "Internal Server Error",
+          });
+          return;
+        }
+
+        if (shops.length === 0) {
+          res.status(404).json({
+            success: false,
+            error: "Merchant shop not mapped",
+          });
+          return;
+        }
+
+        if (shops.length > 1) {
+          res.status(409).json({
+            success: false,
+            error: "Multiple current shops mapped to merchant",
+          });
+          return;
+        }
+
+        const currentShop = shops[0];
+        if (
+          body.is_active &&
+          currentShop.approval_status !== "approved"
+        ) {
+          res.status(409).json({
+            success: false,
+            error: "Shop must be approved before going online",
+          });
+          return;
+        }
+
+        const { data: updatedShop, error: updateError } =
+          await repository.updateAvailability({
+            shopId: currentShop.id,
+            ownerId: uid,
+            isActive: body.is_active,
+          });
+
+        if (updateError) {
+          console.error(
+            "Supabase merchant availability update error:",
+            updateError
+          );
+          res.status(500).json({
+            success: false,
+            error: "Internal Server Error",
+          });
+          return;
+        }
+
+        if (!updatedShop) {
+          res.status(409).json({
+            success: false,
+            error: "Shop availability state changed; retry",
+          });
+          return;
+        }
+
+        res.status(200).json({
+          success: true,
+          shop: updatedShop,
+        });
+      } catch (error) {
+        console.error(
+          "Unexpected merchant availability update error:",
+          error
+        );
+        res.status(500).json({
+          success: false,
+          error: "Internal Server Error",
+        });
+      }
+    }
+  );
+
+  return availabilityRouter;
+};
+
+router.use(createMerchantAvailabilityRouter());
+
 router.get("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const uid = req.authUser?.uid;

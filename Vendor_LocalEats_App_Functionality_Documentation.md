@@ -2,7 +2,7 @@
 
 **Application Name**: LocalEats Vendor (Merchant Dashboard & Operations Platform)  
 **Platform**: React 18+ (Vite, TypeScript, Tailwind CSS, Framer Motion, Lucide React)  
-**Backend & Persistence**: Google Cloud Firestore & Firebase Authentication (`src/lib/firebase.ts`) with Firestore Compatibility Bridge (`src/lib/supabase.ts`)
+**Backend & Persistence**: Firebase Authentication; LocalEats API with Supabase PostgreSQL authority for merchant shop identity, creation, approval, and availability; legacy Firestore operations through `src/lib/firebase.ts` and the Firestore compatibility bridge in `src/lib/supabase.ts`
 
 ---
 
@@ -17,6 +17,7 @@ LocalEats Vendor is the mission-critical merchant operating system for local foo
 4. **Autonomous Operational Reliability**: Self-contained background workflows for audio kitchen alarms, ESC/POS Bluetooth/USB thermal printing, and multi-channel notification systems.
 5. **Stabilized Crash Recovery Protocol**: Max recovery attempts capped at 1; delegates fatal render errors directly to React's `ErrorBoundary` to prevent infinite reload loops and DOM manipulation clashes.
 6. **Fail-Closed Merchant Identity**: Firebase Auth is authoritative and the merchant API is the only source of the authenticated merchant's shop. Failed signup never creates a local authenticated identity or accepts shop ownership metadata. Shop state starts empty; only an authenticated merchant-shop `404` whose JSON error is exactly `Merchant shop not mapped` opens mandatory shop creation. Unexpected `404`, network, and other API failures keep the dashboard locked behind retry/sign-out controls. Operational access requires an API-returned shop with `approval_status: "approved"`; cached menu records are restored only after their `shop_id` matches that API-verified owned shop. Migration utilities preserve string shop IDs without inferring owners or default shops.
+7. **Server-Authoritative Shop Availability**: Merchant operational availability changes use authenticated `PATCH /api/v1/merchant/shop/availability`. The verified Firebase UID selects the merchant's single current unarchived Supabase shop; browser shop IDs, owner IDs, Firestore, the compatibility bridge, and local storage cannot authorize or perform the write. Only approved shops can be activated, while deactivation remains safe for every lifecycle state.
 
 ---
 
@@ -54,6 +55,7 @@ The application is natively integrated with Google Cloud Firebase:
 * **Server-Owned Creation**: The form sends only the approved shop profile fields to authenticated `POST /api/v1/merchant/shop`. The backend remains responsible for assigning ownership and initial approval/activation state. The client accepts the exact returned shop and does not synthesize or repair ownership data.
 * **Approval Gate**: Newly created, rejected, suspended, or otherwise unapproved shops remain outside the operational dashboard. Only `approval_status: "approved"` enables orders, menu loading, realtime subscriptions, shop-hour automation, and heartbeat activity.
 * **Merchant Review States**: The approval gate gives pending, rejected, and suspended merchants distinct business-friendly explanations while keeping operational access locked. Backend-provided approval reasons are trimmed and rendered only as plain text; the gate offers status refresh and sign-out actions without browser-controlled approval, editing, or resubmission.
+* **Availability Mutation Contract**: `PATCH /api/v1/merchant/shop/availability` accepts exactly `{ "is_active": boolean }` after Firebase bearer authentication. The API derives ownership only from the verified UID, rejects missing shops with `404 / Merchant shop not mapped`, rejects multiple current shops with `409 / Multiple current shops mapped to merchant`, rejects activation outside `approved` with `409 / Shop must be approved before going online`, and fails a concurrent ownership, archive, or approval change with `409 / Shop availability state changed; retry`. Malformed or additional fields return `400 / Invalid availability request`; authentication and unexpected database failures remain generic `401` and `500` responses. The successful response contains the authoritative updated Supabase shop row, which replaces merchant React state. The API updates only `is_active`; it does not write Firestore or assume an `updated_at` column.
 
 #### 3.2.2 Server-Side Super Admin Authorization Foundation
 * **Authoritative Request Chain**: Future `/api/v1/admin/*` handlers run only after the LocalEats API verifies a Firebase ID token with revocation checking and confirms the verified Firebase UID against `public.admin_users` with `role = 'super_admin'` and `is_active = true`.

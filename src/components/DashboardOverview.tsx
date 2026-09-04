@@ -1,6 +1,5 @@
 import { FoodPlaceholder } from "../components/MenuManagement";
 import { isPlaceholderImage } from "../constants";
-import { updateFirestoreShop } from "../lib/firebase";
 import { syncShopAvailability } from "../utils/availabilityChecker";
 import { Skeleton } from "../components/ui/Skeleton";
 import { getSupportedCity } from "../utils";
@@ -1625,21 +1624,15 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               
               toast.loading(`Setting all storefronts to ${newStatus ? "Online" : "Offline"}...`, { id: "bulk-status-toggle" });
               
-              let error = null;
-              for (const s of shops) {
-                const res = await syncShopAvailability({
-                  shopId: s.id,
-                  isOpen: newStatus,
-                  supabase: supabase as any,
-                  updateFirestoreShop,
-                });
-                if (!res.success) error = res.error;
-              }
+              const { success } = await syncShopAvailability({
+                isOpen: newStatus,
+              });
 
-              if (!error) {
+              if (success) {
                 toast.success(`All storefronts are now ${newStatus ? "Online & Live" : "Offline & Closed"}!`, { id: "bulk-status-toggle" });
-                onRefresh();
+                await onRefresh();
               } else {
+                await onRefresh();
                 toast.error("Failed to update all storefronts. Please check your connection.", { id: "bulk-status-toggle" });
               }
             }}
@@ -2090,24 +2083,17 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 onClick={async () => {
                   setIsStatusToggling(true);
                   const newStatus = !currentShop.is_active;
-
-                  // Optimistic update
-                  
-
                   const { success, error } = await syncShopAvailability({
-                    shopId: currentShop.id,
                     isOpen: newStatus,
-                    supabase: supabase as any,
-                    updateFirestoreShop,
                   });
 
                   if (success) {
+                    await onRefresh();
                     toast.success(
                       `Storefront is now ${newStatus ? "Open & Live" : "Closed & Offline"}!`
                     );
                   } else {
-                    // Rollback
-                    
+                    await onRefresh();
                     toast.error(typeof error === "string" ? error : "Failed to update storefront status");
                   }
                   setIsStatusToggling(false);

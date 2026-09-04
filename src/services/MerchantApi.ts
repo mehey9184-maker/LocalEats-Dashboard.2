@@ -1,10 +1,8 @@
 import { getApiAuthHeaders } from "../lib/apiAuth";
+import type { Shop } from "../types";
 
-export type VerifiedMerchantShop = {
-  id: string | number;
+export type VerifiedMerchantShop = Shop & {
   owner_id: string;
-  name?: string;
-  is_active?: boolean;
   [key: string]: any;
 };
 
@@ -137,5 +135,40 @@ export class MerchantApi {
     }
 
     return shop as VerifiedMerchantShop;
+  }
+
+  static async setShopAvailability(isActive: boolean): Promise<VerifiedMerchantShop> {
+    if (typeof isActive !== "boolean") {
+      throw new MerchantApiError("Shop availability must be a boolean.", 400);
+    }
+
+    const apiUrl = getApiUrl();
+    const headers = await getApiAuthHeaders();
+    let response: Response;
+
+    try {
+      response = await fetch(`${apiUrl}/api/v1/merchant/shop/availability`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ is_active: isActive }),
+      });
+    } catch {
+      throw new MerchantApiError("Unable to reach the LocalEats merchant service.");
+    }
+
+    const data = await readJsonResponse(response);
+    if (!response.ok) {
+      throw new MerchantApiError(
+        typeof data.error === "string" ? data.error : "Unable to update shop availability.",
+        response.status,
+      );
+    }
+
+    const shop = data.shop;
+    if (!shop || shop.id === null || shop.id === undefined) {
+      throw new MerchantApiError("LocalEats merchant service returned an invalid shop.", response.status);
+    }
+
+    return shop;
   }
 }

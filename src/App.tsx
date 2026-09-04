@@ -68,7 +68,6 @@ import {
   formatFirebaseUserSession,
   onAuthStateChanged,
   subscribeToOrdersFirestore,
-  getFirestoreShopById,
   getFirestoreOrders,
   sendPushNotification,
   updateFirestoreShop,
@@ -821,17 +820,17 @@ function App() {
             `Auto-toggling shop ${shop.name} to ${isOpen ? "Open" : "Closed"}`,
           );
 
-          const { success } = await syncShopAvailability({
-            shopId: shop.id,
+          const { success, freshShop } = await syncShopAvailability({
             isOpen,
-            supabase,
-            updateFirestoreShop,
+            recordManualOverride: false,
           });
 
-          if (success) {
+          if (success && freshShop) {
             setShops((prev) =>
               prev.map((s) =>
-                s.id === shop.id ? { ...s, is_active: isOpen } : s,
+                String(s.id) === String(freshShop.id)
+                  ? { ...s, ...freshShop }
+                  : s,
               ),
             );
             toast.info(`Shop ${isOpen ? "Opened" : "Closed"} Automatically`, {
@@ -2434,42 +2433,23 @@ function App() {
                     if (!currentShop) return;
                     const newStatus = !currentShop.is_active;
 
-                    // Optimistic update
-                    setShops((prev) =>
-                      prev.map((s) =>
-                        s.id === currentShop.id ? { ...s, is_active: newStatus } : s,
-                      ),
-                    );
-
                     const { success, error, freshShop } = await syncShopAvailability({
-                      shopId: currentShop.id,
                       isOpen: newStatus,
-                      supabase,
-                      updateFirestoreShop,
-                      getFirestoreShopById,
                     });
 
-                    if (success) {
+                    if (success && freshShop) {
+                      setShops((prev) =>
+                        prev.map((shop) =>
+                          String(shop.id) === String(freshShop.id)
+                            ? { ...shop, ...freshShop }
+                            : shop,
+                        ),
+                      );
                       toast.success(
                         `Shop is now ${newStatus ? "Open & Live" : "Closed & Offline"}`,
                       );
-                      // Force a re-fetch of the current state immediately after success
-                      try {
-                        const verifiedShop = freshShop || (await getFirestoreShopById(currentShop.id));
-                        if (verifiedShop) {
-                           setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
-                        }
-                        await fetchShops();
-                      } catch(e) {
-                        console.error("Failed to re-fetch after toggling:", e);
-                      }
                     } else {
-                      // Rollback on error
-                      setShops((prev) =>
-                        prev.map((s) =>
-                          s.id === currentShop.id ? { ...s, is_active: !newStatus } : s,
-                        ),
-                      );
+                      await fetchShops();
                       toast.error(typeof error === "string" ? error : "Failed to update shop status");
                     }
                   }}
@@ -2569,28 +2549,20 @@ function App() {
            <button
              onClick={async () => {
                 const newStatus = true;
-                setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, is_active: newStatus } : s));
                 const { success, error, freshShop } = await syncShopAvailability({
-                  shopId: currentShop.id,
                   isOpen: newStatus,
-                  supabase,
-                  updateFirestoreShop,
-                  getFirestoreShopById,
                 });
-                if (success) {
+                if (success && freshShop) {
+                  setShops((prev) =>
+                    prev.map((shop) =>
+                      String(shop.id) === String(freshShop.id)
+                        ? { ...shop, ...freshShop }
+                        : shop,
+                    ),
+                  );
                   toast.success("Shop is now Open and accepting customer orders!");
-                  // Force a re-fetch of the current state immediately after success
-                  try {
-                    const verifiedShop = freshShop || (await getFirestoreShopById(currentShop.id));
-                    if (verifiedShop) {
-                       setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
-                    }
-                    await fetchShops();
-                  } catch(e) {
-                    console.error("Failed to re-fetch after toggling:", e);
-                  }
                 } else {
-                  setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, is_active: !newStatus } : s));
+                  await fetchShops();
                   toast.error(typeof error === "string" ? error : "Failed to go online");
                 }
              }}
@@ -2977,43 +2949,28 @@ function App() {
                            return (
                              <button
                                key={statusOption}
-                               onClick={() => {
-                                 setStoreStatus(statusOption);
+                               onClick={async () => {
                                  if (currentShop) {
                                    const isActive = statusOption === "open" || statusOption === "busy";
-                                   setShops((prev) =>
-                                     prev.map((s) =>
-                                       s.id === currentShop.id ? { ...s, is_active: isActive } : s,
-                                     ),
-                                   );
-                                   void syncShopAvailability({
-                                     shopId: currentShop.id,
+                                   const { success, error, freshShop } = await syncShopAvailability({
                                      isOpen: isActive,
-                                     supabase,
-                                     updateFirestoreShop,
-                                     getFirestoreShopById,
-                                     onSuccess: async (freshShop) => {
-                                       toast.success(`Shop is now ${statusOption === "open" ? "OPEN" : statusOption === "busy" ? "BUSY" : "CLOSED"}`);
-                                       // Force a re-fetch of the current state immediately after success
-                                       try {
-                                         const verifiedShop = freshShop || (await getFirestoreShopById(currentShop.id));
-                                         if (verifiedShop) {
-                                            setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
-                                         }
-                                         await fetchShops();
-                                       } catch (e) {
-                                         console.error("Failed to re-fetch after toggling:", e);
-                                       }
-                                     },
-                                     onError: (err) => {
-                                       setShops((prev) =>
-                                         prev.map((s) =>
-                                           s.id === currentShop.id ? { ...s, is_active: !isActive } : s,
-                                         ),
-                                       );
-                                       toast.error(typeof err === "string" ? err : "Failed to update status");
-                                     },
                                    });
+
+                                   if (success && freshShop) {
+                                     setStoreStatus(statusOption);
+                                     setShops((prev) =>
+                                       prev.map((shop) =>
+                                         String(shop.id) === String(freshShop.id)
+                                           ? { ...shop, ...freshShop }
+                                           : shop,
+                                       ),
+                                     );
+                                     toast.success(`Shop is now ${statusOption === "open" ? "OPEN" : statusOption === "busy" ? "BUSY" : "CLOSED"}`);
+                                   } else {
+                                     setStoreStatus(currentShop.is_active ? "open" : "closed");
+                                     await fetchShops();
+                                     toast.error(typeof error === "string" ? error : "Failed to update status");
+                                   }
                                  }
                                }}
                                className={cn(
@@ -3101,36 +3058,34 @@ function App() {
                                  if (!currentShop) return;
                                  const newStatus = !currentShop.is_active; // If we're toggling, newStatus is the opposite of currentShop.is_active
 
-                                 localStorage.removeItem(`localeats_manual_status_override_${currentShop.id}`);
-                                 if (!newStatus) {
-                                   localStorage.setItem(`localeats_holiday_mode_${currentShop.id}`, "true");
-                                 } else {
-                                   localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
-                                 }
+                                 const { success, error, freshShop } = await syncShopAvailability({
+                                   isOpen: newStatus,
+                                   recordManualOverride: false,
+                                 });
 
-                                 // Optimistic update
-                                 setShops((prev) =>
-                                   prev.map((s) =>
-                                     s.id === currentShop.id ? { ...s, is_active: newStatus } : s,
-                                   ),
-                                 );
-
-                                 const { error } = await updateFirestoreShop(currentShop.id, { is_active: newStatus });
-
-                                 if (!error) {
+                                 if (success && freshShop) {
+                                   localStorage.removeItem(`localeats_manual_status_override_${freshShop.id}`);
+                                   if (freshShop.is_active) {
+                                     localStorage.removeItem(`localeats_holiday_mode_${freshShop.id}`);
+                                   } else {
+                                     localStorage.setItem(`localeats_holiday_mode_${freshShop.id}`, "true");
+                                   }
+                                   setShops((prev) =>
+                                     prev.map((shop) =>
+                                       String(shop.id) === String(freshShop.id)
+                                         ? { ...shop, ...freshShop }
+                                         : shop,
+                                     ),
+                                   );
                                    toast.success(
-                                     newStatus 
+                                     freshShop.is_active
                                        ? "Holiday Mode disabled. Your store is now accepting orders." 
                                        : "Holiday Mode enabled. Your store is now temporarily closed.",
                                      { icon: <PauseCircle className="text-primary"/> }
                                    );
                                  } else {
-                                   setShops((prev) =>
-                                     prev.map((s) =>
-                                       s.id === currentShop.id ? { ...s, is_active: !newStatus } : s,
-                                     ),
-                                   );
-                                   toast.error("Failed to toggle Holiday Mode.");
+                                   await fetchShops();
+                                   toast.error(typeof error === "string" ? error : "Failed to toggle Holiday Mode.");
                                  }
                                }}
                                className={cn(
