@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test dist/orders/orderContract.test.js dist/orders/orderService.test.js",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts"
   },

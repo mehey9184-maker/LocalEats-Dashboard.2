@@ -368,3 +368,18 @@ src/
     ├── firebase.ts                    # Production Firebase Auth, Firestore real-time queries & storage
     └── supabase.ts                    # Firestore Compatibility Bridge adapting query chaining
 ```
+
+---
+
+## 9. Order-Integrity Safety Branch — 2026-09-05
+
+Status: **local safety work only; not committed, pushed, merged, deployed, or applied to production data.**
+
+- Merchant order loading and state transitions use the authenticated LocalEats API. Cached/browser state may improve display, but it cannot confirm or manufacture a database mutation.
+- The merchant accepts a new order into `preparing`, then marks it `ready_for_pickup`. For delivery orders, that ready action starts `finding_rider`; checkout does not request a rider.
+- Cash delivery orders remain eligible for rider discovery and claiming. Payment method is not used to exclude them.
+- Rider available, active, historical, and individual assigned-order reads are served through authenticated API routes. Failure returns an empty/error state instead of a fabricated delivery or history item.
+- Unsupported manual rider assignment/release paths fail closed until matching server-authoritative endpoints exist.
+- The corresponding API validates the canonical lifecycle and shop ownership server-side. Rider claiming and completion use staged atomic Supabase RPCs.
+- Required Supabase schema/RPC changes are staged under `supabase/migrations` but have not been applied. A staging database and end-to-end customer → merchant → rider test are required before release.
+- The existing Settings UX branch remains separate and preserved. Merchant raw-card/CVV cleanup is being performed on a dedicated branch based on that Settings work, not in this order-integrity branch.

@@ -3,6 +3,8 @@ interface CorsOriginEnvironment {
   MERCHANT_DASHBOARD_PREVIEW_HOST_PREFIX?: string;
   MERCHANT_DASHBOARD_PREVIEW_HOST_SUFFIX?: string;
   SUPER_ADMIN_ORIGIN?: string;
+  CUSTOMER_APP_ORIGIN?: string;
+  RIDER_APP_ORIGIN?: string;
 }
 
 const normalizeExactBrowserOrigin = (value?: string): string | null => {
@@ -46,6 +48,12 @@ export const isAllowedOrigin = (
     environment.SUPER_ADMIN_ORIGIN
   );
   if (superAdminOrigin !== null && origin === superAdminOrigin) return true;
+
+  const customerOrigin = normalizeExactBrowserOrigin(environment.CUSTOMER_APP_ORIGIN);
+  if (customerOrigin !== null && origin === customerOrigin) return true;
+
+  const riderOrigin = normalizeExactBrowserOrigin(environment.RIDER_APP_ORIGIN);
+  if (riderOrigin !== null && origin === riderOrigin) return true;
 
   const previewHostPrefix =
     environment.MERCHANT_DASHBOARD_PREVIEW_HOST_PREFIX;

@@ -1,6 +1,5 @@
 import { checkPrinterConnectivity, printViaBluetooth, printViaUSB } from "./utils/escPosEngine";
 import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
-import { RealtimeChannel } from "@supabase/supabase-js";
 import React, {
   useState,
   useEffect,
@@ -67,7 +66,6 @@ import {
   firebaseSignOutUser,
   formatFirebaseUserSession,
   onAuthStateChanged,
-  subscribeToOrdersFirestore,
   getFirestoreShopById,
   getFirestoreOrders,
   sendPushNotification,
@@ -1155,26 +1153,6 @@ function App() {
 
     let combinedOrders = Array.from(orderMap.values());
 
-    // Apply local overrides
-    let localOverrides: Record<string, Partial<Order>> = {};
-    try {
-      localOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
-    } catch {
-      // ignore
-    }
-
-    if (Object.keys(localOverrides).length > 0) {
-      combinedOrders = combinedOrders.map((order) => {
-        const override = localOverrides[String(order.id)];
-        return {
-          ...order,
-          ...(override || {}),
-          total_price:
-            (override?.total_price as number) ?? (order.total_price as number) ?? (order.price as number) ?? 0,
-        };
-      });
-    }
-
     // Sort by created_at descending
     combinedOrders.sort((a, b) => {
       const timeA = new Date(a.created_at || 0).getTime();
@@ -1182,24 +1160,11 @@ function App() {
       return timeB - timeA;
     });
 
-    if (combinedOrders.length > 0) {
-      setOrders(combinedOrders);
-      try {
-        localStorage.setItem("localeats_cached_orders", JSON.stringify(combinedOrders));
-      } catch {
-        // ignore
-      }
-    } else {
-      try {
-        const cachedOrders = JSON.parse(localStorage.getItem("localeats_cached_orders") || "[]");
-        if (cachedOrders && cachedOrders.length > 0) {
-          setOrders(cachedOrders);
-          return;
-        }
-      } catch {
-        // ignore
-      }
-      setOrders([]);
+    setOrders(combinedOrders);
+    try {
+      localStorage.setItem("localeats_cached_orders", JSON.stringify(combinedOrders));
+    } catch {
+      // Cache is optional and never used as order authority.
     }
   }, []);
 
@@ -1209,55 +1174,18 @@ function App() {
       return;
     }
 
-    const ownedShopIds = await getOwnedShopIds(user, shops);
-
-    // 1. Fetch from Firestore (Primary Cloud Storage for Client App Orders)
-    let firestoreOrdersList: Order[] = [];
     try {
-      firestoreOrdersList = await getFirestoreOrders(ownedShopIds.length > 0 ? ownedShopIds : undefined);
-    } catch (fsErr) {
-      console.warn("[Orders Sync] Notice fetching Firestore orders:", fsErr);
-    }
-
-    // 2. Fetch from Supabase (Relational fallback / legacy storage)
-    let supabaseOrdersList: Order[] = [];
-    try {
-      const { data, error } = await fetchWithRetry(() =>
-        supabase
-          .from("orders")
-          .select("*")
-          .in("shop_id", ownedShopIds)
-          .order("created_at", { ascending: false })
-          .limit(250),
-      );
-
-      if (data) {
-        // Clean up orphaned rider requests
-        const stuckOrders = data.filter(
-          (o: Record<string, unknown>) =>
-            (o.status === "completed" && o.delivery_status === "finding_rider") ||
-            o.delivery_status === "none",
-        );
-
-        if (stuckOrders.length > 0) {
-          stuckOrders.forEach((o: Record<string, unknown>) => {
-            o.delivery_status = null;
-          });
-        }
-
-        supabaseOrdersList = data.map((d: Record<string, unknown>) => ({
+      const data = await MerchantApi.getOrders();
+      const apiOrders = data.map((d: Record<string, unknown>) => ({
           ...d,
           id: String(d.id),
           total_price: Number(d.total_price ?? d.price ?? 0),
         })) as Order[];
-      } else if (error && !isSupabaseMocked()) {
-        console.warn("Notice fetching Supabase orders:", error.message || error);
-      }
-    } catch (sbErr) {
-      console.warn("[Orders Sync] Notice querying Supabase:", sbErr);
+      processAndSetOrders([], apiOrders);
+    } catch (apiError) {
+      console.warn("[Orders Sync] Authoritative API unavailable:", apiError);
+      toast.error("Orders could not be refreshed. No cached order changes were applied.");
     }
-
-    processAndSetOrders(firestoreOrdersList, supabaseOrdersList);
   }, [user, shops, processAndSetOrders, merchantShopGate.status, currentShop]);
 
   const fetchAllMenuItems = useCallback(async () => {
@@ -1397,77 +1325,17 @@ function App() {
     operationalReady: merchantShopGate.status === "ready" && Boolean(currentShop),
   });
 
-  // Order subscriptions: Listen to BOTH Firestore & Supabase in real-time
+  // Orders are read from the authoritative LocalEats API. Polling avoids treating
+  // either Firestore or a frontend Supabase adapter as a competing order source.
   useEffect(() => {
     if (merchantShopGate.status !== "ready" || !currentShop || !user || shops.length === 0) return;
-
-    let isMounted = true;
-    const activeChannels: RealtimeChannel[] = [];
-    let unsubFirestore: (() => void) | null = null;
-    let pollingInterval: ReturnType<typeof setInterval> | null = null;
-
-    // Start fallback polling interval (30s) to guarantee UI sync
-    pollingInterval = setInterval(() => {
-      if (isMounted) {
-        void fetchOrders();
-      }
-    }, 30000);
-
-    // Get all owned shop IDs (string and numeric variants)
-    void getOwnedShopIds(user, shops).then((ownedShopIds) => {
-      if (!isMounted) return;
-
-      // 1. Subscribe to Firestore orders collection in real-time
-      try {
-        unsubFirestore = subscribeToOrdersFirestore(
-          ownedShopIds.length > 0 ? ownedShopIds : undefined,
-          (liveOrders) => {
-            if (isMounted) {
-              processAndSetOrders(liveOrders);
-            }
-          }
-        );
-      } catch (fsErr) {
-        console.warn("[Orders Realtime] Firestore subscription notice:", fsErr);
-      }
-
-      // 2. Subscribe to Supabase postgres_changes
-      const uniqueNumericOrStringIds = Array.from(new Set(ownedShopIds));
-      uniqueNumericOrStringIds.forEach((shopId) => {
-        void subscribeWithAuthGuard(`orders_changes_${shopId}`, (ch) =>
-          ch.on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "orders",
-              filter: `shop_id=eq.${shopId}`,
-            },
-            () => {
-              if (isMounted) {
-                void fetchOrders();
-              }
-            },
-          )
-        ).then((ch) => {
-          if (ch) {
-            if (isMounted) {
-              activeChannels.push(ch);
-            } else {
-              void supabase.removeChannel(ch);
-            }
-          }
-        });
-      });
-    });
+    void fetchOrders();
+    const pollingInterval = setInterval(() => void fetchOrders(), 15000);
 
     return () => {
-      isMounted = false;
-      if (pollingInterval) clearInterval(pollingInterval);
-      if (unsubFirestore) unsubFirestore();
-      activeChannels.forEach((channel) => void supabase.removeChannel(channel));
+      clearInterval(pollingInterval);
     };
-  }, [user, shops, fetchOrders, processAndSetOrders, subscribeWithAuthGuard, merchantShopGate.status, currentShop]);
+  }, [user, shops, fetchOrders, merchantShopGate.status, currentShop]);
 
   const deleteAllOrders = async () => {
     if (!user) return;
@@ -1534,31 +1402,6 @@ function App() {
     supabase,
     fetchOrders,
   });
-
-  // --- Automated Rider Matching on Order Arrival ---
-  useEffect(() => {
-    if (merchantShopGate.status !== "ready" || !currentShop) return;
-    if (!orders || orders.length === 0) return;
-
-    // Find delivery orders that just arrived (type delivery, status pending, and delivery_status is null/none/undefined)
-    const incomingDeliveryOrders = orders.filter(
-      (o) =>
-        o.order_type === "delivery" &&
-        (!o.delivery_status || o.delivery_status === "none") &&
-        o.status === "pending"
-    );
-
-    if (incomingDeliveryOrders.length > 0) {
-      console.log(`[Auto-Find] Matching ${incomingDeliveryOrders.length} incoming delivery orders...`);
-      incomingDeliveryOrders.forEach((o) => {
-        toast.info(`Incoming order placed! Automatically requesting a rider matching search... 🚴`, {
-          description: `Order #${o.id.substring(0, 8)} has entered matching mode.`,
-          duration: 4000
-        });
-        void requestRider(o.id);
-      });
-    }
-  }, [orders, requestRider, merchantShopGate.status, currentShop]);
 
   // --- Real-Time Connection Heartbeat & Print Queue Manager ---
   const loadFailedPrints = useCallback(async () => {

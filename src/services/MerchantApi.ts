@@ -24,6 +24,8 @@ export type MerchantShopCreateInput = {
 
 type MerchantApiResponse = {
   shop?: VerifiedMerchantShop;
+  order?: Record<string, unknown>;
+  orders?: Record<string, unknown>[];
   error?: string;
   [key: string]: unknown;
 };
@@ -65,6 +67,53 @@ const readJsonResponse = async (response: Response): Promise<MerchantApiResponse
 };
 
 export class MerchantApi {
+  static async getOrders(): Promise<Record<string, unknown>[]> {
+    const apiUrl = getApiUrl();
+    const headers = await getApiAuthHeaders();
+    let response: Response;
+    try {
+      response = await fetch(`${apiUrl}/api/v1/merchant/orders`, { method: "GET", headers });
+    } catch {
+      throw new MerchantApiError("Unable to reach the LocalEats order service.");
+    }
+    const data = await readJsonResponse(response);
+    if (!response.ok) {
+      throw new MerchantApiError(
+        typeof data.error === "string" ? data.error : "Unable to load orders.",
+        response.status,
+      );
+    }
+    if (!Array.isArray(data.orders)) {
+      throw new MerchantApiError("LocalEats order service returned invalid orders.", response.status);
+    }
+    return data.orders;
+  }
+
+  static async transitionOrder(orderId: string, action: "accept" | "ready"): Promise<Record<string, unknown>> {
+    const apiUrl = getApiUrl();
+    const headers = await getApiAuthHeaders();
+    let response: Response;
+    try {
+      response = await fetch(`${apiUrl}/api/v1/merchant/orders/${encodeURIComponent(orderId)}/${action}`, {
+        method: "POST",
+        headers,
+      });
+    } catch {
+      throw new MerchantApiError("Unable to reach the LocalEats order service.");
+    }
+    const data = await readJsonResponse(response);
+    if (!response.ok) {
+      throw new MerchantApiError(
+        typeof data.error === "string" ? data.error : "Unable to update order.",
+        response.status,
+      );
+    }
+    if (!data.order || typeof data.order !== "object" || Array.isArray(data.order)) {
+      throw new MerchantApiError("LocalEats order service returned an invalid order.", response.status);
+    }
+    return data.order;
+  }
+
   /**
    * Fetches the verified shop for the authenticated merchant from the authoritative API.
    * Returns null ONLY if the merchant explicitly has no shop (404).
