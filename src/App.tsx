@@ -106,6 +106,7 @@ import { PendingShopApproval } from "./components/PendingShopApproval";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ConnectivityMonitor } from "./components/ConnectivityMonitor";
 import { LocationSyncIndicator } from "./components/LocationSyncIndicator";
+import { MerchantSettingsHome } from "./components/MerchantSettingsHome";
 import { ConfirmModal } from "./components/ui/ConfirmModal";
 import { FirebaseInitializingOverlay } from "./components/ui/FirebaseInitializingOverlay";
 import { SavingOverlay } from "./components/ui/SavingOverlay";
@@ -465,7 +466,7 @@ function App() {
     };
   }, [currentShop]);
 
-  const [settingsCategory, setSettingsCategory] = useState<string>("account");
+  const [settingsCategory, setSettingsCategory] = useState<string>("home");
   const [storeStatus, setStoreStatus] = useState<"open" | "busy" | "closed">("open");
   const [prepTime, setPrepTime] = useState<number>(20);
   const [operatingHours, setOperatingHours] = useState<Array<{ day: string; open: string; close: string; active: boolean }>>([
@@ -2541,10 +2542,10 @@ function App() {
       )}
 
       {currentShop && !currentShop.is_active && !kitchenMode && (
-        <div className="fixed top-16 left-0 w-full bg-error/95 backdrop-blur-md text-white py-2 px-4 z-40 flex flex-wrap items-center justify-center gap-3 shadow-md border-b border-error shadow-error/20">
-           <div className="flex items-center gap-2 font-black uppercase tracking-widest text-[10px] md:text-xs">
-             <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white animate-pulse" />
-             Store Offline - Not Receiving Orders
+        <div className="fixed left-0 top-16 z-40 flex w-full flex-wrap items-center justify-center gap-3 border-b border-amber-500/20 bg-amber-50/95 px-4 py-2 text-amber-950 shadow-md backdrop-blur-md dark:bg-amber-950/95 dark:text-amber-50">
+           <div className="flex items-center gap-2 text-xs md:text-sm">
+             <div className="h-2 w-2 rounded-full bg-amber-500" />
+             <span><strong>Your shop is offline.</strong> Customers can't place orders right now.</span>
            </div>
            <button
              onClick={async () => {
@@ -2566,9 +2567,9 @@ function App() {
                   toast.error(typeof error === "string" ? error : "Failed to go online");
                 }
              }}
-             className="px-4 py-1 bg-white text-error rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-zinc-100 transition-colors ml-2 shadow-xs cursor-pointer active:scale-95 border border-white"
+             className="ml-2 min-h-9 cursor-pointer rounded-lg bg-primary px-4 py-1 text-xs font-bold text-on-primary shadow-sm transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/50"
            >
-             Go Online Now
+             Go online
            </button>
         </div>
       )}
@@ -2706,22 +2707,23 @@ function App() {
                     </h2>
                   </div>
                   <p className="text-sm text-on-surface-variant font-medium">
-                    Manage your account and storefront preferences.
+                    Find and change the parts of your shop that matter day to day.
                   </p>
                 </header>
 
                 <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-start px-4 md:px-0">
                   {/* Sidebar */}
-                  <nav className="w-full md:w-56 shrink-0 flex md:flex-col gap-2 overflow-x-auto pb-4 md:pb-0 hide-scrollbar border-b md:border-b-0 border-outline-variant/10 md:pr-4">
+                  <nav aria-label="Settings sections" className="w-full md:w-56 shrink-0 flex md:flex-col gap-2 overflow-x-auto pb-4 md:pb-0 hide-scrollbar border-b md:border-b-0 border-outline-variant/10 md:pr-4">
                      {[
-                       { id: "account", label: "Account & Staff", icon: UserIcon },
-                       { id: "storefront", label: "Storefront", icon: Store },
-                       { id: "operations", label: "Operations", icon: Sliders },
+                       { id: "home", label: "Settings home", icon: Settings },
+                       { id: "storefront", label: "Shop profile & location", icon: Store },
+                       { id: "operations", label: "Store status & hours", icon: Sliders },
                        { id: "delivery", label: "Delivery", icon: Truck },
+                       { id: "account", label: "Staff & access", icon: UserIcon },
+                       { id: "billing", label: "Payments", icon: Wallet },
                        { id: "hardware", label: "Printing & Hardware", icon: Printer },
-                       { id: "billing", label: "Billing & Subscription", icon: Wallet },
                        { id: "preferences", label: "Preferences", icon: Settings },
-                       { id: "diagnostics", label: "Database Diagnostics", icon: Activity },
+                       { id: "advanced", label: "Help & Advanced", icon: HelpCircle },
                      ].map(category => (
                        <button
                          key={category.id}
@@ -2743,16 +2745,33 @@ function App() {
 
                   {/* Settings Content Panels */}
                   <div className="flex-1 w-full space-y-4 max-w-3xl pb-16">
-                    {settingsCategory === "diagnostics" && (
+                    {settingsCategory === "home" && (
+                      <MerchantSettingsHome
+                        shop={currentShop}
+                        onSelect={setSettingsCategory}
+                        onOpenStorefront={() => setActiveTab("storefront")}
+                        onOpenPayments={() => setActiveTab("payments")}
+                      />
+                    )}
+
+                    {settingsCategory === "advanced" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h3 className="font-headline font-bold text-lg mb-2">Firestore Diagnostics</h3>
-                        <ShopDiagnosticPanel currentShop={currentShop} />
+                        <div>
+                          <h3 className="font-headline font-bold text-lg">Help & Advanced</h3>
+                          <p className="mt-1 text-sm text-on-surface-variant">Troubleshooting tools for support situations.</p>
+                        </div>
+                        <details className="rounded-2xl border border-outline-variant/10 bg-surface-container-low p-4">
+                          <summary className="min-h-11 cursor-pointer content-center font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/50">Technical diagnostics</summary>
+                          <div className="mt-4 border-t border-outline-variant/10 pt-4">
+                            <ShopDiagnosticPanel currentShop={currentShop} />
+                          </div>
+                        </details>
                       </div>
                     )}
                     
                     {settingsCategory === "storefront" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h3 className="font-headline font-bold text-lg mb-2">Store Profile & Location Sync</h3>
+                        <h3 className="font-headline font-bold text-lg mb-2">Shop profile & location</h3>
                         
                         {/* Real-time Location Sync Status Indicator */}
                         {currentShop && (
@@ -2786,9 +2805,6 @@ function App() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 self-end md:self-auto">
-                      <span className="text-[10px] items-center font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap">
-                        New Location
-                      </span>
                       <ChevronRight
                         size={18}
                         className="text-on-surface-variant/40"
@@ -2904,18 +2920,14 @@ function App() {
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">
-                          Rider Marketplace
+                          Rider deliveries
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Access the dedicated platform for deliveries and
-                          missions.
+                          Open the rider platform for deliveries and active jobs.
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black uppercase text-blue-500/60 bg-blue-500/10 px-2 py-0.5 rounded-md">
-                        External
-                      </span>
                       <DollarSign size={18} className="text-blue-500" />
                     </div>
                   </a>
@@ -2924,34 +2936,33 @@ function App() {
 
                     {settingsCategory === "operations" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h3 className="font-headline font-bold text-lg mb-2">Operations Center</h3>
+                        <h3 className="font-headline font-bold text-lg mb-2">Store status & opening hours</h3>
                   {/* Order Operations Section */}
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
                     <div className="flex items-center gap-2 border-b border-outline-variant/10 pb-4">
                       <Store size={18} className="text-on-surface-variant" />
-                      <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Order Operations</h3>
+                      <h3 className="text-sm font-bold text-on-surface">Store status</h3>
                     </div>
 
                     {/* Store Status Toggle */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="text-left">
-                        <p className="font-bold text-on-surface">Store Status</p>
-                        <p className="text-xs text-on-surface-variant">Are you currently accepting new orders?</p>
+                        <p className="font-bold text-on-surface">{currentShop?.is_active ? "Your shop is online" : "Your shop is offline"}</p>
+                        <p className="text-xs text-on-surface-variant">{currentShop?.is_active ? "Customers can place orders." : "Customers can't place orders right now."}</p>
                       </div>
                       <div className="flex bg-surface-container-high p-1 rounded-xl border border-outline-variant/10">
-                         {(["open", "busy", "closed"] as const).map((statusOption) => {
-                           const labels = { open: "Open", busy: "Busy", closed: "Closed" };
+                         {(["open", "closed"] as const).map((statusOption) => {
+                           const labels = { open: "Online", closed: "Offline" };
                            const activeClass = 
                              statusOption === "open" ? "bg-emerald-500 text-white shadow-sm" : 
-                             statusOption === "busy" ? "bg-amber-500 text-white shadow-sm" :
-                             "bg-rose-500 text-white shadow-sm";
+                             "bg-on-surface text-surface shadow-sm";
 
                            return (
                              <button
                                key={statusOption}
                                onClick={async () => {
                                  if (currentShop) {
-                                   const isActive = statusOption === "open" || statusOption === "busy";
+                                   const isActive = statusOption === "open";
                                    const { success, error, freshShop } = await syncShopAvailability({
                                      isOpen: isActive,
                                    });
@@ -2965,7 +2976,7 @@ function App() {
                                            : shop,
                                        ),
                                      );
-                                     toast.success(`Shop is now ${statusOption === "open" ? "OPEN" : statusOption === "busy" ? "BUSY" : "CLOSED"}`);
+                                     toast.success(`Your shop is now ${statusOption === "open" ? "online" : "offline"}.`);
                                    } else {
                                      setStoreStatus(currentShop.is_active ? "open" : "closed");
                                      await fetchShops();
@@ -2974,7 +2985,7 @@ function App() {
                                  }
                                }}
                                className={cn(
-                                 "px-4 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all",
+                                 "min-h-10 px-4 py-1.5 text-xs font-bold rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-primary/50",
                                  storeStatus === statusOption ? activeClass : "text-on-surface-variant hover:bg-surface-container-highest"
                                )}
                              >
@@ -3012,7 +3023,7 @@ function App() {
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-2">
                           <MapPin size={18} className="text-on-surface-variant" />
-                          <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Operating Hours</h3>
+                          <h3 className="text-sm font-bold text-on-surface">Opening hours</h3>
                         </div>
                         <div className="flex flex-wrap items-center gap-4">
                            {/* Auto Schedule Store Hours Toggle */}

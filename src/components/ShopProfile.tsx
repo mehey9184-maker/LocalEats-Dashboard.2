@@ -510,7 +510,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
           <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
-            Storefront Profile
+            Shop profile
           </h2>
           <p className="text-xs md:text-sm text-on-surface-variant font-medium">
             Customize how your shop appears to customers.
@@ -519,10 +519,10 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
         <div className="flex items-center gap-3">
           <div
             className={cn(
-              "px-3 md:px-4 py-1.5 md:py-2 rounded-2xl text-[10px] md:text-xs font-bold uppercase tracking-widest flex items-center gap-2",
+              "px-3 md:px-4 py-1.5 md:py-2 rounded-2xl text-xs font-bold flex items-center gap-2",
               shop.is_active
-? "bg-emerald-100 text-emerald-600"
-                : "bg-error/10 text-error",
+? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                : "bg-surface-container-high text-on-surface-variant",
             )}
           >
             <div
@@ -531,7 +531,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                 shop.is_active ? "bg-emerald-500 animate-pulse" : "bg-error",
               )}
             />
-            {shop.is_active ? "Live on App" : "Hidden"}
+            {shop.is_active ? "Online" : "Offline"}
           </div>
         </div>
       </header>
@@ -544,37 +544,10 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
           <section className="bg-surface-container-lowest p-5 md:p-8 rounded-2xl md:rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
             <h3 className="text-base md:text-lg font-semibold flex items-center gap-2">
               <Store size={18} className="text-primary md:w-5 md:h-5" />
-              Basic Information
+              Shop profile
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-              <div className="space-y-2">
-                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
-                  Primary Location (City / Township)
-                </label>
-                <select
-                  className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base font-bold text-on-surface"
-                  value={formData.city}
-                  onChange={(e) =>
-                    setFormData({ ...formData, city: e.target.value })
-                  }
-                >
-                  <option value="Tembisa">Tembisa</option>
-                  <option value="Kaalfontein">Kaalfontein</option>
-                  <option value="Ivory Park">Ivory Park</option>
-                  <option value="Ebony Park">Ebony Park</option>
-                  <option value="Clayville">Clayville</option>
-                  <option value="Rabie Ridge">Rabie Ridge</option>
-                  <option value="Midrand">Midrand</option>
-                  <option value="Kempton Park">Kempton Park</option>
-                  <option value="Johannesburg">Johannesburg</option>
-                  <option value="Pretoria">Pretoria</option>
-                  <option value="Cape Town">Cape Town</option>
-                  {formData.city && !["Tembisa", "Kaalfontein", "Ivory Park", "Ebony Park", "Clayville", "Rabie Ridge", "Midrand", "Kempton Park", "Johannesburg", "Pretoria", "Cape Town"].includes(formData.city) && (
-                    <option value={formData.city}>{formData.city}</option>
-                  )}
-                </select>
-              </div>
+            <div className="grid grid-cols-1 gap-4 md:gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
                   Shop Name
@@ -608,14 +581,10 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                   <option>Home Kitchen</option>
                 </select>
               </div>
-              <div className="space-y-2 opacity-50 grayscale pointer-events-none">
-                <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
-                  Unique Shop ID
-                </label>
-                <div className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low flex items-center text-xs font-mono">
-                  #LE-SHP-{shop.id}
-                </div>
-              </div>
+              <details className="rounded-xl bg-surface-container-low px-4 py-2 text-xs text-on-surface-variant">
+                <summary className="min-h-10 cursor-pointer content-center font-semibold focus:outline-none focus:ring-2 focus:ring-primary/50">Support reference</summary>
+                <p className="border-t border-outline-variant/10 pt-3 font-mono">#LE-SHP-{shop.id}</p>
+              </details>
             </div>
 
             <div className="space-y-2">
@@ -631,10 +600,36 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
               />
             </div>
 
+          </section>
+
+          <section className="bg-surface-container-lowest p-5 md:p-8 rounded-2xl md:rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
+            <h3 className="text-base md:text-lg font-semibold flex items-center gap-2">
+              <MapPin size={18} className="text-primary md:w-5 md:h-5" />
+              Shop location
+            </h3>
+
+            <div className="space-y-2">
+              <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">Selected area</label>
+              <select className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base font-bold text-on-surface" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })}>
+                <option value="Tembisa">Tembisa</option>
+                <option value="Kaalfontein">Kaalfontein</option>
+                <option value="Ivory Park">Ivory Park</option>
+                <option value="Ebony Park">Ebony Park</option>
+                <option value="Clayville">Clayville</option>
+                <option value="Rabie Ridge">Rabie Ridge</option>
+                <option value="Midrand">Midrand</option>
+                <option value="Kempton Park">Kempton Park</option>
+                <option value="Johannesburg">Johannesburg</option>
+                <option value="Pretoria">Pretoria</option>
+                <option value="Cape Town">Cape Town</option>
+                {formData.city && !["Tembisa", "Kaalfontein", "Ivory Park", "Ebony Park", "Clayville", "Rabie Ridge", "Midrand", "Kempton Park", "Johannesburg", "Pretoria", "Cape Town"].includes(formData.city) && <option value={formData.city}>{formData.city}</option>}
+              </select>
+            </div>
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
-                  Location Address
+                  Shop address
                 </label>
                 <button
                   type="button"
@@ -642,7 +637,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                   className="text-[10px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 px-2 py-1 rounded-full transition-colors flex items-center gap-1"
                 >
                   <MapPin size={12} />
-                  Update Map Pin
+                  Fix map pin
                 </button>
               </div>
               <div className="relative">
@@ -708,12 +703,12 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                 >
                   <MapPin size={14} className="text-primary" />
                   <span className="text-[10px] font-bold text-primary">
-                    AUTO-LOCATE
+                    Use current location
                   </span>
                 </button>
               </div>
 
-              {/* Real-time Location Sync Status Indicator */}
+              {/* Merchant-facing location summary; technical details stay collapsed. */}
               <div className="pt-2">
                 <LocationSyncIndicator
                   locationState={{
@@ -742,13 +737,13 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
           <section className="bg-surface-container-lowest p-5 md:p-8 rounded-2xl md:rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
             <h3 className="text-base md:text-lg font-bold flex items-center gap-2">
               <Phone size={18} className="text-primary md:w-5 md:h-5" />
-              Contact & Socials
+              Customer contact
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <div className="space-y-2">
                 <label className="flex items-center justify-between text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
-                  <span>Phone Number</span>
+                  <span>Phone</span>
                   {!formData.phone && (
                     <span className="flex items-center gap-1 text-[10px] text-error animate-pulse">
                       <AlertCircle size={10} /> Missing
@@ -771,7 +766,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
-                  Email Address
+                  Email
                 </label>
                 <input
                   className="w-full h-10 md:h-12 px-4 rounded-xl bg-surface-container-low border-none focus:ring-2 focus:ring-primary/40 transition-all text-sm md:text-base font-bold text-on-surface"
@@ -813,7 +808,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
               </div>
               <div className="space-y-2">
                 <label className="flex items-center justify-between text-[10px] md:text-xs font-primary ml-1 font-black uppercase">
-                  <span className="flex items-center gap-1 text-primary"><MessageCircle size={12} /> WhatsApp (Critical)</span>
+                  <span className="flex items-center gap-1"><MessageCircle size={12} /> WhatsApp</span>
                   {!formData.whatsapp && (
                     <span className="flex items-center gap-1 text-[10px] text-error animate-pulse">
                       <AlertCircle size={10} /> Required
@@ -832,7 +827,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                     setFormData({ ...formData, whatsapp: result.formatted });
                   }}
                 />
-                <p className="text-[10px] text-primary/60 ml-1 italic font-bold">This is how customers will contact you on WhatsApp.</p>
+                <p className="text-xs text-on-surface-variant ml-1">Customers can use this number to contact your shop on WhatsApp.</p>
               </div>
             </div>
           </section>
@@ -841,15 +836,15 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
           <section className="bg-surface-container-lowest p-5 md:p-8 rounded-2xl md:rounded-[2rem] border border-outline-variant/10 shadow-sm space-y-6">
             <h3 className="text-base md:text-lg font-semibold flex items-center gap-2">
               <Clock size={18} className="text-primary md:w-5 md:h-5" />
-              Operating Hours
+              Opening hours
             </h3>
             <p className="text-xs text-on-surface-variant">
-              Set when your store is open for receiving and preparing customer orders.
+              Choose when your shop accepts orders.
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
-                  Opening Time
+                  Opens
                 </label>
                 <input
                   type="time"
@@ -862,7 +857,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] md:text-xs font-bold uppercase text-on-surface-variant/60 ml-1">
-                  Closing Time
+                  Closes
                 </label>
                 <input
                   type="time"
@@ -879,9 +874,9 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
 
         <div className="space-y-6">
           {/* Live Preview Card */}
-          <div className="bg-surface-container-lowest p-6 rounded-[2rem] border border-outline-variant/10 shadow-sm overflow-hidden hidden lg:block">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 mb-4 ml-1">
-              Live App Preview
+          <div className="bg-surface-container-lowest p-6 rounded-[2rem] border border-outline-variant/10 shadow-sm overflow-hidden">
+            <h3 className="text-sm font-bold text-on-surface mb-4 ml-1">
+              Customer preview
             </h3>
             <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-surface-container-low mb-4 shadow-inner">
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-primary/10" />

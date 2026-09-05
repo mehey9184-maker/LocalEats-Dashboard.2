@@ -18,6 +18,7 @@ LocalEats Vendor is the mission-critical merchant operating system for local foo
 5. **Stabilized Crash Recovery Protocol**: Max recovery attempts capped at 1; delegates fatal render errors directly to React's `ErrorBoundary` to prevent infinite reload loops and DOM manipulation clashes.
 6. **Fail-Closed Merchant Identity**: Firebase Auth is authoritative and the merchant API is the only source of the authenticated merchant's shop. Failed signup never creates a local authenticated identity or accepts shop ownership metadata. Shop state starts empty; only an authenticated merchant-shop `404` whose JSON error is exactly `Merchant shop not mapped` opens mandatory shop creation. Unexpected `404`, network, and other API failures keep the dashboard locked behind retry/sign-out controls. Operational access requires an API-returned shop with `approval_status: "approved"`; cached menu records are restored only after their `shop_id` matches that API-verified owned shop. Migration utilities preserve string shop IDs without inferring owners or default shops.
 7. **Server-Authoritative Shop Availability**: Merchant operational availability changes use authenticated `PATCH /api/v1/merchant/shop/availability`. The verified Firebase UID selects the merchant's single current unarchived Supabase shop; browser shop IDs, owner IDs, Firestore, the compatibility bridge, and local storage cannot authorize or perform the write. Only approved shops can be activated, while deactivation remains safe for every lifecycle state.
+8. **Merchant-First Settings UX**: Settings opens with a mobile-friendly overview organized around shop profile, location, opening hours, store status, delivery, staff access, payments, preferences, hardware, and help. Online/offline status uses plain customer-impact language and retains the authenticated merchant availability API. Location mismatch warnings explain the required merchant action without exposing coordinates or regional calculations by default; support references, coordinates, detected areas, and diagnostics remain available only through deliberately expanded advanced details.
 
 ---
 
@@ -322,6 +323,7 @@ src/
 │   ├── MenuManagement.tsx             # Menu catalog, pricing, category filters & image uploads
 │   ├── RiderManagement.tsx            # Nearby rider pairing ciphers & active dispatch tracker
 │   ├── ShopProfile.tsx                # Storefront hours, operational toggles, trust badges & GPS
+│   ├── MerchantSettingsHome.tsx        # Plain-language settings overview and shop status summary
 │   ├── Coupons.tsx                    # Promotion builder, discount codes & campaign schedules
 │   ├── Marketing.tsx                  # Promotional campaigns & customer reach tools
 │   ├── Insights.tsx                   # Business intelligence, peak hours & conversion charts
