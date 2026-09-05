@@ -483,34 +483,22 @@ function App() {
     companyName: string;
     taxNumber: string;
     billingEmail: string;
-    cardNumber: string;
-    expiryDate: string;
-    cvv: string;
-    cardholderName: string;
-    isCardSaved: boolean;
   }>(() => {
     try {
       const saved = localStorage.getItem("localeats_billing_details");
-      return saved ? JSON.parse(saved) : {
-        companyName: "",
-        taxNumber: "",
-        billingEmail: "",
-        cardNumber: "",
-        expiryDate: "",
-        cvv: "",
-        cardholderName: "",
-        isCardSaved: false
+      const parsed = saved ? JSON.parse(saved) : {};
+      const sanitized = {
+        companyName: typeof parsed.companyName === "string" ? parsed.companyName : "",
+        taxNumber: typeof parsed.taxNumber === "string" ? parsed.taxNumber : "",
+        billingEmail: typeof parsed.billingEmail === "string" ? parsed.billingEmail : "",
       };
+      localStorage.setItem("localeats_billing_details", JSON.stringify(sanitized));
+      return sanitized;
     } catch {
       return {
         companyName: "",
         taxNumber: "",
         billingEmail: "",
-        cardNumber: "",
-        expiryDate: "",
-        cvv: "",
-        cardholderName: "",
-        isCardSaved: false
       };
     }
   });
@@ -3493,13 +3481,13 @@ function App() {
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
                     <div className="flex items-center gap-2 border-b border-outline-variant/10 pb-4">
                       <CreditCard size={18} className="text-on-surface-variant" />
-                      <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Direct Terminal Integration</h3>
+                      <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Physical Terminal Setup</h3>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="flex flex-col space-y-2">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                            Require Card Linking
+                            Require Terminal Confirmation
                          </label>
                          <label className="flex items-center gap-3 mt-2 cursor-pointer bg-surface-container-high p-3 rounded-xl border border-outline-variant/5">
                            <input
@@ -3519,7 +3507,7 @@ function App() {
                              }}
                              className="w-5 h-5 rounded accent-primary border-outline-variant/30 text-primary focus:ring-primary focus:ring-offset-surface-container-high"
                            />
-                           <span className="text-sm font-bold text-on-surface select-none">Require Card Number Match</span>
+                           <span className="text-sm font-bold text-on-surface select-none">Confirm payment on the shop terminal</span>
                          </label>
                       </div>
 
@@ -3910,133 +3898,20 @@ function App() {
                           {/* Column B: Card Vault Setup & Invoice History */}
                           <div className="space-y-6">
 
-                            {/* Card 1: Secure Card Vault */}
+                            {/* Card 1: External subscription payment provider */}
                             <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
                               <h4 className="font-headline font-bold text-base text-on-surface flex items-center justify-between text-left">
                                 <span className="flex items-center gap-2">
                                   <CreditCard size={18} className="text-primary" />
-                                  Secure Credit Card Link
-                                </span>
-                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                                  <ShieldCheck size={10} /> PCI-DSS Secure
+                                  Subscription payments
                                 </span>
                               </h4>
                               <p className="text-xs text-on-surface-variant leading-relaxed text-left">
-                                Link a payment card via our secure Yoco/Peach tokenization vault. You won't be charged anything during the free Beta period.
+                                LocalEats does not collect card numbers, expiry dates, or CVV codes. Subscription card setup will be enabled only through a compliant external payment provider's hosted page.
                               </p>
-
-                              {billingDetails.isCardSaved ? (
-                                <div className="p-4 bg-surface-container-high/60 rounded-xl border border-emerald-500/20 flex items-center justify-between animate-in fade-in duration-300">
-                                  <div className="flex items-center gap-3 text-left">
-                                    <div className="w-10 h-7 bg-zinc-950 rounded-md flex items-center justify-center text-white text-[10px] font-black uppercase tracking-wider shadow border border-outline-variant/20">
-                                      {billingDetails.cardNumber.startsWith("4") ? "Visa" : "MC"}
-                                    </div>
-                                    <div className="text-left">
-                                      <p className="text-xs font-black text-on-surface">•••• •••• •••• {billingDetails.cardNumber.slice(-4) || "4242"}</p>
-                                      <p className="text-[9px] text-on-surface-variant">Expires: {billingDetails.expiryDate || "12/28"} • {billingDetails.cardholderName || "Store Owner"}</p>
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() => {
-                                      const cleared = {
-                                        ...billingDetails,
-                                        cardholderName: "",
-                                        cardNumber: "",
-                                        expiryDate: "",
-                                        cvv: "",
-                                        isCardSaved: false
-                                      };
-                                      setBillingDetails(cleared);
-                                      localStorage.setItem("localeats_billing_details", JSON.stringify(cleared));
-
-                                    }}
-                                    className="text-[10px] font-bold text-error/80 hover:text-error hover:bg-error/5 px-2.5 py-1.5 rounded-lg transition-all"
-                                  >
-                                    Remove Card
-                                  </button>
-                                </div>
-                              ) : (
-                                <div className="space-y-3 pt-1 text-left">
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Cardholder Name</label>
-                                    <input
-                                      type="text"
-                                      placeholder="e.g. Jane Doe"
-                                      value={billingDetails.cardholderName}
-                                      onChange={(e) => setBillingDetails({ ...billingDetails, cardholderName: e.target.value })}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Card Number</label>
-                                    <input
-                                      type="text"
-                                      placeholder="4000 1234 5678 9010"
-                                      maxLength={19}
-                                      value={billingDetails.cardNumber}
-                                      onChange={(e) => {
-                                        const cleanVal = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-                                        const formatted = cleanVal.match(/.{1,4}/g)?.join(' ') || cleanVal;
-                                        setBillingDetails({ ...billingDetails, cardNumber: formatted });
-                                      }}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-3 text-left">
-                                    <div>
-                                      <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Expiry Date (MM/YY)</label>
-                                      <input
-                                        type="text"
-                                        placeholder="12/28"
-                                        maxLength={5}
-                                        value={billingDetails.expiryDate}
-                                        onChange={(e) => {
-                                          let val = e.target.value.replace(/[^0-9/]/g, '');
-                                          if (val.length === 2 && !val.includes('/')) {
-                                            val = val + '/';
-                                          }
-                                          setBillingDetails({ ...billingDetails, expiryDate: val });
-                                        }}
-                                        className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">CVV / CVC</label>
-                                      <input
-                                        type="password"
-                                        placeholder="•••"
-                                        maxLength={4}
-                                        value={billingDetails.cvv}
-                                        onChange={(e) => setBillingDetails({ ...billingDetails, cvv: e.target.value.replace(/[^0-9]/g, '') })}
-                                        className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <button
-                                    onClick={() => {
-                                      if (!billingDetails.cardholderName || !billingDetails.cardNumber || !billingDetails.expiryDate || !billingDetails.cvv) {
-                                        toast.error("Please fill in all credit card fields first.");
-                                        return;
-                                      }
-                                      if (billingDetails.cardNumber.replace(/\s/g, '').length < 15) {
-                                        toast.error("Please enter a valid credit card number.");
-                                        return;
-                                      }
-
-                                      const updated = { ...billingDetails, isCardSaved: true };
-                                      setBillingDetails(updated);
-                                      localStorage.setItem("localeats_billing_details", JSON.stringify(updated));
-                                      toast.success("Card linked securely to Yoco vault! Rate plan R0 applied.");
-                                    }}
-                                    className="w-full bg-primary text-on-primary py-2.5 rounded-xl text-xs font-black uppercase hover:bg-opacity-90 shadow-sm transition-all flex items-center justify-center gap-2"
-                                  >
-                                    <ShieldCheck size={14} /> Securely Link Card
-                                  </button>
-                                </div>
-                              )}
+                              <div className="rounded-xl border border-outline-variant/10 bg-surface-container-high/60 p-4 text-xs text-on-surface-variant">
+                                No subscription payment method is required during the free beta.
+                              </div>
                             </div>
 
                             {/* Card 2: Invoice History */}
@@ -4372,7 +4247,7 @@ function App() {
 
                         <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2 text-emerald-600">
                           <Circle size={16} className="shrink-0" />
-                          <p className="text-[10px] font-bold leading-tight text-left">Paid in full. Your card ending in {billingDetails.cardNumber ? billingDetails.cardNumber.slice(-4) : "4242"} was not charged.</p>
+                          <p className="text-[10px] font-bold leading-tight text-left">Paid in full. No subscription payment was collected during the free beta.</p>
                         </div>
                       </div>
 

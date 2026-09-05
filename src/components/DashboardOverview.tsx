@@ -1421,19 +1421,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
   const [showTestCheckout, setShowTestCheckout] = useState(false);
   const [testOrderPayMethod, setTestOrderPayMethod] = useState("Cash");
-  const [cardName, setCardName] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
   const [specialInstructions, setSpecialInstructions] = useState("");
 
   const generateTestOrder = async () => {
     if (!currentShop) return;
-
-    if (testOrderPayMethod === "Card Machine") {
-      if (!cardName.trim() || !cardNumber.trim() || cardNumber.length < 15) {
-        toast.error("Please provide valid Cardholder Name and Card Number.");
-        return;
-      }
-    }
 
     const posOrder = {
       shop_id: currentShop.id,
@@ -1461,7 +1452,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         },
       ],
       payment_method: testOrderPayMethod,
-      terminal_masked_card: testOrderPayMethod === "Card Machine" ? `**** **** **** ${cardNumber.slice(-4)}` : null,
+      terminal_masked_card: null,
       terminal_sync_status: testOrderPayMethod === "Card Machine" ? "synced" : null,
       created_at: new Date().toISOString(),
       notes: specialInstructions.trim() || null,
@@ -1823,36 +1814,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                       <div className="p-5 rounded-2xl bg-surface-container-lowest border-2 border-emerald-500/20 shadow-sm space-y-4 mt-2">
                         <div className="flex items-center gap-2 text-emerald-600 mb-2">
                           <Lock size={14} />
-                          <span className="text-xs font-black uppercase tracking-wider">Secure Payment Synchronization</span>
+                          <span className="text-xs font-black uppercase tracking-wider">External terminal payment</span>
                         </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Cardholder Name</label>
-                          <input
-                            type="text"
-                            value={cardName}
-                            onChange={(e) => setCardName(e.target.value)}
-                            placeholder="John Doe"
-                            className="w-full bg-surface border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all font-mono"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Masked Card Number</label>
-                          <input
-                            type="text"
-                            value={cardNumber}
-                            onChange={(e) => {
-                               const val = e.target.value.replace(/\D/g, "");
-                               let formatted = "";
-                               for (let i = 0; i < val.length; i++) {
-                                 if (i > 0 && i % 4 === 0) formatted += " ";
-                                 formatted += val[i];
-                               }
-                               setCardNumber(formatted.slice(0, 19));
-                            }}
-                            placeholder="**** **** **** 1234"
-                            className="w-full bg-surface border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all font-mono"
-                          />
-                        </div>
+                        <p className="text-xs text-on-surface-variant leading-relaxed">
+                          Take payment on the shop's physical terminal. LocalEats records only the payment method and never asks for card details.
+                        </p>
                       </div>
                     </motion.div>
                   )}

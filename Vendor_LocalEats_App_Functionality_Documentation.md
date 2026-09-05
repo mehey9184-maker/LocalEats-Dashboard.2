@@ -19,6 +19,7 @@ LocalEats Vendor is the mission-critical merchant operating system for local foo
 6. **Fail-Closed Merchant Identity**: Firebase Auth is authoritative and the merchant API is the only source of the authenticated merchant's shop. Failed signup never creates a local authenticated identity or accepts shop ownership metadata. Shop state starts empty; only an authenticated merchant-shop `404` whose JSON error is exactly `Merchant shop not mapped` opens mandatory shop creation. Unexpected `404`, network, and other API failures keep the dashboard locked behind retry/sign-out controls. Operational access requires an API-returned shop with `approval_status: "approved"`; cached menu records are restored only after their `shop_id` matches that API-verified owned shop. Migration utilities preserve string shop IDs without inferring owners or default shops.
 7. **Server-Authoritative Shop Availability**: Merchant operational availability changes use authenticated `PATCH /api/v1/merchant/shop/availability`. The verified Firebase UID selects the merchant's single current unarchived Supabase shop; browser shop IDs, owner IDs, Firestore, the compatibility bridge, and local storage cannot authorize or perform the write. Only approved shops can be activated, while deactivation remains safe for every lifecycle state.
 8. **Merchant-First Settings UX**: Settings opens with a mobile-friendly overview organized around shop profile, location, opening hours, store status, delivery, staff access, payments, preferences, hardware, and help. Online/offline status uses plain customer-impact language and retains the authenticated merchant availability API. Location mismatch warnings explain the required merchant action without exposing coordinates or regional calculations by default; support references, coordinates, detected areas, and diagnostics remain available only through deliberately expanded advanced details.
+9. **No Merchant Card-Credential Collection**: The Merchant Dashboard does not request, retain, cache, or simulate processing card numbers, expiry dates, CVV/CVC values, or cardholder credentials. Card-at-shop means the customer pays on the merchant's independent physical terminal. Subscription payments remain disabled during the free beta and may later be enabled only through a compliant provider-hosted payment page. Company name, tax/VAT number, and billing email remain available for invoice identity; the billing-details cache is rewritten to this allowlist when the app loads.
 
 ---
 
@@ -305,6 +306,9 @@ All post-deployment operations have been empirically verified with 100% pass rat
 3. **Screen Wake Lock API Policy**:
    * *Status*: Environmental browser feature.
    * *Context*: Kitchen display wake lock gracefully handles unsupported or un-permissioned browser environments without blocking dashboard operations.
+4. **Historical Browser Data Review Required Before Release**:
+   * *Status*: Release blocker, not proof of historical erasure.
+   * *Context*: The current merchant build sanitizes its legacy billing-details local-storage record and removes raw-card input surfaces. Before production release, previously deployed builds, service workers, browser caches, logs, telemetry/Sentry events, queued requests, and merchant operating procedures still require a separate review.
 
 ---
 
