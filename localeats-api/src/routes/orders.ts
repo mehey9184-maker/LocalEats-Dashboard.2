@@ -10,6 +10,7 @@ import {
   createOrder,
   lifecycleStateFromOrder,
   lifecycleUpdateFor,
+  quoteOrder,
   SupabaseOrderRepository,
   type StoredOrder,
 } from "../orders/orderService.js";
@@ -48,6 +49,19 @@ const sendOrderError = (res: Response, error: unknown): void => {
   console.error("Order API error:", error instanceof Error ? error.message : "unknown error");
   res.status(500).json({ success: false, code: "INTERNAL_ERROR", error: "Internal Server Error" });
 };
+
+router.post("/quote", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.authUser?.uid;
+    if (!userId) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
+
+    const input = parseCreateOrderInput(req.body);
+    const quote = await quoteOrder(repository, userId, input);
+    res.status(200).json({ success: true, quote });
+  } catch (error) {
+    sendOrderError(res, error);
+  }
+});
 
 router.post("/", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {

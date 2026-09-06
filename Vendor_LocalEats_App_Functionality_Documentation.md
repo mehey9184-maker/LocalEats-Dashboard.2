@@ -379,6 +379,8 @@ Status: **local safety work only; not committed, pushed, merged, deployed, or ap
 - The merchant accepts a new order into `preparing`, then marks it `ready_for_pickup`. For delivery orders, that ready action starts `finding_rider`; checkout does not request a rider.
 - Cash delivery orders remain eligible for rider discovery and claiming. Payment method is not used to exclude them.
 - Rider available, active, historical, and individual assigned-order reads are served through authenticated API routes. Failure returns an empty/error state instead of a fabricated delivery or history item.
+- The rider API registers the static `/available` route before `/:id` and uses explicit response allowlists: unclaimed jobs omit exact customer contact/location and internal security data, while assigned-job responses add only the operational delivery fields needed by the assigned rider.
+- Authenticated customers can request a read-only authoritative quote at `POST /api/v1/orders/quote`. Quote and order creation share the same shop, menu, service-radius, payment, and pricing validation path; quoting creates no order and generates no delivery proof.
 - Unsupported manual rider assignment/release paths fail closed until matching server-authoritative endpoints exist.
 - The corresponding API validates the canonical lifecycle and shop ownership server-side. Rider claiming and completion use staged atomic Supabase RPCs.
 - Required Supabase schema/RPC changes are staged under `supabase/migrations` but have not been applied. A staging database and end-to-end customer → merchant → rider test are required before release.

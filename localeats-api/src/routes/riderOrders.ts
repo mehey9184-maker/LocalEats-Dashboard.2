@@ -1,4 +1,4 @@
-import { Router, type Response } from "express";
+import { Router, type RequestHandler, type Response } from "express";
 import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 import { authenticateFirebase, type AuthenticatedRequest } from "../middleware/authenticateFirebase.js";
 import { OrderContractError, assertLifecycleTransition } from "../orders/orderContract.js";
@@ -34,18 +34,97 @@ const resolveRider = async (firebaseUid: string) => {
   return data;
 };
 
-const safeRiderOrder = (order: Record<string, unknown>): Record<string, unknown> => {
-  const {
-    delivery_pin_hash: _pinHash,
-    delivery_qr_hash: _qrHash,
-    idempotency_key: _idempotencyKey,
-    ...safeOrder
-  } = order;
-  return safeOrder;
-};
+const AVAILABLE_RIDER_ORDER_COLUMNS = [
+  "id",
+  "shop_id",
+  "product_name",
+  "total_price",
+  "delivery_fee",
+  "payment_method",
+  "city",
+  "status",
+  "delivery_status",
+  "delivery_type",
+  "created_at",
+].join(",");
 
-router.get("/mine", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+const ASSIGNED_RIDER_ORDER_COLUMNS = [
+  "id",
+  "shop_id",
+  "product_name",
+  "product_variant",
+  "price",
+  "total_price",
+  "delivery_fee",
+  "service_fee",
+  "discount_amount",
+  "tip_amount",
+  "payment_method",
+  "items",
+  "customer_name",
+  "phone",
+  "address",
+  "city",
+  "lat",
+  "lng",
+  "notes",
+  "status",
+  "delivery_status",
+  "rider_id",
+  "delivery_type",
+  "created_at",
+  "updated_at",
+].join(",");
+
+export const availableRiderOrderResponse = (
+  order: Record<string, unknown>,
+): Record<string, unknown> => ({
+  id: order.id,
+  shop_id: order.shop_id,
+  product_name: order.product_name,
+  total_price: order.total_price,
+  delivery_fee: order.delivery_fee,
+  payment_method: order.payment_method,
+  city: order.city,
+  status: order.status,
+  delivery_status: order.delivery_status,
+  delivery_type: order.delivery_type,
+  created_at: order.created_at,
+});
+
+export const assignedRiderOrderResponse = (
+  order: Record<string, unknown>,
+): Record<string, unknown> => ({
+  id: order.id,
+  shop_id: order.shop_id,
+  product_name: order.product_name,
+  product_variant: order.product_variant,
+  price: order.price,
+  total_price: order.total_price,
+  delivery_fee: order.delivery_fee,
+  service_fee: order.service_fee,
+  discount_amount: order.discount_amount,
+  tip_amount: order.tip_amount,
+  payment_method: order.payment_method,
+  items: order.items,
+  customer_name: order.customer_name,
+  phone: order.phone,
+  address: order.address,
+  city: order.city,
+  lat: order.lat,
+  lng: order.lng,
+  notes: order.notes,
+  status: order.status,
+  delivery_status: order.delivery_status,
+  rider_id: order.rider_id,
+  delivery_type: order.delivery_type,
+  created_at: order.created_at,
+  updated_at: order.updated_at,
+});
+
+const handleMine: RequestHandler = async (request, res): Promise<void> => {
   try {
+    const req = request as AuthenticatedRequest;
     const uid = req.authUser?.uid;
     if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
     const rider = await resolveRider(uid);
@@ -53,7 +132,7 @@ router.get("/mine", authenticateFirebase, async (req: AuthenticatedRequest, res:
 
     let query = supabaseAdmin
       .from("orders")
-      .select("*")
+      .select(ASSIGNED_RIDER_ORDER_COLUMNS)
       .eq("rider_id", rider.id)
       .order("updated_at", { ascending: false });
 
@@ -65,35 +144,42 @@ router.get("/mine", authenticateFirebase, async (req: AuthenticatedRequest, res:
     if (error) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Rider deliveries could not be loaded.");
     res.status(200).json({
       success: true,
-      orders: (data ?? []).map((order) => safeRiderOrder(order as Record<string, unknown>)),
+      orders: (data ?? []).map((order) =>
+        assignedRiderOrderResponse(order as unknown as Record<string, unknown>),
+      ),
     });
   } catch (error) {
     sendError(res, error);
   }
-});
+};
 
-router.get("/:id", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+const handleAssignedById: RequestHandler = async (request, res): Promise<void> => {
   try {
+    const req = request as AuthenticatedRequest;
     const uid = req.authUser?.uid;
     if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
     const rider = await resolveRider(uid);
     const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const { data, error } = await supabaseAdmin
       .from("orders")
-      .select("*")
+      .select(ASSIGNED_RIDER_ORDER_COLUMNS)
       .eq("id", orderId)
       .eq("rider_id", rider.id)
       .maybeSingle();
     if (error) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Delivery could not be loaded.");
     if (!data) throw new OrderContractError(404, "ORDER_NOT_FOUND", "Assigned delivery was not found.");
-    res.status(200).json({ success: true, order: safeRiderOrder(data as Record<string, unknown>) });
+    res.status(200).json({
+      success: true,
+      order: assignedRiderOrderResponse(data as unknown as Record<string, unknown>),
+    });
   } catch (error) {
     sendError(res, error);
   }
-});
+};
 
-router.get("/available", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+const handleAvailable: RequestHandler = async (request, res): Promise<void> => {
   try {
+    const req = request as AuthenticatedRequest;
     const uid = req.authUser?.uid;
     if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
     const rider = await resolveRider(uid);
@@ -119,16 +205,43 @@ router.get("/available", authenticateFirebase, async (req: AuthenticatedRequest,
 
     const { data: orders, error: orderError } = await supabaseAdmin
       .from("orders")
-      .select("id,shop_id,product_name,total_price,delivery_fee,payment_method,address,city,lat,lng,status,delivery_status,created_at")
+      .select(AVAILABLE_RIDER_ORDER_COLUMNS)
       .in("shop_id", shopIds)
       .eq("delivery_status", "finding_rider")
       .is("rider_id", null)
       .order("created_at", { ascending: true });
     if (orderError) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Available deliveries could not be loaded.");
-    res.status(200).json({ success: true, orders: orders ?? [] });
+    res.status(200).json({
+      success: true,
+      orders: (orders ?? []).map((order) =>
+        availableRiderOrderResponse(order as unknown as Record<string, unknown>),
+      ),
+    });
   } catch (error) {
     sendError(res, error);
   }
+};
+
+export interface RiderReadRouteHandlers {
+  mine: RequestHandler;
+  available: RequestHandler;
+  assignedById: RequestHandler;
+}
+
+export const registerRiderReadRoutes = (
+  targetRouter: ReturnType<typeof Router>,
+  authenticate: RequestHandler,
+  handlers: RiderReadRouteHandlers,
+): void => {
+  targetRouter.get("/mine", authenticate, handlers.mine);
+  targetRouter.get("/available", authenticate, handlers.available);
+  targetRouter.get("/:id", authenticate, handlers.assignedById);
+};
+
+registerRiderReadRoutes(router, authenticateFirebase, {
+  mine: handleMine,
+  available: handleAvailable,
+  assignedById: handleAssignedById,
 });
 
 router.post("/:id/claim", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -152,7 +265,10 @@ router.post("/:id/claim", authenticateFirebase, async (req: AuthenticatedRequest
     }
     const order = Array.isArray(data) ? data[0] : data;
     if (!order?.id) throw new OrderContractError(409, "DELIVERY_ALREADY_CLAIMED", "This delivery is no longer available.");
-    res.status(200).json({ success: true, order });
+    res.status(200).json({
+      success: true,
+      order: assignedRiderOrderResponse(order as Record<string, unknown>),
+    });
   } catch (error) {
     sendError(res, error);
   }
@@ -172,7 +288,7 @@ const advanceAssignedDelivery = async (
     .eq("id", orderId)
     .eq("rider_id", rider.id)
     .eq("delivery_status", expected)
-    .select("*")
+    .select(ASSIGNED_RIDER_ORDER_COLUMNS)
     .maybeSingle();
   if (error) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Delivery state could not be saved.");
   if (!data) throw new OrderContractError(409, "INVALID_ORDER_TRANSITION", "Delivery state changed or rider is not assigned.");
@@ -189,7 +305,10 @@ for (const action of [
       if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
       const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const order = await advanceAssignedDelivery(uid, orderId, action.expected, action.target);
-      res.status(200).json({ success: true, order });
+      res.status(200).json({
+        success: true,
+        order: assignedRiderOrderResponse(order as unknown as Record<string, unknown>),
+      });
     } catch (error) {
       sendError(res, error);
     }
@@ -242,7 +361,7 @@ router.post(
       res.status(200).json({
         success: true,
         order: {
-          ...safeRiderOrder(payload.order as Record<string, unknown>),
+          ...assignedRiderOrderResponse(payload.order as Record<string, unknown>),
           earnings_awarded: Number(payload.earnings_awarded ?? 0),
         },
         replayed: payload.replayed === true,

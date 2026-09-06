@@ -84,6 +84,58 @@ export interface CreateOrderResult {
   deliveryProof?: Pick<DeliveryProof, "pin" | "qr_token">;
 }
 
+export interface AuthoritativeOrderQuote
+  extends Pick<
+    AuthoritativePrice,
+    | "subtotal"
+    | "delivery_fee"
+    | "service_fee"
+    | "discount_amount"
+    | "tip_amount"
+    | "total_price"
+  > {
+  delivery_type: CreateOrderInput["delivery_type"];
+  payment_method: CreateOrderInput["payment_method"];
+}
+
+const validateAndPriceOrder = async (
+  repository: OrderRepository,
+  userId: string,
+  input: CreateOrderInput,
+): Promise<AuthoritativePrice> => {
+  if (!userId) {
+    throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
+  }
+
+  const shop = await repository.findShop(input.shop_id);
+  if (!shop) throw new OrderContractError(404, "SHOP_NOT_FOUND", "Shop not found.");
+  assertShopCanAcceptOrder(shop, input);
+
+  const menuItems = await repository.findMenuItems(
+    input.shop_id,
+    input.items.map((item) => item.menu_item_id),
+  );
+  return calculateAuthoritativePrice(input, menuItems);
+};
+
+export const quoteOrder = async (
+  repository: OrderRepository,
+  userId: string,
+  input: CreateOrderInput,
+): Promise<AuthoritativeOrderQuote> => {
+  const pricing = await validateAndPriceOrder(repository, userId, input);
+  return {
+    subtotal: pricing.subtotal,
+    delivery_fee: pricing.delivery_fee,
+    service_fee: pricing.service_fee,
+    discount_amount: pricing.discount_amount,
+    tip_amount: pricing.tip_amount,
+    total_price: pricing.total_price,
+    delivery_type: input.delivery_type,
+    payment_method: input.payment_method,
+  };
+};
+
 const numericEqual = (left: unknown, right: unknown): boolean =>
   Number.isFinite(Number(left)) && Number(left) === Number(right);
 
@@ -142,19 +194,7 @@ export const createOrder = async (
   input: CreateOrderInput,
   deliveryProofSecret?: string,
 ): Promise<CreateOrderResult> => {
-  if (!userId) {
-    throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
-  }
-
-  const shop = await repository.findShop(input.shop_id);
-  if (!shop) throw new OrderContractError(404, "SHOP_NOT_FOUND", "Shop not found.");
-  assertShopCanAcceptOrder(shop, input);
-
-  const menuItems = await repository.findMenuItems(
-    input.shop_id,
-    input.items.map((item) => item.menu_item_id),
-  );
-  const pricing = calculateAuthoritativePrice(input, menuItems);
+  const pricing = await validateAndPriceOrder(repository, userId, input);
   const deliveryProof = input.delivery_type === "delivery"
     ? deriveDeliveryProof(input.idempotency_key, deliveryProofSecret)
     : undefined;

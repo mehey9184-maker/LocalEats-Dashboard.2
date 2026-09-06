@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
+import express, { Router, type RequestHandler } from "express";
 import {
   assertLifecycleTransition,
   assertShopCanAcceptOrder,
@@ -7,6 +10,32 @@ import {
   OrderContractError,
   parseCreateOrderInput,
 } from "./orderContract.js";
+import {
+  assignedRiderOrderResponse,
+  availableRiderOrderResponse,
+  registerRiderReadRoutes,
+} from "../routes/riderOrders.js";
+import { customerOrderRoutes } from "../routes/orders.js";
+
+const requestJson = async (
+  app: ReturnType<typeof express>,
+  path: string,
+  init?: RequestInit,
+): Promise<{ status: number; body: Record<string, unknown> }> => {
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  try {
+    const address = server.address() as AddressInfo;
+    const response = await fetch(`http://127.0.0.1:${address.port}${path}`, init);
+    return {
+      status: response.status,
+      body: (await response.json()) as Record<string, unknown>,
+    };
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+};
 
 const validRequest = (): Record<string, unknown> => ({
   idempotency_key: "550e8400-e29b-41d4-a716-446655440000",
@@ -155,4 +184,162 @@ test("express and unverified promo pricing fail closed", () => {
     () => parseCreateOrderInput({ ...validRequest(), promo_code: "FREE100" }),
     (error: unknown) => error instanceof OrderContractError && error.code === "PROMO_NOT_SUPPORTED",
   );
+});
+
+test("the authenticated quote endpoint rejects a request with no Firebase bearer token", async () => {
+  const app = express();
+  app.use(express.json());
+  app.use("/api/v1/orders", customerOrderRoutes);
+
+  const response = await requestJson(app, "/api/v1/orders/quote", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(validRequest()),
+  });
+
+  assert.equal(response.status, 401);
+  assert.equal(response.body.success, false);
+});
+
+test("the /available request reaches the static available-deliveries handler", async () => {
+  const app = express();
+  const testRouter = Router();
+  const passAuthentication: RequestHandler = (_req, _res, next) => next();
+  const mine: RequestHandler = (_req, res) => {
+    res.status(200).json({ handler: "mine" });
+  };
+  const available: RequestHandler = (_req, res) => {
+    res.status(200).json({ handler: "available" });
+  };
+  const assignedById: RequestHandler = (req, res) => {
+    res.status(200).json({ handler: "by-id", id: req.params.id });
+  };
+
+  registerRiderReadRoutes(testRouter, passAuthentication, { mine, available, assignedById });
+  app.use("/api/v1/rider/orders", testRouter);
+  const response = await requestJson(app, "/api/v1/rider/orders/available");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, { handler: "available" });
+});
+
+test("rider response contracts expose only role-appropriate allowlisted fields", () => {
+  const databaseOrder: Record<string, unknown> = {
+    id: "order-1",
+    shop_id: "shop-1",
+    product_name: "Kota",
+    product_variant: null,
+    price: 25,
+    total_price: 37.5,
+    delivery_fee: 10,
+    service_fee: 2.5,
+    discount_amount: 0,
+    tip_amount: 0,
+    payment_method: "cash",
+    items: [{ name: "Kota", quantity: 1 }],
+    customer_name: "Customer",
+    phone: "0712345678",
+    email: "customer@example.com",
+    address: "10 Private Street",
+    city: "Tembisa",
+    lat: -25.983,
+    lng: 28.208,
+    notes: "Gate code",
+    status: "ready_for_pickup",
+    delivery_status: "finding_rider",
+    rider_id: null,
+    delivery_type: "delivery",
+    created_at: "2026-09-06T00:00:00.000Z",
+    updated_at: "2026-09-06T00:01:00.000Z",
+    user_id: "firebase-customer-1",
+    customer_firebase_uid: "firebase-customer-1",
+    idempotency_key: "550e8400-e29b-41d4-a716-446655440000",
+    delivery_pin_hash: true,
+    delivery_qr_hash: true,
+    delivery_confirmation_token: true,
+    server_secret: true,
+  };
+
+  const available = availableRiderOrderResponse(databaseOrder);
+  assert.deepEqual(Object.keys(available).sort(), [
+    "city",
+    "created_at",
+    "delivery_fee",
+    "delivery_status",
+    "delivery_type",
+    "id",
+    "payment_method",
+    "product_name",
+    "shop_id",
+    "status",
+    "total_price",
+  ]);
+  assert.equal(available.address, undefined);
+  assert.equal(available.lat, undefined);
+  assert.equal(available.lng, undefined);
+  assert.equal(available.phone, undefined);
+  assert.equal(available.email, undefined);
+  assert.equal(available.customer_name, undefined);
+
+  const assigned = assignedRiderOrderResponse(databaseOrder);
+  assert.equal(assigned.address, databaseOrder.address);
+  assert.equal(assigned.lat, databaseOrder.lat);
+  assert.equal(assigned.lng, databaseOrder.lng);
+  assert.equal(assigned.phone, databaseOrder.phone);
+
+  for (const field of [
+    "email",
+    "user_id",
+    "customer_firebase_uid",
+    "idempotency_key",
+    "delivery_pin_hash",
+    "delivery_qr_hash",
+    "delivery_confirmation_token",
+    "server_secret",
+  ]) {
+    assert.equal(field in available, false, `${field} leaked before claim`);
+    assert.equal(field in assigned, false, `${field} leaked after assignment`);
+  }
+});
+
+test("claim, pickup, delivering, and delivered responses retain the assigned-rider privacy contract", () => {
+  const forbiddenFields = [
+    "email",
+    "user_id",
+    "customer_firebase_uid",
+    "idempotency_key",
+    "delivery_pin_hash",
+    "delivery_qr_hash",
+    "delivery_confirmation_token",
+    "server_secret",
+  ];
+
+  for (const { action, deliveryStatus } of [
+    { action: "claim", deliveryStatus: "rider_assigned" },
+    { action: "pickup", deliveryStatus: "picked_up" },
+    { action: "delivering", deliveryStatus: "delivering" },
+    { action: "delivered", deliveryStatus: "delivered" },
+  ]) {
+    const response = assignedRiderOrderResponse({
+      id: `order-${action}`,
+      delivery_status: deliveryStatus,
+      address: "10 Private Street",
+      phone: "0712345678",
+      email: "customer@example.com",
+      user_id: "firebase-customer-1",
+      customer_firebase_uid: "firebase-customer-1",
+      idempotency_key: "550e8400-e29b-41d4-a716-446655440000",
+      delivery_pin_hash: true,
+      delivery_qr_hash: true,
+      delivery_confirmation_token: true,
+      server_secret: true,
+    });
+
+    assert.equal(response.delivery_status, deliveryStatus);
+    assert.equal(response.address, "10 Private Street");
+    assert.equal(response.phone, "0712345678");
+    for (const field of forbiddenFields) {
+      assert.equal(field in response, false, `${field} leaked from ${action} response`);
+    }
+  }
 });
