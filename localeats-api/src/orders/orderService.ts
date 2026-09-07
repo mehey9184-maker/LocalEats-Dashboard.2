@@ -32,6 +32,8 @@ export interface StoredOrder {
   delivery_type?: "collection" | "delivery" | null;
   delivery_pin_hash?: string | null;
   delivery_qr_hash?: string | null;
+  delivery_pin_failed_attempts?: number | null;
+  delivery_pin_locked_until?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   [key: string]: unknown;
@@ -83,6 +85,13 @@ export interface CreateOrderResult {
   replayed: boolean;
   deliveryProof?: Pick<DeliveryProof, "pin" | "qr_token">;
 }
+
+export const orderRequiresDeliveryProof = (order: StoredOrder): boolean =>
+  order.delivery_type === "delivery" &&
+  order.status !== "delivered" &&
+  order.status !== "cancelled" &&
+  order.delivery_status !== "delivered" &&
+  order.delivery_status !== "cancelled";
 
 export interface AuthoritativeOrderQuote
   extends Pick<
@@ -195,9 +204,6 @@ export const createOrder = async (
   deliveryProofSecret?: string,
 ): Promise<CreateOrderResult> => {
   const pricing = await validateAndPriceOrder(repository, userId, input);
-  const deliveryProof = input.delivery_type === "delivery"
-    ? deriveDeliveryProof(input.idempotency_key, deliveryProofSecret)
-    : undefined;
 
   const existing = await repository.findOrderByIdempotencyKey(input.idempotency_key);
   if (existing) {
@@ -208,14 +214,21 @@ export const createOrder = async (
         "This idempotency key was already used for a different order.",
       );
     }
+    const replayProof = orderRequiresDeliveryProof(existing)
+      ? deriveDeliveryProof(input.idempotency_key, deliveryProofSecret)
+      : undefined;
     return {
       order: existing,
       replayed: true,
-      deliveryProof: deliveryProof
-        ? { pin: deliveryProof.pin, qr_token: deliveryProof.qr_token }
+      deliveryProof: replayProof
+        ? { pin: replayProof.pin, qr_token: replayProof.qr_token }
         : undefined,
     };
   }
+
+  const deliveryProof = input.delivery_type === "delivery"
+    ? deriveDeliveryProof(input.idempotency_key, deliveryProofSecret)
+    : undefined;
 
   const coordinates = input.delivery_coordinates;
   const notes = [
@@ -260,7 +273,7 @@ export const createOrder = async (
         return {
           order: racedOrder,
           replayed: true,
-          deliveryProof: deliveryProof
+          deliveryProof: orderRequiresDeliveryProof(racedOrder) && deliveryProof
             ? { pin: deliveryProof.pin, qr_token: deliveryProof.qr_token }
             : undefined,
         };

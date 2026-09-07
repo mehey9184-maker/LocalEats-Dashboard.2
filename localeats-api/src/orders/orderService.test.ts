@@ -235,6 +235,22 @@ test("idempotent retry returns the confirmed database order", async () => {
   assert.deepEqual(retry.deliveryProof, first.deliveryProof);
 });
 
+test("completed order replay does not regenerate an active delivery proof", async () => {
+  const repository = new MemoryRepository();
+  const first = await createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET);
+  repository.existing = {
+    ...first.order,
+    status: "delivered",
+    delivery_status: "delivered",
+    delivery_pin_hash: null,
+    delivery_qr_hash: null,
+  };
+
+  const replay = await createOrder(repository, "firebase-customer-1", input());
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.deliveryProof, undefined);
+});
+
 test("reusing an idempotency key for changed intent is rejected", async () => {
   const repository = new MemoryRepository();
   await createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET);

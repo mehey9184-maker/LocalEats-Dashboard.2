@@ -10,6 +10,7 @@ import {
   createOrder,
   lifecycleStateFromOrder,
   lifecycleUpdateFor,
+  orderRequiresDeliveryProof,
   quoteOrder,
   SupabaseOrderRepository,
   type StoredOrder,
@@ -19,18 +20,32 @@ import { deriveDeliveryProof } from "../orders/deliveryProof.js";
 const router = Router();
 const repository = new SupabaseOrderRepository(supabaseAdmin);
 
-const withoutDeliveryProofHashes = (order: StoredOrder): Omit<StoredOrder, "delivery_pin_hash" | "delivery_qr_hash"> => {
-  const { delivery_pin_hash: _pinHash, delivery_qr_hash: _qrHash, ...safeOrder } = order;
+const withoutDeliveryProofState = (
+  order: StoredOrder,
+): Omit<
+  StoredOrder,
+  | "delivery_pin_hash"
+  | "delivery_qr_hash"
+  | "delivery_pin_failed_attempts"
+  | "delivery_pin_locked_until"
+> => {
+  const {
+    delivery_pin_hash: _pinHash,
+    delivery_qr_hash: _qrHash,
+    delivery_pin_failed_attempts: _pinAttempts,
+    delivery_pin_locked_until: _pinLockedUntil,
+    ...safeOrder
+  } = order;
   return safeOrder;
 };
 
-const customerOrderResponse = (order: StoredOrder) => {
+export const customerOrderResponse = (order: StoredOrder) => {
   const safeOrder = {
-    ...withoutDeliveryProofHashes(order),
+    ...withoutDeliveryProofState(order),
     is_delivery: order.delivery_type === "delivery",
     order_type: order.delivery_type,
   };
-  if (order.delivery_type !== "delivery" || typeof order.idempotency_key !== "string") return safeOrder;
+  if (!orderRequiresDeliveryProof(order) || typeof order.idempotency_key !== "string") return safeOrder;
   const proof = deriveDeliveryProof(order.idempotency_key, process.env.DELIVERY_PROOF_SECRET);
   return {
     ...safeOrder,
@@ -73,7 +88,7 @@ router.post("/", authenticateFirebase, async (req: AuthenticatedRequest, res: Re
     res.status(result.replayed ? 200 : 201).json({
       success: true,
       replayed: result.replayed,
-      order: withoutDeliveryProofHashes(result.order),
+      order: withoutDeliveryProofState(result.order),
       delivery_confirmation: result.deliveryProof,
     });
   } catch (error) {
@@ -191,7 +206,7 @@ merchantOrderRoutes.get(
       if (ordersError) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Orders could not be loaded.");
       res.status(200).json({
         success: true,
-        orders: (orders ?? []).map((order) => withoutDeliveryProofHashes(order as StoredOrder)),
+        orders: (orders ?? []).map((order) => withoutDeliveryProofState(order as StoredOrder)),
       });
     } catch (error) {
       sendOrderError(res, error);
@@ -265,7 +280,7 @@ merchantOrderRoutes.post(
       const uid = req.authUser?.uid;
       if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
       const order = await updateMerchantOrder(uid, routeParam(req.params.id), "accept");
-      res.status(200).json({ success: true, order: withoutDeliveryProofHashes(order) });
+      res.status(200).json({ success: true, order: withoutDeliveryProofState(order) });
     } catch (error) {
       sendOrderError(res, error);
     }
@@ -280,7 +295,7 @@ merchantOrderRoutes.post(
       const uid = req.authUser?.uid;
       if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
       const order = await updateMerchantOrder(uid, routeParam(req.params.id), "ready");
-      res.status(200).json({ success: true, order: withoutDeliveryProofHashes(order) });
+      res.status(200).json({ success: true, order: withoutDeliveryProofState(order) });
     } catch (error) {
       sendOrderError(res, error);
     }

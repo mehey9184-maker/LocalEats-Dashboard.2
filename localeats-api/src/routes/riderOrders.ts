@@ -6,6 +6,121 @@ import { hashDeliveryProof } from "../orders/deliveryProof.js";
 
 const router = Router();
 
+export const APPROVED_RIDER_CONNECTION_STATUS = "approved";
+
+export const isApprovedRiderProfile = (profile: { verification_status?: unknown }): boolean =>
+  profile.verification_status === "approved";
+
+export const isApprovedRiderConnection = (connection: { status?: unknown }): boolean =>
+  connection.status === APPROVED_RIDER_CONNECTION_STATUS;
+
+export type DeliveryProofKind = "pin" | "qr";
+
+export const parseRiderDeliveryProof = (
+  proof: unknown,
+): { kind: DeliveryProofKind; value: string } => {
+  if (typeof proof === "string" && /^\d{4}$/.test(proof)) {
+    return { kind: "pin", value: proof };
+  }
+  if (typeof proof === "string" && /^le_[0-9a-f]{64}$/.test(proof)) {
+    return { kind: "qr", value: proof };
+  }
+  throw new OrderContractError(
+    400,
+    "INVALID_DELIVERY_CONFIRMATION",
+    "Enter a 4-digit PIN or scan a LocalEats QR code.",
+  );
+};
+
+export type DeliveryCompletionOutcome =
+  | {
+      ok: true;
+      order: Record<string, unknown>;
+      replayed: boolean;
+    }
+  | {
+      ok: false;
+      status: number;
+      code: string;
+      message: string;
+      retryAfter?: number;
+    };
+
+export const interpretDeliveryCompletion = (value: unknown): DeliveryCompletionOutcome => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new OrderContractError(
+      503,
+      "INVALID_DATABASE_RESPONSE",
+      "The database did not confirm delivery completion.",
+    );
+  }
+
+  const payload = value as Record<string, unknown>;
+  if (payload.success === true) {
+    if (!payload.order || typeof payload.order !== "object" || Array.isArray(payload.order)) {
+      throw new OrderContractError(
+        503,
+        "INVALID_DATABASE_RESPONSE",
+        "The database did not return the completed order.",
+      );
+    }
+    return {
+      ok: true,
+      order: payload.order as Record<string, unknown>,
+      replayed: payload.replayed === true,
+    };
+  }
+
+  if (payload.success !== false || typeof payload.error_code !== "string") {
+    throw new OrderContractError(
+      503,
+      "INVALID_DATABASE_RESPONSE",
+      "The database returned an invalid delivery-completion result.",
+    );
+  }
+
+  switch (payload.error_code) {
+    case "RIDER_NOT_APPROVED":
+      return { ok: false, status: 403, code: "RIDER_NOT_APPROVED", message: "Rider is not approved." };
+    case "RIDER_NOT_ASSIGNED":
+      return { ok: false, status: 403, code: "FORBIDDEN", message: "You cannot complete this delivery." };
+    case "ORDER_NOT_FOUND":
+      return { ok: false, status: 404, code: "ORDER_NOT_FOUND", message: "Order not found." };
+    case "INVALID_ORDER_STATE":
+      return {
+        ok: false,
+        status: 409,
+        code: "INVALID_ORDER_TRANSITION",
+        message: "This order is not ready to be completed.",
+      };
+    case "INVALID_DELIVERY_PROOF":
+    case "INVALID_DELIVERY_PROOF_KIND":
+      return {
+        ok: false,
+        status: 409,
+        code: "INVALID_DELIVERY_CONFIRMATION",
+        message: "The delivery PIN or QR code is incorrect.",
+      };
+    case "PIN_LOCKED": {
+      const candidate = Number(payload.retry_after);
+      const retryAfter = Number.isFinite(candidate) && candidate > 0 ? Math.ceil(candidate) : 1;
+      return {
+        ok: false,
+        status: 429,
+        code: "DELIVERY_PIN_LOCKED",
+        message: "Too many incorrect PIN attempts. Try again later or scan the delivery QR code.",
+        retryAfter,
+      };
+    }
+    default:
+      throw new OrderContractError(
+        503,
+        "INVALID_DATABASE_RESPONSE",
+        "The database returned an unknown delivery-completion result.",
+      );
+  }
+};
+
 const sendError = (res: Response, error: unknown): void => {
   if (error instanceof OrderContractError) {
     res.status(error.status).json({ success: false, code: error.code, error: error.message });
@@ -28,7 +143,7 @@ const resolveRider = async (firebaseUid: string) => {
       "Rider identity mapping is not ready. No delivery state was changed.",
     );
   }
-  if (!data || data.verification_status !== "approved") {
+  if (!data || !isApprovedRiderProfile(data)) {
     throw new OrderContractError(403, "RIDER_NOT_APPROVED", "Rider is not approved.");
   }
   return data;
@@ -192,7 +307,7 @@ const handleAvailable: RequestHandler = async (request, res): Promise<void> => {
       .from("rider_connections")
       .select("shop_id,status,expires_at")
       .eq("rider_id", rider.id)
-      .in("status", ["active", "approved"]);
+      .eq("status", APPROVED_RIDER_CONNECTION_STATUS);
     if (connectionError) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Rider pairings could not be loaded.");
     const now = Date.now();
     const shopIds = (connections ?? [])
@@ -322,49 +437,36 @@ router.post(
     try {
       const uid = req.authUser?.uid;
       if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
-      const proof = req.body?.delivery_pin;
-      if (
-        typeof proof !== "string" ||
-        (!/^\d{4}$/.test(proof) && !/^le_[0-9a-f]{64}$/.test(proof))
-      ) {
-        throw new OrderContractError(400, "INVALID_DELIVERY_CONFIRMATION", "Enter a 4-digit PIN or scan a LocalEats QR code.");
-      }
-
-      const proofHash = hashDeliveryProof(proof, process.env.DELIVERY_PROOF_SECRET);
+      const proof = parseRiderDeliveryProof(req.body?.delivery_pin);
+      const proofHash = hashDeliveryProof(proof.value, process.env.DELIVERY_PROOF_SECRET);
       const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const { data, error } = await supabaseAdmin.rpc("complete_delivery_order", {
         p_order_id: orderId,
         p_firebase_uid: uid,
+        p_delivery_proof_kind: proof.kind,
         p_delivery_proof_hash: proofHash,
       });
       if (error) {
-        const message = error.message || "Delivery could not be completed.";
-        if (message.includes("confirmation is invalid")) {
-          throw new OrderContractError(409, "INVALID_DELIVERY_CONFIRMATION", "The delivery PIN or QR code is incorrect.");
-        }
-        if (message.includes("not ready")) {
-          throw new OrderContractError(409, "INVALID_ORDER_TRANSITION", "This order is not ready to be completed.");
-        }
-        if (message.includes("not assigned") || message.includes("not approved")) {
-          throw new OrderContractError(403, "FORBIDDEN", "You cannot complete this delivery.");
-        }
         throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Delivery completion could not be saved.");
       }
 
-      if (!data || typeof data !== "object" || Array.isArray(data)) {
-        throw new OrderContractError(503, "INVALID_DATABASE_RESPONSE", "The database did not confirm delivery completion.");
-      }
-      const payload = data as Record<string, unknown>;
-      if (!payload.order || typeof payload.order !== "object" || Array.isArray(payload.order)) {
-        throw new OrderContractError(503, "INVALID_DATABASE_RESPONSE", "The database did not return the completed order.");
+      const outcome = interpretDeliveryCompletion(data);
+      if (!outcome.ok) {
+        if (outcome.retryAfter !== undefined) {
+          res.set("Retry-After", String(outcome.retryAfter));
+        }
+        res.status(outcome.status).json({
+          success: false,
+          code: outcome.code,
+          error: outcome.message,
+          ...(outcome.retryAfter !== undefined ? { retry_after: outcome.retryAfter } : {}),
+        });
+        return;
       }
       res.status(200).json({
         success: true,
-        order: {
-          ...assignedRiderOrderResponse(payload.order as Record<string, unknown>),
-          earnings_awarded: Number(payload.earnings_awarded ?? 0),
-        },
-        replayed: payload.replayed === true,
+        order: assignedRiderOrderResponse(outcome.order),
+        replayed: outcome.replayed,
       });
     } catch (error) {
       sendError(res, error);

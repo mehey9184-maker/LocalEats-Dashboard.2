@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
+import { resolve } from "node:path";
 import express, { Router, type RequestHandler } from "express";
 import {
   assertLifecycleTransition,
@@ -11,11 +13,24 @@ import {
   parseCreateOrderInput,
 } from "./orderContract.js";
 import {
+  APPROVED_RIDER_CONNECTION_STATUS,
   assignedRiderOrderResponse,
   availableRiderOrderResponse,
+  interpretDeliveryCompletion,
+  isApprovedRiderConnection,
+  isApprovedRiderProfile,
+  parseRiderDeliveryProof,
   registerRiderReadRoutes,
 } from "../routes/riderOrders.js";
-import { customerOrderRoutes } from "../routes/orders.js";
+import { customerOrderResponse, customerOrderRoutes } from "../routes/orders.js";
+import type { StoredOrder } from "./orderService.js";
+
+const migrationSql = readFileSync(
+  resolve(process.cwd(), "../supabase/migrations/20260905000000_order_integrity_foundation.sql"),
+  "utf8",
+);
+
+const riderRouteSource = readFileSync(resolve(process.cwd(), "src/routes/riderOrders.ts"), "utf8");
 
 const requestJson = async (
   app: ReturnType<typeof express>,
@@ -342,4 +357,167 @@ test("claim, pickup, delivering, and delivered responses retain the assigned-rid
       assert.equal(field in response, false, `${field} leaked from ${action} response`);
     }
   }
+});
+
+test("pending riders and non-approved merchant connections cannot authorize delivery access", () => {
+  assert.equal(isApprovedRiderProfile({ verification_status: "pending" }), false);
+  assert.equal(isApprovedRiderProfile({ verification_status: "rejected" }), false);
+  assert.equal(isApprovedRiderProfile({ verification_status: "approved" }), true);
+
+  assert.equal(APPROVED_RIDER_CONNECTION_STATUS, "approved");
+  assert.equal(isApprovedRiderConnection({ status: "pending" }), false);
+  assert.equal(isApprovedRiderConnection({ status: "active" }), false);
+  assert.equal(isApprovedRiderConnection({ status: "approved" }), true);
+  assert.match(
+    riderRouteSource,
+    /\.eq\("status", APPROVED_RIDER_CONNECTION_STATUS\)/,
+  );
+  assert.doesNotMatch(riderRouteSource, /\.in\("status", \["active", "approved"\]\)/);
+});
+
+test("delivery proof input distinguishes a PIN from a high-entropy QR token", () => {
+  assert.deepEqual(parseRiderDeliveryProof("1234"), { kind: "pin", value: "1234" });
+  const qr = `le_${"a".repeat(64)}`;
+  assert.deepEqual(parseRiderDeliveryProof(qr), { kind: "qr", value: qr });
+  assert.throws(
+    () => parseRiderDeliveryProof("12345"),
+    (error: unknown) =>
+      error instanceof OrderContractError && error.code === "INVALID_DELIVERY_CONFIRMATION",
+  );
+});
+
+test("structured completion failures map invalid and locked PIN outcomes safely", () => {
+  const invalid = interpretDeliveryCompletion({
+    success: false,
+    error_code: "INVALID_DELIVERY_PROOF",
+    replayed: false,
+  });
+  assert.deepEqual(invalid, {
+    ok: false,
+    status: 409,
+    code: "INVALID_DELIVERY_CONFIRMATION",
+    message: "The delivery PIN or QR code is incorrect.",
+  });
+
+  const locked = interpretDeliveryCompletion({
+    success: false,
+    error_code: "PIN_LOCKED",
+    retry_after: 900,
+    replayed: false,
+  });
+  assert.deepEqual(locked, {
+    ok: false,
+    status: 429,
+    code: "DELIVERY_PIN_LOCKED",
+    message: "Too many incorrect PIN attempts. Try again later or scan the delivery QR code.",
+    retryAfter: 900,
+  });
+});
+
+test("completion responses do not expose proof hashes or invent rider earnings", () => {
+  const outcome = interpretDeliveryCompletion({
+    success: true,
+    replayed: false,
+    earnings_awarded: 10,
+    order: {
+      id: "order-complete",
+      delivery_status: "delivered",
+      delivery_pin_hash: true,
+      delivery_qr_hash: true,
+    },
+  });
+  assert.equal(outcome.ok, true);
+  if (!outcome.ok) return;
+
+  const response = assignedRiderOrderResponse(outcome.order);
+  assert.equal("delivery_pin_hash" in response, false);
+  assert.equal("delivery_qr_hash" in response, false);
+  assert.equal("earnings_awarded" in outcome, false);
+  assert.equal("earnings_awarded" in response, false);
+});
+
+test("completed and cancelled customer orders do not return active confirmation proof", () => {
+  const baseOrder = {
+    id: "order-final",
+    shop_id: "shop-1",
+    user_id: "firebase-customer-1",
+    rider_id: "00000000-0000-4000-8000-000000000001",
+    status: "delivered",
+    delivery_status: "delivered",
+    payment_method: "cash_on_arrival",
+    price: 25,
+    total_price: 37.5,
+    delivery_fee: 10,
+    service_fee: 2.5,
+    discount_amount: 0,
+    tip_amount: 0,
+    items: [],
+    lat: -25.983,
+    lng: 28.208,
+    delivery_type: "delivery",
+    idempotency_key: "550e8400-e29b-41d4-a716-446655440000",
+    delivery_pin_hash: "stored-test-value",
+    delivery_qr_hash: "stored-test-value",
+    delivery_pin_failed_attempts: 4,
+    delivery_pin_locked_until: "2026-09-07T12:00:00.000Z",
+  } satisfies StoredOrder;
+
+  const completed = customerOrderResponse(baseOrder);
+  const cancelled = customerOrderResponse({
+    ...baseOrder,
+    status: "cancelled",
+    delivery_status: "none",
+  });
+  assert.equal("delivery_confirmation" in completed, false);
+  assert.equal("delivery_confirmation" in cancelled, false);
+  for (const field of [
+    "delivery_pin_hash",
+    "delivery_qr_hash",
+    "delivery_pin_failed_attempts",
+    "delivery_pin_locked_until",
+  ]) {
+    assert.equal(field in completed, false);
+    assert.equal(field in cancelled, false);
+  }
+});
+
+test("staged migration persists PIN lockout, preserves replay idempotency, and removes invented rewards", () => {
+  assert.match(migrationSql, /delivery_pin_failed_attempts integer/);
+  assert.match(migrationSql, /delivery_pin_locked_until timestamptz/);
+  assert.match(migrationSql, /v_failed_attempts >= 5 then v_now \+ interval '15 minutes'/);
+  assert.match(migrationSql, /set delivery_pin_failed_attempts = v_failed_attempts,/);
+  assert.match(migrationSql, /p_delivery_proof_kind = 'pin'/);
+  assert.match(migrationSql, /p_delivery_proof_kind = 'qr'/);
+  assert.match(migrationSql, /p_delivery_proof_hash <> v_order\.delivery_pin_hash/);
+  assert.match(migrationSql, /p_delivery_proof_hash <> v_order\.delivery_qr_hash/);
+  assert.match(migrationSql, /delivery_pin_hash = null,/);
+  assert.match(migrationSql, /delivery_qr_hash = null,/);
+  assert.doesNotMatch(migrationSql, /total_earnings\s*=/);
+  assert.doesNotMatch(migrationSql, /active_points\s*=/);
+
+  const replayGuard = migrationSql.indexOf("if v_order.delivery_status = 'delivered'");
+  const deliveriesIncrement = migrationSql.indexOf("set total_deliveries = coalesce(total_deliveries, 0) + 1");
+  assert.ok(replayGuard >= 0 && deliveriesIncrement > replayGuard);
+  assert.equal(
+    migrationSql.match(/set total_deliveries = coalesce\(total_deliveries, 0\) \+ 1/g)?.length,
+    1,
+  );
+});
+
+test("staged migration locks tables and RPCs to server authority without row deletion", () => {
+  assert.match(migrationSql, /alter column shop_id set not null/);
+  assert.match(migrationSql, /foreign key \(shop_id\) references public\.shops\(id\) on delete restrict/);
+  assert.match(migrationSql, /foreign key \(shop_id\) references public\.shops\(id\) on delete cascade/);
+  assert.match(migrationSql, /foreign key \(rider_id\) references public\.rider_profiles\(id\) on delete cascade/);
+  assert.match(migrationSql, /alter column id set default gen_random_uuid\(\)/);
+  assert.match(migrationSql, /constraint_def\.confrelid = 'auth\.users'::regclass/);
+  assert.match(migrationSql, /alter column firebase_uid set not null/);
+  assert.match(migrationSql, /alter column verification_status set default 'pending'/);
+  assert.match(migrationSql, /alter column status set default 'pending'/);
+  assert.match(migrationSql, /and status = 'approved'/);
+  assert.doesNotMatch(migrationSql, /and status in \('active', 'approved'\)/);
+  assert.match(migrationSql, /security invoker\s+set search_path = ''/);
+  assert.match(migrationSql, /from public, anon, authenticated/);
+  assert.match(migrationSql, /to service_role/);
+  assert.doesNotMatch(migrationSql, /^\s*(delete|truncate)\s+/im);
 });
