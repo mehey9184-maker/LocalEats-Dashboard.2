@@ -1,0 +1,58 @@
+// --- Optimized Real-time Order Listener (Rider Dashboard) ---
+// This listener filters for 'Active' orders only to reduce database overhead.
+
+const ordersSubscription = supabase
+  .channel("active_rider_missions")
+  .on(
+    "postgres_changes",
+    { 
+      event: "*", 
+      schema: "public", 
+      table: "orders",
+      // FILTER: Only subscribe to 'Active' status transitions
+      filter: "delivery_status=in.(finding_rider,accepted,picked_up)" 
+    },
+    (payload) => { 
+      // Only sync if order is in an active delivery state
+      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+        const order = payload.new as Order;
+        
+        // Notify if a new mission is looking for a rider
+        if (order.delivery_status === 'finding_rider' && payload.eventType === 'INSERT') {
+           toast.info("🚨 New Mission Broadcast!", { 
+             description: "Tap to view in Available Missions", 
+             duration: 5000 
+           });
+           const audio = new Audio('/notification.mp3');
+           audio.play().catch(() => {});
+        }
+      }
+      void fetchRiderData(); 
+    }
+  )
+  .subscribe();
+
+// --- Targeted Rider Track Listener (Merchant Dashboard) ---
+// This provides high-frequency tracking only for the currently selected rider.
+
+let profileSub: ReturnType<typeof supabase.channel> | null = null;
+
+if (selectedTrackId) {
+  profileSub = supabase
+    .channel(`track_rider_${selectedTrackId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'rider_profiles',
+        // FILTER: Track only the specific rider assigned to the active mission
+        filter: `id=eq.${selectedTrackId}`
+      },
+      () => {
+        // Trigger data refresh when GPS coordinates update
+        fetchConnections();
+      }
+    )
+    .subscribe();
+}

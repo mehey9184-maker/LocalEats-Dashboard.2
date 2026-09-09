@@ -1,0 +1,43 @@
+
+> localeats-merchant@1.0.0 build
+> vite build
+
+vite v5.4.21 building for production...
+transforming...
+
+./assets/map-bg.png referenced in ./assets/map-bg.png didn't resolve at build time, it will remain unchanged to be resolved at runtime
+✓ 3891 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/registerSW.js                           0.13 kB
+dist/manifest.webmanifest                    0.32 kB
+dist/index.html                              1.16 kB │ gzip:     0.59 kB
+dist/assets/index-C-6-yrN0.css             231.56 kB │ gzip:    33.52 kB
+dist/assets/purify.es-B5CD4DQe.js           22.90 kB │ gzip:     8.84 kB
+dist/assets/browser-CTB2jwNe.js             24.53 kB │ gzip:     9.66 kB
+dist/assets/index.es-2kZ6abYp.js           150.69 kB │ gzip:    51.55 kB
+dist/assets/html2canvas.esm-CBrSDip1.js    201.42 kB │ gzip:    48.03 kB
+dist/assets/index-BKx7vRTx.js            4,248.21 kB │ gzip: 1,064.42 kB
+
+(!) Some chunks are larger than 1000 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 22.05s
+
+PWA v1.3.0
+Building src/sw.ts service worker ("es" format)...
+vite v5.4.21 building for production...
+transforming...
+✓ 65 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/sw.mjs  31.70 kB │ gzip: 10.28 kB
+✓ built in 301ms
+
+PWA v1.3.0
+mode      injectManifest
+format:   es
+precache  13 entries (5620.22 KiB)
+files generated
+  dist/sw.js
