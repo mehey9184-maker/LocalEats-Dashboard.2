@@ -8,6 +8,13 @@
 
 ## 1. Executive Summary & Business Stakeholder Directives
 
+### Catalog-01: Public Read-Only Catalog API
+
+- `GET /api/v1/catalog/shops`, `GET /api/v1/catalog/shops/:shopId`, and `GET /api/v1/catalog/shops/:shopId/menu` read authoritative Supabase shops/menu items only. The catalog router does not use Firestore or fabricate data or coordinates.
+- Public shops are approved and unarchived. Approved inactive shops remain visible as offline; orderability is protected separately by the existing approved + active order checks.
+- Explicit selects and response allowlists exclude ownership, approval reasons, and internal metadata. Missing/non-public shops return generic `404 Shop not found`; database errors return safe generic 500 responses.
+- No migration is required. No live data, order rules, or frontend behavior is changed. Run catalog tests with `node --test dist/routes/catalog.test.js` after `npm run build`; `npm test` retains the existing order suites.
+
 LocalEats Vendor is the mission-critical merchant operating system for local food establishments and restaurants. Designed with Swiss-Modern aesthetics and high operational ergonomics, the app provides real-time order fulfillment, instant inventory controls, rider dispatch/handshake management, sales analytics, and thermal printer integration.
 
 ### Core Directives:

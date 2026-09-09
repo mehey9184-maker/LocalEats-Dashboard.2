@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import healthRoutes from "./routes/health.js";
 import merchantRoutes from "./routes/merchant.js";
 import adminRoutes from "./routes/admin.js";
+import catalogRoutes from "./routes/catalog.js";
 import { customerOrderRoutes, merchantOrderRoutes } from "./routes/orders.js";
 import riderOrderRoutes from "./routes/riderOrders.js";
 import { isAllowedOrigin } from "./corsOrigins.js";
@@ -35,6 +36,7 @@ app.use("/api/v1/orders", customerOrderRoutes);
 app.use("/api/v1/merchant/orders", merchantOrderRoutes);
 app.use("/api/v1/rider/orders", riderOrderRoutes);
 app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/catalog", catalogRoutes);
 
 // 404 Handler
 app.use((req: Request, res: Response) => {
