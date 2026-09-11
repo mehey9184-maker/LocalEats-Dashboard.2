@@ -6,6 +6,7 @@ import healthRoutes from "./routes/health.js";
 import merchantRoutes from "./routes/merchant.js";
 import adminRoutes from "./routes/admin.js";
 import catalogRoutes from "./routes/catalog.js";
+import merchantMenuRoutes from "./routes/merchantMenu.js";
 import { customerOrderRoutes, merchantOrderRoutes } from "./routes/orders.js";
 import riderOrderRoutes from "./routes/riderOrders.js";
 import { isAllowedOrigin } from "./corsOrigins.js";
@@ -32,6 +33,7 @@ app.use(express.json());
 // Routes
 app.use("/health", healthRoutes);
 app.use("/api/v1/merchant", merchantRoutes);
+app.use("/api/v1/merchant/menu", merchantMenuRoutes);
 app.use("/api/v1/orders", customerOrderRoutes);
 app.use("/api/v1/merchant/orders", merchantOrderRoutes);
 app.use("/api/v1/rider/orders", riderOrderRoutes);

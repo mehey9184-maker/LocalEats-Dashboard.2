@@ -1,5 +1,36 @@
 import { getApiAuthHeaders } from "../lib/apiAuth";
 
+export type MerchantMenuItem = {
+  id: string | number;
+  shop_id: string | number;
+  name: string;
+  price: number;
+  description: string | null;
+  image_url: string | null;
+  category: string | null;
+  is_available: boolean;
+  popularity_score: number | null;
+  customizations: unknown;
+  created_at: string;
+};
+export type MerchantMenuInput = {
+  name: string;
+  price: number;
+  description?: string | null;
+  image_url?: string | null;
+  category?: string;
+  is_available?: boolean;
+};
+
+const isMenuItem = (value: unknown): value is MerchantMenuItem => {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  return (typeof item.id === "string" || typeof item.id === "number") &&
+    (typeof item.shop_id === "string" || typeof item.shop_id === "number") &&
+    typeof item.name === "string" && typeof item.price === "number" && Number.isFinite(item.price) &&
+    typeof item.is_available === "boolean";
+};
+
 export type VerifiedMerchantShop = {
   id: string | number;
   owner_id: string;
@@ -67,6 +98,49 @@ const readJsonResponse = async (response: Response): Promise<MerchantApiResponse
 };
 
 export class MerchantApi {
+  private static async menuRequest(path: string, method: "GET" | "POST" | "PATCH", input?: unknown) {
+    const apiUrl = getApiUrl().replace(/\/+$/, "");
+    const headers = await getApiAuthHeaders();
+    let response: Response;
+    try {
+      response = await fetch(`${apiUrl}/api/v1/merchant/menu${path}`, {
+        method, headers, ...(input === undefined ? {} : { body: JSON.stringify(input) }),
+      });
+    } catch {
+      throw new MerchantApiError("Unable to reach the LocalEats menu service. Refresh the menu before retrying a save.");
+    }
+    const data = await readJsonResponse(response);
+    if (!response.ok || data.success !== true) {
+      throw new MerchantApiError(typeof data.error === "string" ? data.error : "Unable to complete menu request.", response.status);
+    }
+    return data;
+  }
+
+  static async getMenu(shopId: string | number): Promise<MerchantMenuItem[]> {
+    const data = await this.menuRequest(`?shop_id=${encodeURIComponent(shopId)}`, "GET");
+    if (!Array.isArray(data.menu) || !data.menu.every(isMenuItem) ||
+        data.menu.some((item) => String(item.shop_id) !== String(shopId))) {
+      throw new MerchantApiError("LocalEats menu service returned an invalid menu.");
+    }
+    return data.menu;
+  }
+
+  static async createMenuItem(input: MerchantMenuInput & { shop_id: string | number }): Promise<MerchantMenuItem> {
+    const data = await this.menuRequest("", "POST", input);
+    if (!isMenuItem(data.item) || String(data.item.shop_id) !== String(input.shop_id)) {
+      throw new MerchantApiError("LocalEats menu service did not confirm the created item. Refresh before retrying.");
+    }
+    return data.item;
+  }
+
+  static async updateMenuItem(itemId: string | number, input: Partial<MerchantMenuInput>): Promise<MerchantMenuItem> {
+    const data = await this.menuRequest(`/${encodeURIComponent(itemId)}`, "PATCH", input);
+    if (!isMenuItem(data.item) || String(data.item.id) !== String(itemId)) {
+      throw new MerchantApiError("LocalEats menu service did not confirm the updated item. Refresh before retrying.");
+    }
+    return data.item;
+  }
+
   static async getOrders(): Promise<Record<string, unknown>[]> {
     const apiUrl = getApiUrl();
     const headers = await getApiAuthHeaders();

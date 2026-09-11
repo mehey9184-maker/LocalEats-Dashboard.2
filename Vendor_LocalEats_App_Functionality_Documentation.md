@@ -8,6 +8,16 @@
 
 ## 1. Executive Summary & Business Stakeholder Directives
 
+### Merchant Menu Authority 01
+
+- The authenticated Merchant API is the menu read/write authority: `GET /api/v1/merchant/menu?shop_id=...`, `POST /api/v1/merchant/menu`, and `PATCH /api/v1/merchant/menu/:itemId`. Supabase server-side `menu_items` is the authoritative store. These paths supersede the historical Firestore menu architecture described below.
+- Every request verifies Firebase identity and the current unarchived shop's ownership server-side. Pending and approved inactive owned shops are accepted by the menu API; archived/foreign shops are not. The existing dashboard approval gate is unchanged. PATCH resolves the item's stored shop first, rejects reassignment, and constrains the update by both item ID and original shop ID.
+- MenuManagement, AI scanner imports, and App-level menu loading use MerchantApi only: no direct browser database menu queries, Firestore menu CRUD/subscriptions, database merging, or cache resurrection. Each shop in the all-stores view receives a separately authorized request. Empty API results replace state; errors clear failed reads and are reported honestly. Only confirmed API mutations produce success feedback.
+- Legacy queued `UPDATE_MENU`/`UPDATE_STOCK` intents are retired without applying them or counting them as synchronized. Order queue behavior is unchanged. Scanner drafts stay in memory only; new menu writes require an online API confirmation. Old scanner local-storage entries are not replayed or deleted.
+- Unsupported `stock_quantity` persistence and stock UI claims are removed. Dietary tags retain the existing `[Tags: ...]` description serialization; no `dietary_tags` or `updated_at` columns are written. No new `customizations` contract is introduced. Cloudinary uploads remain unchanged.
+- Catalog-01 remains the public read authority; existing order eligibility/pricing rules remain unchanged. No migration or live database change is part of this implementation.
+- After the API build, run `node --test dist/routes/merchantMenu.test.js` for isolated fake-auth/database HTTP tests and frontend source regressions. Catalog and order suites remain separate and unchanged.
+
 ### Catalog-01: Public Read-Only Catalog API
 
 - `GET /api/v1/catalog/shops`, `GET /api/v1/catalog/shops/:shopId`, and `GET /api/v1/catalog/shops/:shopId/menu` read authoritative Supabase shops/menu items only. The catalog router does not use Firestore or fabricate data or coordinates.

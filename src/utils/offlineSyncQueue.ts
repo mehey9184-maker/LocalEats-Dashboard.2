@@ -2,7 +2,7 @@
 // Stores offline order updates & inventory modifications in IndexedDB
 // Automatically syncs when network connectivity returns
 
-import { updateFirestoreOrder, updateFirestoreMenuItem } from "../lib/firebase";
+import { updateFirestoreOrder } from "../lib/firebase";
 
 export interface OfflineMutation {
   id: string;
@@ -131,17 +131,9 @@ export async function processOfflineSyncQueue(): Promise<number> {
           syncedCount++;
         }
       } else if (item.type === "UPDATE_MENU" || item.type === "UPDATE_STOCK") {
-        const { id, is_available, stock_quantity, price } = item.payload;
-        const updateObj: Record<string, unknown> = {};
-        if (typeof is_available === "boolean") updateObj.is_available = is_available;
-        if (typeof stock_quantity === "number") updateObj.stock_quantity = stock_quantity;
-        if (typeof price === "number") updateObj.price = price;
-
-        const { error } = await updateFirestoreMenuItem(id as string | number, updateObj);
-        if (!error) {
-          await removeQueuedMutation(item.id);
-          syncedCount++;
-        }
+        // Retired, NOT applied or counted as synchronized. Menu edits now require API confirmation.
+        await removeQueuedMutation(item.id);
+        console.warn("[OfflineSyncQueue] Retired an obsolete menu/stock intent without applying it.");
       }
     } catch (err) {
       console.error(`[OfflineSyncQueue] Sync failed for ${item.id}:`, err);

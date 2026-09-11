@@ -70,7 +70,6 @@ import {
   getFirestoreOrders,
   sendPushNotification,
   updateFirestoreShop,
-  getFirestoreMenuItems,
 } from "./lib/firebase";
 import { useKitchenAlerter } from "./hooks/useKitchenAlerter";
 import { useAuthGuard } from "./hooks/useAuthGuard";
@@ -139,7 +138,6 @@ import {
   clearVerifiedShopOwnership,
 } from "./utils/shopOwnership";
 import { MerchantApi, MerchantApiError } from "./services/MerchantApi";
-import { fetchWithRetry } from "./utils/fetchWithRetry";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -1188,116 +1186,39 @@ function App() {
     }
   }, [user, shops, processAndSetOrders, merchantShopGate.status, currentShop]);
 
+  const menuLoadVersion = useRef(0);
+  const menuLoadScope = JSON.stringify([user?.id, merchantShopGate.status, currentShop?.id, shops.map((shop) => [shop.id, shop.owner_id])]);
+  const latestMenuLoadScope = useRef(menuLoadScope);
+  latestMenuLoadScope.current = menuLoadScope;
+  useEffect(() => () => { ++menuLoadVersion.current; }, []);
+
   const fetchAllMenuItems = useCallback(async () => {
+    const version = ++menuLoadVersion.current;
+    const scope = menuLoadScope;
+    const isCurrent = () => version === menuLoadVersion.current && scope === latestMenuLoadScope.current;
     if (!user || merchantShopGate.status !== "ready" || !currentShop) {
       setMenuItems([]);
       return;
     }
-
-    const ownedShopIds = await getOwnedShopIds(user, shops);
-    console.log("[App fetchAllMenuItems] 🏬 ownedShopIds:", ownedShopIds);
-
-    if (ownedShopIds.length === 0) {
-      localStorage.removeItem("localeats_cached_menu_items");
-      setMenuItems([]);
-      return;
-    }
-
-    const ownedShopIdSet = new Set(ownedShopIds.map((id) => String(id)));
-    const restoreVerifiedCachedMenuItems = (): boolean => {
-      const cached = localStorage.getItem("localeats_cached_menu_items");
-      if (!cached) return false;
-
-      try {
-        const parsed = JSON.parse(cached);
-        if (!Array.isArray(parsed)) return false;
-
-        const verifiedItems = parsed.filter((item: MenuItem) =>
-          ownedShopIdSet.has(String(item.shop_id))
-        );
-        if (verifiedItems.length > 0) {
-          localStorage.setItem("localeats_cached_menu_items", JSON.stringify(verifiedItems));
-          setMenuItems(verifiedItems);
-          return true;
-        }
-      } catch {
-        // ignore invalid cache
-      }
-
-      localStorage.removeItem("localeats_cached_menu_items");
-      return false;
-    };
-
-    // 1. Fetch from Supabase
-    let sbItems: MenuItem[] = [];
     try {
-      const { data, error } = await fetchWithRetry(() =>
-        supabase.from("menu_items").select("*").in("shop_id", ownedShopIds)
-      );
-      if (data && Array.isArray(data)) {
-        sbItems = data;
-      } else if (error && !isSupabaseMocked()) {
-        console.warn("[App] Notice fetching Supabase menu items:", error.message || error);
-      }
-    } catch (err) {
-      console.warn("[App] Notice fetching Supabase menu items:", err);
-    }
-
-    // 2. Fetch from Firestore
-    const fsItems: MenuItem[] = [];
-    try {
-      for (const sId of ownedShopIds) {
-        const shopFsItems = await getFirestoreMenuItems(sId);
-        console.log(`[App fetchAllMenuItems] 🔥 Firestore response for shopId ${sId}:`, shopFsItems);
-        if (shopFsItems && shopFsItems.length > 0) {
-          fsItems.push(...shopFsItems);
-        }
-      }
-      console.log("[App fetchAllMenuItems] 🔥 Total Firestore menu_items query response:", {
-        ownedShopIds,
-        fsItemsCount: fsItems.length,
-        fsItems,
-      });
-    } catch (fsErr) {
-      console.warn("[App fetchAllMenuItems] Notice fetching Firestore menu items:", fsErr);
-    }
-
-    // 3. Merge Supabase & Firestore items
-    const mergedMap = new Map<string, MenuItem>();
-    fsItems.forEach((item) => {
-      mergedMap.set(String(item.id || item.name), {
+      const ownedShopIds = await getOwnedShopIds(user, shops);
+      if (!isCurrent()) return;
+      const menus = await Promise.all(ownedShopIds.map((shopId) => MerchantApi.getMenu(shopId)));
+      if (!isCurrent()) return;
+      // Empty API menus are authoritative too; never resurrect cached rows.
+      setMenuItems(menus.flat().map((item) => ({
         ...item,
-        is_available: item.is_available !== false,
-        stock_quantity: item.stock_quantity ?? null,
-      });
-    });
-    sbItems.forEach((item) => {
-      mergedMap.set(String(item.id || item.name), {
-        ...item,
-        is_available: item.is_available !== false,
-        stock_quantity: item.stock_quantity ?? null,
-      });
-    });
-
-    const finalItems = Array.from(mergedMap.values()).filter((item) =>
-      ownedShopIdSet.has(String(item.shop_id))
-    );
-    console.log("[App fetchAllMenuItems] 📋 Final merged menu items loaded into state:", {
-      totalCount: finalItems.length,
-      items: finalItems,
-    });
-    if (finalItems.length > 0) {
-      setMenuItems(finalItems);
-      try {
-        localStorage.setItem("localeats_cached_menu_items", JSON.stringify(finalItems));
-      } catch {
-        // ignore
+        image_url: item.image_url ?? "",
+        category: item.category ?? undefined,
+        description: item.description ?? undefined,
+      })));
+    } catch {
+      if (isCurrent()) {
+        setMenuItems([]);
+        toast.error("Menu could not be refreshed. No cached menu data was substituted.");
       }
-    } else {
-      if (restoreVerifiedCachedMenuItems()) return;
-      setMenuItems([]);
     }
-  }, [user, shops, merchantShopGate.status, currentShop]);
+  }, [user, shops, merchantShopGate.status, currentShop, menuLoadScope]);
 
   const fetchShops = useCallback(async () => {
     if (!user) {

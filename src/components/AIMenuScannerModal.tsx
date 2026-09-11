@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import imageCompression from "browser-image-compression";
 import { 
   X, Camera, Upload, RefreshCw, Sparkles, Check, 
@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { GoogleGenAI } from "@google/genai";
 import { toast } from "sonner";
+import { MerchantApi } from "../services/MerchantApi";
 
 interface ScannedItem {
   id: string;
@@ -16,23 +17,11 @@ interface ScannedItem {
   selected: boolean;
 }
 
-interface SupabaseFilterBuilder {
-  eq: (column: string, value: string | number) => Promise<{ data: Record<string, unknown>[] | null; error: unknown }>;
-}
-
-interface SupabaseQueryBuilder {
-  select: (columns: string) => SupabaseFilterBuilder;
-  insert: (records: Record<string, unknown>[]) => Promise<{ error: unknown }>;
-}
-
 interface AIMenuScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  selectedShopId: number | null;
+  selectedShopId: string | number | null;
   onRefreshMenu?: () => void;
-  supabase: {
-    from: (table: string) => SupabaseQueryBuilder;
-  };
   defaultCategories: string[];
 }
 
@@ -41,7 +30,6 @@ export default function AIMenuScannerModal({
   onClose,
   selectedShopId,
   onRefreshMenu,
-  supabase,
   defaultCategories,
 }: AIMenuScannerModalProps) {
   // Network detection state
@@ -65,83 +53,20 @@ export default function AIMenuScannerModal({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Sync outstanding offline queues from localStorage to Supabase
-  const processOfflineQueue = useCallback(async () => {
-    if (!navigator.onLine || !selectedShopId) return;
-
-    const savedQueueStr = localStorage.getItem("localeats_offline_menu_items");
-    if (!savedQueueStr) return;
-
-    try {
-      const itemsToSync = JSON.parse(savedQueueStr);
-      if (Array.isArray(itemsToSync) && itemsToSync.length > 0) {
-        toast.promise(
-          (async () => {
-            const records = itemsToSync.map((item: Record<string, unknown>) => ({
-              name: typeof item.name === "string" ? item.name : "",
-              price: typeof item.price === "number" ? item.price : Number(item.price) || 0,
-              category: typeof item.category === "string" ? item.category : "",
-              description: typeof item.description === "string" ? item.description : "",
-              shop_id: selectedShopId,
-              is_available: true,
-              stock_quantity: 10,
-            }));
-
-            // Retrieve live current catalog names to dynamically prevent duplication
-            const { data: existingItems } = await supabase
-              .from("menu_items")
-              .select("name")
-              .eq("shop_id", selectedShopId);
-
-            const existingNames = new Set((existingItems || []).map((i) => String(i.name).trim().toLowerCase()));
-            const finalRecords = records.filter((rec) => !existingNames.has(rec.name.trim().toLowerCase()));
-
-            if (finalRecords.length > 0) {
-              const { error } = await supabase.from("menu_items").insert(finalRecords);
-              if (error) throw error;
-            }
-
-            localStorage.removeItem("localeats_offline_menu_items");
-            onRefreshMenu?.();
-          })(),
-          {
-            loading: "Detected offline menu additions. Synchronizing with cloud database...",
-            success: "Synced offline menu items cleanly, avoiding any duplicates!",
-            error: "Failed to sync offline items. We will try again soon.",
-          }
-        );
-      }
-    } catch (e) {
-      console.error("Failed to sync offline queue", e);
-    }
-  }, [selectedShopId, supabase, onRefreshMenu]);
-
-  // Network State Listener & sync triggers
+  // Draft scanning may resume online, but menu writes always need API confirmation.
   useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      toast.success("Connection restored! You are back online.");
-      processOfflineQueue();
-    };
-
+    const handleOnline = () => setIsOnline(true);
     const handleOffline = () => {
       setIsOnline(false);
-      toast.warning("You are offline. Scanned menus and additions will be queued to post when signal returns.");
+      toast.warning("You are offline. Keep this draft open and reconnect before importing.");
     };
-
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
-
-    // Initial check
-    if (navigator.onLine) {
-      processOfflineQueue();
-    }
-
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [processOfflineQueue]);
+  }, []);
 
   // Reset modal state on mount or close
   useEffect(() => {
@@ -431,7 +356,7 @@ Example JSON:
     setScannedItems((prev) => prev.filter((item) => item.id !== id));
   };
 
-  // Handle Bulk DB Import / LocalStorage Sync Caching
+  // Import drafts only through the authenticated menu API.
   const handleBulkImport = async () => {
     if (!selectedShopId) {
       toast.error("Please ensure a valid shop is active to import menu items.");
@@ -444,85 +369,43 @@ Example JSON:
       return;
     }
 
-    // Checking if offline to cache queue in localStorage
     if (!isOnline) {
-      try {
-        const existingOffline = localStorage.getItem("localeats_offline_menu_items");
-        const parsedExisting = existingOffline ? JSON.parse(existingOffline) : [];
-        const updatedList = [...parsedExisting, ...itemsToImport];
-        localStorage.setItem("localeats_offline_menu_items", JSON.stringify(updatedList));
-
-        toast.warning("Items Saved Offline!", {
-          description: `You are currently offline. We've queued ${itemsToImport.length} menu items. They will auto-sync with Supabase as soon as your connection stays stable!`,
-        });
-
-        onClose();
-        setScannedItems([]);
-      } catch (err) {
-        console.error("Failed to serialize offline scan queue", err);
-        toast.error("An error occurred trying to queue offline creations.");
-      }
+      toast.error("Nothing was imported. Reconnect before saving these drafts.");
       return;
     }
-
+    if (importing) return;
     setImporting(true);
+    let confirmed = 0;
     try {
-      // Check for duplicates first by fetching currently active menu item names
-      const { data: existingItems, error: fetchError } = await supabase
-        .from("menu_items")
-        .select("name")
-        .eq("shop_id", selectedShopId);
-
-      if (fetchError) throw fetchError;
-
-      const existingNames = new Set((existingItems || []).map((i) => String(i.name).trim().toLowerCase()));
-
-      const finalRecordsToInsert: Record<string, unknown>[] = [];
-      const skippedDuplicates: string[] = [];
-
-      itemsToImport.forEach((item) => {
-        const trimmedName = item.name.trim();
-        if (existingNames.has(trimmedName.toLowerCase())) {
-          skippedDuplicates.push(trimmedName);
-        } else {
-          finalRecordsToInsert.push({
-            name: trimmedName,
-            price: item.price,
-            category: item.category,
-            description: item.description,
-            shop_id: selectedShopId,
-            is_available: true,
-            stock_quantity: 10,
-          });
-          // Avoid creating duplicates in the same batch
-          existingNames.add(trimmedName.toLowerCase());
+      const existingItems = await MerchantApi.getMenu(selectedShopId);
+      const existingNames = new Set(existingItems.map((item) => item.name.trim().toLowerCase()));
+      let skipped = 0;
+      for (const item of itemsToImport) {
+        const name = item.name.trim();
+        if (existingNames.has(name.toLowerCase())) {
+          skipped++;
+          continue;
         }
-      });
-
-      if (finalRecordsToInsert.length === 0) {
-        toast.warning("Duplicate items detected", {
-          description: "All selected items are already present in your menu catalog.",
+        await MerchantApi.createMenuItem({
+          shop_id: selectedShopId,
+          name,
+          price: item.price,
+          category: item.category,
+          description: item.description,
+          is_available: true,
         });
-        setImporting(false);
-        return;
+        confirmed++;
+        existingNames.add(name.toLowerCase());
+        // Keep unconfirmed drafts available after a partial failure; never replay a confirmed row.
+        setScannedItems((previous) => previous.filter((draft) => draft.id !== item.id));
       }
-
-      const { error } = await supabase.from("menu_items").insert(finalRecordsToInsert);
-      if (error) throw error;
-
-      if (skippedDuplicates.length > 0) {
-        toast.success(`Imported ${finalRecordsToInsert.length} items successfully!`, {
-          description: `Skipped ${skippedDuplicates.length} duplicate(s): ${skippedDuplicates.slice(0, 3).join(", ")}${skippedDuplicates.length > 3 ? "..." : ""}`,
-        });
-      } else {
-        toast.success(`Hooray! ${finalRecordsToInsert.length} items added into your food menu successfully.`);
-      }
-
+      if (confirmed) toast.success(`Imported ${confirmed} items. Skipped ${skipped} existing names.`);
+      else toast.info("Selected names already exist in the API menu. No items were created.");
       onRefreshMenu?.();
       onClose();
-    } catch (err: unknown) {
-      console.error("Bulk Import Error:", err);
-      toast.error("Failed to import items to Supabase database. Please try again.");
+    } catch (error) {
+      if (confirmed) onRefreshMenu?.();
+      toast.error(`${confirmed} items confirmed. Import stopped: ${error instanceof Error ? error.message : "Menu service unavailable."} Refresh before retrying.`);
     } finally {
       setImporting(false);
     }
@@ -578,9 +461,9 @@ Example JSON:
             <div className="mb-4 bg-amber-500/10 border border-amber-500/20 text-amber-600 rounded-2xl p-3.5 text-xs flex items-start gap-2 animate-in fade-in slide-in-from-top-2">
               <CloudLightning size={16} className="mt-0.5 shrink-0 animate-bounce" />
               <div className="space-y-1">
-                <span className="font-bold">Offline Resilience Enabled</span>
+                <span className="font-bold">Offline Draft Mode</span>
                 <p className="text-amber-700/80 leading-relaxed">
-                  You are currently offline. You can still snap images or add items manually! They will be cached in local memory and instantly synchronized as soon as the signal returns!
+                  You are offline. You can prepare drafts here, but must reconnect and import before they are saved. Keep this window open to retain drafts.
                 </p>
               </div>
             </div>
