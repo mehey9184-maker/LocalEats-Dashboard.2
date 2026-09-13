@@ -2,8 +2,6 @@
 // Stores offline order updates & inventory modifications in IndexedDB
 // Automatically syncs when network connectivity returns
 
-import { updateFirestoreOrder } from "../lib/firebase";
-
 export interface OfflineMutation {
   id: string;
   type: "UPDATE_ORDER" | "UPDATE_MENU" | "UPDATE_STOCK";
@@ -114,22 +112,14 @@ export async function processOfflineSyncQueue(): Promise<number> {
   if (mutations.length === 0) return 0;
 
   console.log(`[OfflineSyncQueue] Synchronizing ${mutations.length} pending mutations to Firestore...`);
-  let syncedCount = 0;
+  const syncedCount = 0;
 
   for (const item of mutations) {
     try {
       if (item.type === "UPDATE_ORDER") {
-        const { id, status, delivery_status, cancellation_reason } = item.payload;
-        const updateObj: Record<string, unknown> = {};
-        if (status) updateObj.status = status;
-        if (delivery_status !== undefined) updateObj.delivery_status = delivery_status;
-        if (cancellation_reason) updateObj.cancellation_reason = cancellation_reason;
-
-        const { error } = await updateFirestoreOrder(id as string | number, updateObj);
-        if (!error) {
-          await removeQueuedMutation(item.id);
-          syncedCount++;
-        }
+        // Retired, NOT applied or counted as synchronized. Order lifecycle writes require API confirmation.
+        await removeQueuedMutation(item.id);
+        console.warn("[OfflineSyncQueue] Retired obsolete order mutation without applying it.");
       } else if (item.type === "UPDATE_MENU" || item.type === "UPDATE_STOCK") {
         // Retired, NOT applied or counted as synchronized. Menu edits now require API confirmation.
         await removeQueuedMutation(item.id);

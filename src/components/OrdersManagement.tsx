@@ -46,7 +46,6 @@ import {
   Star,
   MessageCircle,
   Timer,
-  Edit2,
   Settings,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
@@ -107,7 +106,6 @@ export interface OrdersManagementProps {
   soundAlerts: boolean;
   setSoundAlerts: (val: boolean) => void;
   onRequestRider: (id: string, riderId?: string, riderName?: string, riderPhone?: string) => void;
-  onUnassignRider: (id: string) => void;
   onTabChange: (tab: string) => void;
   sendRiderNudge: (riderId: string, message: string) => Promise<void>;
   currentShop: Shop | undefined;
@@ -303,7 +301,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   soundAlerts,
   setSoundAlerts,
   onRequestRider,
-  onUnassignRider,
   onTabChange,
   sendRiderNudge,
   currentShop,
@@ -343,6 +340,21 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [unlinkedModalOrder, setUnlinkedModalOrder] = useState<Order | null>(null);
   const [dispatchAlertOrder, setDispatchAlertOrder] = useState<Order | null>(null);
   const [dispatchAlertType, setDispatchAlertType] = useState<"rider_dispatch" | "customer_status" | "rider_pairing">("customer_status");
+
+  const runLifecycleAction = async (
+    id: string,
+    status: OrderStatus,
+    message?: string,
+    estimatedTime?: string,
+  ): Promise<boolean> => {
+    try {
+      await onUpdateStatus(id, status, message, estimatedTime);
+      return true;
+    } catch {
+      // The authoritative workflow reports the API failure. Keep the current server state visible.
+      return false;
+    }
+  };
 
   // Pending orders priority sorting & Drag and Drop state
   const pendingSortStorageKey = `localeats_pending_priority_${currentShop?.id || "default"}`;
@@ -553,10 +565,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
     }
   };
   const [printingIncludeAddr, setPrintingIncludeAddr] = useState<boolean>(true);
-  const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
-  const [cancelReasonPreset, setCancelReasonPreset] = useState<string>("Out of ingredients / Items unavailable");
-  const [customCancelExplanation, setCustomCancelExplanation] = useState<string>("Kitchen is temporarily out of ingredients.");
-
   const currentShopId = currentShop?.id;
   const currentShopPhone = currentShop?.phone;
 
@@ -742,7 +750,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
     if(!rating) return;
     try {
       const existingOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
-      existingOverrides[orderId] = { ...existingOverrides[orderId], merchant_rating: rating, updated_at: new Date().toISOString() };
+      existingOverrides[orderId] = { merchant_rating: rating, updated_at: new Date().toISOString() };
       localStorage.setItem("localeats_order_overrides", JSON.stringify(existingOverrides));
     } catch {
       // ignore
@@ -1632,21 +1640,6 @@ Notes: "${order.notes || "None"}"
                                 <span>ETA: 20-30 mins</span>
                               </div>
                             )}
-                            {order.status !== 'completed' && order.status !== 'cancelled' && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const newEta = prompt("Enter estimated delivery time (e.g. 20-30 mins):", order.estimated_delivery_time || "25 mins");
-                                  if (newEta !== null) {
-                                    onUpdateStatus(order.id, order.status, undefined, newEta);
-                                  }
-                                }}
-                                className="p-1 text-primary hover:bg-primary/5 rounded shadow-sm"
-                                title="Adjust ETA"
-                              >
-                                <Edit2 size={12} />
-                              </button>
-                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-1 mt-3 text-[10px] font-bold text-primary/60 uppercase tracking-wider">
@@ -2014,20 +2007,6 @@ Notes: "${order.notes || "None"}"
                                         ? order.rider_id.split("-")[0]
                                         : "Idle..."}
                                     </p>
-                                    {order.rider_id &&
-                                      order.delivery_status !== "delivered" && (
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            onUnassignRider(order.id);
-                                          }}
-                                          className={cn("text-[10px] px-2 py-1.5 rounded font-bold w-full text-center transition-colors",
-                                            isRiderTimeout ? "bg-red-500 text-white shadow hover:bg-red-600" : "bg-red-100 text-red-600 hover:bg-red-200"
-                                          )}
-                                        >
-                                          {isRiderTimeout ? "Unassign & Re-broadcast" : "Remove Rider"}
-                                        </button>
-                                      )}
                                   </div>
                                 </div>
                                 <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/5">
@@ -2049,44 +2028,8 @@ Notes: "${order.notes || "None"}"
                                 </div>
                               </div>
 
-                              {order.delivery_status && (
+                              {order.delivery_status === "picked_up" && (
                                 <div className="mt-4 space-y-2" onClick={(e) => e.stopPropagation()}>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                                      Update Delivery Status
-                                    </span>
-                                  </div>
-                                  <div className="flex gap-2 text-xs">
-                                    {["finding_rider", "picked_up", "delivered"].map(status => (
-                                      <button
-                                        key={status}
-                                        onClick={async (e) => {
-                                          e.stopPropagation();
-                                          try {
-                                            const existingOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
-                                            existingOverrides[order.id] = { ...existingOverrides[order.id], delivery_status: status, updated_at: new Date().toISOString() };
-                                            localStorage.setItem("localeats_order_overrides", JSON.stringify(existingOverrides));
-                                          } catch {
-                                            // ignore
-                                          }
-                                          try {
-      await OrderService.updateDeliveryStatus(order.id, status);
-    } catch (error) {
-      console.warn("Delivery status database sync warning (saved locally):", error);
-    }
-                                          toast.success(`Delivery status: ${status.replace("_", " ")}`);
-                                        }}
-                                        className={cn(
-                                          "px-3 py-1.5 rounded-lg font-bold border transition-colors flex-1 capitalize",
-                                          order.delivery_status === status ? "bg-primary text-white border-primary shadow-sm shadow-primary/20" : "bg-surface-container hover:bg-surface-container-high border-outline-variant/10 text-on-surface-variant"
-                                        )}
-                                      >
-                                        {status.replace("_", " ")}
-                                      </button>
-                                    ))}
-                                  </div>
-
-                                  {order.delivery_status === "picked_up" && (
                                     <div className="w-full h-32 bg-stone-100 dark:bg-stone-900 rounded-xl overflow-hidden relative border border-outline-variant/10 mt-4 flex items-center justify-center">
                                        <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] mix-blend-overlay"></div>
 
@@ -2118,7 +2061,6 @@ Notes: "${order.notes || "None"}"
                                          </div>
                                        </motion.div>
                                     </div>
-                                  )}
                                 </div>
                               )}
 
@@ -2381,15 +2323,17 @@ Notes: "${order.notes || "None"}"
                                   />
                                   <div className="flex gap-2">
                                     <button
-                                      onClick={() => {
+                                      onClick={async () => {
                                         const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
-                                        onUpdateStatus(
+                                        const confirmed = await runLifecycleAction(
                                           order.id,
                                           "preparing",
                                           finalMsg,
                                         );
-                                        setAcceptingOrderId(null);
-                                        setOrderNotes("");
+                                        if (confirmed) {
+                                          setAcceptingOrderId(null);
+                                          setOrderNotes("");
+                                        }
                                       }}
                                       className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-full"
                                     >
@@ -2477,9 +2421,10 @@ Notes: "${order.notes || "None"}"
                                     </div>
                                     <div className="flex gap-2">
                                       <button
-                                        onClick={() => {
-                                          onUpdateStatus(order.id, "preparing", undefined, estimatedTime);
-                                          setPreparingOrderId(null);
+                                        onClick={async () => {
+                                          if (await runLifecycleAction(order.id, "preparing", undefined, estimatedTime)) {
+                                            setPreparingOrderId(null);
+                                          }
                                         }}
                                         className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-lg"
                                       >
@@ -2533,14 +2478,14 @@ Notes: "${order.notes || "None"}"
                                       disabled={updatingOrderId === order.id}
                                       onClick={async () => {
                                         setUpdatingOrderId(order.id);
-                                        await onUpdateStatus(
+                                        const confirmed = await runLifecycleAction(
                                           order.id,
                                           "ready",
                                           undefined,
                                           estimatedTime,
                                         );
                                         setUpdatingOrderId(null);
-                                        setReadyOrderId(null);
+                                        if (confirmed) setReadyOrderId(null);
                                       }}
                                       className="flex-1 py-2 bg-tertiary text-white text-xs font-bold rounded-full disabled:opacity-50"
                                     >
@@ -2571,19 +2516,6 @@ Notes: "${order.notes || "None"}"
                                 </button>
                               )}
                             </div>
-                          )}
-                          {order.status === "ready" && (
-                            <button
-                              onClick={() =>
-                                onUpdateStatus(order.id, "completed")
-                              }
-                              className={cn(
-                                "flex-1 bg-tertiary text-white font-bold rounded-full hover:bg-tertiary-container transition-colors shadow-md",
-                                kitchenMode ? "py-5 text-lg" : "py-3 text-sm",
-                              )}
-                            >
-                              Mark as Completed
-                            </button>
                           )}
                           <div className="flex gap-2">
                             {order.rider_id && order.status !== "completed" && (
@@ -2634,22 +2566,6 @@ Notes: "${order.notes || "None"}"
                             >
                               <Printer size={kitchenMode ? 24 : 18} />
                             </button>
-                            {order.status !== "completed" &&
-                              order.status !== "cancelled" && (
-                                <button
-                                  onClick={() => {
-                                    setCancellingOrder(order);
-                                    setCancelReasonPreset("Out of ingredients / Items unavailable");
-                                    setCustomCancelExplanation("Kitchen is temporarily out of key ingredients.");
-                                  }}
-                                  className={cn(
-                                    "ml-auto bg-error/10 text-error rounded-full hover:bg-error/20 transition-all font-bold tracking-widest uppercase text-[10px]",
-                                    kitchenMode ? "px-6 py-2" : "px-4 py-2",
-                                  )}
-                                >
-                                  Cancel Order
-                                </button>
-                              )}
                           </div>
                         </div>
 
@@ -3503,11 +3419,12 @@ Notes: "${order.notes || "None"}"
                             />
                             <div className="flex gap-2">
                               <button
-                                onClick={() => {
+                                onClick={async () => {
                                   const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
-                                  onUpdateStatus(order.id, "preparing", finalMsg);
-                                  setAcceptingOrderId(null);
-                                  setOrderNotes("");
+                                  if (await runLifecycleAction(order.id, "preparing", finalMsg)) {
+                                    setAcceptingOrderId(null);
+                                    setOrderNotes("");
+                                  }
                                 }}
                                 className="flex-1 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer"
                               >
@@ -3539,7 +3456,7 @@ Notes: "${order.notes || "None"}"
                                     setUnlinkedModalOrder(order);
                                     return;
                                   }
-                                  await onUpdateStatus(order.id, "preparing", "Order accepted");
+                                  await runLifecycleAction(order.id, "preparing", "Order accepted");
                                 }}
                                 className="w-full mt-4 py-5 bg-emerald-600 text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none text-center block"
                               >
@@ -3724,9 +3641,10 @@ Notes: "${order.notes || "None"}"
                               />
                               <div className="flex gap-2">
                                 <button
-                                  onClick={() => {
-                                    onUpdateStatus(order.id, "preparing", undefined, estimatedTime);
-                                    setPreparingOrderId(null);
+                                  onClick={async () => {
+                                    if (await runLifecycleAction(order.id, "preparing", undefined, estimatedTime)) {
+                                      setPreparingOrderId(null);
+                                    }
                                   }}
                                   className="flex-1 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer"
                                 >
@@ -3773,9 +3691,10 @@ Notes: "${order.notes || "None"}"
                               />
                               <div className="flex gap-2">
                                 <button
-                                  onClick={() => {
-                                    onUpdateStatus(order.id, "ready", undefined, estimatedTime);
-                                    setReadyOrderId(null);
+                                  onClick={async () => {
+                                    if (await runLifecycleAction(order.id, "ready", undefined, estimatedTime)) {
+                                      setReadyOrderId(null);
+                                    }
                                   }}
                                   className="flex-1 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer"
                                 >
@@ -3980,17 +3899,6 @@ Notes: "${order.notes || "None"}"
                             </button>
                           </div>
                         )}
-
-                        {/* Action buttons */}
-                        <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
-                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
-                          <button
-                            onClick={() => onUpdateStatus(order.id, "completed")}
-                            className="w-full mt-4 py-5 bg-blue-600 text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-blue-500 active:scale-95 transition-all cursor-pointer text-center block"
-                          >
-                            Complete
-                          </button>
-                        </div>
 
                         {/* Quick Tag Toggles */}
                         <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
@@ -4447,112 +4355,6 @@ Notes: "${order.notes || "None"}"
           </div>
         )}
 
-        {/* Cancellation reasons Modal */}
-        <AnimatePresence>
-          {cancellingOrder && (
-            <motion.div key="cancellingOrder-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 15 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 15 }}
-                className="bg-surface-container-lowest max-w-lg w-full rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden border border-outline-variant/15"
-              >
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-2 text-error">
-                    <AlertCircle size={24} />
-                    <h3 className="font-headline text-lg font-bold text-on-surface">Cancel Order #LE-{cancellingOrder.id}</h3>
-                  </div>
-                  <button
-                    onClick={() => setCancellingOrder(null)}
-                    className="p-1.5 hover:bg-surface-container-high rounded-full text-on-surface-variant transition-colors"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-
-                <p className="text-xs text-on-surface-variant mb-4">
-                  Please select a reason for cancelling this order. This message will be sent directly to the customer so they are kept informed.
-                </p>
-
-                <div className="space-y-2 mb-6">
-                  {[
-                    "Out of ingredients / Items unavailable",
-                    "Kitchen is overloaded / Queue times are too high",
-                    "Rider/Delivery team unavailable or radius is too far",
-                    "Shop is closing / After business hours",
-                    "Incorrect customer details (address or phone number)",
-                    "Other (Write custom message below)"
-                  ].map((reason) => (
-                    <button
-                      key={reason}
-                      type="button"
-                      onClick={() => {
-                        setCancelReasonPreset(reason);
-                        if (reason !== "Other (Write custom message below)") {
-                          setCustomCancelExplanation(`We are sorry, but we had to cancel your order because: ${reason.toLowerCase()}`);
-                        } else {
-                          setCustomCancelExplanation("");
-                        }
-                      }}
-                      className={cn(
-                        "w-full text-left p-3 text-xs font-semibold rounded-xl border-2 transition-all flex items-center justify-between",
-                        cancelReasonPreset === reason
-                          ? "bg-error/5 border-error/50 text-error-container"
-                          : "bg-surface-container-low border-transparent text-on-surface-variant hover:border-outline-variant/20"
-                      )}
-                    >
-                      <span>{reason}</span>
-                      <div className={cn(
-                        "w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ml-3",
-                        cancelReasonPreset === reason ? "border-error bg-error text-white" : "border-outline"
-                      )}>
-                        {cancelReasonPreset === reason && <Check size={10} strokeWidth={3} />}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="space-y-1.5 mb-6">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70">
-                    Custom Notification Explanation
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={customCancelExplanation}
-                    onChange={(e) => setCustomCancelExplanation(e.target.value)}
-                    className="w-full bg-surface-container-low focus:bg-surface-container-lowest border border-outline-variant/30 focus:border-error/45 focus:ring-1 focus:ring-error/20 rounded-xl p-3 text-xs outline-none transition-all resize-none text-on-surface"
-                    placeholder="Tell the customer more about why their order was rejected..."
-                  />
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setCancellingOrder(null)}
-                    className="flex-1 py-3 bg-surface-container-high hover:bg-surface-container-highest text-on-surface hover:text-on-surface-variant font-bold rounded-full text-xs transition-all active:scale-[0.98]"
-                  >
-                    Keep Order Active
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const finalReason = cancelReasonPreset === "Other (Write custom message below)"
-                        ? (customCancelExplanation.trim() || "Order cancelled by kitchen supervisor.")
-                        : customCancelExplanation;
-                      void onUpdateStatus(cancellingOrder.id, "cancelled", finalReason);
-                      setCancellingOrder(null);
-                      toast.success("Order status updated to Cancelled");
-                    }}
-                    className="flex-1 py-3 bg-error text-white font-black rounded-full text-xs hover:bg-error-container hover:shadow-lg shadow-error/10 transition-all active:scale-[0.98]"
-                  >
-                    Confirm Cancellation
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* Pop-up Free Thermal Printed Receipt Live Mockup Modal */}
         <AnimatePresence>
           {printingOrder && (
@@ -4953,16 +4755,16 @@ Notes: "${order.notes || "None"}"
                       Cancel
                     </button>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         // Save kitchen notes locally
+                        const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
+                        if (!(await runLifecycleAction(orderToAccept.id, "preparing", finalMsg))) return;
                         if (orderNotes.trim()) {
                           setKitchenNotes(prev => ({
                             ...prev,
                             [orderToAccept.id]: orderNotes.trim()
                           }));
                         }
-                        const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
-                        onUpdateStatus(orderToAccept.id, "preparing", finalMsg);
                         setAcceptingOrderId(null);
                         setOrderNotes("");
                       }}
@@ -4986,7 +4788,9 @@ Notes: "${order.notes || "None"}"
           pairingCode={currentShop?.pairing_code || "LOCAL-EATS-PASS"}
           onDispatchToRider={onDispatchToRider}
           onAcceptOrder={async (orderId) => {
-            await onUpdateStatus(orderId, "preparing", "Order accepted & dispatched to rider");
+            if (!(await runLifecycleAction(orderId, "preparing", "Order accepted"))) {
+              throw new Error("Order acceptance was not confirmed by the server.");
+            }
           }}
           onPromptCustomerForPickup={async (orderId) => {
             if (onConvertOrderToPickup) {

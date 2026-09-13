@@ -67,7 +67,6 @@ import {
   formatFirebaseUserSession,
   onAuthStateChanged,
   getFirestoreShopById,
-  getFirestoreOrders,
   sendPushNotification,
   updateFirestoreShop,
 } from "./lib/firebase";
@@ -627,20 +626,6 @@ function App() {
 
 
   useEffect(() => {
-    try {
-      const cachedOrders = localStorage.getItem("le_orders");
-      if (cachedOrders) {
-        const parsed = JSON.parse(cachedOrders);
-        if (Array.isArray(parsed)) setOrders(parsed);
-      }
-    } catch (e) {
-      console.error("Error parsing cached orders. Resetting item.", e);
-      localStorage.removeItem("le_orders");
-    }
-
-  }, []);
-
-  useEffect(() => {
     shopsRef.current = shops;
   }, [shops]);
 
@@ -1126,41 +1111,16 @@ function App() {
     prevPendingCount.current = currentPendingCount;
   }, [orders, soundAlerts, user, playNotificationSound, setActiveTab]);
 
-  const processAndSetOrders = useCallback((firestoreOrdersList: Order[], supabaseOrdersList: Order[] = []) => {
-    // Merge Orders by unique string ID, prioritizing latest updated_at or created_at
-    const orderMap = new Map<string, Order>();
-    
-    // Insert Supabase orders first
-    supabaseOrdersList.forEach((order) => {
-      orderMap.set(String(order.id), order);
-    });
-
-    // Insert Firestore orders (merges or adds new orders from client app)
-    firestoreOrdersList.forEach((order) => {
-      const existing = orderMap.get(String(order.id));
-      if (!existing) {
-        orderMap.set(String(order.id), order);
-      } else {
-        const existingTime = new Date(existing.updated_at || existing.created_at || 0).getTime();
-        const incomingTime = new Date(order.updated_at || order.created_at || 0).getTime();
-        if (incomingTime >= existingTime) {
-          orderMap.set(String(order.id), { ...existing, ...order });
-        }
-      }
-    });
-
-    let combinedOrders = Array.from(orderMap.values());
-
-    // Sort by created_at descending
-    combinedOrders.sort((a, b) => {
+  const processAndSetOrders = useCallback((apiOrders: Order[]) => {
+    const confirmedOrders = [...apiOrders].sort((a, b) => {
       const timeA = new Date(a.created_at || 0).getTime();
       const timeB = new Date(b.created_at || 0).getTime();
       return timeB - timeA;
     });
 
-    setOrders(combinedOrders);
+    setOrders(confirmedOrders);
     try {
-      localStorage.setItem("localeats_cached_orders", JSON.stringify(combinedOrders));
+      localStorage.setItem("localeats_cached_orders", JSON.stringify(confirmedOrders));
     } catch {
       // Cache is optional and never used as order authority.
     }
@@ -1179,12 +1139,12 @@ function App() {
           id: String(d.id),
           total_price: Number(d.total_price ?? d.price ?? 0),
         })) as Order[];
-      processAndSetOrders([], apiOrders);
+      processAndSetOrders(apiOrders);
     } catch (apiError) {
       console.warn("[Orders Sync] Authoritative API unavailable:", apiError);
       toast.error("Orders could not be refreshed. No cached order changes were applied.");
     }
-  }, [user, shops, processAndSetOrders, merchantShopGate.status, currentShop]);
+  }, [user, processAndSetOrders, merchantShopGate.status, currentShop]);
 
   const menuLoadVersion = useRef(0);
   const menuLoadScope = JSON.stringify([user?.id, merchantShopGate.status, currentShop?.id, shops.map((shop) => [shop.id, shop.owner_id])]);
@@ -1314,7 +1274,7 @@ function App() {
     );
   };
 
-  const { updateOrderStatus, requestRider, dispatchOrderToRider, convertOrderToPickup, unassignRider } = useOrderWorkflow({
+  const { updateOrderStatus, requestRider, dispatchOrderToRider, convertOrderToPickup } = useOrderWorkflow({
     orders,
     setOrders,
     menuItems,
@@ -2420,7 +2380,6 @@ function App() {
                   soundAlerts={soundAlerts}
                   setSoundAlerts={setSoundAlerts}
                   onRequestRider={requestRider}
-                  onUnassignRider={unassignRider}
                   onTabChange={setActiveTab}
                   sendRiderNudge={sendRiderNudge}
                   currentShop={currentShop}

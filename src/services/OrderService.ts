@@ -1,5 +1,5 @@
 import { supabase } from "../lib/supabase";
-import { Order, OrderStatus } from "../types";
+import { Order } from "../types";
 
 /**
  * OrderService
@@ -20,42 +20,6 @@ export const OrderService = {
       
     if (error) throw error;
     return data as Order[];
-  },
-
-  /**
-   * Update the primary status of an order
-   */
-  updateOrderStatus: async (orderId: string, status: OrderStatus) => {
-    const { error } = await supabase
-      .from("orders")
-      .update({ status })
-      .eq("id", orderId);
-    if (error) throw error;
-  },
-
-  /**
-   * Update the delivery status of an order
-   */
-  updateDeliveryStatus: async (orderId: string, status: string) => {
-    const { error } = await supabase
-      .from("orders")
-      .update({ delivery_status: status })
-      .eq("id", orderId);
-    if (error) throw error;
-  },
-
-  /**
-   * Remove the rider from an order
-   */
-  unassignRider: async (orderId: string) => {
-    const { error } = await supabase
-      .from("orders")
-      .update({
-        delivery_status: "finding_rider",
-        rider_id: null,
-      })
-      .eq("id", orderId);
-    if (error) throw error;
   },
 
   /**

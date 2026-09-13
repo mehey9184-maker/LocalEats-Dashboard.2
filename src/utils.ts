@@ -1,6 +1,4 @@
-import { Order, OrderStatus } from "./types";
-
-export const FLAT_DELIVERY_FEE = 5;
+import { Order } from "./types";
 
 export function getSupportedCity(cityName: string): string {
   const normalized = cityName.toLowerCase();
@@ -193,46 +191,6 @@ export const isOrderDelivery = (order: Partial<Order>): boolean => {
   }
   
   return false;
-};
-
-export const getOrderTransitionData = (
-  order: Order,
-  newStatus: OrderStatus,
-  shopName: string,
-  shopId: number
-): Partial<Order> => {
-  const updateData: Partial<Order> = { status: newStatus };
-
-  if (newStatus === "preparing" && !order.accepted_at) {
-    updateData.accepted_at = new Date().toISOString();
-  }
-  if (newStatus === "completed" && !order.completed_at) {
-    updateData.completed_at = new Date().toISOString();
-  }
-
-  const isDelivery = isOrderDelivery(order);
-  const isTransitioningToActive = newStatus === "preparing" || newStatus === "ready" || newStatus === "accepted";
-
-  if (isTransitioningToActive && isDelivery && !order.delivery_status) {
-    updateData.delivery_status = "finding_rider";
-    updateData.delivery_fee = FLAT_DELIVERY_FEE;
-    updateData.order_type = "delivery";
-    updateData.status = "accepted"; // Force 'accepted' for Rider App query compatibility
-    updateData.restaurant_name = order.restaurant_name || shopName;
-    updateData.shop_id = order.shop_id || shopId;
-    updateData.price = order.price || order.total_price || 0;
-    updateData.total_price = order.total_price || order.price || 0;
-
-    if (!order.items || order.items.length === 0) {
-      updateData.items = order.product_name ? [order.product_name] : ["Food Delivery"];
-    }
-  }
-
-  if (newStatus === "completed" && order.delivery_status === "finding_rider") {
-    (updateData as Record<string, unknown>).delivery_status = null;
-  }
-
-  return updateData;
 };
 
 // --- South African Suburb & Section Fuzzy Search Helper ---

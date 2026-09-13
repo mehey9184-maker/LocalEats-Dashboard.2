@@ -117,20 +117,10 @@ export const useOrderWorkflow = ({
     throw error;
   };
 
-  const unassignRider = async (_id: string) => {
-    const error = new MerchantApiError(
-      "Rider reassignment requires a server-authorized transition.",
-      409,
-    );
-    displayWorkflowError(error);
-    throw error;
-  };
-
   return {
     updateOrderStatus,
     requestRider,
     dispatchOrderToRider,
     convertOrderToPickup,
-    unassignRider,
   };
 };

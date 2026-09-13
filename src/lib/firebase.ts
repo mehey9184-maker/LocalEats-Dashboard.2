@@ -778,23 +778,6 @@ export async function getFirestoreOrders(shopId?: string | number | (string | nu
 }
 
 /**
- * Update an Order in Firestore
- */
-export async function updateFirestoreOrder(orderId: string | number, updates: Partial<Order>): Promise<{ error: Error | null }> {
-  try {
-    const oRef = doc(db, "orders", String(orderId));
-    await setDoc(oRef, {
-      ...updates,
-      updated_at: new Date().toISOString(),
-    }, { merge: true });
-    return { error: null };
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`);
-    return { error: err as Error };
-  }
-}
-
-/**
  * Create an Order in Firestore
  */
 export async function createFirestoreOrder(order: Partial<Order>): Promise<{ data: Order | null; error: Error | null }> {
