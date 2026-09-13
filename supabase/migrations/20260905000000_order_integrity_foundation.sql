@@ -365,7 +365,9 @@ begin
     raise exception using errcode = 'P0002', message = 'Order not found';
   end if;
 
-  if v_order.delivery_status <> 'finding_rider' or v_order.rider_id is not null then
+  if v_order.status is distinct from 'ready_for_pickup'
+     or v_order.delivery_status is distinct from 'finding_rider'
+     or v_order.rider_id is not null then
     raise exception using errcode = '40001', message = 'Order is no longer available';
   end if;
 
@@ -387,6 +389,7 @@ begin
       delivery_status = 'rider_assigned',
       updated_at = now()
   where id = p_order_id
+    and status = 'ready_for_pickup'
     and rider_id is null
     and delivery_status = 'finding_rider'
   returning *;
@@ -453,7 +456,8 @@ begin
     );
   end if;
 
-  if v_order.delivery_status = 'delivered' then
+  if v_order.status = 'delivered'
+     and v_order.delivery_status = 'delivered' then
     return jsonb_build_object(
       'success', true,
       'order', to_jsonb(v_order),
@@ -461,7 +465,8 @@ begin
     );
   end if;
 
-  if v_order.delivery_status <> 'delivering' then
+  if v_order.status is distinct from 'ready_for_pickup'
+     or v_order.delivery_status is distinct from 'delivering' then
     return jsonb_build_object(
       'success', false,
       'error_code', 'INVALID_ORDER_STATE',
@@ -546,7 +551,18 @@ begin
       delivery_pin_locked_until = null,
       updated_at = v_now
   where id = p_order_id
+    and rider_id = v_rider.id
+    and status = 'ready_for_pickup'
+    and delivery_status = 'delivering'
   returning * into v_order;
+
+  if not found then
+    return jsonb_build_object(
+      'success', false,
+      'error_code', 'INVALID_ORDER_STATE',
+      'replayed', false
+    );
+  end if;
 
   update public.rider_profiles
   set total_deliveries = coalesce(total_deliveries, 0) + 1,

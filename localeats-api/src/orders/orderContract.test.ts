@@ -14,6 +14,7 @@ import {
 } from "./orderContract.js";
 import {
   APPROVED_RIDER_CONNECTION_STATUS,
+  assertRiderLifecycleAdvance,
   assignedRiderOrderResponse,
   availableRiderOrderResponse,
   interpretDeliveryCompletion,
@@ -31,6 +32,17 @@ const migrationSql = readFileSync(
 );
 
 const riderRouteSource = readFileSync(resolve(process.cwd(), "src/routes/riderOrders.ts"), "utf8");
+const compactRiderRouteSource = riderRouteSource.replace(/\s+/g, " ");
+const claimFunctionSql = migrationSql.slice(
+  migrationSql.indexOf("create or replace function public.claim_delivery_order"),
+  migrationSql.indexOf("drop function if exists public.complete_delivery_order"),
+);
+const completionFunctionSql = migrationSql.slice(
+  migrationSql.indexOf("create function public.complete_delivery_order"),
+  migrationSql.indexOf("revoke all on function public.claim_delivery_order"),
+);
+const compactClaimFunctionSql = claimFunctionSql.replace(/\s+/g, " ");
+const compactCompletionFunctionSql = completionFunctionSql.replace(/\s+/g, " ");
 
 const requestJson = async (
   app: ReturnType<typeof express>,
@@ -188,6 +200,50 @@ test("canonical lifecycle rejects checkout-to-rider and permits ordered transiti
     "delivered",
   ] as const;
   sequence.slice(0, -1).forEach((state, index) => assertLifecycleTransition(state, sequence[index + 1]));
+});
+
+test("rider pickup and delivering validate the complete persisted lifecycle pair", () => {
+  assert.doesNotThrow(() =>
+    assertRiderLifecycleAdvance(
+      { status: "ready_for_pickup", delivery_status: "rider_assigned" },
+      "rider_assigned",
+      "picked_up",
+    ),
+  );
+  assert.doesNotThrow(() =>
+    assertRiderLifecycleAdvance(
+      { status: "ready_for_pickup", delivery_status: "picked_up" },
+      "picked_up",
+      "delivering",
+    ),
+  );
+
+  for (const pair of [
+    { status: "cancelled", delivery_status: "rider_assigned" },
+    { status: "delivered", delivery_status: "rider_assigned" },
+    { status: "cancelled", delivery_status: "picked_up" },
+    { status: "delivered", delivery_status: "picked_up" },
+    { status: "pending", delivery_status: "rider_assigned" },
+    { status: "preparing", delivery_status: "picked_up" },
+    { status: "collected", delivery_status: "delivering" },
+    { status: null, delivery_status: "delivering" },
+  ]) {
+    assert.throws(
+      () => assertRiderLifecycleAdvance(pair, "rider_assigned", "picked_up"),
+      (error: unknown) => error instanceof OrderContractError && error.code === "INVALID_ORDER_STATE",
+      `${String(pair.status)} + ${String(pair.delivery_status)} must fail closed`,
+    );
+  }
+
+  assert.throws(
+    () =>
+      assertRiderLifecycleAdvance(
+        { status: "ready_for_pickup", delivery_status: "finding_rider" },
+        "rider_assigned",
+        "picked_up",
+      ),
+    (error: unknown) => error instanceof OrderContractError && error.code === "INVALID_ORDER_TRANSITION",
+  );
 });
 
 test("express and unverified promo pricing fail closed", () => {
@@ -375,6 +431,85 @@ test("pending riders and non-approved merchant connections cannot authorize deli
   assert.doesNotMatch(riderRouteSource, /\.in\("status", \["active", "approved"\]\)/);
 });
 
+test("rider reads and assigned lifecycle writes require canonical persisted pairs", () => {
+  assert.ok(
+    compactRiderRouteSource.includes(
+      '.eq("status", "delivered").eq("delivery_status", "delivered")',
+    ),
+  );
+  assert.ok(
+    compactRiderRouteSource.includes(
+      '.eq("status", "ready_for_pickup") .in("delivery_status", ["rider_assigned", "picked_up", "delivering"])',
+    ),
+  );
+  assert.ok(
+    compactRiderRouteSource.includes(
+      '.eq("status", "ready_for_pickup") .eq("delivery_status", "finding_rider") .is("rider_id", null)',
+    ),
+  );
+  assert.ok(
+    compactRiderRouteSource.includes(
+      '.select("status,delivery_status") .eq("id", orderId) .eq("rider_id", rider.id) .maybeSingle()',
+    ),
+  );
+  assert.ok(
+    compactRiderRouteSource.includes(
+      '.eq("rider_id", rider.id) .eq("status", "ready_for_pickup") .eq("delivery_status", expected)',
+    ),
+  );
+  assert.match(riderRouteSource, /lifecycleStateFromOrder\(data as unknown as StoredOrder\)/);
+});
+
+test("staged claim RPC uses a NULL-safe pair guard and full compare-and-set", () => {
+  assert.ok(
+    compactClaimFunctionSql.includes(
+      "if v_order.status is distinct from 'ready_for_pickup' or v_order.delivery_status is distinct from 'finding_rider' or v_order.rider_id is not null then",
+    ),
+  );
+  assert.ok(
+    compactClaimFunctionSql.includes(
+      "where id = p_order_id and status = 'ready_for_pickup' and rider_id is null and delivery_status = 'finding_rider' returning *",
+    ),
+  );
+  assert.match(claimFunctionSql, /verification_status = 'approved'/);
+  assert.match(claimFunctionSql, /and is_online is true/);
+  assert.match(claimFunctionSql, /and status = 'approved'/);
+  assert.match(claimFunctionSql, /expires_at is null or expires_at > now\(\)/);
+  assert.doesNotMatch(claimFunctionSql, /v_order\.(?:status|delivery_status)\s*<>/);
+});
+
+test("staged completion RPC rejects NULL or contradictory pairs before proof mutation", () => {
+  assert.ok(
+    compactCompletionFunctionSql.includes(
+      "if v_order.status = 'delivered' and v_order.delivery_status = 'delivered' then",
+    ),
+  );
+  assert.ok(
+    compactCompletionFunctionSql.includes(
+      "if v_order.status is distinct from 'ready_for_pickup' or v_order.delivery_status is distinct from 'delivering' then",
+    ),
+  );
+  assert.ok(
+    compactCompletionFunctionSql.includes(
+      "where id = p_order_id and rider_id = v_rider.id and status = 'ready_for_pickup' and delivery_status = 'delivering' returning * into v_order; if not found then return jsonb_build_object( 'success', false, 'error_code', 'INVALID_ORDER_STATE', 'replayed', false",
+    ),
+  );
+
+  const invalidPairGuard = completionFunctionSql.indexOf(
+    "if v_order.status is distinct from 'ready_for_pickup'",
+  );
+  const proofValidation = completionFunctionSql.indexOf("if p_delivery_proof_kind = 'pin'");
+  const proofMutation = completionFunctionSql.indexOf("set delivery_pin_failed_attempts = v_failed_attempts");
+  const riderStatsMutation = completionFunctionSql.indexOf(
+    "set total_deliveries = coalesce(total_deliveries, 0) + 1",
+  );
+  const guardedUpdateFailure = completionFunctionSql.lastIndexOf("if not found then");
+  assert.ok(invalidPairGuard >= 0 && invalidPairGuard < proofValidation);
+  assert.ok(invalidPairGuard < proofMutation);
+  assert.ok(guardedUpdateFailure >= 0 && guardedUpdateFailure < riderStatsMutation);
+  assert.doesNotMatch(completionFunctionSql, /v_order\.(?:status|delivery_status)\s*<>/);
+});
+
 test("delivery proof input distinguishes a PIN from a high-entropy QR token", () => {
   assert.deepEqual(parseRiderDeliveryProof("1234"), { kind: "pin", value: "1234" });
   const qr = `le_${"a".repeat(64)}`;
@@ -387,6 +522,18 @@ test("delivery proof input distinguishes a PIN from a high-entropy QR token", ()
 });
 
 test("structured completion failures map invalid and locked PIN outcomes safely", () => {
+  const invalidState = interpretDeliveryCompletion({
+    success: false,
+    error_code: "INVALID_ORDER_STATE",
+    replayed: false,
+  });
+  assert.deepEqual(invalidState, {
+    ok: false,
+    status: 409,
+    code: "INVALID_ORDER_STATE",
+    message: "This order is not ready to be completed.",
+  });
+
   const invalid = interpretDeliveryCompletion({
     success: false,
     error_code: "INVALID_DELIVERY_PROOF",
@@ -495,7 +642,7 @@ test("staged migration persists PIN lockout, preserves replay idempotency, and r
   assert.doesNotMatch(migrationSql, /total_earnings\s*=/);
   assert.doesNotMatch(migrationSql, /active_points\s*=/);
 
-  const replayGuard = migrationSql.indexOf("if v_order.delivery_status = 'delivered'");
+  const replayGuard = migrationSql.indexOf("if v_order.status = 'delivered'");
   const deliveriesIncrement = migrationSql.indexOf("set total_deliveries = coalesce(total_deliveries, 0) + 1");
   assert.ok(replayGuard >= 0 && deliveriesIncrement > replayGuard);
   assert.equal(

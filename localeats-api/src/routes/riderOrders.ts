@@ -3,6 +3,7 @@ import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 import { authenticateFirebase, type AuthenticatedRequest } from "../middleware/authenticateFirebase.js";
 import { OrderContractError, assertLifecycleTransition } from "../orders/orderContract.js";
 import { hashDeliveryProof } from "../orders/deliveryProof.js";
+import { lifecycleStateFromOrder, type StoredOrder } from "../orders/orderService.js";
 
 const router = Router();
 
@@ -90,7 +91,7 @@ export const interpretDeliveryCompletion = (value: unknown): DeliveryCompletionO
       return {
         ok: false,
         status: 409,
-        code: "INVALID_ORDER_TRANSITION",
+        code: "INVALID_ORDER_STATE",
         message: "This order is not ready to be completed.",
       };
     case "INVALID_DELIVERY_PROOF":
@@ -252,8 +253,10 @@ const handleMine: RequestHandler = async (request, res): Promise<void> => {
       .order("updated_at", { ascending: false });
 
     query = scope === "history"
-      ? query.eq("delivery_status", "delivered")
-      : query.in("delivery_status", ["rider_assigned", "picked_up", "delivering"]);
+      ? query.eq("status", "delivered").eq("delivery_status", "delivered")
+      : query
+          .eq("status", "ready_for_pickup")
+          .in("delivery_status", ["rider_assigned", "picked_up", "delivering"]);
 
     const { data, error } = await query;
     if (error) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Rider deliveries could not be loaded.");
@@ -283,6 +286,7 @@ const handleAssignedById: RequestHandler = async (request, res): Promise<void> =
       .maybeSingle();
     if (error) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Delivery could not be loaded.");
     if (!data) throw new OrderContractError(404, "ORDER_NOT_FOUND", "Assigned delivery was not found.");
+    lifecycleStateFromOrder(data as unknown as StoredOrder);
     res.status(200).json({
       success: true,
       order: assignedRiderOrderResponse(data as unknown as Record<string, unknown>),
@@ -322,6 +326,7 @@ const handleAvailable: RequestHandler = async (request, res): Promise<void> => {
       .from("orders")
       .select(AVAILABLE_RIDER_ORDER_COLUMNS)
       .in("shop_id", shopIds)
+      .eq("status", "ready_for_pickup")
       .eq("delivery_status", "finding_rider")
       .is("rider_id", null)
       .order("created_at", { ascending: true });
@@ -389,19 +394,47 @@ router.post("/:id/claim", authenticateFirebase, async (req: AuthenticatedRequest
   }
 });
 
+export const assertRiderLifecycleAdvance = (
+  order: Pick<StoredOrder, "status" | "delivery_status">,
+  expected: "rider_assigned" | "picked_up",
+  target: "picked_up" | "delivering",
+): void => {
+  const actualCurrentState = lifecycleStateFromOrder(order as StoredOrder);
+  if (actualCurrentState !== expected) {
+    throw new OrderContractError(
+      409,
+      "INVALID_ORDER_TRANSITION",
+      "Delivery is not at the required lifecycle stage.",
+    );
+  }
+  assertLifecycleTransition(actualCurrentState, target);
+};
+
 const advanceAssignedDelivery = async (
   uid: string,
   orderId: string,
   expected: "rider_assigned" | "picked_up",
   target: "picked_up" | "delivering",
 ) => {
-  assertLifecycleTransition(expected, target);
   const rider = await resolveRider(uid);
+  const { data: persistedOrder, error: readError } = await supabaseAdmin
+    .from("orders")
+    .select("status,delivery_status")
+    .eq("id", orderId)
+    .eq("rider_id", rider.id)
+    .maybeSingle();
+  if (readError) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Delivery state could not be loaded.");
+  if (!persistedOrder) {
+    throw new OrderContractError(409, "INVALID_ORDER_TRANSITION", "Delivery state changed or rider is not assigned.");
+  }
+  assertRiderLifecycleAdvance(persistedOrder, expected, target);
+
   const { data, error } = await supabaseAdmin
     .from("orders")
     .update({ delivery_status: target, updated_at: new Date().toISOString() })
     .eq("id", orderId)
     .eq("rider_id", rider.id)
+    .eq("status", "ready_for_pickup")
     .eq("delivery_status", expected)
     .select(ASSIGNED_RIDER_ORDER_COLUMNS)
     .maybeSingle();
