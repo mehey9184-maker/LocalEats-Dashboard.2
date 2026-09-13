@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   createOrder,
+  lifecycleStateFromOrder,
   lifecycleUpdateFor,
   quoteOrder,
   type NewOrderRecord,
@@ -9,8 +10,71 @@ import {
   type StoredOrder,
 } from "./orderService.js";
 import { OrderContractError, parseCreateOrderInput, type MenuItemForOrder, type ShopForOrder } from "./orderContract.js";
+import type { OrderLifecycleState } from "./orderContract.js";
 
 const TEST_DELIVERY_PROOF_SECRET = "test-only-delivery-proof-secret-32-chars";
+
+const lifecycleOrder = (status: string | null, delivery_status: string | null): StoredOrder => ({
+  id: "order-1", shop_id: "shop-1", user_id: "customer-1", rider_id: null,
+  status, delivery_status, payment_method: "cash", price: 25, total_price: 37.5,
+  delivery_fee: 10, service_fee: 2.5, discount_amount: 0, tip_amount: 0,
+  items: [], lat: -25.983, lng: 28.208,
+});
+
+const validLifecyclePairs: [string, string, OrderLifecycleState][] = [
+  ["pending", "none", "pending"],
+  ["preparing", "none", "preparing"],
+  ["ready_for_pickup", "none", "ready_for_pickup"],
+  ["ready_for_pickup", "finding_rider", "finding_rider"],
+  ["ready_for_pickup", "rider_assigned", "rider_assigned"],
+  ["ready_for_pickup", "picked_up", "picked_up"],
+  ["ready_for_pickup", "delivering", "delivering"],
+  ["delivered", "delivered", "delivered"],
+];
+
+for (const [status, deliveryStatus, expected] of validLifecyclePairs) {
+  test(`lifecycle recognizes ${status} + ${deliveryStatus} as ${expected}`, () => {
+    assert.equal(lifecycleStateFromOrder(lifecycleOrder(status, deliveryStatus)), expected);
+  });
+}
+
+test("lifecycle rejects every noncanonical pair, including terminal, unknown and null states", () => {
+  const statuses = ["pending", "preparing", "ready_for_pickup", "delivered", "cancelled", "collected", "unknown", "", null];
+  const deliveryStatuses = ["none", "pending", "finding_rider", "rider_assigned", "picked_up", "delivering", "delivered", "cancelled", "unknown", "", null];
+  let rejected = 0;
+  for (const status of statuses) {
+    for (const deliveryStatus of deliveryStatuses) {
+      if (validLifecyclePairs.some(([s, d]) => s === status && d === deliveryStatus)) continue;
+      const order = lifecycleOrder(status, deliveryStatus);
+      const before = structuredClone(order);
+      const invalidState = (error: unknown): boolean =>
+        error instanceof OrderContractError && error.status === 409 &&
+        error.code === "INVALID_ORDER_STATE" &&
+        error.message === "Order state does not permit this operation.";
+      assert.throws(() => lifecycleStateFromOrder(order), invalidState);
+      for (const [, , target] of validLifecyclePairs) {
+        assert.throws(() => lifecycleUpdateFor(order, target), invalidState);
+      }
+      assert.deepEqual(order, before);
+      rejected++;
+    }
+  }
+  assert.equal(rejected, 91);
+});
+
+test("canonical lifecycle updates preserve the full forward journey and delivered is terminal", () => {
+  let order = lifecycleOrder("pending", "none");
+  for (const [status, deliveryStatus, target] of validLifecyclePairs.slice(1)) {
+    order = { ...order, ...lifecycleUpdateFor(order, target) };
+    assert.equal(order.status, status);
+    assert.equal(order.delivery_status, deliveryStatus);
+    assert.equal(lifecycleStateFromOrder(order), target);
+  }
+  for (const [, , target] of validLifecyclePairs) {
+    assert.throws(() => lifecycleUpdateFor(order, target), (error: unknown) =>
+      error instanceof OrderContractError && error.status === 409 && error.code === "INVALID_ORDER_TRANSITION");
+  }
+});
 
 const validRequest = (): Record<string, unknown> => ({
   idempotency_key: "550e8400-e29b-41d4-a716-446655440000",

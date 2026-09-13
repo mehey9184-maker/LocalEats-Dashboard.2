@@ -362,20 +362,31 @@ export interface MutableOrderRecord extends StoredOrder {
 }
 
 export const lifecycleStateFromOrder = (order: StoredOrder): OrderLifecycleState => {
+  // Interpret the persisted pair, never one field in isolation or a fallback.
   const deliveryStatus = order.delivery_status;
   if (
-    deliveryStatus === "finding_rider" ||
-    deliveryStatus === "rider_assigned" ||
-    deliveryStatus === "picked_up" ||
-    deliveryStatus === "delivering" ||
-    deliveryStatus === "delivered"
+    deliveryStatus === "none" && (
+      order.status === "pending" ||
+      order.status === "preparing" ||
+      order.status === "ready_for_pickup"
+    )
+  ) {
+    return order.status;
+  }
+  if (
+    order.status === "ready_for_pickup" && (
+      deliveryStatus === "finding_rider" ||
+      deliveryStatus === "rider_assigned" ||
+      deliveryStatus === "picked_up" ||
+      deliveryStatus === "delivering"
+    )
   ) {
     return deliveryStatus;
   }
-  if (order.status === "preparing" || order.status === "ready_for_pickup" || order.status === "delivered") {
-    return order.status;
+  if (order.status === "delivered" && deliveryStatus === "delivered") {
+    return "delivered";
   }
-  return "pending";
+  throw new OrderContractError(409, "INVALID_ORDER_STATE", "Order state does not permit this operation.");
 };
 
 export const lifecycleUpdateFor = (
