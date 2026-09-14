@@ -328,7 +328,7 @@ export class SupabaseOrderRepository implements OrderRepository {
   async findShop(shopId: string): Promise<ShopForOrder | null> {
     const { data, error } = await this.client
       .from("shops")
-      .select("id,name,is_active,approval_status,latitude,longitude,lat,lng")
+      .select("id,name,is_active,approval_status,archived_at,latitude,longitude,lat,lng")
       .eq("id", shopId)
       .maybeSingle();
     if (error) throwDatabaseError("shop lookup", error);

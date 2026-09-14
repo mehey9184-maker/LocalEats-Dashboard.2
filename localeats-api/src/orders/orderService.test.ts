@@ -160,6 +160,7 @@ class MemoryRepository implements OrderRepository {
     name: "Shop",
     is_active: true,
     approval_status: "approved",
+    archived_at: null,
     latitude: -25.983,
     longitude: 28.208,
     lat: null,
@@ -253,7 +254,7 @@ test("quote fails closed for unavailable and foreign menu items", async () => {
   );
 });
 
-test("quote rejects inactive and unapproved shops", async () => {
+test("quote rejects inactive, archived, and non-approved shops", async () => {
   const inactive = new MemoryRepository();
   inactive.shop.is_active = false;
   await assert.rejects(
@@ -261,12 +262,43 @@ test("quote rejects inactive and unapproved shops", async () => {
     (error: unknown) => error instanceof OrderContractError && error.code === "SHOP_UNAVAILABLE",
   );
 
-  const unapproved = new MemoryRepository();
-  unapproved.shop.approval_status = "pending";
+  const archived = new MemoryRepository();
+  archived.shop.archived_at = "2026-09-01T00:00:00.000Z";
+  for (const request of [
+    input(),
+    parseCreateOrderInput({
+      ...validRequest(),
+      delivery_type: "collection",
+      delivery_coordinates: undefined,
+    }),
+  ]) {
+    await assert.rejects(
+      () => quoteOrder(archived, "firebase-customer-1", request),
+      (error: unknown) => error instanceof OrderContractError && error.code === "SHOP_UNAVAILABLE",
+    );
+  }
+
+  for (const status of ["pending", "rejected", "suspended"]) {
+    const unapproved = new MemoryRepository();
+    unapproved.shop.approval_status = status;
+    await assert.rejects(
+      () => quoteOrder(unapproved, "firebase-customer-1", input()),
+      (error: unknown) => error instanceof OrderContractError && error.code === "SHOP_UNAVAILABLE",
+    );
+  }
+});
+
+test("create rejects an archived shop before idempotency lookup or insert", async () => {
+  const repository = new MemoryRepository();
+  repository.shop.archived_at = "2026-09-01T00:00:00.000Z";
+
   await assert.rejects(
-    () => quoteOrder(unapproved, "firebase-customer-1", input()),
+    () => createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET),
     (error: unknown) => error instanceof OrderContractError && error.code === "SHOP_UNAVAILABLE",
   );
+  assert.equal(repository.idempotencyLookups, 0);
+  assert.equal(repository.insertCalls, 0);
+  assert.equal(repository.insertedRecord, null);
 });
 
 test("quote rejects delivery outside the pilot radius", async () => {

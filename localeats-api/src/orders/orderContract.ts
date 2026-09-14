@@ -37,10 +37,11 @@ export interface ShopForOrder {
   name: string;
   is_active: boolean | null;
   approval_status: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  lat: number | null;
-  lng: number | null;
+  archived_at: string | null;
+  latitude: number | string | null;
+  longitude: number | string | null;
+  lat: number | string | null;
+  lng: number | string | null;
 }
 
 export interface MenuItemForOrder {
@@ -249,9 +250,11 @@ export const parseCreateOrderInput = (raw: unknown): CreateOrderInput => {
   let deliveryCoordinates: { lat: number; lng: number } | undefined;
   if (deliveryType === "delivery") {
     const coordinates = asObject(body.delivery_coordinates, "delivery_coordinates");
-    const lat = Number(coordinates.lat);
-    const lng = Number(coordinates.lng);
-    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+    const { lat, lng } = coordinates;
+    if (
+      typeof lat !== "number" || !Number.isFinite(lat) || lat < -90 || lat > 90 ||
+      typeof lng !== "number" || !Number.isFinite(lng) || lng < -180 || lng > 180
+    ) {
       throw new OrderContractError(400, "INVALID_COORDINATES", "Valid delivery coordinates are required.");
     }
     deliveryCoordinates = { lat, lng };
@@ -303,24 +306,63 @@ export const calculateDistanceKm = (
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+const invalidShopLocation = (): never => {
+  throw new OrderContractError(
+    409,
+    "DELIVERY_LOCATION_UNAVAILABLE",
+    "This shop has no verified delivery location.",
+  );
+};
+
+const databaseCoordinate = (value: unknown, min: number, max: number): number => {
+  let coordinate: number;
+  if (typeof value === "number") {
+    coordinate = value;
+  } else if (typeof value === "string" && value.trim().length > 0) {
+    coordinate = Number(value);
+  } else {
+    return invalidShopLocation();
+  }
+  if (!Number.isFinite(coordinate) || coordinate < min || coordinate > max) {
+    return invalidShopLocation();
+  }
+  return coordinate;
+};
+
+const shopCoordinatePair = (shop: ShopForOrder): { lat: number; lng: number } => {
+  const hasCanonicalLat = shop.lat !== null && shop.lat !== undefined;
+  const hasCanonicalLng = shop.lng !== null && shop.lng !== undefined;
+  if (hasCanonicalLat || hasCanonicalLng) {
+    if (!hasCanonicalLat || !hasCanonicalLng) return invalidShopLocation();
+    return {
+      lat: databaseCoordinate(shop.lat, -90, 90),
+      lng: databaseCoordinate(shop.lng, -180, 180),
+    };
+  }
+
+  const hasLegacyLat = shop.latitude !== null && shop.latitude !== undefined;
+  const hasLegacyLng = shop.longitude !== null && shop.longitude !== undefined;
+  if (!hasLegacyLat || !hasLegacyLng) return invalidShopLocation();
+  return {
+    lat: databaseCoordinate(shop.latitude, -90, 90),
+    lng: databaseCoordinate(shop.longitude, -180, 180),
+  };
+};
+
 export const assertShopCanAcceptOrder = (shop: ShopForOrder, input: CreateOrderInput): void => {
   if (shop.id !== input.shop_id) {
     throw new OrderContractError(404, "SHOP_NOT_FOUND", "Shop not found.");
   }
-  if (shop.approval_status !== "approved" || shop.is_active !== true) {
+  if (shop.approval_status !== "approved" || shop.is_active !== true || shop.archived_at !== null) {
     throw new OrderContractError(409, "SHOP_UNAVAILABLE", "This shop is not accepting orders.");
   }
   if (input.delivery_type !== "delivery" || !input.delivery_coordinates) return;
 
-  const shopLat = Number(shop.lat ?? shop.latitude);
-  const shopLng = Number(shop.lng ?? shop.longitude);
-  if (!Number.isFinite(shopLat) || !Number.isFinite(shopLng)) {
-    throw new OrderContractError(409, "DELIVERY_LOCATION_UNAVAILABLE", "This shop has no verified delivery location.");
-  }
+  const shopCoordinates = shopCoordinatePair(shop);
 
   const distanceKm = calculateDistanceKm(
-    shopLat,
-    shopLng,
+    shopCoordinates.lat,
+    shopCoordinates.lng,
     input.delivery_coordinates.lat,
     input.delivery_coordinates.lng,
   );

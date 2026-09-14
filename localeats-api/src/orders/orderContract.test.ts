@@ -11,6 +11,7 @@ import {
   calculateAuthoritativePrice,
   OrderContractError,
   parseCreateOrderInput,
+  type ShopForOrder,
 } from "./orderContract.js";
 import {
   APPROVED_RIDER_CONNECTION_STATUS,
@@ -37,6 +38,7 @@ const migrationSql = readFileSync(
 
 const riderRouteSource = readFileSync(resolve(process.cwd(), "src/routes/riderOrders.ts"), "utf8");
 const orderRouteSource = readFileSync(resolve(process.cwd(), "src/routes/orders.ts"), "utf8");
+const orderServiceSource = readFileSync(resolve(process.cwd(), "src/orders/orderService.ts"), "utf8");
 const compactOrderRouteSource = orderRouteSource.replace(/\s+/g, " ");
 const merchantApiSource = readFileSync(resolve(process.cwd(), "../src/services/MerchantApi.ts"), "utf8");
 const merchantWorkflowSource = readFileSync(resolve(process.cwd(), "../src/hooks/useOrderWorkflow.ts"), "utf8");
@@ -159,6 +161,40 @@ test("pickup accepts cash or the merchant physical card terminal", () => {
   assert.equal(parseCreateOrderInput(request).payment_method, "card_machine");
 });
 
+test("delivery coordinates require strict finite JSON numbers without coercion", () => {
+  const invalidCoordinates: Array<[string, Record<string, unknown>]> = [
+    ["null latitude", { lat: null, lng: 28.208 }],
+    ["null longitude", { lat: -25.983, lng: null }],
+    ["empty latitude", { lat: "", lng: 28.208 }],
+    ["empty longitude", { lat: -25.983, lng: "" }],
+    ["numeric-string latitude", { lat: "0", lng: 28.208 }],
+    ["numeric-string longitude", { lat: -25.983, lng: "0" }],
+    ["boolean latitude", { lat: false, lng: 28.208 }],
+    ["boolean longitude", { lat: -25.983, lng: false }],
+    ["non-finite latitude", { lat: Number.NaN, lng: 28.208 }],
+    ["non-finite longitude", { lat: -25.983, lng: Number.POSITIVE_INFINITY }],
+    ["latitude above range", { lat: 91, lng: 28.208 }],
+    ["latitude below range", { lat: -91, lng: 28.208 }],
+    ["longitude above range", { lat: -25.983, lng: 181 }],
+    ["longitude below range", { lat: -25.983, lng: -181 }],
+    ["array latitude", { lat: [], lng: 28.208 }],
+    ["object longitude", { lat: -25.983, lng: {} }],
+  ];
+
+  for (const [label, delivery_coordinates] of invalidCoordinates) {
+    assert.throws(
+      () => parseCreateOrderInput({ ...validRequest(), delivery_coordinates }),
+      (error: unknown) => error instanceof OrderContractError && error.code === "INVALID_COORDINATES",
+      label,
+    );
+  }
+
+  assert.deepEqual(
+    parseCreateOrderInput({ ...validRequest(), delivery_coordinates: { lat: 0, lng: 0 } }).delivery_coordinates,
+    { lat: 0, lng: 0 },
+  );
+});
+
 test("server menu prices determine every total", () => {
   const input = parseCreateOrderInput(validRequest());
   const price = calculateAuthoritativePrice(input, [
@@ -207,6 +243,7 @@ test("delivery radius is verified from server shop coordinates", () => {
           name: "Shop",
           is_active: true,
           approval_status: "approved",
+          archived_at: null,
           latitude: -25.983,
           longitude: 28.208,
           lat: null,
@@ -277,6 +314,82 @@ test("rider pickup and delivering validate the complete persisted lifecycle pair
         "picked_up",
       ),
     (error: unknown) => error instanceof OrderContractError && error.code === "INVALID_ORDER_TRANSITION",
+  );
+});
+
+const shopForDelivery = (overrides: Record<string, unknown> = {}): ShopForOrder => ({
+  id: "shop-my-kota-ivory-park",
+  name: "Shop",
+  is_active: true,
+  approval_status: "approved",
+  archived_at: null,
+  latitude: null,
+  longitude: null,
+  lat: -25.983,
+  lng: 28.208,
+  ...overrides,
+} as ShopForOrder);
+
+const deliveryInput = () => parseCreateOrderInput(validRequest());
+const expectDeliveryLocationUnavailable = (shop: ShopForOrder): void => {
+  assert.throws(
+    () => assertShopCanAcceptOrder(shop, deliveryInput()),
+    (error: unknown) =>
+      error instanceof OrderContractError && error.status === 409 && error.code === "DELIVERY_LOCATION_UNAVAILABLE",
+  );
+};
+
+test("shop delivery coordinates use complete coordinate families without mixing", () => {
+  assert.doesNotThrow(() => assertShopCanAcceptOrder(shopForDelivery(), deliveryInput()));
+  assert.doesNotThrow(() => assertShopCanAcceptOrder(shopForDelivery({
+    lat: null,
+    lng: null,
+    latitude: "-25.983",
+    longitude: "28.208",
+  }), deliveryInput()));
+
+  expectDeliveryLocationUnavailable(shopForDelivery({ lat: null, lng: null, latitude: null, longitude: null }));
+  expectDeliveryLocationUnavailable(shopForDelivery({ lat: -25.983, lng: null, latitude: -25.983, longitude: 28.208 }));
+  expectDeliveryLocationUnavailable(shopForDelivery({ lat: null, lng: 28.208, latitude: -25.983, longitude: 28.208 }));
+  expectDeliveryLocationUnavailable(shopForDelivery({ lat: null, lng: null, latitude: -25.983, longitude: null }));
+  expectDeliveryLocationUnavailable(shopForDelivery({ lat: null, lng: null, latitude: null, longitude: 28.208 }));
+});
+
+test("selected shop coordinate pairs reject coercible, non-finite, and out-of-range values", () => {
+  for (const invalidLat of ["", "   ", "north", true, [], {}, Number.NaN, Number.POSITIVE_INFINITY, 91, -91]) {
+    expectDeliveryLocationUnavailable(shopForDelivery({ lat: invalidLat }));
+  }
+  for (const invalidLng of ["", "   ", "east", false, [], {}, Number.NaN, Number.NEGATIVE_INFINITY, 181, -181]) {
+    expectDeliveryLocationUnavailable(shopForDelivery({ lng: invalidLng }));
+  }
+  expectDeliveryLocationUnavailable(shopForDelivery({
+    lat: null,
+    lng: null,
+    latitude: "",
+    longitude: "28.208",
+  }));
+});
+
+test("a complete canonical shop pair takes precedence over the complete legacy pair", () => {
+  assert.doesNotThrow(() => assertShopCanAcceptOrder(shopForDelivery({
+    lat: -25.983,
+    lng: 28.208,
+    latitude: 40,
+    longitude: -74,
+  }), deliveryInput()));
+
+  expectDeliveryLocationUnavailable(shopForDelivery({
+    lat: "invalid",
+    lng: 28.208,
+    latitude: -25.983,
+    longitude: 28.208,
+  }));
+});
+
+test("the order repository requests the complete narrow shop eligibility contract", () => {
+  assert.match(
+    orderServiceSource,
+    /\.select\("id,name,is_active,approval_status,archived_at,latitude,longitude,lat,lng"\)/,
   );
 });
 
