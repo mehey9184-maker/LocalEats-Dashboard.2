@@ -1,5 +1,24 @@
-export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'dispatched';
-export type DeliveryStatus = 'finding_rider' | 'accepted' | 'picked_up' | 'delivered' | 'cancelled' | 'dispatched';
+export type OrderStatus =
+  | 'pending'
+  | 'preparing'
+  | 'ready_for_pickup'
+  | 'collected'
+  | 'delivered'
+  | 'cancelled'
+  | 'accepted'
+  | 'ready'
+  | 'completed'
+  | 'dispatched';
+export type DeliveryStatus =
+  | 'none'
+  | 'finding_rider'
+  | 'rider_assigned'
+  | 'picked_up'
+  | 'delivering'
+  | 'delivered'
+  | 'accepted'
+  | 'cancelled'
+  | 'dispatched';
 export type UserVehicle = 'Road' | 'MTB' | 'E-Bike' | 'Motor';
 
 export interface Shop {
@@ -76,7 +95,8 @@ export interface DeliveryOrder {
   delivery_fee: number;
   delivery_status: DeliveryStatus;
   status: OrderStatus;
-  order_type: 'delivery' | 'pickup';
+  order_type: 'delivery' | 'collection' | 'pickup';
+  delivery_type?: 'delivery' | 'collection';
   rider_id?: string | null;
   items?: string[];
   product_name?: string;
@@ -144,7 +164,7 @@ export interface Order {
   completed_at?: string;
   estimated_delivery_time?: string;
   updated_at?: string;
-  rider_id?: string;
+  rider_id?: string | null;
   rider_name?: string;
   rider_phone?: string;
   items?: (string | { name: string; price: number; quantity: number })[];
@@ -153,13 +173,17 @@ export interface Order {
   delivery_fee?: number;
   restaurant_name?: string;
   delivery_status?:
+    | "none"
     | "finding_rider"
+    | "rider_assigned"
     | "accepted"
     | "picked_up"
+    | "delivering"
     | "delivered"
     | "cancelled"
     | "dispatched";
   order_type?: "delivery" | "collection" | "pickup";
+  delivery_type?: "delivery" | "collection";
   delivery_pin?: string;
   rider_accepted_at?: string;
   merchant_rating?: number;

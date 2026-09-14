@@ -35,10 +35,25 @@ export const STATUS_STYLES: Record<OrderStatus, { bg: string; dotColor: string; 
     dotColor: "bg-tertiary",
     label: "Ready",
   },
+  ready_for_pickup: {
+    bg: "bg-tertiary/10 text-tertiary dark:bg-tertiary/20",
+    dotColor: "bg-tertiary",
+    label: "Ready",
+  },
   completed: {
     bg: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
     dotColor: "bg-emerald-500",
     label: "Completed",
+  },
+  collected: {
+    bg: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+    dotColor: "bg-emerald-500",
+    label: "Collected",
+  },
+  delivered: {
+    bg: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+    dotColor: "bg-emerald-500",
+    label: "Delivered",
   },
   cancelled: {
     bg: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
@@ -77,7 +92,7 @@ export const OrderStatusBadge: React.FC<OrderStatusBadgeProps> = ({ status, clas
             <span className={cn("relative inline-flex rounded-full h-2 w-2", dotColor)}></span>
           </span>
         ) : (
-          status === "completed" ? (
+          status === "completed" || status === "collected" || status === "delivered" ? (
             <CheckCircle2 size={12} className="shrink-0" />
           ) : (
             <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", dotColor)} />

@@ -26,7 +26,42 @@ const displayWorkflowError = (error: unknown): void => {
   toast.error(message);
 };
 
+type MerchantTransitionAction = "accept" | "ready" | "reject" | "cancel" | "collected";
+
+export const resolveMerchantTransitionAction = (
+  order: Order,
+  requestedStatus: OrderStatus,
+): MerchantTransitionAction => {
+  if (requestedStatus === "preparing") return "accept";
+  if (requestedStatus === "ready" || requestedStatus === "ready_for_pickup") return "ready";
+  if (requestedStatus === "cancelled") {
+    if (order.status === "pending") return "reject";
+    if (order.status === "preparing") return "cancel";
+    throw new MerchantApiError(
+      "Merchant cancellation is only available before an order is ready for pickup.",
+      409,
+    );
+  }
+  if (requestedStatus === "collected") {
+    const isCollection = order.delivery_type === "collection" ||
+      (order.delivery_type === undefined &&
+        (order.order_type === "collection" || order.order_type === "pickup"));
+    if ((order.status !== "ready_for_pickup" && order.status !== "ready") || !isCollection) {
+      throw new MerchantApiError(
+        "Only a ready collection order can be marked collected.",
+        409,
+      );
+    }
+    return "collected";
+  }
+  throw new MerchantApiError(
+    "That order action is disabled until it has a dedicated server-authorized transition.",
+    409,
+  );
+};
+
 export const useOrderWorkflow = ({
+  orders,
   setOrders,
   fetchOrders,
 }: OrderWorkflowProps) => {
@@ -46,23 +81,26 @@ export const useOrderWorkflow = ({
     _estimatedTime?: string,
   ) => {
     try {
-      if (status === "preparing") {
-        const order = await MerchantApi.transitionOrder(id, "accept");
-        replaceConfirmedOrder(order);
+      const currentOrder = orders.find((order) => String(order.id) === String(id));
+      if (!currentOrder) {
+        throw new MerchantApiError("Order not found. Refresh and try again.", 404);
+      }
+      const action = resolveMerchantTransitionAction(currentOrder, status);
+      const order = await MerchantApi.transitionOrder(id, action);
+      replaceConfirmedOrder(order);
+
+      if (action === "accept") {
         toast.success("Order accepted and moved to Preparing.");
-      } else if (status === "ready" || String(status) === "ready_for_pickup") {
-        const order = await MerchantApi.transitionOrder(id, "ready");
-        replaceConfirmedOrder(order);
+      } else if (action === "ready") {
         toast.success(
           order.delivery_status === "finding_rider"
             ? "Order is ready. Approved riders can now claim it."
             : "Order is ready for customer pickup.",
         );
+      } else if (action === "collected") {
+        toast.success("Collection confirmed.");
       } else {
-        throw new MerchantApiError(
-          "That order action is disabled until it has a dedicated server-authorized transition.",
-          409,
-        );
+        toast.success(action === "reject" ? "Order rejected." : "Order cancelled.");
       }
       await fetchOrders();
     } catch (error) {

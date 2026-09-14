@@ -72,8 +72,24 @@ import { DispatchAlertModal } from "./DispatchAlertModal";
 import { format } from "date-fns";
 
 export const isOrderDelivery = (order: Order): boolean => {
-  return order.order_type === "delivery" || !!order.address;
+  if (order.delivery_type === "delivery" || order.delivery_type === "collection") {
+    return order.delivery_type === "delivery";
+  }
+  if (order.order_type) return order.order_type === "delivery";
+  return !!order.address;
 };
+
+export const isTerminalOrderStatus = (status: OrderStatus): boolean =>
+  status === "collected" ||
+  status === "delivered" ||
+  status === "cancelled" ||
+  status === "completed";
+
+export const isFulfilledOrderStatus = (status: OrderStatus): boolean =>
+  status === "collected" || status === "delivered" || status === "completed";
+
+export const isReadyOrderStatus = (status: OrderStatus): boolean =>
+  status === "ready_for_pickup" || status === "ready";
 
 export function safeGetOrderItems(rawItems: unknown): (string | { name: string; quantity: number; price?: number })[] {
   if (!rawItems) return [];
@@ -1185,7 +1201,7 @@ Notes: "${order.notes || "None"}"
   }, [maxConcurrentOrders]);
 
   const activeCount = orders.filter(
-    (o) => o.status !== "completed" && o.status !== "cancelled",
+    (o) => !isTerminalOrderStatus(o.status),
   ).length;
   const isLimitReached = activeCount >= maxConcurrentOrders;
 
@@ -1219,10 +1235,10 @@ Notes: "${order.notes || "None"}"
 
   const displayedOrders = useMemo(() => {
     const activeOrders = orders.filter(
-      (o) => o.status !== "completed" && o.status !== "cancelled",
+      (o) => !isTerminalOrderStatus(o.status),
     );
     const historyOrders = orders.filter(
-      (o) => o.status === "completed" || o.status === "cancelled",
+      (o) => isTerminalOrderStatus(o.status),
     );
     const baseOrders = viewMode === "active" ? activeOrders : historyOrders;
 
@@ -1315,7 +1331,7 @@ Notes: "${order.notes || "None"}"
   const fulfilledOrdersToday = useMemo(() => {
     const now = new Date();
     return orders.filter((o) => {
-      const isFulfilled = o.status === "completed" || o.status === "cancelled";
+      const isFulfilled = isTerminalOrderStatus(o.status);
       let isToday = false;
       if (o.created_at) {
         const d = new Date(o.created_at);
@@ -1416,8 +1432,10 @@ Notes: "${order.notes || "None"}"
     "All",
     "pending",
     "preparing",
-    "ready",
-    "completed",
+    "ready_for_pickup",
+    "collected",
+    "delivered",
+    "cancelled",
   ];
 
   const handleRiderAction = (rider: RiderConnection, orderId: string) => {
@@ -1489,7 +1507,7 @@ Notes: "${order.notes || "None"}"
                             ? "bg-primary-light border-primary/20"
                             : order.status === "preparing"
                               ? "bg-primary/10 border-primary/10"
-                              : order.status === "ready"
+                              : isReadyOrderStatus(order.status)
                                 ? "bg-tertiary/10 border-tertiary/20"
                                 : "bg-surface-container-highest border-transparent",
                         kitchenMode && "p-8 md:p-10 border-2",
@@ -2087,7 +2105,7 @@ Notes: "${order.notes || "None"}"
                               )}
 
                               {isOrderDelivery(order) && !order.delivery_status &&
-                                order.status !== "completed" && (
+                                !isTerminalOrderStatus(order.status) && (
                                   <div className="space-y-2">
                                     {showRiderPicker === order.id ? (
                                       <div className="bg-surface-container p-4 rounded-xl border-2 border-primary/20 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -2373,6 +2391,15 @@ Notes: "${order.notes || "None"}"
                                   >
                                     Accept Order
                                   </button>
+                                  <button
+                                    onClick={() => void runLifecycleAction(order.id, "cancelled")}
+                                    className={cn(
+                                      "w-full border-2 border-error/30 text-error font-bold rounded-full hover:bg-error/10 transition-colors",
+                                      kitchenMode ? "py-5 text-lg" : "py-3 text-sm",
+                                    )}
+                                  >
+                                    Reject Order
+                                  </button>
                                 </div>
                               )}
                             </div>
@@ -2501,24 +2528,48 @@ Notes: "${order.notes || "None"}"
                                   </div>
                                 </motion.div>
                               ) : (
-                                <button
-                                  onClick={() => setReadyOrderId(order.id)}
-                                  disabled={updatingOrderId === order.id}
-                                  className={cn(
-                                    "w-full bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-full shadow-[0_8px_24px_-4px_rgba(167,52,0,0.2)] hover:scale-[0.98] transition-transform",
-                                    kitchenMode
-                                      ? "py-5 text-lg"
-                                      : "py-3 text-sm",
-                                    updatingOrderId === order.id && "opacity-50 pointer-events-none"
+                                <div className="space-y-2">
+                                  <button
+                                    onClick={() => setReadyOrderId(order.id)}
+                                    disabled={updatingOrderId === order.id}
+                                    className={cn(
+                                      "w-full bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-full shadow-[0_8px_24px_-4px_rgba(167,52,0,0.2)] hover:scale-[0.98] transition-transform",
+                                      kitchenMode
+                                        ? "py-5 text-lg"
+                                        : "py-3 text-sm",
+                                      updatingOrderId === order.id && "opacity-50 pointer-events-none"
+                                    )}
+                                  >
+                                    {updatingOrderId === order.id ? "Marking..." : "Mark as Ready"}
+                                  </button>
+                                  {order.status === "preparing" && (
+                                    <button
+                                      onClick={() => void runLifecycleAction(order.id, "cancelled")}
+                                      className={cn(
+                                        "w-full border-2 border-error/30 text-error font-bold rounded-full hover:bg-error/10 transition-colors",
+                                        kitchenMode ? "py-5 text-lg" : "py-3 text-sm",
+                                      )}
+                                    >
+                                      Cancel Order
+                                    </button>
                                   )}
-                                >
-                                  {updatingOrderId === order.id ? "Marking..." : "Mark as Ready"}
-                                </button>
+                                </div>
                               )}
                             </div>
                           )}
+                          {isReadyOrderStatus(order.status) && !isOrderDelivery(order) && (
+                            <button
+                              onClick={() => void runLifecycleAction(order.id, "collected")}
+                              className={cn(
+                                "flex-1 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors",
+                                kitchenMode ? "py-5 text-lg" : "py-3 text-sm",
+                              )}
+                            >
+                              Customer Collected
+                            </button>
+                          )}
                           <div className="flex gap-2">
-                            {order.rider_id && order.status !== "completed" && (
+                            {order.rider_id && !isTerminalOrderStatus(order.status) && (
                               <button
                                 onClick={() => {
                                   const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
@@ -2945,8 +2996,10 @@ Notes: "${order.notes || "None"}"
                     <option value="All">All Statuses</option>
                     <option value="pending">Pending</option>
                     <option value="preparing">Preparing</option>
-                    <option value="ready">Ready</option>
-                    <option value="completed">Completed</option>
+                    <option value="ready_for_pickup">Ready</option>
+                    <option value="collected">Collected</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="cancelled">Cancelled</option>
                   </select>
                   <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant">
                     <Filter size={12} />
@@ -3462,6 +3515,15 @@ Notes: "${order.notes || "None"}"
                               >
                                 Accept
                               </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void runLifecycleAction(order.id, "cancelled");
+                                }}
+                                className="w-full py-3 border-2 border-error/30 text-error text-sm font-black uppercase tracking-wider rounded-2xl hover:bg-error/10 transition-all"
+                              >
+                                Reject
+                              </button>
                             </div>
                           </div>
                         )}
@@ -3725,6 +3787,17 @@ Notes: "${order.notes || "None"}"
                               >
                                 Mark Ready
                               </button>
+                              {order.status === "preparing" && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void runLifecycleAction(order.id, "cancelled");
+                                  }}
+                                  className="w-full py-3 border-2 border-error/30 text-error text-sm font-black uppercase tracking-wider rounded-2xl hover:bg-error/10 transition-all"
+                                >
+                                  Cancel Order
+                                </button>
+                              )}
                             </div>
                           )
                         )}
@@ -3779,15 +3852,15 @@ Notes: "${order.notes || "None"}"
                     <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">Ready</h3>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-bold text-[10px]">
-                    {displayedOrders.filter(o => o.status === "ready").length}
+                    {displayedOrders.filter(o => isReadyOrderStatus(o.status)).length}
                   </span>
                 </div>
 
                 <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
                   <AnimatePresence mode="popLayout">
-                  {displayedOrders.filter(o => o.status === "ready").map((order) => {
+                  {displayedOrders.filter(o => isReadyOrderStatus(o.status)).map((order) => {
                     const items = safeGetOrderItems(order.items);
-                    const canNudge = order.rider_id && order.status !== "completed";
+                    const canNudge = order.rider_id && !isTerminalOrderStatus(order.status);
                     const isDelivery = isOrderDelivery(order);
                     const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
                     const isDispatched = isDelivery && (order.rider_id || order.delivery_status === "accepted" || order.delivery_status === "picked_up" || order.delivery_status === "dispatched");
@@ -3860,6 +3933,18 @@ Notes: "${order.notes || "None"}"
                             );
                           })}
                         </div>
+
+                        {!isOrderDelivery(order) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void runLifecycleAction(order.id, "collected");
+                            }}
+                            className="w-full py-3 bg-emerald-600 text-white text-sm font-black uppercase tracking-wider rounded-xl hover:bg-emerald-700 transition-all"
+                          >
+                            Customer Collected
+                          </button>
+                        )}
 
                         {/* Gated Dispatch Action & Rider details */}
                         {isOrderDelivery(order) && order.status !== "dispatched" && (
@@ -3935,7 +4020,7 @@ Notes: "${order.notes || "None"}"
                       </motion.div>
                     );
                   })}
-                  {displayedOrders.filter(o => o.status === "ready").length === 0 && (
+                  {displayedOrders.filter(o => isReadyOrderStatus(o.status)).length === 0 && (
                     <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None ready</div>
                   )}
                   </AnimatePresence>
@@ -3995,7 +4080,7 @@ Notes: "${order.notes || "None"}"
                           </div>
                           <span className={cn(
                             "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md",
-                            order.status === "completed" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                            isFulfilledOrderStatus(order.status) ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
                           )}>
                             {order.status}
                           </span>
@@ -4223,12 +4308,12 @@ Notes: "${order.notes || "None"}"
                     },
                     {
                       label: "Ready for Pickup",
-                      count: orders.filter((o) => o.status === "ready").length,
+                      count: orders.filter((o) => isReadyOrderStatus(o.status)).length,
                       color: "bg-tertiary",
                     },
                     {
                       label: "Completed",
-                      count: orders.filter((o) => o.status === "completed")
+                      count: orders.filter((o) => isFulfilledOrderStatus(o.status))
                         .length,
                       color: "bg-secondary",
                     },

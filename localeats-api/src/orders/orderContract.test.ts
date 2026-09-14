@@ -23,7 +23,11 @@ import {
   parseRiderDeliveryProof,
   registerRiderReadRoutes,
 } from "../routes/riderOrders.js";
-import { customerOrderResponse, customerOrderRoutes } from "../routes/orders.js";
+import {
+  customerOrderResponse,
+  customerOrderRoutes,
+  merchantLifecycleUpdateForAction,
+} from "../routes/orders.js";
 import type { StoredOrder } from "./orderService.js";
 
 const migrationSql = readFileSync(
@@ -32,6 +36,11 @@ const migrationSql = readFileSync(
 );
 
 const riderRouteSource = readFileSync(resolve(process.cwd(), "src/routes/riderOrders.ts"), "utf8");
+const orderRouteSource = readFileSync(resolve(process.cwd(), "src/routes/orders.ts"), "utf8");
+const compactOrderRouteSource = orderRouteSource.replace(/\s+/g, " ");
+const merchantApiSource = readFileSync(resolve(process.cwd(), "../src/services/MerchantApi.ts"), "utf8");
+const merchantWorkflowSource = readFileSync(resolve(process.cwd(), "../src/hooks/useOrderWorkflow.ts"), "utf8");
+const merchantOrdersUiSource = readFileSync(resolve(process.cwd(), "../src/components/OrdersManagement.tsx"), "utf8");
 const compactRiderRouteSource = riderRouteSource.replace(/\s+/g, " ");
 const claimFunctionSql = migrationSql.slice(
   migrationSql.indexOf("create or replace function public.claim_delivery_order"),
@@ -63,6 +72,31 @@ const requestJson = async (
     await once(server, "close");
   }
 };
+
+const merchantOrder = (
+  status: string | null,
+  deliveryStatus: string | null,
+  deliveryType: "collection" | "delivery" = "collection",
+  riderId: string | null = null,
+): StoredOrder => ({
+  id: "merchant-order-1",
+  shop_id: "shop-1",
+  user_id: "customer-1",
+  rider_id: riderId,
+  status,
+  delivery_status: deliveryStatus,
+  delivery_type: deliveryType,
+  payment_method: "cash",
+  price: 25,
+  total_price: 25,
+  delivery_fee: 0,
+  service_fee: 0,
+  discount_amount: 0,
+  tip_amount: 0,
+  items: [],
+  lat: null,
+  lng: null,
+});
 
 const validRequest = (): Record<string, unknown> => ({
   idempotency_key: "550e8400-e29b-41d4-a716-446655440000",
@@ -244,6 +278,95 @@ test("rider pickup and delivering validate the complete persisted lifecycle pair
       ),
     (error: unknown) => error instanceof OrderContractError && error.code === "INVALID_ORDER_TRANSITION",
   );
+});
+
+test("merchant reject is limited to unassigned pending + none", () => {
+  const update = merchantLifecycleUpdateForAction(merchantOrder("pending", "none"), "reject");
+  assert.equal(update.status, "cancelled");
+  assert.equal(update.delivery_status, "none");
+
+  for (const order of [
+    merchantOrder("preparing", "none"),
+    merchantOrder("ready_for_pickup", "none"),
+  ]) {
+    assert.throws(
+      () => merchantLifecycleUpdateForAction(order, "reject"),
+      (error: unknown) => error instanceof OrderContractError && error.code === "INVALID_ORDER_TRANSITION",
+    );
+  }
+  assert.throws(
+    () => merchantLifecycleUpdateForAction(merchantOrder("cancelled", "rider_assigned"), "reject"),
+    (error: unknown) => error instanceof OrderContractError && error.code === "INVALID_ORDER_STATE",
+  );
+  assert.throws(
+    () => merchantLifecycleUpdateForAction(merchantOrder("pending", "none", "collection", "rider-1"), "reject"),
+    (error: unknown) => error instanceof OrderContractError && error.code === "INVALID_ORDER_TRANSITION",
+  );
+});
+
+test("merchant cancel is limited to unassigned preparing + none", () => {
+  const update = merchantLifecycleUpdateForAction(merchantOrder("preparing", "none"), "cancel");
+  assert.equal(update.status, "cancelled");
+  assert.equal(update.delivery_status, "none");
+
+  for (const order of [
+    merchantOrder("pending", "none"),
+    merchantOrder("ready_for_pickup", "none"),
+    merchantOrder("ready_for_pickup", "finding_rider", "delivery"),
+    merchantOrder("ready_for_pickup", "rider_assigned", "delivery"),
+    merchantOrder("ready_for_pickup", "picked_up", "delivery"),
+    merchantOrder("ready_for_pickup", "delivering", "delivery"),
+  ]) {
+    assert.throws(
+      () => merchantLifecycleUpdateForAction(order, "cancel"),
+      (error: unknown) => error instanceof OrderContractError && error.code === "INVALID_ORDER_TRANSITION",
+    );
+  }
+  assert.throws(
+    () => merchantLifecycleUpdateForAction(merchantOrder("preparing", "none", "delivery", "rider-1"), "cancel"),
+    (error: unknown) => error instanceof OrderContractError && error.code === "INVALID_ORDER_TRANSITION",
+  );
+});
+
+test("merchant collected is limited to unassigned ready collection + none", () => {
+  const update = merchantLifecycleUpdateForAction(
+    merchantOrder("ready_for_pickup", "none", "collection"),
+    "collected",
+  );
+  assert.equal(update.status, "collected");
+  assert.equal(update.delivery_status, "none");
+
+  for (const order of [
+    merchantOrder("ready_for_pickup", "none", "delivery"),
+    merchantOrder("ready_for_pickup", "finding_rider", "delivery"),
+    merchantOrder("ready_for_pickup", "none", "collection", "rider-1"),
+  ]) {
+    assert.throws(
+      () => merchantLifecycleUpdateForAction(order, "collected"),
+      (error: unknown) => error instanceof OrderContractError && error.code === "INVALID_ORDER_TRANSITION",
+    );
+  }
+});
+
+test("merchant terminal routes and client flow retain full source-pair CAS authority", () => {
+  for (const action of ["reject", "cancel", "collected"]) {
+    assert.ok(orderRouteSource.includes(`"/:id/${action}"`));
+    assert.ok(merchantApiSource.includes(`| "${action}"`));
+  }
+  assert.ok(
+    compactOrderRouteSource.includes(
+      '.eq("id", orderId) .eq("status", String(order.status))',
+    ),
+  );
+  assert.ok(compactOrderRouteSource.includes('sourcePairQuery.is("rider_id", null)'));
+  assert.ok(compactOrderRouteSource.includes('sourceAndRiderQuery.eq("delivery_type", "collection")'));
+  assert.match(orderRouteSource, /order\.delivery_status === null[\s\S]*\.is\("delivery_status", null\)/);
+  assert.match(orderRouteSource, /\.eq\("delivery_status", String\(order\.delivery_status\)\)/);
+  assert.match(merchantWorkflowSource, /MerchantApi\.transitionOrder\(id, action\)/);
+  assert.match(merchantWorkflowSource, /action === "reject" \? "Order rejected\." : "Order cancelled\."/);
+  assert.match(merchantOrdersUiSource, /runLifecycleAction\(order\.id, "collected"\)/);
+  assert.doesNotMatch(merchantWorkflowSource, /supabase\.from\(["']orders["']\)\.update/);
+  assert.doesNotMatch(merchantOrdersUiSource, /supabase\.from\(["']orders["']\)\.update/);
 });
 
 test("express and unverified promo pricing fail closed", () => {
@@ -583,7 +706,7 @@ test("completion responses do not expose proof hashes or invent rider earnings",
   assert.equal("earnings_awarded" in response, false);
 });
 
-test("completed and cancelled customer orders do not return active confirmation proof", () => {
+test("delivered, collected, and cancelled customer orders do not return active confirmation proof", () => {
   const baseOrder = {
     id: "order-final",
     shop_id: "shop-1",
@@ -615,7 +738,13 @@ test("completed and cancelled customer orders do not return active confirmation 
     status: "cancelled",
     delivery_status: "none",
   });
+  const collected = customerOrderResponse({
+    ...baseOrder,
+    status: "collected",
+    delivery_status: "none",
+  });
   assert.equal("delivery_confirmation" in completed, false);
+  assert.equal("delivery_confirmation" in collected, false);
   assert.equal("delivery_confirmation" in cancelled, false);
   for (const field of [
     "delivery_pin_hash",
@@ -624,6 +753,7 @@ test("completed and cancelled customer orders do not return active confirmation 
     "delivery_pin_locked_until",
   ]) {
     assert.equal(field in completed, false);
+    assert.equal(field in collected, false);
     assert.equal(field in cancelled, false);
   }
 });

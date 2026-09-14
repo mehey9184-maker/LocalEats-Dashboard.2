@@ -384,17 +384,21 @@ export type OrderLifecycleState =
   | "rider_assigned"
   | "picked_up"
   | "delivering"
-  | "delivered";
+  | "collected"
+  | "delivered"
+  | "cancelled";
 
 const ALLOWED_TRANSITIONS: Record<OrderLifecycleState, readonly OrderLifecycleState[]> = {
-  pending: ["preparing"],
-  preparing: ["ready_for_pickup"],
-  ready_for_pickup: ["finding_rider"],
+  pending: ["preparing", "cancelled"],
+  preparing: ["ready_for_pickup", "cancelled"],
+  ready_for_pickup: ["finding_rider", "collected"],
   finding_rider: ["rider_assigned"],
   rider_assigned: ["picked_up"],
   picked_up: ["delivering"],
   delivering: ["delivered"],
+  collected: [],
   delivered: [],
+  cancelled: [],
 };
 
 export const assertLifecycleTransition = (

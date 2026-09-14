@@ -4,6 +4,7 @@ import {
   createOrder,
   lifecycleStateFromOrder,
   lifecycleUpdateFor,
+  orderRequiresDeliveryProof,
   quoteOrder,
   type NewOrderRecord,
   type OrderRepository,
@@ -29,7 +30,9 @@ const validLifecyclePairs: [string, string, OrderLifecycleState][] = [
   ["ready_for_pickup", "rider_assigned", "rider_assigned"],
   ["ready_for_pickup", "picked_up", "picked_up"],
   ["ready_for_pickup", "delivering", "delivering"],
+  ["collected", "none", "collected"],
   ["delivered", "delivered", "delivered"],
+  ["cancelled", "none", "cancelled"],
 ];
 
 for (const [status, deliveryStatus, expected] of validLifecyclePairs) {
@@ -59,20 +62,70 @@ test("lifecycle rejects every noncanonical pair, including terminal, unknown and
       rejected++;
     }
   }
-  assert.equal(rejected, 91);
+  assert.equal(rejected, 89);
 });
 
 test("canonical lifecycle updates preserve the full forward journey and delivered is terminal", () => {
   let order = lifecycleOrder("pending", "none");
-  for (const [status, deliveryStatus, target] of validLifecyclePairs.slice(1)) {
+  for (const target of [
+    "preparing",
+    "ready_for_pickup",
+    "finding_rider",
+    "rider_assigned",
+    "picked_up",
+    "delivering",
+    "delivered",
+  ] as const) {
     order = { ...order, ...lifecycleUpdateFor(order, target) };
-    assert.equal(order.status, status);
-    assert.equal(order.delivery_status, deliveryStatus);
     assert.equal(lifecycleStateFromOrder(order), target);
   }
   for (const [, , target] of validLifecyclePairs) {
     assert.throws(() => lifecycleUpdateFor(order, target), (error: unknown) =>
       error instanceof OrderContractError && error.status === 409 && error.code === "INVALID_ORDER_TRANSITION");
+  }
+});
+
+test("merchant terminal transitions are canonical and terminal", () => {
+  const pending = lifecycleOrder("pending", "none");
+  const rejected = { ...pending, ...lifecycleUpdateFor(pending, "cancelled") };
+  assert.deepEqual(
+    { status: rejected.status, delivery_status: rejected.delivery_status },
+    { status: "cancelled", delivery_status: "none" },
+  );
+
+  const preparing = { ...pending, ...lifecycleUpdateFor(pending, "preparing") } as StoredOrder;
+  const cancelled = { ...preparing, ...lifecycleUpdateFor(preparing, "cancelled") };
+  assert.equal(lifecycleStateFromOrder(cancelled), "cancelled");
+
+  const collectionReady = {
+    ...preparing,
+    ...lifecycleUpdateFor(preparing, "ready_for_pickup"),
+    delivery_type: "collection" as const,
+  } as StoredOrder;
+  const collected = { ...collectionReady, ...lifecycleUpdateFor(collectionReady, "collected") };
+  assert.deepEqual(
+    { status: collected.status, delivery_status: collected.delivery_status },
+    { status: "collected", delivery_status: "none" },
+  );
+
+  for (const terminal of [rejected, cancelled, collected]) {
+    for (const [, , target] of validLifecyclePairs) {
+      assert.throws(
+        () => lifecycleUpdateFor(terminal, target),
+        (error: unknown) =>
+          error instanceof OrderContractError && error.code === "INVALID_ORDER_TRANSITION",
+      );
+    }
+  }
+});
+
+test("collected and cancelled orders never require active delivery proof", () => {
+  for (const status of ["collected", "cancelled"] as const) {
+    const order = {
+      ...lifecycleOrder(status, "none"),
+      delivery_type: "delivery" as const,
+    };
+    assert.equal(orderRequiresDeliveryProof(order), false);
   }
 });
 

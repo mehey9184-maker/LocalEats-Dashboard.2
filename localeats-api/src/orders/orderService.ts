@@ -88,6 +88,7 @@ export interface CreateOrderResult {
 
 export const orderRequiresDeliveryProof = (order: StoredOrder): boolean =>
   order.delivery_type === "delivery" &&
+  order.status !== "collected" &&
   order.status !== "delivered" &&
   order.status !== "cancelled" &&
   order.delivery_status !== "delivered" &&
@@ -386,6 +387,12 @@ export const lifecycleStateFromOrder = (order: StoredOrder): OrderLifecycleState
   if (order.status === "delivered" && deliveryStatus === "delivered") {
     return "delivered";
   }
+  if (order.status === "collected" && deliveryStatus === "none") {
+    return "collected";
+  }
+  if (order.status === "cancelled" && deliveryStatus === "none") {
+    return "cancelled";
+  }
   throw new OrderContractError(409, "INVALID_ORDER_STATE", "Order state does not permit this operation.");
 };
 
@@ -410,6 +417,10 @@ export const lifecycleUpdateFor = (
       return { delivery_status: target, updated_at: updatedAt };
     case "delivered":
       return { status: "delivered", delivery_status: "delivered", updated_at: updatedAt };
+    case "collected":
+      return { status: "collected", delivery_status: "none", updated_at: updatedAt };
+    case "cancelled":
+      return { status: "cancelled", delivery_status: "none", updated_at: updatedAt };
     default:
       throw new OrderContractError(409, "INVALID_ORDER_TRANSITION", "Unsupported target state.");
   }

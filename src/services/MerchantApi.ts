@@ -163,7 +163,10 @@ export class MerchantApi {
     return data.orders;
   }
 
-  static async transitionOrder(orderId: string, action: "accept" | "ready"): Promise<Record<string, unknown>> {
+  static async transitionOrder(
+    orderId: string,
+    action: "accept" | "ready" | "reject" | "cancel" | "collected",
+  ): Promise<Record<string, unknown>> {
     const apiUrl = getApiUrl();
     const headers = await getApiAuthHeaders();
     let response: Response;

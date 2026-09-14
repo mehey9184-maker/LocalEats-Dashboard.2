@@ -238,30 +238,22 @@ const loadMerchantOrder = async (uid: string, orderId: string): Promise<StoredOr
 const updateMerchantOrder = async (
   uid: string,
   orderId: string,
-  action: "accept" | "ready",
+  action: MerchantOrderAction,
 ): Promise<StoredOrder> => {
   const order = await loadMerchantOrder(uid, orderId);
-  const current = lifecycleStateFromOrder(order);
+  const update = merchantLifecycleUpdateForAction(order, action);
 
-  let update: Record<string, unknown>;
-  if (action === "accept") {
-    update = lifecycleUpdateFor(order, "preparing");
-  } else {
-    assertLifecycleTransition(current, "ready_for_pickup");
-    const isDelivery = order.delivery_type === "delivery";
-    if (isDelivery) assertLifecycleTransition("ready_for_pickup", "finding_rider");
-    update = {
-      status: "ready_for_pickup",
-      delivery_status: isDelivery ? "finding_rider" : "none",
-      updated_at: new Date().toISOString(),
-    };
-  }
-
-  const query = supabaseAdmin
+  const sourcePairQuery = supabaseAdmin
     .from("orders")
     .update(update)
     .eq("id", orderId)
     .eq("status", String(order.status));
+  const sourceAndRiderQuery = action === "reject" || action === "cancel" || action === "collected"
+    ? sourcePairQuery.is("rider_id", null)
+    : sourcePairQuery;
+  const query = action === "collected"
+    ? sourceAndRiderQuery.eq("delivery_type", "collection")
+    : sourceAndRiderQuery;
   const { data, error } = order.delivery_status === null
     ? await query.is("delivery_status", null).select("*").maybeSingle()
     : await query.eq("delivery_status", String(order.delivery_status)).select("*").maybeSingle();
@@ -270,6 +262,64 @@ const updateMerchantOrder = async (
     throw new OrderContractError(409, "ORDER_STATE_CHANGED", "The order changed before this action completed. Refresh and try again.");
   }
   return data as StoredOrder;
+};
+
+export type MerchantOrderAction = "accept" | "ready" | "reject" | "cancel" | "collected";
+
+const requireMerchantSourceState = (
+  current: ReturnType<typeof lifecycleStateFromOrder>,
+  expected: ReturnType<typeof lifecycleStateFromOrder>,
+  target: ReturnType<typeof lifecycleStateFromOrder>,
+): void => {
+  if (current !== expected) {
+    throw new OrderContractError(
+      409,
+      "INVALID_ORDER_TRANSITION",
+      `Order must be ${expected} before it can move to ${target}.`,
+    );
+  }
+  assertLifecycleTransition(current, target);
+};
+
+export const merchantLifecycleUpdateForAction = (
+  order: StoredOrder,
+  action: MerchantOrderAction,
+): Record<string, unknown> => {
+  const current = lifecycleStateFromOrder(order);
+
+  if (action === "accept") return lifecycleUpdateFor(order, "preparing");
+  if (action === "ready") {
+    requireMerchantSourceState(current, "preparing", "ready_for_pickup");
+    const isDelivery = order.delivery_type === "delivery";
+    if (isDelivery) assertLifecycleTransition("ready_for_pickup", "finding_rider");
+    return {
+      status: "ready_for_pickup",
+      delivery_status: isDelivery ? "finding_rider" : "none",
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  const target = action === "collected" ? "collected" : "cancelled";
+  const expected = action === "reject" ? "pending"
+    : action === "cancel" ? "preparing"
+      : "ready_for_pickup";
+  requireMerchantSourceState(current, expected, target);
+
+  if (order.rider_id !== null) {
+    throw new OrderContractError(
+      409,
+      "INVALID_ORDER_TRANSITION",
+      "An order with an assigned rider cannot use this Merchant action.",
+    );
+  }
+  if (action === "collected" && order.delivery_type !== "collection") {
+    throw new OrderContractError(
+      409,
+      "INVALID_ORDER_TRANSITION",
+      "Delivery orders cannot be marked collected by the Merchant.",
+    );
+  }
+  return lifecycleUpdateFor(order, target);
 };
 
 merchantOrderRoutes.post(
@@ -295,6 +345,51 @@ merchantOrderRoutes.post(
       const uid = req.authUser?.uid;
       if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
       const order = await updateMerchantOrder(uid, routeParam(req.params.id), "ready");
+      res.status(200).json({ success: true, order: withoutDeliveryProofState(order) });
+    } catch (error) {
+      sendOrderError(res, error);
+    }
+  },
+);
+
+merchantOrderRoutes.post(
+  "/:id/reject",
+  authenticateFirebase,
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const uid = req.authUser?.uid;
+      if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
+      const order = await updateMerchantOrder(uid, routeParam(req.params.id), "reject");
+      res.status(200).json({ success: true, order: withoutDeliveryProofState(order) });
+    } catch (error) {
+      sendOrderError(res, error);
+    }
+  },
+);
+
+merchantOrderRoutes.post(
+  "/:id/cancel",
+  authenticateFirebase,
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const uid = req.authUser?.uid;
+      if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
+      const order = await updateMerchantOrder(uid, routeParam(req.params.id), "cancel");
+      res.status(200).json({ success: true, order: withoutDeliveryProofState(order) });
+    } catch (error) {
+      sendOrderError(res, error);
+    }
+  },
+);
+
+merchantOrderRoutes.post(
+  "/:id/collected",
+  authenticateFirebase,
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const uid = req.authUser?.uid;
+      if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
+      const order = await updateMerchantOrder(uid, routeParam(req.params.id), "collected");
       res.status(200).json({ success: true, order: withoutDeliveryProofState(order) });
     } catch (error) {
       sendOrderError(res, error);
