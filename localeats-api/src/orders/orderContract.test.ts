@@ -797,6 +797,69 @@ test("structured completion failures map invalid and locked PIN outcomes safely"
   });
 });
 
+test("rejects top-level and item-level client pricing breakdowns", () => {
+  for (const field of [
+    "subtotal",
+    "delivery_fee",
+    "service_fee",
+    "discount_amount",
+    "total_price",
+    "price",
+    "unit_price",
+    "line_total",
+  ]) {
+    assert.throws(
+      () => parseCreateOrderInput({ ...validRequest(), [field]: 1 }),
+      (error: unknown) => error instanceof OrderContractError && error.code === "CLIENT_PRICING_REJECTED",
+      `top-level ${field}`,
+    );
+  }
+
+  for (const field of ["price", "unit_price", "line_total", "subtotal", "total_price"]) {
+    assert.throws(
+      () => parseCreateOrderInput({
+        ...validRequest(),
+        items: [{ menu_item_id: "menu-1", quantity: 2, [field]: 1 }],
+      }),
+      (error: unknown) => error instanceof OrderContractError && error.code === "CLIENT_PRICING_REJECTED",
+      `item-level ${field}`,
+    );
+  }
+});
+
+test("accepts strict customer price consent without making it pricing authority", () => {
+  for (const accepted_total_price of [0, 10, 10.5, 123.45, 0.29]) {
+    assert.equal(
+      parseCreateOrderInput({ ...validRequest(), accepted_total_price }).accepted_total_price,
+      accepted_total_price,
+    );
+  }
+});
+
+test("rejects invalid customer price consent without numeric coercion", () => {
+  for (const accepted_total_price of [
+    null,
+    "100",
+    true,
+    false,
+    [],
+    {},
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    -1,
+    10.001,
+    0.001,
+    2_000_000_000_000.001,
+  ]) {
+    assert.throws(
+      () => parseCreateOrderInput({ ...validRequest(), accepted_total_price }),
+      (error: unknown) =>
+        error instanceof OrderContractError && error.status === 400 && error.code === "INVALID_PRICE_CONSENT",
+    );
+  }
+});
+
 test("completion responses do not expose proof hashes or invent rider earnings", () => {
   const outcome = interpretDeliveryCompletion({
     success: true,

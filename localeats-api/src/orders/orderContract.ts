@@ -14,6 +14,7 @@ export interface CreateOrderLineInput {
 
 export interface CreateOrderInput {
   idempotency_key: string;
+  accepted_total_price?: number;
   shop_id: string;
   items: CreateOrderLineInput[];
   delivery_type: DeliveryType;
@@ -97,7 +98,60 @@ const SENSITIVE_PAYMENT_KEYS = new Set([
   "pan",
 ]);
 
+const TOP_LEVEL_CLIENT_PRICING_KEYS = new Set([
+  "_clientPricing",
+  "client_pricing",
+  "subtotal",
+  "delivery_fee",
+  "service_fee",
+  "discount_amount",
+  "total_price",
+  "price",
+  "unit_price",
+  "line_total",
+]);
+
+const ITEM_CLIENT_PRICING_KEYS = new Set([
+  "price",
+  "unit_price",
+  "line_total",
+  "subtotal",
+  "total_price",
+]);
+
 const roundMoney = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
+
+export const strictMoneyCents = (value: unknown): number | null => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  const match = /^(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(value.toString());
+  if (!match) return null;
+
+  const integerDigits = match[1];
+  const fractionDigits = match[2] ?? "";
+  const exponent = Number.parseInt(match[3] ?? "0", 10);
+  const decimalPlaces = fractionDigits.length - exponent;
+  if (decimalPlaces > 2) return null;
+
+  const digits = `${integerDigits}${fractionDigits}`.replace(/^0+(?=\d)/, "");
+  const cents = BigInt(digits) * (10n ** BigInt(2 - decimalPlaces));
+  if (cents > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+  return Number(cents);
+};
+
+const assertNoClientPricingFields = (
+  value: Record<string, unknown>,
+  forbiddenKeys: ReadonlySet<string>,
+  path: string,
+): void => {
+  const suppliedKey = Object.keys(value).find((key) => forbiddenKeys.has(key));
+  if (suppliedKey) {
+    throw new OrderContractError(
+      400,
+      "CLIENT_PRICING_REJECTED",
+      `Client-calculated prices are not accepted (${path}.${suppliedKey}).`,
+    );
+  }
+};
 
 const asObject = (value: unknown, field: string): Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -164,18 +218,23 @@ const assertNoSensitivePaymentData = (value: unknown, path = "request"): void =>
 export const parseCreateOrderInput = (raw: unknown): CreateOrderInput => {
   assertNoSensitivePaymentData(raw);
   const body = asObject(raw, "request");
-
-  if ("_clientPricing" in body || "client_pricing" in body) {
-    throw new OrderContractError(
-      400,
-      "CLIENT_PRICING_REJECTED",
-      "Client-calculated prices are not accepted.",
-    );
-  }
+  assertNoClientPricingFields(body, TOP_LEVEL_CLIENT_PRICING_KEYS, "request");
 
   const idempotencyKey = requiredText(body.idempotency_key, "idempotency_key", 64);
   if (!UUID_PATTERN.test(idempotencyKey)) {
     throw new OrderContractError(400, "INVALID_IDEMPOTENCY_KEY", "idempotency_key must be a UUID.");
+  }
+
+  let acceptedTotalPrice: number | undefined;
+  if (Object.hasOwn(body, "accepted_total_price")) {
+    if (strictMoneyCents(body.accepted_total_price) === null) {
+      throw new OrderContractError(
+        400,
+        "INVALID_PRICE_CONSENT",
+        "accepted_total_price must be a non-negative number with at most two decimal places.",
+      );
+    }
+    acceptedTotalPrice = body.accepted_total_price as number;
   }
 
   const shopId = requiredText(String(body.shop_id ?? ""), "shop_id", 100);
@@ -199,6 +258,7 @@ export const parseCreateOrderInput = (raw: unknown): CreateOrderInput => {
   const seenItemIds = new Set<string>();
   const items = body.items.map((rawLine, index): CreateOrderLineInput => {
     const line = asObject(rawLine, `items[${index}]`);
+    assertNoClientPricingFields(line, ITEM_CLIENT_PRICING_KEYS, `items[${index}]`);
     const menuItemId = requiredText(line.menu_item_id, `items[${index}].menu_item_id`, 100);
     if (seenItemIds.has(menuItemId)) {
       throw new OrderContractError(400, "DUPLICATE_ITEM", `Duplicate menu item ${menuItemId}.`);
@@ -263,6 +323,7 @@ export const parseCreateOrderInput = (raw: unknown): CreateOrderInput => {
   const customer = asObject(body.customer_details, "customer_details");
   return {
     idempotency_key: idempotencyKey,
+    ...(acceptedTotalPrice !== undefined ? { accepted_total_price: acceptedTotalPrice } : {}),
     shop_id: shopId,
     items,
     delivery_type: deliveryType,

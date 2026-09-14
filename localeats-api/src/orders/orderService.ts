@@ -8,6 +8,7 @@ import {
   type CreateOrderInput,
   type MenuItemForOrder,
   OrderContractError,
+  strictMoneyCents,
   type OrderLifecycleState,
   type ShopForOrder,
 } from "./orderContract.js";
@@ -225,6 +226,33 @@ export const createOrder = async (
         ? { pin: replayProof.pin, qr_token: replayProof.qr_token }
         : undefined,
     };
+  }
+
+  if (input.accepted_total_price === undefined) {
+    throw new OrderContractError(
+      409,
+      "PRICE_CONSENT_REQUIRED",
+      "Confirm the latest order total before placing this order.",
+    );
+  }
+  const acceptedTotalCents = strictMoneyCents(input.accepted_total_price);
+  const authoritativeTotalCents = strictMoneyCents(pricing.total_price);
+  if (acceptedTotalCents === null) {
+    throw new OrderContractError(
+      400,
+      "INVALID_PRICE_CONSENT",
+      "accepted_total_price must be a non-negative number with at most two decimal places.",
+    );
+  }
+  if (authoritativeTotalCents === null) {
+    throw new OrderContractError(500, "INVALID_SERVER_PRICE", "The authoritative order total is invalid.");
+  }
+  if (acceptedTotalCents !== authoritativeTotalCents) {
+    throw new OrderContractError(
+      409,
+      "PRICE_CHANGED",
+      "The order total changed. Review the latest quote before placing the order.",
+    );
   }
 
   const deliveryProof = input.delivery_type === "delivery"

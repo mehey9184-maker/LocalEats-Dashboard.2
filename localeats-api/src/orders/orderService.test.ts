@@ -148,6 +148,10 @@ const validRequest = (): Record<string, unknown> => ({
 });
 
 const input = () => parseCreateOrderInput(validRequest());
+const createInput = (acceptedTotalPrice = 62.5) => parseCreateOrderInput({
+  ...validRequest(),
+  accepted_total_price: acceptedTotalPrice,
+});
 
 class MemoryRepository implements OrderRepository {
   existing: StoredOrder | null = null;
@@ -192,7 +196,9 @@ class MemoryRepository implements OrderRepository {
 
 test("an authenticated quote returns authoritative pricing and performs zero writes", async () => {
   const repository = new MemoryRepository();
-  const quote = await quoteOrder(repository, "firebase-customer-1", input());
+  const request = input();
+  assert.equal(request.accepted_total_price, undefined);
+  const quote = await quoteOrder(repository, "firebase-customer-1", request);
 
   assert.deepEqual(quote, {
     subtotal: 50,
@@ -209,6 +215,57 @@ test("an authenticated quote returns authoritative pricing and performs zero wri
   assert.equal(repository.insertedRecord, null);
 });
 
+test("accepted total consent cannot influence the authoritative quote", async () => {
+  const repository = new MemoryRepository();
+  const quote = await quoteOrder(repository, "firebase-customer-1", createInput(1));
+  assert.equal(quote.total_price, 62.5);
+  assert.equal(repository.insertCalls, 0);
+  assert.equal(repository.insertedRecord, null);
+});
+
+test("new order creation requires customer consent to the authoritative total", async () => {
+  const repository = new MemoryRepository();
+  await assert.rejects(
+    () => createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET),
+    (error: unknown) =>
+      error instanceof OrderContractError && error.status === 409 && error.code === "PRICE_CONSENT_REQUIRED",
+  );
+  assert.equal(repository.insertCalls, 0);
+  assert.equal(repository.insertedRecord, null);
+});
+
+test("new order creation rejects changed price consent without inserting", async () => {
+  const repository = new MemoryRepository();
+  await assert.rejects(
+    () => createOrder(repository, "firebase-customer-1", createInput(62.51), TEST_DELIVERY_PROOF_SECRET),
+    (error: unknown) =>
+      error instanceof OrderContractError && error.status === 409 && error.code === "PRICE_CHANGED",
+  );
+  assert.equal(repository.insertCalls, 0);
+  assert.equal(repository.insertedRecord, null);
+});
+
+test("a menu price change after quote requires renewed customer consent", async () => {
+  const repository = new MemoryRepository();
+  const request = input();
+  const quote = await quoteOrder(repository, "firebase-customer-1", request);
+  assert.equal(quote.total_price, 62.5);
+
+  repository.menu[0].price = 30;
+  await assert.rejects(
+    () => createOrder(
+      repository,
+      "firebase-customer-1",
+      { ...request, accepted_total_price: quote.total_price },
+      TEST_DELIVERY_PROOF_SECRET,
+    ),
+    (error: unknown) =>
+      error instanceof OrderContractError && error.status === 409 && error.code === "PRICE_CHANGED",
+  );
+  assert.equal(repository.insertCalls, 0);
+  assert.equal(repository.insertedRecord, null);
+});
+
 test("an unauthenticated quote is rejected before persistence", async () => {
   const repository = new MemoryRepository();
   await assert.rejects(
@@ -220,14 +277,14 @@ test("an unauthenticated quote is rejected before persistence", async () => {
 
 test("client totals cannot override an authoritative quote", async () => {
   const repository = new MemoryRepository();
-  const request = parseCreateOrderInput({
-    ...validRequest(),
-    subtotal: 0.01,
-    total_price: 0.01,
-  });
+  const request = input();
   const quote = await quoteOrder(repository, "firebase-customer-1", request);
   assert.equal(quote.subtotal, 50);
   assert.equal(quote.total_price, 62.5);
+  assert.throws(
+    () => parseCreateOrderInput({ ...validRequest(), subtotal: 0.01, total_price: 0.01 }),
+    (error: unknown) => error instanceof OrderContractError && error.code === "CLIENT_PRICING_REJECTED",
+  );
   assert.throws(
     () => parseCreateOrderInput({ ...validRequest(), _clientPricing: { total_price: 0.01 } }),
     (error: unknown) => error instanceof OrderContractError && error.code === "CLIENT_PRICING_REJECTED",
@@ -293,7 +350,7 @@ test("create rejects an archived shop before idempotency lookup or insert", asyn
   repository.shop.archived_at = "2026-09-01T00:00:00.000Z";
 
   await assert.rejects(
-    () => createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET),
+    () => createOrder(repository, "firebase-customer-1", createInput(), TEST_DELIVERY_PROOF_SECRET),
     (error: unknown) => error instanceof OrderContractError && error.code === "SHOP_UNAVAILABLE",
   );
   assert.equal(repository.idempotencyLookups, 0);
@@ -336,7 +393,12 @@ test("quote and create order share the same authoritative pricing result", async
   const repository = new MemoryRepository();
   const request = input();
   const quote = await quoteOrder(repository, "firebase-customer-1", request);
-  const created = await createOrder(repository, "firebase-customer-1", request, TEST_DELIVERY_PROOF_SECRET);
+  const created = await createOrder(
+    repository,
+    "firebase-customer-1",
+    { ...request, accepted_total_price: quote.total_price },
+    TEST_DELIVERY_PROOF_SECRET,
+  );
 
   assert.deepEqual(
     {
@@ -355,12 +417,17 @@ test("quote and create order share the same authoritative pricing result", async
 
 test("a cash delivery is persisted pending with no rider search at checkout", async () => {
   const repository = new MemoryRepository();
-  const result = await createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET);
+  const result = await createOrder(repository, "firebase-customer-1", createInput(), TEST_DELIVERY_PROOF_SECRET);
   assert.equal(result.replayed, false);
   assert.equal(result.order.status, "pending");
   assert.equal(result.order.delivery_status, "none");
   assert.equal(result.order.payment_method, "cash_on_arrival");
   assert.equal(repository.insertedRecord?.user_id, "firebase-customer-1");
+  assert.equal(repository.insertedRecord?.price, 50);
+  assert.equal(repository.insertedRecord?.delivery_fee, 10);
+  assert.equal(repository.insertedRecord?.service_fee, 2.5);
+  assert.equal(repository.insertedRecord?.total_price, 62.5);
+  assert.equal("accepted_total_price" in (repository.insertedRecord ?? {}), false);
   assert.match(result.deliveryProof?.pin ?? "", /^\d{4}$/);
   assert.match(result.deliveryProof?.qr_token ?? "", /^le_[0-9a-f]{64}$/);
   assert.notEqual(repository.insertedRecord?.delivery_pin_hash, result.deliveryProof?.pin);
@@ -370,14 +437,14 @@ test("a database failure is a real failure and never fabricates an order", async
   const repository = new MemoryRepository();
   repository.insertError = { code: "08006", message: "connection failed" };
   await assert.rejects(
-    () => createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET),
+    () => createOrder(repository, "firebase-customer-1", createInput(), TEST_DELIVERY_PROOF_SECRET),
     (error: unknown) => error instanceof OrderContractError && error.code === "ORDER_PERSISTENCE_FAILED",
   );
 });
 
 test("idempotent retry returns the confirmed database order", async () => {
   const repository = new MemoryRepository();
-  const first = await createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET);
+  const first = await createOrder(repository, "firebase-customer-1", createInput(), TEST_DELIVERY_PROOF_SECRET);
   const retry = await createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET);
   assert.equal(first.order.id, retry.order.id);
   assert.equal(retry.replayed, true);
@@ -386,7 +453,7 @@ test("idempotent retry returns the confirmed database order", async () => {
 
 test("completed order replay does not regenerate an active delivery proof", async () => {
   const repository = new MemoryRepository();
-  const first = await createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET);
+  const first = await createOrder(repository, "firebase-customer-1", createInput(), TEST_DELIVERY_PROOF_SECRET);
   repository.existing = {
     ...first.order,
     status: "delivered",
@@ -402,7 +469,7 @@ test("completed order replay does not regenerate an active delivery proof", asyn
 
 test("reusing an idempotency key for changed intent is rejected", async () => {
   const repository = new MemoryRepository();
-  await createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET);
+  await createOrder(repository, "firebase-customer-1", createInput(), TEST_DELIVERY_PROOF_SECRET);
   const changed = input();
   changed.tip_amount = 5;
   await assert.rejects(
@@ -414,7 +481,7 @@ test("reusing an idempotency key for changed intent is rejected", async () => {
 test("delivery checkout fails closed when delivery proof verification is not configured", async () => {
   const repository = new MemoryRepository();
   await assert.rejects(
-    () => createOrder(repository, "firebase-customer-1", input()),
+    () => createOrder(repository, "firebase-customer-1", createInput()),
     (error: unknown) =>
       error instanceof OrderContractError && error.code === "DELIVERY_CONFIRMATION_NOT_CONFIGURED",
   );
