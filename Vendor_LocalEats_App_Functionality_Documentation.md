@@ -8,6 +8,17 @@
 
 ## 1. Executive Summary & Business Stakeholder Directives
 
+### LR2-A Rider Onboarding and Merchant-Approved Pairing Authority
+
+Status: **IMPLEMENTED LOCALLY / NOT DEPLOYED / MIGRATION NOT APPLIED**.
+
+- The pilot authority chain is Firebase Auth → authenticated LocalEats API → Supabase rider profile → server-issued pairing code → pending rider connection → explicit merchant approval → approved shop mission authority.
+- `POST/GET /api/v1/rider/profile` synchronize or read only the authenticated rider. New pilot profiles start approved but offline; existing pending, rejected, or otherwise non-approved profiles are never self-upgraded. `PATCH /api/v1/rider/availability` accepts only a boolean and requires an approved profile.
+- Rider pairing-code submission resolves the shop only from the server-side invitation and creates or restores a `pending` relationship. A pairing code is an invitation, **not approval**, and code expiry does not expire an already-created relationship.
+- Merchant pairing-code, connection-list, and decision endpoints derive the one current shop from the authenticated merchant Firebase UID. Only an approved merchant shop may issue codes or approve/reject its own connections; no browser-supplied shop or rider identity is authoritative.
+- Only `rider_connections.status = "approved"` grants shop mission discovery or claim authority. Pending and rejected connections do not; existing Rider order guards remain unchanged.
+- The staged `20260919000000_rider_onboarding_pairing_authority.sql` migration creates the RLS-protected, browser-inaccessible pairing-code table, grants minimum server-role profile/connection access, and adds an atomic service-role-only code replacement function. It has not been applied to any database.
+
 ### Merchant Menu Authority 01
 
 - The authenticated Merchant API is the menu read/write authority: `GET /api/v1/merchant/menu?shop_id=...`, `POST /api/v1/merchant/menu`, and `PATCH /api/v1/merchant/menu/:itemId`. Supabase server-side `menu_items` is the authoritative store. These paths supersede the historical Firestore menu architecture described below.
