@@ -19,6 +19,16 @@ Status: **IMPLEMENTED LOCALLY / NOT DEPLOYED / MIGRATION NOT APPLIED**.
 - Only `rider_connections.status = "approved"` grants shop mission discovery or claim authority. Pending and rejected connections do not; existing Rider order guards remain unchanged.
 - The staged `20260919000000_rider_onboarding_pairing_authority.sql` migration creates the RLS-protected, browser-inaccessible pairing-code table, grants minimum server-role profile/connection access, and adds an atomic service-role-only code replacement function. It has not been applied to any database.
 
+### LR2-B Merchant Rider Authority Cleanup
+
+Status: **IMPLEMENTED LOCALLY / NOT DEPLOYED**.
+
+- The pilot Merchant Rider authority chain is Merchant UI → Firebase-authenticated `MerchantApi` → LR2-A Merchant Rider API → Supabase server authority. The current server-issued six-digit pairing code, its server-provided expiry, and rider connection decisions are displayed from this authenticated API only.
+- Pairing-code entry creates a `pending` request and never grants approval. A merchant may approve or reject a pending request, may revoke an approved relationship by rejecting it, and may reapprove a rejected relationship. Only an `approved` relationship grants future shop mission authority.
+- Merchant Rider Management no longer writes `rider_connections` directly, creates fake or in-house rider identities, stores pairing authority in local storage, controls Rider App availability, deletes relationship rows, or treats a pairing code as approval. Online/offline information is API-provided, read-only rider metadata.
+- Viewing, copying, or sharing the current pairing code does not rotate it. Issuing or explicitly invalidating and generating a new code calls the server endpoint; QR and WhatsApp sharing use only the confirmed server-issued code.
+- Search/filter, API-backed roster export, approved-online broadcast, and read-only mission summaries remain available for the pilot. Legacy direct rider tracking, local settlement controls, direct dispatch settings, simulation diagnostics, and merchant availability controls are parked until authoritative APIs are designed.
+
 ### Merchant Menu Authority 01
 
 - The authenticated Merchant API is the menu read/write authority: `GET /api/v1/merchant/menu?shop_id=...`, `POST /api/v1/merchant/menu`, and `PATCH /api/v1/merchant/menu/:itemId`. Supabase server-side `menu_items` is the authoritative store. These paths supersede the historical Firestore menu architecture described below.

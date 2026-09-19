@@ -22,6 +22,30 @@ export type MerchantMenuInput = {
   is_available?: boolean;
 };
 
+export type MerchantRiderPairingCode = {
+  code: string;
+  expires_at: string;
+};
+
+export type MerchantRiderConnectionStatus = "pending" | "approved" | "rejected";
+
+export type MerchantRiderConnection = {
+  connection: {
+    id: string | number;
+    status: MerchantRiderConnectionStatus;
+    created_at: string;
+  };
+  rider: {
+    id: string | number;
+    full_name: string | null;
+    phone: string | null;
+    vehicle_type: string | null;
+    is_online: boolean;
+    rating: number | null;
+    total_deliveries: number;
+  } | null;
+};
+
 const isMenuItem = (value: unknown): value is MerchantMenuItem => {
   if (!value || typeof value !== "object") return false;
   const item = value as Record<string, unknown>;
@@ -31,12 +55,45 @@ const isMenuItem = (value: unknown): value is MerchantMenuItem => {
     typeof item.is_available === "boolean";
 };
 
+const isStringOrNumber = (value: unknown): value is string | number =>
+  typeof value === "string" || typeof value === "number";
+
+const isNullableString = (value: unknown): value is string | null =>
+  value === null || typeof value === "string";
+
+const isPairingCode = (value: unknown): value is MerchantRiderPairingCode => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const code = value as Record<string, unknown>;
+  return typeof code.code === "string" && /^\d{6}$/.test(code.code) &&
+    typeof code.expires_at === "string" && !Number.isNaN(Date.parse(code.expires_at));
+};
+
+const isRiderConnection = (value: unknown): value is MerchantRiderConnection => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  if (!item.connection || typeof item.connection !== "object" || Array.isArray(item.connection)) return false;
+  const connection = item.connection as Record<string, unknown>;
+  if (!isStringOrNumber(connection.id) ||
+      !["pending", "approved", "rejected"].includes(String(connection.status)) ||
+      typeof connection.created_at !== "string") return false;
+  if (item.rider === null) return true;
+  if (!item.rider || typeof item.rider !== "object" || Array.isArray(item.rider)) return false;
+  const rider = item.rider as Record<string, unknown>;
+  return isStringOrNumber(rider.id) &&
+    isNullableString(rider.full_name) &&
+    isNullableString(rider.phone) &&
+    isNullableString(rider.vehicle_type) &&
+    typeof rider.is_online === "boolean" &&
+    (rider.rating === null || (typeof rider.rating === "number" && Number.isFinite(rider.rating))) &&
+    typeof rider.total_deliveries === "number" && Number.isFinite(rider.total_deliveries);
+};
+
 export type VerifiedMerchantShop = {
   id: string | number;
   owner_id: string;
   name?: string;
   is_active?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 export type MerchantShopCreateInput = {
@@ -98,6 +155,77 @@ const readJsonResponse = async (response: Response): Promise<MerchantApiResponse
 };
 
 export class MerchantApi {
+  private static async riderRequest(path: string, method: "GET" | "POST" | "PATCH", input?: unknown) {
+    const apiUrl = getApiUrl().replace(/\/+$/, "");
+    const headers = await getApiAuthHeaders();
+    let response: Response;
+    try {
+      response = await fetch(`${apiUrl}/api/v1/merchant/riders${path}`, {
+        method,
+        headers,
+        ...(input === undefined ? {} : { body: JSON.stringify(input) }),
+      });
+    } catch {
+      throw new MerchantApiError("Unable to reach the LocalEats rider service.");
+    }
+    const data = await readJsonResponse(response);
+    if (!response.ok || data.success !== true) {
+      throw new MerchantApiError(
+        typeof data.error === "string" ? data.error : "Unable to complete rider request.",
+        response.status,
+      );
+    }
+    return data;
+  }
+
+  static async getRiderPairingCode(): Promise<MerchantRiderPairingCode | null> {
+    const data = await this.riderRequest("/pairing-code", "GET");
+    if (data.pairing_code === null) return null;
+    if (!isPairingCode(data.pairing_code)) {
+      throw new MerchantApiError("LocalEats rider service returned an invalid pairing code.");
+    }
+    return data.pairing_code;
+  }
+
+  static async issueRiderPairingCode(): Promise<MerchantRiderPairingCode> {
+    const data = await this.riderRequest("/pairing-code", "POST", {});
+    if (!isPairingCode(data.pairing_code)) {
+      throw new MerchantApiError("LocalEats rider service did not confirm the pairing code.");
+    }
+    return data.pairing_code;
+  }
+
+  static async getRiderConnections(): Promise<MerchantRiderConnection[]> {
+    const data = await this.riderRequest("/connections", "GET");
+    if (!Array.isArray(data.connections) || !data.connections.every(isRiderConnection)) {
+      throw new MerchantApiError("LocalEats rider service returned invalid connections.");
+    }
+    return data.connections;
+  }
+
+  static async decideRiderConnection(
+    connectionId: string | number,
+    decision: "approve" | "reject",
+  ): Promise<MerchantRiderConnection["connection"]> {
+    const data = await this.riderRequest(
+      `/connections/${encodeURIComponent(connectionId)}`,
+      "PATCH",
+      { decision },
+    );
+    if (!data.connection || typeof data.connection !== "object" || Array.isArray(data.connection)) {
+      throw new MerchantApiError("LocalEats rider service did not confirm the connection decision.");
+    }
+    const connection = data.connection as Record<string, unknown>;
+    const expectedStatus: MerchantRiderConnectionStatus = decision === "approve" ? "approved" : "rejected";
+    if (!isStringOrNumber(connection.id) || String(connection.id) !== String(connectionId) ||
+        !["pending", "approved", "rejected"].includes(String(connection.status)) ||
+        connection.status !== expectedStatus ||
+        typeof connection.created_at !== "string") {
+      throw new MerchantApiError("LocalEats rider service returned an invalid connection decision.");
+    }
+    return connection as MerchantRiderConnection["connection"];
+  }
+
   private static async menuRequest(path: string, method: "GET" | "POST" | "PATCH", input?: unknown) {
     const apiUrl = getApiUrl().replace(/\/+$/, "");
     const headers = await getApiAuthHeaders();
