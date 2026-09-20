@@ -11,11 +11,14 @@ import { customerOrderRoutes, merchantOrderRoutes } from "./routes/orders.js";
 import riderOrderRoutes from "./routes/riderOrders.js";
 import { riderRouter, merchantRiderRouter } from "./routes/riderAccess.js";
 import { isAllowedOrigin } from "./corsOrigins.js";
+import { configureApiCacheSafety } from "./middleware/apiCacheSafety.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+configureApiCacheSafety(app);
 
 app.use(cors({
   origin: (origin, callback) => {
