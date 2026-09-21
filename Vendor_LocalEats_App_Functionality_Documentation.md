@@ -29,6 +29,13 @@ Status: **IMPLEMENTED LOCALLY / NOT DEPLOYED**.
 - Viewing, copying, or sharing the current pairing code does not rotate it. Issuing or explicitly invalidating and generating a new code calls the server endpoint; QR and WhatsApp sharing use only the confirmed server-issued code.
 - Search/filter, API-backed roster export, approved-online broadcast, and read-only mission summaries remain available for the pilot. Legacy direct rider tracking, local settlement controls, direct dispatch settings, simulation diagnostics, and merchant availability controls are parked until authoritative APIs are designed.
 
+### Server-Authoritative Merchant Shop Availability
+
+- Merchant online/offline intent is sent only to authenticated `PATCH /api/v1/merchant/shop/availability` as `{ "is_active": boolean }`. The API derives the one current unarchived shop from the verified Firebase UID; browser-supplied shop IDs and ownership fields are rejected.
+- Supabase `shops.is_active` is authoritative. The Merchant browser no longer writes shop availability through Firestore, direct Supabase access, or local-storage cache mutation, and the UI reports success only after validating the authoritative shop returned by the API.
+- Only an approved shop may be activated. Any current shop may be deactivated safely. Lookup ambiguity, ownership changes, invalid input, authorization failures, and database failures remain fail-closed.
+- Header, dashboard, automatic-hours, bulk storefront, settings status, and holiday-mode controls share the same authenticated API write path. Local storage is limited to best-effort scheduling preferences recorded after API confirmation.
+
 ### Merchant Menu Authority 01
 
 - The authenticated Merchant API is the menu read/write authority: `GET /api/v1/merchant/menu?shop_id=...`, `POST /api/v1/merchant/menu`, and `PATCH /api/v1/merchant/menu/:itemId`. Supabase server-side `menu_items` is the authoritative store. These paths supersede the historical Firestore menu architecture described below.

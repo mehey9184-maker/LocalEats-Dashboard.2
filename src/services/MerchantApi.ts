@@ -362,6 +362,50 @@ export class MerchantApi {
     return shop as VerifiedMerchantShop;
   }
 
+  static async setShopAvailability(isActive: boolean): Promise<VerifiedMerchantShop> {
+    if (typeof isActive !== "boolean") {
+      throw new MerchantApiError("Shop availability must be a boolean.", 400);
+    }
+
+    const apiUrl = getApiUrl().replace(/\/+$/, "");
+    const headers = await getApiAuthHeaders();
+    let response: Response;
+
+    try {
+      response = await fetch(`${apiUrl}/api/v1/merchant/shop/availability`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ is_active: isActive }),
+      });
+    } catch {
+      throw new MerchantApiError("Unable to reach the LocalEats merchant service.");
+    }
+
+    const data = await readJsonResponse(response);
+    if (!response.ok || data.success !== true) {
+      throw new MerchantApiError(
+        typeof data.error === "string" ? data.error : "Unable to update shop availability.",
+        response.status,
+      );
+    }
+
+    const shop = data.shop;
+    if (
+      !shop ||
+      shop.id === null ||
+      shop.id === undefined ||
+      typeof shop.is_active !== "boolean" ||
+      shop.is_active !== isActive
+    ) {
+      throw new MerchantApiError(
+        "LocalEats merchant service returned an invalid shop availability state.",
+        response.status,
+      );
+    }
+
+    return shop;
+  }
+
   static async createShop(input: MerchantShopCreateInput): Promise<VerifiedMerchantShop> {
     const apiUrl = getApiUrl();
     const headers = await getApiAuthHeaders();
