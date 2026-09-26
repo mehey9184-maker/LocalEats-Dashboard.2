@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net";
 import express, { type RequestHandler } from "express";
 import {
   PairingCodeCollisionError,
+  RiderAccessError,
   createRiderAccessRouters,
   generateSixDigitPairingCode,
   nextConnectionStatus,
@@ -38,6 +39,8 @@ class MemoryRepository implements RiderAccessRepository {
   connections: Row[] = [];
   calls: Array<{ operation: string; input?: Row }> = [];
   collisionCount = 0;
+  approvalChangesBeforeAvailabilityUpdate = false;
+  availabilityUpdateReturnsNoRow = false;
 
   async findRiderByFirebaseUid(uid: string) { return this.profiles.find((row) => row.firebase_uid === uid) ?? null; }
   async createRider(input: Row) {
@@ -51,6 +54,19 @@ class MemoryRepository implements RiderAccessRepository {
   }
   async updateRiderAvailability(id: string, isOnline: boolean) {
     this.calls.push({ operation: "updateRiderAvailability", input: { is_online: isOnline } });
+    const rider = this.profiles.find((row) => row.id === id);
+    if (this.approvalChangesBeforeAvailabilityUpdate && rider) {
+      rider.verification_status = "suspended";
+      rider.is_online = false;
+      rider.status = "offline";
+    }
+    if (this.availabilityUpdateReturnsNoRow || !rider || (isOnline && rider.verification_status !== "approved")) {
+      throw new RiderAccessError(
+        isOnline ? 403 : 409,
+        isOnline ? "RIDER_NOT_APPROVED" : "RIDER_PROFILE_CHANGED",
+        "Rider eligibility changed before availability could be updated.",
+      );
+    }
     return this.updateRow(this.profiles, id, { is_online: isOnline, status: isOnline ? "online" : "offline" });
   }
   async listRiderConnections(riderId: string) { return this.connections.filter((row) => row.rider_id === riderId); }
@@ -139,12 +155,14 @@ async function apiRequest(
 
 const profileInput = { full_name: " New Rider ", phone: "071 234 5678", vehicle_type: "Road" };
 
-test("new profile derives Firebase UID and is pilot-approved", async () => {
+test("new profile derives Firebase UID and starts pending and offline", async () => {
   const r = await apiRequest("POST", "/api/v1/rider/profile", profileInput, (repo) => { repo.profiles = []; });
   assert.equal(r.status, 201);
   assert.equal(r.repo.calls[0].input?.firebase_uid, "rider");
-  assert.equal(r.repo.calls[0].input?.verification_status, "approved");
+  assert.equal(r.repo.calls[0].input?.verification_status, "pending");
   assert.equal(r.repo.calls[0].input?.is_online, false);
+  assert.equal(r.repo.calls[0].input?.status, "offline");
+  assert.equal(r.body.profile.verification_status, "pending");
   assert.equal(r.body.profile.firebase_uid, undefined);
 });
 
@@ -170,19 +188,61 @@ test("profile GET is self-scoped and missing mapping fails closed", async () => 
   assert.equal(missing.status, 404); assert.equal(missing.body.code, "RIDER_PROFILE_NOT_FOUND");
 });
 
-test("availability accepts only boolean and derives status", async () => {
+test("availability accepts only boolean and approved Rider can go online then offline", async () => {
   assert.equal(parseAvailabilityBody({ is_online: false }), false);
   assert.throws(() => parseAvailabilityBody({ is_online: "true" }));
   assert.throws(() => parseAvailabilityBody({ is_online: true, rider_id: "x" }));
   const online = await apiRequest("PATCH", "/api/v1/rider/availability", { is_online: true });
   assert.equal(online.status, 200); assert.equal(online.body.profile.status, "online");
+  const offline = await apiRequest("PATCH", "/api/v1/rider/availability", { is_online: false });
+  assert.equal(offline.status, 200);
+  assert.equal(offline.body.profile.is_online, false);
+  assert.equal(offline.body.profile.status, "offline");
 });
 
-test("non-approved rider cannot change availability", async () => {
-  const r = await apiRequest("PATCH", "/api/v1/rider/availability", { is_online: true }, (repo) => {
-    repo.profiles[0].verification_status = "pending";
+for (const status of ["pending", "rejected", "suspended"]) {
+  test(`${status} Rider cannot go online but may remain offline`, async () => {
+    const r = await apiRequest("PATCH", "/api/v1/rider/availability", { is_online: true }, (repo) => {
+      repo.profiles[0].verification_status = status;
+    });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.code, "RIDER_NOT_APPROVED");
+    assert.equal(r.repo.profiles[0].is_online, false);
+    const offline = await apiRequest("PATCH", "/api/v1/rider/availability", { is_online: false }, (repo) => {
+      repo.profiles[0].verification_status = status;
+    });
+    assert.equal(offline.status, 200);
+    assert.equal(offline.body.profile.status, "offline");
   });
-  assert.equal(r.status, 403); assert.equal(r.body.code, "RIDER_NOT_APPROVED");
+}
+
+test("approval change before conditional online update fails without success", async () => {
+  const r = await apiRequest("PATCH", "/api/v1/rider/availability", { is_online: true }, (repo) => {
+    repo.approvalChangesBeforeAvailabilityUpdate = true;
+  });
+  assert.notEqual(r.status, 200);
+  assert.equal(r.status, 403);
+  assert.equal(r.body.code, "RIDER_NOT_APPROVED");
+  assert.equal(r.body.success, false);
+  assert.equal(r.repo.profiles[0].verification_status, "suspended");
+  assert.equal(r.repo.profiles[0].is_online, false);
+});
+
+test("zero-row availability update never reports success", async () => {
+  const r = await apiRequest("PATCH", "/api/v1/rider/availability", { is_online: true }, (repo) => {
+    repo.availabilityUpdateReturnsNoRow = true;
+  });
+  assert.notEqual(r.status, 200);
+  assert.equal(r.status, 403);
+  assert.equal(r.body.code, "RIDER_NOT_APPROVED");
+  assert.equal(r.body.success, false);
+});
+
+test("production online update matches both rider ID and approved state", () => {
+  const source = readFileSync("src/routes/riderAccess.ts", "utf8");
+  assert.match(source, /if \(isOnline\) query = query\.eq\("verification_status", "approved"\)/);
+  assert.match(source, /\.eq\("id", riderId\)/);
+  assert.match(source, /if \(!data\)/);
 });
 
 for (const value of ["12345", "1234567", "abcdef", " 12 345 ", 123456]) {

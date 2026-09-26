@@ -172,10 +172,20 @@ export const supabaseRiderAccessRepository: RiderAccessRepository = {
     return ensureData(data as Row | null, error, "Rider profile could not be updated.");
   },
   async updateRiderAvailability(riderId, isOnline) {
-    const { data, error } = await supabaseAdmin.from("rider_profiles")
+    let query = supabaseAdmin.from("rider_profiles")
       .update({ is_online: isOnline, status: isOnline ? "online" : "offline" })
-      .eq("id", riderId).select(PROFILE_FIELDS.join(",")).maybeSingle();
-    return ensureData(data as Row | null, error, "Rider availability could not be updated.");
+      .eq("id", riderId);
+    if (isOnline) query = query.eq("verification_status", "approved");
+    const { data, error } = await query.select(PROFILE_FIELDS.join(",")).maybeSingle();
+    if (error) throw databaseError("Rider availability could not be updated.");
+    if (!data) {
+      throw new RiderAccessError(
+        isOnline ? 403 : 409,
+        isOnline ? "RIDER_NOT_APPROVED" : "RIDER_PROFILE_CHANGED",
+        isOnline ? "Rider is not approved." : "Rider profile changed before availability could be updated.",
+      );
+    }
+    return data as unknown as Row;
   },
   async listRiderConnections(riderId) {
     const { data, error } = await supabaseAdmin.from("rider_connections")
@@ -366,7 +376,7 @@ export const createRiderAccessRouters = (
             name: input.full_name,
             phone: input.phone,
             vehicle_type: input.vehicle_type,
-            verification_status: "approved",
+            verification_status: "pending",
             is_online: false,
             status: "offline",
           });
@@ -385,7 +395,9 @@ export const createRiderAccessRouters = (
     try {
       const uid = requireUid(request as AuthenticatedRequest);
       const isOnline = parseAvailabilityBody(request.body);
-      const rider = await requireApprovedRider(repository, uid);
+      const rider = isOnline
+        ? await requireApprovedRider(repository, uid)
+        : await requireRider(repository, uid);
       const profile = await repository.updateRiderAvailability(String(rider.id), isOnline);
       res.status(200).json({ success: true, profile: safeProfile(profile) });
     } catch (error) { sendError(res, error); }
