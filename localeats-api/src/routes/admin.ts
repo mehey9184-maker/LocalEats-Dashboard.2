@@ -5,8 +5,10 @@ import {
   SuperAdminRequest,
 } from "../middleware/authorizeSuperAdmin.js";
 import { supabaseAdmin } from "../lib/supabaseAdmin.js";
+import { adminRiderRouter } from "./adminRiders.js";
 
 const router = Router();
+router.use("/riders", adminRiderRouter);
 
 const ADMIN_SHOP_LIST_FIELDS = [
   "id",
