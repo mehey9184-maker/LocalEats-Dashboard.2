@@ -1,5 +1,89 @@
 begin;
 
+-- Pairing authority depends on the separately applied Rider access
+-- prerequisite. Abort before creating anything if that contract has drifted.
+do $rider_pairing_preflight$
+declare
+  expected_column record;
+begin
+  if to_regclass('public.shops') is null then
+    raise exception using
+      errcode = '42P01',
+      message = 'RIDER_PAIRING_PREREQUISITE_SHOPS_TABLE_REQUIRED';
+  end if;
+
+  if to_regclass('public.rider_profiles') is null then
+    raise exception using
+      errcode = '42P01',
+      message = 'RIDER_PAIRING_PREREQUISITE_RIDER_PROFILES_TABLE_REQUIRED';
+  end if;
+
+  if to_regclass('public.rider_connections') is null then
+    raise exception using
+      errcode = '42P01',
+      message = 'RIDER_PAIRING_PREREQUISITE_RIDER_CONNECTIONS_TABLE_REQUIRED';
+  end if;
+
+  for expected_column in
+    select * from (values
+      ('public.shops', 'id', 'text', false),
+      ('public.rider_profiles', 'firebase_uid', 'text', true),
+      ('public.rider_connections', 'shop_id', 'text', true),
+      ('public.rider_connections', 'rider_id', 'uuid', true)
+    ) as expected(table_name, column_name, type_name, required_not_null)
+  loop
+    if not exists (
+      select 1
+      from pg_catalog.pg_attribute as column_def
+      where column_def.attrelid = to_regclass(expected_column.table_name)
+        and column_def.attname = expected_column.column_name
+        and column_def.atttypid = to_regtype(expected_column.type_name)
+        and not column_def.attisdropped
+        and (not expected_column.required_not_null or column_def.attnotnull)
+    ) then
+      raise exception using
+        errcode = '42804',
+        message = format(
+          'RIDER_PAIRING_PREREQUISITE_COLUMN_MISMATCH:%s.%s_EXPECTED_%s%s',
+          expected_column.table_name,
+          expected_column.column_name,
+          expected_column.type_name,
+          case when expected_column.required_not_null then '_NOT_NULL' else '' end
+        );
+    end if;
+  end loop;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_constraint as constraint_def
+    join pg_catalog.pg_attribute as id_column
+      on id_column.attrelid = constraint_def.conrelid
+     and id_column.attnum = any (constraint_def.conkey)
+    where constraint_def.conrelid = 'public.shops'::regclass
+      and constraint_def.contype in ('p', 'u')
+      and cardinality(constraint_def.conkey) = 1
+      and id_column.attname = 'id'
+  ) then
+    raise exception using
+      errcode = '42830',
+      message = 'RIDER_PAIRING_PREREQUISITE_SHOP_ID_NOT_UNIQUELY_REFERENCEABLE';
+  end if;
+
+  if to_regclass('public.rider_pairing_codes') is not null then
+    raise exception using
+      errcode = '42P07',
+      message = 'RIDER_PAIRING_PREREQUISITE_PAIRING_CODES_ALREADY_EXISTS';
+  end if;
+
+  if to_regprocedure('public.issue_rider_pairing_code(text,text,text,timestamptz)')
+    is not null then
+    raise exception using
+      errcode = '42723',
+      message = 'RIDER_PAIRING_PREREQUISITE_ISSUE_CODE_FUNCTION_ALREADY_EXISTS';
+  end if;
+end;
+$rider_pairing_preflight$;
+
 create table public.rider_pairing_codes (
   id uuid primary key default gen_random_uuid(),
   shop_id text not null references public.shops(id) on delete cascade,
@@ -27,7 +111,7 @@ from public, anon, authenticated, service_role;
 grant select, insert, update on table public.rider_pairing_codes to service_role;
 
 -- LR2-A profile synchronization and connection transitions are server-only.
--- The preceding order-integrity migration already revoked browser authority.
+-- The Rider access prerequisite established API-only Rider authority.
 grant select, insert, update on table public.rider_profiles to service_role;
 grant select, insert, update on table public.rider_connections to service_role;
 
