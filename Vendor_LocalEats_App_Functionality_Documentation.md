@@ -379,6 +379,8 @@ Repository hygiene: the broad `20260905000000_order_integrity_foundation.sql` re
 
 Rider Phase 1 integration branch: Rider profile, availability, merchant pairing-code, and connection-decision endpoints use Firebase-authenticated LocalEats API routes backed by Supabase. The Rider access and pairing migrations are retained as historical source; this integration does not execute SQL or add Rider Pool mission dispatch.
 
+All `/api/v1` responses use `Cache-Control: no-store`, and Express ETag generation is disabled to prevent conditional requests from replacing authenticated JSON responses with empty `304` responses.
+
 - Merchant order loading and state transitions use the authenticated LocalEats API. Cached/browser state may improve display, but it cannot confirm or manufacture a database mutation.
 - The merchant accepts a new order into `preparing`, then marks it `ready_for_pickup`. For delivery orders, that ready action starts `finding_rider`; checkout does not request a rider.
 - Cash delivery orders remain eligible for rider discovery and claiming. Payment method is not used to exclude them.
