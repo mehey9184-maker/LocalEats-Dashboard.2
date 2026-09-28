@@ -379,6 +379,8 @@ Repository hygiene: the broad `20260905000000_order_integrity_foundation.sql` re
 
 Rider Phase 1 integration branch: Rider profile, availability, merchant pairing-code, and connection-decision endpoints use Firebase-authenticated LocalEats API routes backed by Supabase. The Rider access and pairing migrations are retained as historical source; this integration does not execute SQL or add Rider Pool mission dispatch.
 
+The applied order-shop-ID and Rider Phase 1 migrations are represented in `supabase/migrations` under their recorded live migration versions. Their SQL bodies match the read-only live evidence (byte-for-byte for the copied files, or after LF normalization for Rider Pool verification). This repository-only reconciliation does not apply SQL or resolve the separate Phase 4G and PostGIS migration histories.
+
 New Rider profiles begin pending and offline; only platform-approved Riders may go online, while turning offline remains available. Authenticated active super-admin API routes list, inspect, and transition Rider verification, with approved-Rider demotion blocked until an atomic guard exists. Rider verification migration SQL is retained as historical source, not executed by this integration.
 
 All `/api/v1` responses use `Cache-Control: no-store`, and Express ETag generation is disabled to prevent conditional requests from replacing authenticated JSON responses with empty `304` responses.

@@ -82,9 +82,6 @@ begin
     left join public.rider_profiles rp on rc.rider_id = rp.id
   $expected_rider_status_view$;
 
-  -- pg_get_viewdef adds formatting, parentheses and implicit text casts. Strip
-  -- only those presentation differences; any changed expression or predicate
-  -- still aborts rather than replacing an unrelated view.
   if replace(replace(
        regexp_replace(lower(pg_catalog.pg_get_viewdef(view_oid, false)),
          '[[:space:]();"]', '', 'g'), 'public.', ''), '::text', '')
@@ -270,7 +267,6 @@ begin
 end;
 $rider_access_preflight$;
 
--- Remove only the legacy Supabase Auth identity FK from rider_profiles.id.
 do $drop_rider_profile_auth_foreign_key$
 declare
   constraint_row record;
@@ -287,16 +283,11 @@ begin
       and cardinality(constraint_def.conkey) = 1
       and id_column.attname = 'id'
   loop
-    execute format(
-      'alter table public.rider_profiles drop constraint %I',
-      constraint_row.conname
-    );
+    execute format('alter table public.rider_profiles drop constraint %I', constraint_row.conname);
   end loop;
 end;
 $drop_rider_profile_auth_foreign_key$;
 
--- Remove only rider_connections FKs involving the two normalized identity
--- columns. They are recreated below with the authoritative deletion behavior.
 do $drop_rider_connection_foreign_keys$
 declare
   constraint_row record;
@@ -311,15 +302,11 @@ begin
       and constraint_def.contype = 'f'
       and column_def.attname in ('shop_id', 'rider_id')
   loop
-    execute format(
-      'alter table public.rider_connections drop constraint %I',
-      constraint_row.conname
-    );
+    execute format('alter table public.rider_connections drop constraint %I', constraint_row.conname);
   end loop;
 end;
 $drop_rider_connection_foreign_keys$;
 
--- Remove only legacy checks for the status columns that are normalized here.
 do $drop_rider_status_checks$
 declare
   constraint_row record;
@@ -332,38 +319,22 @@ begin
       on column_def.attrelid = constraint_def.conrelid
      and column_def.attnum = any (constraint_def.conkey)
     where constraint_def.contype = 'c'
-      and (
-        (
-          constraint_def.conrelid = 'public.rider_profiles'::regclass
-          and column_def.attname in ('verification_status', 'status')
-        )
-        or
-        (
-          constraint_def.conrelid = 'public.rider_connections'::regclass
-          and column_def.attname = 'status'
-        )
-      )
+      and ((constraint_def.conrelid = 'public.rider_profiles'::regclass
+          and column_def.attname in ('verification_status', 'status'))
+        or (constraint_def.conrelid = 'public.rider_connections'::regclass
+          and column_def.attname = 'status'))
   loop
-    execute format(
-      'alter table %s drop constraint %I',
-      constraint_row.table_name,
-      constraint_row.conname
-    );
+    execute format('alter table %s drop constraint %I', constraint_row.table_name, constraint_row.conname);
   end loop;
 end;
 $drop_rider_status_checks$;
 
--- Check canonical names only after the intended legacy FK and status-check
--- drops. In particular, the old rider_connections_rider_id_fkey is expected
--- above and must not block its replacement. Other collisions abort the whole
--- transaction before any new constraint or index is created.
 do $rider_access_name_conflicts$
 declare
   canonical_object record;
 begin
   for canonical_object in
-    select *
-    from (values
+    select * from (values
       ('public.rider_profiles', 'rider_profiles_firebase_uid_nonempty'),
       ('public.rider_profiles', 'rider_profiles_firebase_uid_key'),
       ('public.rider_profiles', 'rider_profiles_verification_status_check'),
@@ -375,35 +346,25 @@ begin
     ) as expected(table_name, object_name)
   loop
     if exists (
-      select 1
-      from pg_catalog.pg_constraint as constraint_def
+      select 1 from pg_catalog.pg_constraint as constraint_def
       where constraint_def.conrelid = to_regclass(canonical_object.table_name)
         and constraint_def.conname = canonical_object.object_name
     ) then
-      raise exception using
-        errcode = '42710',
-        message = format(
-          'RIDER_ACCESS_PREREQUISITE_CONSTRAINT_NAME_CONFLICT:%s',
-          canonical_object.object_name
-        );
+      raise exception using errcode = '42710',
+        message = format('RIDER_ACCESS_PREREQUISITE_CONSTRAINT_NAME_CONFLICT:%s', canonical_object.object_name);
     end if;
   end loop;
 
   for canonical_object in
-    select object_name
-    from (values
+    select object_name from (values
       ('rider_profiles_firebase_uid_key'),
       ('rider_connections_unique_shop_rider'),
       ('rider_connections_rider_id_idx')
     ) as expected(object_name)
   loop
     if to_regclass(format('public.%I', canonical_object.object_name)) is not null then
-      raise exception using
-        errcode = '42P07',
-        message = format(
-          'RIDER_ACCESS_PREREQUISITE_RELATION_NAME_CONFLICT:%s',
-          canonical_object.object_name
-        );
+      raise exception using errcode = '42P07',
+        message = format('RIDER_ACCESS_PREREQUISITE_RELATION_NAME_CONFLICT:%s', canonical_object.object_name);
     end if;
   end loop;
 end;
@@ -420,18 +381,11 @@ alter table public.rider_profiles
   alter column status set not null;
 
 alter table public.rider_profiles
-  add constraint rider_profiles_firebase_uid_nonempty
-    check (firebase_uid = btrim(firebase_uid) and length(firebase_uid) > 0),
-  add constraint rider_profiles_firebase_uid_key
-    unique (firebase_uid),
-  add constraint rider_profiles_verification_status_check
-    check (verification_status in ('pending', 'approved', 'rejected', 'verified')),
-  add constraint rider_profiles_status_check
-    check (status in ('offline', 'online', 'busy', 'paused'));
+  add constraint rider_profiles_firebase_uid_nonempty check (firebase_uid = btrim(firebase_uid) and length(firebase_uid) > 0),
+  add constraint rider_profiles_firebase_uid_key unique (firebase_uid),
+  add constraint rider_profiles_verification_status_check check (verification_status in ('pending', 'approved', 'rejected', 'verified')),
+  add constraint rider_profiles_status_check check (status in ('offline', 'online', 'busy', 'paused'));
 
--- PostgreSQL will not change shop_id's type while this view's _RETURN rule
--- depends on it. The preflight above verifies the exact view contract; all
--- changes, including its recreation, remain in this transaction.
 drop view public.rider_status_view;
 
 alter table public.rider_connections
@@ -443,22 +397,13 @@ alter table public.rider_connections
   alter column status set not null;
 
 alter table public.rider_connections
-  add constraint rider_connections_status_check
-    check (status in ('pending', 'approved', 'rejected')),
-  add constraint rider_connections_shop_id_fkey
-    foreign key (shop_id) references public.shops(id) on delete cascade,
-  add constraint rider_connections_rider_id_fkey
-    foreign key (rider_id) references public.rider_profiles(id) on delete cascade,
-  add constraint rider_connections_unique_shop_rider
-    unique (shop_id, rider_id);
+  add constraint rider_connections_status_check check (status in ('pending', 'approved', 'rejected')),
+  add constraint rider_connections_shop_id_fkey foreign key (shop_id) references public.shops(id) on delete cascade,
+  add constraint rider_connections_rider_id_fkey foreign key (rider_id) references public.rider_profiles(id) on delete cascade,
+  add constraint rider_connections_unique_shop_rider unique (shop_id, rider_id);
 
--- The composite unique index supports shop-scoped reads. Rider-scoped reads
--- and rider-parent cascades need the inverse foreign-key index explicitly.
-create index rider_connections_rider_id_idx
-  on public.rider_connections (rider_id);
+create index rider_connections_rider_id_idx on public.rider_connections (rider_id);
 
--- The legacy view granted browser roles direct access. Recreate it as an
--- invoker-security read surface for the authoritative API only.
 create view public.rider_status_view with (security_invoker = true) as
 select
   rc.id as connection_id,
@@ -475,15 +420,11 @@ select
     else 'offline'::text
   end as status_derived
 from public.rider_connections rc
-left join public.rider_profiles rp
-  on rc.rider_id = rp.id;
+left join public.rider_profiles rp on rc.rider_id = rp.id;
 
-revoke all privileges on public.rider_status_view
-  from public, anon, authenticated, service_role;
+revoke all privileges on public.rider_status_view from public, anon, authenticated, service_role;
 grant select on public.rider_status_view to service_role;
 
--- Fail closed if default privileges, inherited privileges, or a changed view
--- contract leave any browser access or broader server access after recreation.
 do $verify_rider_status_view_security$
 declare
   view_oid oid := 'public.rider_status_view'::regclass;
@@ -492,16 +433,14 @@ declare
   expected_view_definition text;
   privilege_name text;
 begin
-  select relation_def.relowner
-  into view_owner
+  select relation_def.relowner into view_owner
   from pg_catalog.pg_class as relation_def
   where relation_def.oid = view_oid
     and relation_def.relkind = 'v'
     and relation_def.reloptions @> array['security_invoker=true']::text[];
 
   if view_owner is null then
-    raise exception using
-      errcode = '0A000',
+    raise exception using errcode = '0A000',
       message = 'RIDER_ACCESS_PREREQUISITE_RIDER_STATUS_VIEW_SECURITY_INVOKER_REQUIRED';
   end if;
 
@@ -516,8 +455,7 @@ begin
     'connection_id', 'shop_id', 'rider_id', 'rider_name', 'is_online',
     'status', 'expires_at', 'connection_code', 'status_derived'
   ]::text[] then
-    raise exception using
-      errcode = '42804',
+    raise exception using errcode = '42804',
       message = 'RIDER_ACCESS_PREREQUISITE_RIDER_STATUS_VIEW_COLUMNS_CHANGED';
   end if;
 
@@ -543,8 +481,7 @@ begin
      replace(replace(
        regexp_replace(lower(expected_view_definition),
          '[[:space:]();"]', '', 'g'), 'public.', ''), '::text', '') then
-    raise exception using
-      errcode = '42804',
+    raise exception using errcode = '42804',
       message = 'RIDER_ACCESS_PREREQUISITE_RIDER_STATUS_VIEW_DEFINITION_CHANGED';
   end if;
 
@@ -559,8 +496,7 @@ begin
           and (view_grant.grantee <> 'service_role'::regrole
             or view_grant.privilege_type <> 'SELECT')))
   ) then
-    raise exception using
-      errcode = '0A000',
+    raise exception using errcode = '0A000',
       message = 'RIDER_ACCESS_PREREQUISITE_RIDER_STATUS_VIEW_UNEXPECTED_GRANT';
   end if;
 
@@ -572,22 +508,18 @@ begin
       or pg_catalog.has_table_privilege('authenticated'::regrole, view_oid, privilege_name)
       or (privilege_name <> 'SELECT'
         and pg_catalog.has_table_privilege('service_role'::regrole, view_oid, privilege_name)) then
-      raise exception using
-        errcode = '0A000',
+      raise exception using errcode = '0A000',
         message = 'RIDER_ACCESS_PREREQUISITE_RIDER_STATUS_VIEW_ROLE_PRIVILEGES_UNSAFE';
     end if;
   end loop;
 
   if not pg_catalog.has_table_privilege('service_role'::regrole, view_oid, 'SELECT') then
-    raise exception using
-      errcode = '0A000',
+    raise exception using errcode = '0A000',
       message = 'RIDER_ACCESS_PREREQUISITE_RIDER_STATUS_VIEW_SERVICE_SELECT_REQUIRED';
   end if;
 end;
 $verify_rider_status_view_security$;
 
--- Rider identity and relationship state are server authority. Existing
--- browser policies are removed without replacement.
 do $drop_rider_browser_policies$
 declare
   policy_row record;
@@ -598,12 +530,7 @@ begin
     where schemaname = 'public'
       and tablename in ('rider_profiles', 'rider_connections')
   loop
-    execute format(
-      'drop policy if exists %I on %I.%I',
-      policy_row.policyname,
-      policy_row.schemaname,
-      policy_row.tablename
-    );
+    execute format('drop policy if exists %I on %I.%I', policy_row.policyname, policy_row.schemaname, policy_row.tablename);
   end loop;
 end;
 $drop_rider_browser_policies$;
@@ -611,15 +538,8 @@ $drop_rider_browser_policies$;
 alter table public.rider_profiles enable row level security;
 alter table public.rider_connections enable row level security;
 
-revoke all privileges on table
-  public.rider_profiles,
-  public.rider_connections
-from public, anon, authenticated, service_role;
-
+revoke all privileges on table public.rider_profiles, public.rider_connections from public, anon, authenticated, service_role;
 grant select, insert, update on table public.rider_profiles to service_role;
 grant select, insert, update on table public.rider_connections to service_role;
-
--- UUID defaults generate IDs without sequences, so no sequence privileges are
--- required by the LocalEats API service role.
 
 commit;

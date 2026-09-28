@@ -377,7 +377,7 @@ test("server mounts new access routers without changing rider order route", () =
 });
 
 test("staged migration locks pairing authority to service_role", () => {
-  const sql = readFileSync(new URL("../../../supabase/migrations/20260919000000_rider_onboarding_pairing_authority.sql", import.meta.url), "utf8");
+  const sql = readFileSync(new URL("../../../supabase/migrations/20260926194744_rider_onboarding_pairing_authority.sql", import.meta.url), "utf8");
   assert.match(sql, /shop_id text not null references public\.shops\(id\) on delete cascade/i);
   assert.match(sql, /check \(code ~ '\^\[0-9\]\{6\}\$'\)/i);
   assert.match(sql, /enable row level security/i);
