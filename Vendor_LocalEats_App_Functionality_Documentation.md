@@ -375,6 +375,8 @@ src/
 
 Status: **local safety work only; not committed, pushed, merged, deployed, or applied to production data.**
 
+Repository hygiene: the broad `20260905000000_order_integrity_foundation.sql` reference is preserved byte-for-byte under `supabase/archived-migrations/`, outside the active Supabase migration directory. It remains intentionally unapplied; the API contract test reads the archived reference.
+
 - Merchant order loading and state transitions use the authenticated LocalEats API. Cached/browser state may improve display, but it cannot confirm or manufacture a database mutation.
 - The merchant accepts a new order into `preparing`, then marks it `ready_for_pickup`. For delivery orders, that ready action starts `finding_rider`; checkout does not request a rider.
 - Cash delivery orders remain eligible for rider discovery and claiming. Payment method is not used to exclude them.

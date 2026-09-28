@@ -26,7 +26,7 @@ import { customerOrderResponse, customerOrderRoutes } from "../routes/orders.js"
 import type { StoredOrder } from "./orderService.js";
 
 const migrationSql = readFileSync(
-  resolve(process.cwd(), "../supabase/migrations/20260905000000_order_integrity_foundation.sql"),
+  resolve(process.cwd(), "../supabase/archived-migrations/20260905000000_order_integrity_foundation.sql"),
   "utf8",
 );
 
