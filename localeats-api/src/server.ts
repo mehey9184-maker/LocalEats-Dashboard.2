@@ -8,6 +8,7 @@ import adminRoutes from "./routes/admin.js";
 import catalogRoutes from "./routes/catalog.js";
 import { customerOrderRoutes, merchantOrderRoutes } from "./routes/orders.js";
 import riderOrderRoutes from "./routes/riderOrders.js";
+import { riderRouter, merchantRiderRouter } from "./routes/riderAccess.js";
 import { isAllowedOrigin } from "./corsOrigins.js";
 
 dotenv.config();
@@ -35,6 +36,8 @@ app.use("/api/v1/merchant", merchantRoutes);
 app.use("/api/v1/orders", customerOrderRoutes);
 app.use("/api/v1/merchant/orders", merchantOrderRoutes);
 app.use("/api/v1/rider/orders", riderOrderRoutes);
+app.use("/api/v1/rider", riderRouter);
+app.use("/api/v1/merchant/riders", merchantRiderRouter);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/catalog", catalogRoutes);
 
