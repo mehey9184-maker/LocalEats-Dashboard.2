@@ -162,7 +162,8 @@ router.post("/:id/cancel", authenticateFirebase, async (req: AuthenticatedReques
       .eq("id", orderId)
       .eq("user_id", userId)
       .eq("status", "pending")
-      .in("delivery_status", ["none", "pending"])
+      .eq("delivery_status", "none")
+      .is("rider_id", null)
       .select("*")
       .maybeSingle();
     if (error) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Cancellation could not be saved.");
@@ -261,7 +262,8 @@ const updateMerchantOrder = async (
     .from("orders")
     .update(update)
     .eq("id", orderId)
-    .eq("status", String(order.status));
+    .eq("status", String(order.status))
+    .is("rider_id", null);
   const { data, error } = order.delivery_status === null
     ? await query.is("delivery_status", null).select("*").maybeSingle()
     : await query.eq("delivery_status", String(order.delivery_status)).select("*").maybeSingle();

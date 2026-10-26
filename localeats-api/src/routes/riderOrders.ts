@@ -4,6 +4,8 @@ import { authenticateFirebase, type AuthenticatedRequest } from "../middleware/a
 import { OrderContractError, assertLifecycleTransition } from "../orders/orderContract.js";
 import { hashDeliveryProof } from "../orders/deliveryProof.js";
 
+import { assertAssignedDelivery, assertNewRiderWorkAllowed } from "../orders/riderSafety.js";
+import type { StoredOrder } from "../orders/orderService.js";
 const router = Router();
 
 export const APPROVED_RIDER_CONNECTION_STATUS = "approved";
@@ -157,9 +159,11 @@ const AVAILABLE_RIDER_ORDER_COLUMNS = [
   "delivery_fee",
   "payment_method",
   "city",
+  "rider_id",
+  "lat",
+  "lng",
   "status",
   "delivery_status",
-  "delivery_type",
   "created_at",
 ].join(",");
 
@@ -186,7 +190,6 @@ const ASSIGNED_RIDER_ORDER_COLUMNS = [
   "status",
   "delivery_status",
   "rider_id",
-  "delivery_type",
   "created_at",
   "updated_at",
 ].join(",");
@@ -247,7 +250,7 @@ const handleMine: RequestHandler = async (request, res): Promise<void> => {
 
     let query = supabaseAdmin
       .from("orders")
-      .select(ASSIGNED_RIDER_ORDER_COLUMNS)
+      .select("*")
       .eq("rider_id", rider.id)
       .order("updated_at", { ascending: false });
 
@@ -259,7 +262,9 @@ const handleMine: RequestHandler = async (request, res): Promise<void> => {
     if (error) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Rider deliveries could not be loaded.");
     res.status(200).json({
       success: true,
-      orders: (data ?? []).map((order) =>
+      orders: (data ?? []).filter((order) => {
+        try { assertAssignedDelivery(order as StoredOrder, rider.id); return true; } catch { return false; }
+      }).map((order) =>
         assignedRiderOrderResponse(order as unknown as Record<string, unknown>),
       ),
     });
@@ -277,12 +282,13 @@ const handleAssignedById: RequestHandler = async (request, res): Promise<void> =
     const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const { data, error } = await supabaseAdmin
       .from("orders")
-      .select(ASSIGNED_RIDER_ORDER_COLUMNS)
+      .select("*")
       .eq("id", orderId)
       .eq("rider_id", rider.id)
       .maybeSingle();
     if (error) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Delivery could not be loaded.");
     if (!data) throw new OrderContractError(404, "ORDER_NOT_FOUND", "Assigned delivery was not found.");
+    assertAssignedDelivery(data as StoredOrder, rider.id);
     res.status(200).json({
       success: true,
       order: assignedRiderOrderResponse(data as unknown as Record<string, unknown>),
@@ -298,6 +304,7 @@ const handleAvailable: RequestHandler = async (request, res): Promise<void> => {
     const uid = req.authUser?.uid;
     if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
     const rider = await resolveRider(uid);
+    assertNewRiderWorkAllowed();
     if (rider.is_online !== true) {
       res.status(200).json({ success: true, orders: [] });
       return;
@@ -364,6 +371,8 @@ router.post("/:id/claim", authenticateFirebase, async (req: AuthenticatedRequest
     const uid = req.authUser?.uid;
     if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
     const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    await resolveRider(uid);
+    assertNewRiderWorkAllowed();
     const { data, error } = await supabaseAdmin.rpc("claim_delivery_order", {
       p_order_id: orderId,
       p_firebase_uid: uid,
@@ -397,13 +406,19 @@ const advanceAssignedDelivery = async (
 ) => {
   assertLifecycleTransition(expected, target);
   const rider = await resolveRider(uid);
+  const { data: existing, error: readError } = await supabaseAdmin.from("orders").select("*")
+    .eq("id", orderId).eq("rider_id", rider.id).maybeSingle();
+  if (readError) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Delivery could not be loaded.");
+  if (!existing) throw new OrderContractError(404, "ORDER_NOT_FOUND", "Assigned delivery was not found.");
+  assertAssignedDelivery(existing as StoredOrder, rider.id);
   const { data, error } = await supabaseAdmin
     .from("orders")
     .update({ delivery_status: target, updated_at: new Date().toISOString() })
     .eq("id", orderId)
     .eq("rider_id", rider.id)
     .eq("delivery_status", expected)
-    .select(ASSIGNED_RIDER_ORDER_COLUMNS)
+    .eq("status", existing.status)
+    .select("*")
     .maybeSingle();
   if (error) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Delivery state could not be saved.");
   if (!data) throw new OrderContractError(409, "INVALID_ORDER_TRANSITION", "Delivery state changed or rider is not assigned.");
@@ -437,9 +452,15 @@ router.post(
     try {
       const uid = req.authUser?.uid;
       if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
+      const rider = await resolveRider(uid);
+      const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const { data: existing, error: readError } = await supabaseAdmin.from("orders").select("*")
+        .eq("id", orderId).eq("rider_id", rider.id).maybeSingle();
+      if (readError) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Delivery could not be loaded.");
+      if (!existing) throw new OrderContractError(404, "ORDER_NOT_FOUND", "Assigned delivery was not found.");
+      assertAssignedDelivery(existing as StoredOrder, rider.id);
       const proof = parseRiderDeliveryProof(req.body?.delivery_pin);
       const proofHash = hashDeliveryProof(proof.value, process.env.DELIVERY_PROOF_SECRET);
-      const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const { data, error } = await supabaseAdmin.rpc("complete_delivery_order", {
         p_order_id: orderId,
         p_firebase_uid: uid,

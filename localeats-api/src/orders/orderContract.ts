@@ -32,11 +32,19 @@ export interface CreateOrderInput {
   };
 }
 
+// Deployment policy is deliberately code-owned here; no new environment setting is required.
+export const assertNewDeliveryCreationAllowed = (input: CreateOrderInput): void => {
+  if (input.delivery_type === "delivery") {
+    throw new OrderContractError(503, "DELIVERY_LAUNCH_DEFERRED", "New delivery orders are deferred during pickup launch.");
+  }
+};
+
 export interface ShopForOrder {
   id: string;
   name: string;
   is_active: boolean | null;
   approval_status: string | null;
+  archived_at?: string | null;
   latitude: number | null;
   longitude: number | null;
   lat: number | null;
@@ -95,6 +103,16 @@ const SENSITIVE_PAYMENT_KEYS = new Set([
   "card_expiry",
   "pan",
 ]);
+
+const rejectUnsupportedOptions = (value: Record<string, unknown>): void => {
+  const allowed = new Set(["menu_item_id", "quantity", "notes", "variant_id"]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    throw new OrderContractError(422, "UNSUPPORTED_ITEM_OPTIONS", "Only item ID, quantity and notes are supported.");
+  }
+};
+
+const finiteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
 
 const roundMoney = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
 
@@ -177,7 +195,7 @@ export const parseCreateOrderInput = (raw: unknown): CreateOrderInput => {
     throw new OrderContractError(400, "INVALID_IDEMPOTENCY_KEY", "idempotency_key must be a UUID.");
   }
 
-  const shopId = requiredText(String(body.shop_id ?? ""), "shop_id", 100);
+  const shopId = requiredText(body.shop_id, "shop_id", 100);
   const deliveryType = body.delivery_type;
   if (deliveryType !== "collection" && deliveryType !== "delivery") {
     throw new OrderContractError(400, "INVALID_DELIVERY_TYPE", "delivery_type must be collection or delivery.");
@@ -198,6 +216,7 @@ export const parseCreateOrderInput = (raw: unknown): CreateOrderInput => {
   const seenItemIds = new Set<string>();
   const items = body.items.map((rawLine, index): CreateOrderLineInput => {
     const line = asObject(rawLine, `items[${index}]`);
+    rejectUnsupportedOptions(line);
     const menuItemId = requiredText(line.menu_item_id, `items[${index}].menu_item_id`, 100);
     if (seenItemIds.has(menuItemId)) {
       throw new OrderContractError(400, "DUPLICATE_ITEM", `Duplicate menu item ${menuItemId}.`);
@@ -241,23 +260,30 @@ export const parseCreateOrderInput = (raw: unknown): CreateOrderInput => {
     );
   }
 
-  const tipAmount = Number(body.tip_amount ?? 0);
-  if (!Number.isFinite(tipAmount) || tipAmount < 0 || tipAmount > 1_000) {
+  if (["options", "customizations", "selectedCustomizations", "variant", "variants", "addons", "add_ons"].some((key) => key in body)) {
+    throw new OrderContractError(422, "UNSUPPORTED_ITEM_OPTIONS", "Unverified options are not supported.");
+  }
+  const tipAmount = body.tip_amount === undefined ? 0 : body.tip_amount;
+  if (!finiteNumber(tipAmount) || tipAmount < 0 || tipAmount > 1_000 || Math.abs(tipAmount * 100 - Math.round(tipAmount * 100)) > 0.000001) {
     throw new OrderContractError(400, "INVALID_TIP", "tip_amount must be between 0 and 1000.");
   }
 
   let deliveryCoordinates: { lat: number; lng: number } | undefined;
   if (deliveryType === "delivery") {
     const coordinates = asObject(body.delivery_coordinates, "delivery_coordinates");
-    const lat = Number(coordinates.lat);
-    const lng = Number(coordinates.lng);
-    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+    const lat = coordinates.lat;
+    const lng = coordinates.lng;
+    if (!finiteNumber(lat) || lat < -90 || lat > 90 || !finiteNumber(lng) || lng < -180 || lng > 180) {
       throw new OrderContractError(400, "INVALID_COORDINATES", "Valid delivery coordinates are required.");
     }
     deliveryCoordinates = { lat, lng };
   }
 
   const customer = asObject(body.customer_details, "customer_details");
+  const phone = requiredText(customer.phone, "customer_details.phone", 30);
+  if (!/^(?:0[0-9]{9}|\+?[1-9][0-9]{7,14})$/.test(phone.replace(/[ ()-]/g, ""))) {
+    throw new OrderContractError(400, "INVALID_PHONE", "A callable customer phone number is required.");
+  }
   return {
     idempotency_key: idempotencyKey,
     shop_id: shopId,
@@ -269,7 +295,7 @@ export const parseCreateOrderInput = (raw: unknown): CreateOrderInput => {
     payment_method: rawPaymentMethod,
     customer_details: {
       name: requiredText(customer.name, "customer_details.name", 120),
-      phone: requiredText(customer.phone, "customer_details.phone", 30),
+      phone,
       email: optionalText(customer.email, "customer_details.email", 254) ?? "",
       address:
         deliveryType === "delivery"
@@ -307,14 +333,14 @@ export const assertShopCanAcceptOrder = (shop: ShopForOrder, input: CreateOrderI
   if (shop.id !== input.shop_id) {
     throw new OrderContractError(404, "SHOP_NOT_FOUND", "Shop not found.");
   }
-  if (shop.approval_status !== "approved" || shop.is_active !== true) {
+  if (shop.approval_status !== "approved" || shop.is_active !== true || shop.archived_at !== null) {
     throw new OrderContractError(409, "SHOP_UNAVAILABLE", "This shop is not accepting orders.");
   }
   if (input.delivery_type !== "delivery" || !input.delivery_coordinates) return;
 
-  const shopLat = Number(shop.lat ?? shop.latitude);
-  const shopLng = Number(shop.lng ?? shop.longitude);
-  if (!Number.isFinite(shopLat) || !Number.isFinite(shopLng)) {
+  const shopLat = shop.lat ?? shop.latitude;
+  const shopLng = shop.lng ?? shop.longitude;
+  if (!finiteNumber(shopLat) || Math.abs(shopLat) > 90 || !finiteNumber(shopLng) || Math.abs(shopLng) > 180) {
     throw new OrderContractError(409, "DELIVERY_LOCATION_UNAVAILABLE", "This shop has no verified delivery location.");
   }
 
@@ -346,8 +372,10 @@ export const calculateAuthoritativePrice = (
     if (menuItem.is_available !== true) {
       throw new OrderContractError(409, "MENU_ITEM_UNAVAILABLE", `${menuItem.name} is unavailable.`);
     }
-    const unitPrice = Number(menuItem.price);
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+    const rawPrice = menuItem.price;
+    const unitPrice = typeof rawPrice === "number" ||
+      (typeof rawPrice === "string" && /^\d+(?:\.\d{1,2})?$/.test(rawPrice)) ? Number(rawPrice) : NaN;
+    if (!Number.isFinite(unitPrice) || unitPrice < 0 || !Number.isSafeInteger(Math.round(unitPrice * 100)) || Math.abs(unitPrice * 100 - Math.round(unitPrice * 100)) > 0.000001) {
       throw new OrderContractError(500, "INVALID_SERVER_PRICE", "A menu item has an invalid server price.");
     }
     return {
@@ -365,6 +393,9 @@ export const calculateAuthoritativePrice = (
   const serviceFee = subtotal > 0 ? PILOT_SERVICE_FEE : 0;
   const totalPrice = roundMoney(subtotal + deliveryFee + serviceFee + input.tip_amount);
 
+  if (!Number.isFinite(totalPrice) || !Number.isSafeInteger(Math.round(totalPrice * 100))) {
+    throw new OrderContractError(500, "INVALID_SERVER_PRICE", "The server total is invalid.");
+  }
   return {
     lines,
     subtotal,

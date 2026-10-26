@@ -3,6 +3,7 @@ import { deriveDeliveryProof, type DeliveryProof } from "./deliveryProof.js";
 import {
   assertLifecycleTransition,
   assertShopCanAcceptOrder,
+  assertNewDeliveryCreationAllowed,
   calculateAuthoritativePrice,
   type AuthoritativePrice,
   type CreateOrderInput,
@@ -146,54 +147,31 @@ export const quoteOrder = async (
 };
 
 const numericEqual = (left: unknown, right: unknown): boolean =>
+  left !== null && left !== "" && right !== null && right !== "" &&
   Number.isFinite(Number(left)) && Number(left) === Number(right);
 
-const isSameOrderIntent = (
-  existing: StoredOrder,
-  userId: string,
-  input: CreateOrderInput,
-  pricing: AuthoritativePrice,
-): boolean => {
-  if (
-    existing.user_id !== userId ||
-    String(existing.shop_id) !== input.shop_id ||
-    existing.payment_method !== input.payment_method ||
-    !numericEqual(existing.price, pricing.subtotal) ||
-    !numericEqual(existing.total_price, pricing.total_price) ||
-    !numericEqual(existing.delivery_fee, pricing.delivery_fee) ||
-    !numericEqual(existing.service_fee, pricing.service_fee) ||
-    !numericEqual(existing.discount_amount, pricing.discount_amount) ||
-    !numericEqual(existing.tip_amount, pricing.tip_amount)
-  ) {
-    return false;
+// Compare persisted intent, never today's catalog prices. Missing legacy intent fails closed.
+const isSameOrderIntent = (existing: StoredOrder, userId: string, input: CreateOrderInput): boolean => {
+  if (!existing.id || existing.user_id !== userId || String(existing.shop_id) !== input.shop_id ||
+      existing.delivery_type !== input.delivery_type || existing.payment_method !== input.payment_method ||
+      !numericEqual(existing.tip_amount, input.tip_amount)) return false;
+  for (const [field, value] of Object.entries({ customer_name: input.customer_details.name,
+    phone: input.customer_details.phone, email: input.customer_details.email,
+    address: input.customer_details.address, city: input.customer_details.city })) {
+    if (existing[field] !== value) return false;
   }
-
+  const notes = [...input.items.map((line) => line.notes), input.customer_details.delivery_instructions].filter(Boolean).join(" • ") || null;
+  if (existing.notes !== notes) return false;
   if (input.delivery_type === "delivery") {
-    if (
-      !input.delivery_coordinates ||
-      !numericEqual(existing.lat, input.delivery_coordinates.lat) ||
-      !numericEqual(existing.lng, input.delivery_coordinates.lng)
-    ) {
-      return false;
-    }
-  } else if (existing.lat !== null || existing.lng !== null) {
-    return false;
-  }
-
-  const existingItems = existing.items;
-  if (!Array.isArray(existingItems) || existingItems.length !== pricing.lines.length) return false;
-  return pricing.lines.every((line, index) => {
-    const existingLine = existingItems[index];
-    if (!existingLine || typeof existingLine !== "object" || Array.isArray(existingLine)) return false;
-    const candidate = existingLine as Record<string, unknown>;
-    return (
-      candidate.menu_item_id === line.menu_item_id &&
-      candidate.name === line.name &&
-      numericEqual(candidate.unit_price, line.unit_price) &&
-      numericEqual(candidate.quantity, line.quantity) &&
-      numericEqual(candidate.line_total, line.line_total) &&
-      (candidate.notes ?? undefined) === (line.notes ?? undefined)
-    );
+    if (!input.delivery_coordinates || !numericEqual(existing.lat, input.delivery_coordinates.lat) ||
+        !numericEqual(existing.lng, input.delivery_coordinates.lng)) return false;
+  } else if (existing.lat !== null || existing.lng !== null) return false;
+  if (!Array.isArray(existing.items) || existing.items.length !== input.items.length) return false;
+  return input.items.every((line, index) => {
+    const saved = (existing.items as Record<string, unknown>[])[index];
+    return saved && saved.menu_item_id === line.menu_item_id && numericEqual(saved.quantity, line.quantity) &&
+      (saved.notes ?? undefined) === line.notes && Number.isFinite(Number(saved.unit_price)) &&
+      Number.isFinite(Number(saved.line_total));
   });
 };
 
@@ -203,11 +181,10 @@ export const createOrder = async (
   input: CreateOrderInput,
   deliveryProofSecret?: string,
 ): Promise<CreateOrderResult> => {
-  const pricing = await validateAndPriceOrder(repository, userId, input);
-
+  if (!userId) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
   const existing = await repository.findOrderByIdempotencyKey(input.idempotency_key);
   if (existing) {
-    if (!isSameOrderIntent(existing, userId, input, pricing)) {
+    if (!isSameOrderIntent(existing, userId, input)) {
       throw new OrderContractError(
         409,
         "IDEMPOTENCY_CONFLICT",
@@ -226,6 +203,9 @@ export const createOrder = async (
     };
   }
 
+  assertNewDeliveryCreationAllowed(input);
+  const pricing = await validateAndPriceOrder(repository, userId, input);
+  // Preserve delivery creation for a future approved release, behind the launch policy.
   const deliveryProof = input.delivery_type === "delivery"
     ? deriveDeliveryProof(input.idempotency_key, deliveryProofSecret)
     : undefined;
@@ -269,7 +249,7 @@ export const createOrder = async (
   if (inserted.error) {
     if (inserted.error.code === "23505") {
       const racedOrder = await repository.findOrderByIdempotencyKey(input.idempotency_key);
-      if (racedOrder && isSameOrderIntent(racedOrder, userId, input, pricing)) {
+      if (racedOrder && isSameOrderIntent(racedOrder, userId, input)) {
         return {
           order: racedOrder,
           replayed: true,
@@ -327,7 +307,7 @@ export class SupabaseOrderRepository implements OrderRepository {
   async findShop(shopId: string): Promise<ShopForOrder | null> {
     const { data, error } = await this.client
       .from("shops")
-      .select("id,name,is_active,approval_status,latitude,longitude,lat,lng")
+      .select("id,name,is_active,approval_status,archived_at,latitude,longitude,lat,lng")
       .eq("id", shopId)
       .maybeSingle();
     if (error) throwDatabaseError("shop lookup", error);
@@ -362,20 +342,21 @@ export interface MutableOrderRecord extends StoredOrder {
 }
 
 export const lifecycleStateFromOrder = (order: StoredOrder): OrderLifecycleState => {
-  const deliveryStatus = order.delivery_status;
-  if (
-    deliveryStatus === "finding_rider" ||
-    deliveryStatus === "rider_assigned" ||
-    deliveryStatus === "picked_up" ||
-    deliveryStatus === "delivering" ||
-    deliveryStatus === "delivered"
-  ) {
-    return deliveryStatus;
+  const invalid = (): never => { throw new OrderContractError(409, "INVALID_ORDER_TRANSITION", "Invalid or terminal order state."); };
+  if (order.delivery_type != null && order.delivery_type !== "delivery" && order.delivery_type !== "collection") return invalid();
+  const status = order.status;
+  const delivery = order.delivery_status;
+  if (typeof status === "string" && ["pending", "preparing", "ready_for_pickup"].includes(status) && delivery === "none" && order.rider_id === null) {
+    return status as OrderLifecycleState;
   }
-  if (order.status === "preparing" || order.status === "ready_for_pickup" || order.status === "delivered") {
-    return order.status;
+  if (status === "ready_for_pickup" && order.delivery_type !== "collection") {
+    if (delivery === "finding_rider" && order.rider_id === null) return "finding_rider";
+    if (typeof delivery === "string" && ["rider_assigned", "picked_up", "delivering"].includes(delivery) &&
+        typeof order.rider_id === "string" && order.rider_id.trim().length > 0) return delivery as OrderLifecycleState;
   }
-  return "pending";
+  if (status === "delivered" && delivery === "delivered" && order.delivery_type !== "collection" &&
+      typeof order.rider_id === "string" && order.rider_id.trim().length > 0) return "delivered";
+  return invalid();
 };
 
 export const lifecycleUpdateFor = (

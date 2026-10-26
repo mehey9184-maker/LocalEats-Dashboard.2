@@ -5,6 +5,7 @@ import {
   lifecycleUpdateFor,
   quoteOrder,
   type NewOrderRecord,
+  type InsertOrderResult,
   type OrderRepository,
   type StoredOrder,
 } from "./orderService.js";
@@ -32,6 +33,8 @@ const validRequest = (): Record<string, unknown> => ({
 
 const input = () => parseCreateOrderInput(validRequest());
 
+const pickupInput = () => parseCreateOrderInput({ ...validRequest(), delivery_type: "collection" });
+
 class MemoryRepository implements OrderRepository {
   existing: StoredOrder | null = null;
   insertError: { code?: string; message: string } | null = null;
@@ -43,6 +46,7 @@ class MemoryRepository implements OrderRepository {
     name: "Shop",
     is_active: true,
     approval_status: "approved",
+    archived_at: null,
     latitude: -25.983,
     longitude: 28.208,
     lat: null,
@@ -62,7 +66,7 @@ class MemoryRepository implements OrderRepository {
   async findMenuItems(): Promise<MenuItemForOrder[]> {
     return this.menu;
   }
-  async insertOrder(record: NewOrderRecord) {
+  async insertOrder(record: NewOrderRecord): Promise<InsertOrderResult> {
     this.insertCalls += 1;
     this.insertedRecord = record;
     if (this.insertError) return { order: null, error: this.insertError };
@@ -185,7 +189,7 @@ test("quote keeps payment, promo, express, and schedule pilot restrictions", () 
 
 test("quote and create order share the same authoritative pricing result", async () => {
   const repository = new MemoryRepository();
-  const request = input();
+  const request = pickupInput();
   const quote = await quoteOrder(repository, "firebase-customer-1", request);
   const created = await createOrder(repository, "firebase-customer-1", request, TEST_DELIVERY_PROOF_SECRET);
 
@@ -204,32 +208,31 @@ test("quote and create order share the same authoritative pricing result", async
   );
 });
 
-test("a cash delivery is persisted pending with no rider search at checkout", async () => {
+test("a collection is persisted pending without delivery proof", async () => {
   const repository = new MemoryRepository();
-  const result = await createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET);
+  const result = await createOrder(repository, "firebase-customer-1", pickupInput(), TEST_DELIVERY_PROOF_SECRET);
   assert.equal(result.replayed, false);
   assert.equal(result.order.status, "pending");
   assert.equal(result.order.delivery_status, "none");
   assert.equal(result.order.payment_method, "cash_on_arrival");
   assert.equal(repository.insertedRecord?.user_id, "firebase-customer-1");
-  assert.match(result.deliveryProof?.pin ?? "", /^\d{4}$/);
-  assert.match(result.deliveryProof?.qr_token ?? "", /^le_[0-9a-f]{64}$/);
-  assert.notEqual(repository.insertedRecord?.delivery_pin_hash, result.deliveryProof?.pin);
+  assert.equal(result.deliveryProof, undefined);
+  assert.equal(result.order.delivery_fee, 0);
 });
 
 test("a database failure is a real failure and never fabricates an order", async () => {
   const repository = new MemoryRepository();
   repository.insertError = { code: "08006", message: "connection failed" };
   await assert.rejects(
-    () => createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET),
+    () => createOrder(repository, "firebase-customer-1", pickupInput(), TEST_DELIVERY_PROOF_SECRET),
     (error: unknown) => error instanceof OrderContractError && error.code === "ORDER_PERSISTENCE_FAILED",
   );
 });
 
 test("idempotent retry returns the confirmed database order", async () => {
   const repository = new MemoryRepository();
-  const first = await createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET);
-  const retry = await createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET);
+  const first = await createOrder(repository, "firebase-customer-1", pickupInput(), TEST_DELIVERY_PROOF_SECRET);
+  const retry = await createOrder(repository, "firebase-customer-1", pickupInput(), TEST_DELIVERY_PROOF_SECRET);
   assert.equal(first.order.id, retry.order.id);
   assert.equal(retry.replayed, true);
   assert.deepEqual(retry.deliveryProof, first.deliveryProof);
@@ -237,7 +240,7 @@ test("idempotent retry returns the confirmed database order", async () => {
 
 test("completed order replay does not regenerate an active delivery proof", async () => {
   const repository = new MemoryRepository();
-  const first = await createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET);
+  const first = await createOrder(repository, "firebase-customer-1", pickupInput(), TEST_DELIVERY_PROOF_SECRET);
   repository.existing = {
     ...first.order,
     status: "delivered",
@@ -246,15 +249,15 @@ test("completed order replay does not regenerate an active delivery proof", asyn
     delivery_qr_hash: null,
   };
 
-  const replay = await createOrder(repository, "firebase-customer-1", input());
+  const replay = await createOrder(repository, "firebase-customer-1", pickupInput());
   assert.equal(replay.replayed, true);
   assert.equal(replay.deliveryProof, undefined);
 });
 
 test("reusing an idempotency key for changed intent is rejected", async () => {
   const repository = new MemoryRepository();
-  await createOrder(repository, "firebase-customer-1", input(), TEST_DELIVERY_PROOF_SECRET);
-  const changed = input();
+  await createOrder(repository, "firebase-customer-1", pickupInput(), TEST_DELIVERY_PROOF_SECRET);
+  const changed = pickupInput();
   changed.tip_amount = 5;
   await assert.rejects(
     () => createOrder(repository, "firebase-customer-1", changed, TEST_DELIVERY_PROOF_SECRET),
@@ -262,14 +265,11 @@ test("reusing an idempotency key for changed intent is rejected", async () => {
   );
 });
 
-test("delivery checkout fails closed when delivery proof verification is not configured", async () => {
+test("new delivery creation is deferred without affecting saved-order recovery", async () => {
   const repository = new MemoryRepository();
-  await assert.rejects(
-    () => createOrder(repository, "firebase-customer-1", input()),
-    (error: unknown) =>
-      error instanceof OrderContractError && error.code === "DELIVERY_CONFIRMATION_NOT_CONFIGURED",
-  );
-  assert.equal(repository.insertedRecord, null);
+  await assert.rejects(() => createOrder(repository, "firebase-customer-1", input()),
+    (error: unknown) => error instanceof OrderContractError && error.code === "DELIVERY_LAUNCH_DEFERRED");
+  assert.equal(repository.insertCalls, 0);
 });
 
 test("merchant ready action starts rider search only after preparation", () => {
@@ -297,4 +297,66 @@ test("merchant ready action starts rider search only after preparation", () => {
   assert.equal(preparing.delivery_status, "none");
   assert.equal(ready.delivery_status, "none");
   assert.equal(searching.delivery_status, "finding_rider");
+});
+
+
+test("replay recovers saved prices after stock, price and shop availability change", async () => {
+  const repo = new MemoryRepository();
+  const first = await createOrder(repo, "customer", pickupInput());
+  repo.shop.is_active = false;
+  repo.shop.archived_at = "2026-10-01";
+  repo.menu = [];
+  const retry = await createOrder(repo, "customer", pickupInput());
+  assert.equal(retry.order.id, first.order.id);
+  assert.equal(retry.order.total_price, first.order.total_price);
+  assert.equal(repo.insertCalls, 1);
+});
+
+test("replay rejects other customers, changed contact and missing fulfillment evidence", async () => {
+  const repo = new MemoryRepository();
+  await createOrder(repo, "customer", pickupInput());
+  for (const [uid, request] of [["other", pickupInput()], ["customer", {...pickupInput(), customer_details: {...pickupInput().customer_details, phone: "0722222222"}}]] as const) {
+    await assert.rejects(() => createOrder(repo, uid, request), (e: unknown) => e instanceof OrderContractError && e.code === "IDEMPOTENCY_CONFLICT");
+  }
+  delete repo.existing!.delivery_type;
+  await assert.rejects(() => createOrder(repo, "customer", pickupInput()), (e: unknown) => e instanceof OrderContractError && e.code === "IDEMPOTENCY_CONFLICT");
+});
+
+test("missing database confirmation never produces an order", async () => {
+  const repo = new MemoryRepository();
+  repo.insertOrder = async () => ({order: null, error: null});
+  await assert.rejects(() => createOrder(repo, "customer", pickupInput()), (e: unknown) => e instanceof OrderContractError && e.code === "ORDER_PERSISTENCE_FAILED");
+});
+
+test("quote rejects archived shops and invalid numeric input", async () => {
+  const repo = new MemoryRepository();
+  repo.shop.archived_at = "2026-10-01";
+  await assert.rejects(() => quoteOrder(repo, "customer", pickupInput()), (e: unknown) => e instanceof OrderContractError && e.code === "SHOP_UNAVAILABLE");
+  for (const price of ["", " ", "Infinity", "0x10", -1, Infinity, 1.001]) {
+    repo.shop.archived_at = null;
+    repo.menu[0].price = price;
+    await assert.rejects(() => quoteOrder(repo, "customer", pickupInput()), (e: unknown) => e instanceof OrderContractError && e.code === "INVALID_SERVER_PRICE");
+  }
+  for (const tip of [null, "3", true, NaN, Infinity, -1, 0.001]) assert.throws(() => parseCreateOrderInput({...validRequest(), tip_amount: tip}));
+  for (const lat of [null, "", "-25.983", false]) assert.throws(() => parseCreateOrderInput({...validRequest(), delivery_coordinates: {lat, lng: 28}}));
+  assert.throws(() => parseCreateOrderInput({...validRequest(), items: [{menu_item_id: "menu-1", quantity: 1, options: [{price: 5}]}]}));
+});
+
+
+test("legacy saved delivery replay remains recoverable while new delivery creation is gated", async () => {
+  const repo = new MemoryRepository();
+  const request = input();
+  const quoted = await quoteOrder(repo, "customer", request);
+  repo.existing = {id:"saved-delivery", shop_id:request.shop_id, user_id:"customer", rider_id:"r",
+    status:"delivered", delivery_status:"delivered", delivery_type:"delivery", payment_method:request.payment_method,
+    price:quoted.subtotal,total_price:quoted.total_price,delivery_fee:quoted.delivery_fee,service_fee:quoted.service_fee,
+    discount_amount:0,tip_amount:request.tip_amount,items:[{menu_item_id:"menu-1",quantity:2,unit_price:25,line_total:50}],
+    lat:request.delivery_coordinates!.lat,lng:request.delivery_coordinates!.lng,notes:null,
+    customer_name:request.customer_details.name,phone:request.customer_details.phone,email:request.customer_details.email,
+    address:request.customer_details.address,city:request.customer_details.city};
+  repo.menu=[]; repo.shop.is_active=false;
+  const result = await createOrder(repo, "customer", request);
+  assert.equal(result.replayed,true);
+  assert.equal(result.order.id,"saved-delivery");
+  assert.equal(repo.insertCalls,0);
 });

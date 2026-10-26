@@ -412,3 +412,16 @@ All `/api/v1` responses use `Cache-Control: no-store`, and Express ETag generati
 - orderability is still protected by existing approved + is_active server checks
 - catalog API does not read Firestore
 - no live migration was required
+
+
+## Pickup launch API safety foundation (local branch, 2026-10-26)
+
+The owner-approved commercial pilot is pickup only. Delivery is deferred, not deleted. Firebase Auth supplies identity, the LocalEats API authorizes business operations, and Supabase/Postgres is authoritative. Historical direct-browser/cache fallback descriptions above do not authorize mutations.
+
+This schema-independent foundation rejects unknown/terminal lifecycle pairs, conditions merchant/customer transitions on current status and assignment, rejects unsupported item options and invalid amounts, and checks shop archival/availability. Saved order retries compare existing persisted intent before consulting today's catalog; missing legacy intent conflicts rather than being invented. No fingerprint column was added.
+
+New delivery creation and new Rider offers/claims fail closed during pickup launch. Phase 1 verification, pairing, history and delivery implementation remain. Existing assigned delivery continuation requires the matching Rider, coherent lifecycle and valid persisted coordinates; explicit collection is rejected. Completed assigned history does not require historical GPS. A missing fulfillment discriminator is not inferred from an address or fee. Existing delivery RPCs retain their own atomic authority; no live RPC state or active-delivery preflight was verified in this change.
+
+Pickup persistence remains blocked by the existing API/schema mismatch (delivery_type and delivery-proof insert columns). Quote consent, payment/collection audit facts, Ready notification persistence and a durable notification outbox still need separately approved contracts/schema work. No SQL, migration, deployment or production-data operation was performed. No new paid service, timer, queue, notification provider, environment setting or scheduler was introduced.
+
+The API exports an Express request handler and uses request-scoped work. The Docker/start command currently runs a module that does not listen on a port; it is not a verified standalone hosting option. FCM itself is no-cost, but this does not certify hosting/database quotas. The connected Vercel team response does not expose its plan. Vercel Hobby is restricted to non-commercial personal use and cannot be assumed suitable for this commercial pilot. Hosting eligibility must be established before production release.
