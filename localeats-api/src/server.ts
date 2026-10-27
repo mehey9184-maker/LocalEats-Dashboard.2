@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 
+import { pickupNotificationRoutes } from "./routes/pickupNotifications.js";
 import healthRoutes from "./routes/health.js";
 import merchantRoutes from "./routes/merchant.js";
 import adminRoutes from "./routes/admin.js";
@@ -27,7 +28,7 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -36,6 +37,7 @@ app.use(express.json());
 // Routes
 app.use("/health", healthRoutes);
 app.use("/api/v1/merchant", merchantRoutes);
+app.use("/api/v1", pickupNotificationRoutes);
 app.use("/api/v1/orders", customerOrderRoutes);
 app.use("/api/v1/merchant/orders", merchantOrderRoutes);
 app.use("/api/v1/rider/orders", riderOrderRoutes);

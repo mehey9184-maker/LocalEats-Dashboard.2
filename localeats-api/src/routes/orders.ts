@@ -4,17 +4,16 @@ import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 import {
   assertLifecycleTransition,
   OrderContractError,
-  parseCreateOrderInput,
 } from "../orders/orderContract.js";
 import {
-  createOrder,
   lifecycleStateFromOrder,
   lifecycleUpdateFor,
   orderRequiresDeliveryProof,
-  quoteOrder,
   SupabaseOrderRepository,
   type StoredOrder,
 } from "../orders/orderService.js";
+import { commandPickup, createPickup, parsePickupInput, pickupPricing, pickupQuote } from "../orders/pickupService.js";
+import { drainPickupPush } from "../orders/pickupPush.js";
 import { deriveDeliveryProof } from "../orders/deliveryProof.js";
 
 const router = Router();
@@ -30,6 +29,7 @@ const withoutDeliveryProofState = (
   | "delivery_pin_locked_until"
 > => {
   const {
+    create_intent_hash: _intentHash,
     delivery_pin_hash: _pinHash,
     delivery_qr_hash: _qrHash,
     delivery_pin_failed_attempts: _pinAttempts,
@@ -70,8 +70,8 @@ router.post("/quote", authenticateFirebase, async (req: AuthenticatedRequest, re
     const userId = req.authUser?.uid;
     if (!userId) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
 
-    const input = parseCreateOrderInput(req.body);
-    const quote = await quoteOrder(repository, userId, input);
+    const request = parsePickupInput(req.body,false);
+    const quote = pickupQuote(await pickupPricing(repository,userId,request));
     res.status(200).json({ success: true, quote });
   } catch (error) {
     sendOrderError(res, error);
@@ -83,13 +83,11 @@ router.post("/", authenticateFirebase, async (req: AuthenticatedRequest, res: Re
     const userId = req.authUser?.uid;
     if (!userId) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
 
-    const input = parseCreateOrderInput(req.body);
-    const result = await createOrder(repository, userId, input, process.env.DELIVERY_PROOF_SECRET);
+    const result = await createPickup(supabaseAdmin, repository, userId, parsePickupInput(req.body,true));
     res.status(result.replayed ? 200 : 201).json({
       success: true,
       replayed: result.replayed,
       order: withoutDeliveryProofState(result.order),
-      delivery_confirmation: result.deliveryProof,
     });
   } catch (error) {
     sendOrderError(res, error);
@@ -130,7 +128,14 @@ router.get("/:id", authenticateFirebase, async (req: AuthenticatedRequest, res: 
       .maybeSingle();
     if (error) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Order could not be loaded.");
     if (!data) throw new OrderContractError(404, "ORDER_NOT_FOUND", "Order not found.");
-    res.status(200).json({ success: true, order: customerOrderResponse(data as StoredOrder) });
+    let events: unknown[] = [];
+    if (data.create_intent_hash != null) {
+      const facts=await supabaseAdmin.from("pickup_order_events").select("id,kind,revision,occurred_at,details")
+        .eq("order_id",data.id).order("revision",{ascending:true});
+      if(facts.error) throw new OrderContractError(503,"DATABASE_UNAVAILABLE","Order history could not be loaded.");
+      events=facts.data ?? [];
+    }
+    res.status(200).json({ success: true, order: customerOrderResponse(data as StoredOrder), events });
   } catch (error) {
     sendOrderError(res, error);
   }
@@ -149,6 +154,11 @@ router.post("/:id/cancel", authenticateFirebase, async (req: AuthenticatedReques
       .maybeSingle();
     if (loadError) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Order could not be loaded.");
     if (!existing) throw new OrderContractError(404, "ORDER_NOT_FOUND", "Order not found.");
+    if (existing.create_intent_hash != null || existing.delivery_type === "collection") {
+      const result=await commandPickup(supabaseAdmin,userId,orderId,"cancel",req.body);
+      res.status(200).json({success:true,replayed:result.replayed,order:customerOrderResponse(result.order)});
+      return;
+    }
     if (lifecycleStateFromOrder(existing as StoredOrder) !== "pending") {
       throw new OrderContractError(
         409,
@@ -240,8 +250,14 @@ const updateMerchantOrder = async (
   uid: string,
   orderId: string,
   action: "accept" | "ready",
+  body: unknown,
 ): Promise<StoredOrder> => {
   const order = await loadMerchantOrder(uid, orderId);
+  if (order.create_intent_hash != null || order.delivery_type === "collection") {
+    const result=await commandPickup(supabaseAdmin,uid,orderId,action,body);
+    if (action === "ready") await drainPickupPush(supabaseAdmin,uid);
+    return result.order;
+  }
   const current = lifecycleStateFromOrder(order);
 
   let update: Record<string, unknown>;
@@ -281,7 +297,7 @@ merchantOrderRoutes.post(
     try {
       const uid = req.authUser?.uid;
       if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
-      const order = await updateMerchantOrder(uid, routeParam(req.params.id), "accept");
+      const order = await updateMerchantOrder(uid, routeParam(req.params.id), "accept", req.body);
       res.status(200).json({ success: true, order: withoutDeliveryProofState(order) });
     } catch (error) {
       sendOrderError(res, error);
@@ -296,10 +312,21 @@ merchantOrderRoutes.post(
     try {
       const uid = req.authUser?.uid;
       if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
-      const order = await updateMerchantOrder(uid, routeParam(req.params.id), "ready");
+      const order = await updateMerchantOrder(uid, routeParam(req.params.id), "ready", req.body);
       res.status(200).json({ success: true, order: withoutDeliveryProofState(order) });
     } catch (error) {
       sendOrderError(res, error);
     }
   },
 );
+
+for (const [path,action] of [["reject","reject"],["payment-confirmation","confirm_payment"],["collect","collect"]] as const) {
+  merchantOrderRoutes.post(`/:id/${path}`,authenticateFirebase,async(req:AuthenticatedRequest,res:Response):Promise<void>=>{
+    try {
+      const uid=req.authUser?.uid;
+      if (!uid) throw new OrderContractError(401,"UNAUTHORIZED","Authentication required.");
+      const result=await commandPickup(supabaseAdmin,uid,routeParam(req.params.id),action,req.body);
+      res.status(200).json({success:true,replayed:result.replayed,order:withoutDeliveryProofState(result.order)});
+    } catch(error) { sendOrderError(res,error); }
+  });
+}
