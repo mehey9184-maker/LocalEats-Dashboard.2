@@ -8,7 +8,7 @@ const id="550e8400-e29b-41d4-a716-446655440000";
 const raw=()=>({contract_version:"pickup-v1",idempotency_key:id,shop_id:"shop",items:[{menu_item_id:"item",quantity:1}],
   delivery_type:"collection",delivery_schedule_mode:"standard",payment_method:"cash",customer_details:{name:"Customer",phone:"+27712345678"},
   launch_location:{lat:-26,lng:28}});
-const repo=():OrderRepository=>({findOrderByIdempotencyKey:async()=>null,findShop:async()=>({id:"shop",name:"Shop",is_active:true,
+const repo=():OrderRepository=>({findOrderByIdempotencyKey:async()=>null,findShop:async()=>({id:"shop",name:"Shop",location:"Tembisa",is_active:true,
   approval_status:"approved",archived_at:null,latitude:-26,longitude:28,lat:-26,lng:28}),
   findMenuItems:async()=>[{id:"item",shop_id:"shop",name:"Meal",price:25,is_available:true}],insertOrder:async()=>{throw Error("not atomic");}});
 const rpc=(call:(name:string,args:Record<string,unknown>)=>Promise<unknown>):RpcClient=>({rpc:call} as unknown as RpcClient);
@@ -80,4 +80,12 @@ test("push rechecks lease/token and awaits fenced completion; failure does not r
   assert.equal(calls.at(-1)![1].p_sent,false);
   const denied=rpc(async(name)=>({data:name==="pickup_claim_push" ? job : false,error:null}));
   await drainPickupPush(denied,"customer",async()=>{throw Error("should not send");});
+});
+
+test("pickup quote rejects missing or outside-pilot shop metadata without classifying it",async()=>{
+ const repository=repo(),shop=await repository.findShop("shop");assert.ok(shop);
+ for(const location of [null,"","Elsewhere"]){
+  repository.findShop=async()=>({...shop,location});
+  await assert.rejects(()=>pickupPricing(repository,"customer",parsePickupInput(raw(),false)),/OUTSIDE_PICKUP_PILOT/);
+ }
 });

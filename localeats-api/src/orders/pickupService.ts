@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { draftAssertConsent, draftHash, draftReplayCreation, DraftContractError } from "../contracts/pickupDraft.js";
-import { assertShopCanAcceptOrder, calculateAuthoritativePrice, calculateDistanceKm, OrderContractError,
+import { isPickupPilotShop, assertShopCanAcceptOrder, calculateAuthoritativePrice, calculateDistanceKm, OrderContractError,
   parseCreateOrderInput, type CreateOrderInput, type AuthoritativePrice } from "./orderContract.js";
 import type { OrderRepository, StoredOrder } from "./orderService.js";
 
@@ -52,6 +52,7 @@ export async function pickupPricing(repository: OrderRepository, uid: string, re
   const shop = await repository.findShop(request.input.shop_id);
   if (!shop) return fail(404,"SHOP_NOT_FOUND");
   assertShopCanAcceptOrder(shop,request.input);
+  if (!isPickupPilotShop(shop.location)) return fail(422,"OUTSIDE_PICKUP_PILOT");
   const lat=shop.lat ?? shop.latitude, lng=shop.lng ?? shop.longitude;
   if (typeof lat!=="number" || !Number.isFinite(lat) || Math.abs(lat)>90 || typeof lng!=="number" || !Number.isFinite(lng) || Math.abs(lng)>180)
     return fail(409,"SHOP_LOCATION_UNAVAILABLE");
@@ -71,7 +72,7 @@ export async function pickupRpc(client: RpcClient, name: string, args: Record<st
   const {data,error}=await client.rpc(name,args);
   if (error) {
     const code = typeof error.message==="string" ? error.message : "";
-    if (code==="OUTSIDE_PICKUP_RADIUS") return fail(422,code);
+    if (code==="OUTSIDE_PICKUP_RADIUS" || code==="OUTSIDE_PICKUP_PILOT") return fail(422,code);
     if (code==="FORBIDDEN") return fail(403,code);
     if (code==="ORDER_NOT_FOUND") return fail(404,code);
     if (conflicts.has(code)) return fail(409,code);

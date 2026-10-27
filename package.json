@@ -7,7 +7,8 @@
     "dev": "vite --port 3000 --host 0.0.0.0",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:pickup": "node --experimental-strip-types --test tests/pickup-client.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.47.0",

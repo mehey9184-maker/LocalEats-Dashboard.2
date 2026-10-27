@@ -29,7 +29,7 @@ begin
       ('orders','email','text'), ('orders','address','text'), ('orders','city','text'),
       ('orders','notes','text'), ('orders','product_name','text'), ('orders','product_variant','text'),
       ('orders','created_at','timestamp with time zone'), ('orders','updated_at','timestamp with time zone'),
-      ('shops','id','text'), ('shops','owner_id','text'),
+      ('shops','location','text'), ('shops','id','text'), ('shops','owner_id','text'),
       ('shops','is_active','boolean'), ('shops','approval_status','text'),
       ('shops','archived_at','timestamp with time zone'),
       ('menu_items','shop_id','text'),
@@ -353,6 +353,7 @@ begin
     then raise exception 'SHOP_LOCATION_UNAVAILABLE'; end if;
   a := power(sin(radians(slat-clat)/2),2) + cos(radians(slat))*cos(radians(clat))*power(sin(radians(slng-clng)/2),2);
   if 6371*2*asin(sqrt(least(1.0,greatest(0.0,a)))) > 4 then raise exception 'OUTSIDE_PICKUP_RADIUS'; end if;
+  if sh.location is null or sh.location !~* '\m(tembisa|thembisa|ivory[[:space:]]+park)\M' then raise exception 'OUTSIDE_PICKUP_PILOT'; end if;
   if jsonb_typeof(p_record->'items') is distinct from 'array' then raise exception 'INVALID_ITEMS'; end if;
   if jsonb_array_length(p_record->'items') not between 1 and 50 then raise exception 'INVALID_ITEMS'; end if;
   if (select count(*) <> count(distinct x->>'menu_item_id') from jsonb_array_elements(p_record->'items') x) then

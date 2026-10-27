@@ -3,7 +3,7 @@ create role anon nologin;
 create role authenticated nologin;
 create role service_role nologin bypassrls;
 grant usage on schema public to anon,authenticated,service_role;
-create table public.shops(id text primary key,owner_id text,name text,is_active boolean,approval_status text,
+create table public.shops(id text primary key,owner_id text,name text,location text,is_active boolean,approval_status text,
   archived_at timestamptz,latitude double precision,longitude double precision,lat double precision,lng double precision);
 create table public.menu_items(id text primary key,shop_id text references public.shops(id),name text,price numeric,is_available boolean);
 create table public.rider_profiles(id uuid primary key);
@@ -22,7 +22,7 @@ create policy legacy_browser on public.orders to authenticated using (true) with
 grant select,insert,update,delete on public.orders to authenticated,service_role;
 grant select on public.shops,public.menu_items to service_role;
 grant update(id) on public.shops,public.menu_items to service_role; -- SELECT FOR SHARE needs an update privilege.
-insert into public.shops values('shop','merchant','Fixture shop',true,'approved',null,-26.0,28.0,-26.0,28.0);
+insert into public.shops values('shop','merchant','Fixture shop','Tembisa synthetic fixture',true,'approved',null,-26.0,28.0,-26.0,28.0);
 insert into public.menu_items values('item','shop','Fixture meal',25,true);
 insert into public.rider_profiles values('550e8400-e29b-41d4-a716-000000000099');
 insert into public.orders(id,shop_id,user_id,status,delivery_status,rider_id) values

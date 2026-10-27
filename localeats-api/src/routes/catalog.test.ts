@@ -145,3 +145,21 @@ test("Catalog Router - GET shop menu (behaviors 10, 11, 12, 13, 14, 18)", async 
     assert.equal(res.status, 404);
   });
 });
+
+test("pickup discovery excludes unknown coordinates, unavailable shops, outside towns and beyond 4km",async()=>{
+ const {app,fakeDb}=createTestApp();
+ const eligible={id:"near",name:"Fixture",location:"Ivory Park",is_active:true,lat:-26,lng:28};
+ fakeDb.mockShopData=[eligible,{...eligible,id:"far",lat:-26.1},{...eligible,id:"missing",lat:null},
+  {...eligible,id:"closed",is_active:false},{...eligible,id:"outside",location:"Elsewhere"}];
+ await runWithServer(app,async(base)=>{
+  const response=await fetch(base+"/api/v1/catalog/pickup-shops?lat=-26&lng=28");
+  assert.equal(response.status,200);
+  assert.deepEqual((await response.json()).shops.map((shop:{id:string})=>shop.id),["near"]);
+  for(const query of ["","?lat=&lng=28","?lat=NaN&lng=28","?lat=-91&lng=28","?lat=-26&lng=181"]) {
+   assert.equal((await fetch(base+"/api/v1/catalog/pickup-shops"+query)).status,400);
+  }
+  fakeDb.mockError=new Error("Fixture database unavailable");
+  const failure=await fetch(base+"/api/v1/catalog/pickup-shops?lat=-26&lng=28");
+  assert.equal(failure.status,503);assert.equal((await failure.json()).success,false);
+ });
+});

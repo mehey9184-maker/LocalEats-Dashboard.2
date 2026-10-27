@@ -1,4 +1,4 @@
-param([string]$PostgresBin = 'C:\Program Files\PostgreSQL\17\bin', [int]$Port=55432)
+param([string]$PostgresBin = 'C:\Program Files\PostgreSQL\17\bin', [int]$Port=55432, [switch]$Journey, [switch]$Serve)
 $ErrorActionPreference='Stop'
 $apiRoot=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $repoRoot=(Resolve-Path (Join-Path $apiRoot '..')).Path
@@ -37,6 +37,11 @@ try {
   if((Get-Content (Join-Path $cluster ($loser+'.err')) -Raw) -notmatch 'ORDER_STATE_CHANGED') { throw 'Unexpected race failure.' }
   & (Join-Path $PostgresBin 'psql.exe') -X --no-password -d $testConnection -v ON_ERROR_STOP=1 -f (Join-Path $PSScriptRoot 'race-verify.sql')
   if($LASTEXITCODE -ne 0) { throw 'Race verification failed.' }
+  if($Journey -or $Serve) {
+    $mode=if($Serve){'serve'}else{'test'}
+    & node --experimental-strip-types (Join-Path $PSScriptRoot 'journey.mjs') $testConnection (Join-Path $PostgresBin 'psql.exe') $mode
+    if($LASTEXITCODE -ne 0) { throw 'Two-client pickup journey failed.' }
+  }
   Write-Output 'PICKUP_DISPOSABLE_POSTGRES_PASSED'
 
 } finally {

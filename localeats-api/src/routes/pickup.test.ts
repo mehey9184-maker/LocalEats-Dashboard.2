@@ -23,7 +23,7 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
   };
   (supabaseAdmin as any).from=(table:string)=>{
     const filters:Array<[string,unknown]>=[];reads.push({table,filters});
-    const result=()=>({data:table==="shops" ? {id:"shop",owner_id:"merchant",name:"Shop",is_active:true,approval_status:"approved",archived_at:null,lat:-26,lng:28} :
+    const result=()=>({data:table==="shops" ? {id:"shop",owner_id:"merchant",name:"Shop",location:"Tembisa",is_active:true,approval_status:"approved",archived_at:null,lat:-26,lng:28} :
       table==="menu_items" ? [{id:"item",shop_id:"shop",name:"Meal",price:25,is_available:true}] :
       table==="pickup_order_events" ? [] : persisted ? {id,shop_id:"shop",user_id:"customer",delivery_type:"collection",create_intent_hash:"a".repeat(64)} : null,error:null});
     const query:any={select:()=>query,eq:(key:string,value:unknown)=>{filters.push([key,value]);return query;},
