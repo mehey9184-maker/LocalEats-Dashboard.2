@@ -1,3 +1,4 @@
+import {legacyOrderGuard} from "../legacyOrderGuard.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
@@ -32,7 +33,7 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
       upsert:(record:Record<string,unknown>)=>{subscription=record;return query;},update:()=>query};
     return query;
   };
-  const app=express();configureApiCacheSafety(app);app.use(express.json());
+  const app=express();configureApiCacheSafety(app);app.use(legacyOrderGuard);app.use(express.json());
   app.use("/api/v1",pickupNotificationRoutes);app.use("/api/v1/orders",customerOrderRoutes);app.use("/api/v1/merchant/orders",merchantOrderRoutes);
   const server=app.listen(0,"127.0.0.1");await once(server,"listening");
   const call=(path:string,uid?:string,body?:unknown,method="POST"):Promise<{status:number;body:any;cache:unknown}>=>new Promise((resolve,reject)=>{

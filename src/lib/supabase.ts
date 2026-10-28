@@ -1,3 +1,4 @@
+import {legacyOrderWriteError} from "./legacyOrderWrite";
 /**
  * Firestore Compatibility & Migration Bridge
  * 
@@ -246,6 +247,9 @@ class FirestoreQueryBuilder {
   }
 
   private async execute(): Promise<{ data: unknown; error: unknown; count?: number }> {
+    if(this.collectionName === "orders" && (this.insertData !== undefined || this.updateData !== undefined || this.isDelete)) {
+      return {data:null,error:legacyOrderWriteError()};
+    }
     try {
       const collRef = collection(db, this.collectionName);
 

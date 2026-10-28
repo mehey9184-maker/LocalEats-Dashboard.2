@@ -1,3 +1,4 @@
+import {legacyOrderGuard} from "./legacyOrderGuard.js";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -32,6 +33,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+app.use(legacyOrderGuard);
 app.use(express.json());
 
 // Routes

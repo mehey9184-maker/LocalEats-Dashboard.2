@@ -1,3 +1,4 @@
+import {legacyOrderWriteError} from "./legacyOrderWrite";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
   getAuth, 
@@ -781,38 +782,14 @@ export async function getFirestoreOrders(shopId?: string | number | (string | nu
  * Update an Order in Firestore
  */
 export async function updateFirestoreOrder(orderId: string | number, updates: Partial<Order>): Promise<{ error: Error | null }> {
-  try {
-    const oRef = doc(db, "orders", String(orderId));
-    await setDoc(oRef, {
-      ...updates,
-      updated_at: new Date().toISOString(),
-    }, { merge: true });
-    return { error: null };
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`);
-    return { error: err as Error };
-  }
+  return {error:legacyOrderWriteError()};
 }
 
 /**
  * Create an Order in Firestore
  */
 export async function createFirestoreOrder(order: Partial<Order>): Promise<{ data: Order | null; error: Error | null }> {
-  try {
-    const orderId = order.id ? String(order.id) : `ord_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const oRef = doc(db, "orders", orderId);
-    const payload = {
-      ...order,
-      id: orderId,
-      created_at: order.created_at || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    await setDoc(oRef, payload, { merge: true });
-    return { data: payload as Order, error: null };
-  } catch (err) {
-    handleFirestoreError(err, OperationType.CREATE, "orders");
-    return { data: null, error: err as Error };
-  }
+  return {data:null,error:legacyOrderWriteError()};
 }
 
 /**
