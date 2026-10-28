@@ -1,17 +1,16 @@
+import {pickupReadQuote, SupabasePickupReadRepository} from "../orders/pickupRead.js";
+import {assertPickupWritesDisabled} from "../middleware/pickupWriteGate.js";
 import { Router, type Response } from "express";
 import { authenticateFirebase, type AuthenticatedRequest } from "../middleware/authenticateFirebase.js";
 import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 import {
   assertLifecycleTransition,
   OrderContractError,
-  parseCreateOrderInput,
 } from "../orders/orderContract.js";
 import {
-  createOrder,
   lifecycleStateFromOrder,
   lifecycleUpdateFor,
   orderRequiresDeliveryProof,
-  quoteOrder,
   SupabaseOrderRepository,
   type StoredOrder,
 } from "../orders/orderService.js";
@@ -70,30 +69,15 @@ router.post("/quote", authenticateFirebase, async (req: AuthenticatedRequest, re
     const userId = req.authUser?.uid;
     if (!userId) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
 
-    const input = parseCreateOrderInput(req.body);
-    const quote = await quoteOrder(repository, userId, input);
+    const quote = await pickupReadQuote(new SupabasePickupReadRepository(supabaseAdmin), userId, req.body);
     res.status(200).json({ success: true, quote });
   } catch (error) {
     sendOrderError(res, error);
   }
 });
 
-router.post("/", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  try {
-    const userId = req.authUser?.uid;
-    if (!userId) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
-
-    const input = parseCreateOrderInput(req.body);
-    const result = await createOrder(repository, userId, input, process.env.DELIVERY_PROOF_SECRET);
-    res.status(result.replayed ? 200 : 201).json({
-      success: true,
-      replayed: result.replayed,
-      order: withoutDeliveryProofState(result.order),
-      delivery_confirmation: result.deliveryProof,
-    });
-  } catch (error) {
-    sendOrderError(res, error);
-  }
+router.post("/", authenticateFirebase, async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+  res.status(503).json({success:false,code:"PICKUP_WRITES_DISABLED",error:"New order creation is not enabled. No order was saved."});
 });
 
 router.get("/", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -149,6 +133,7 @@ router.post("/:id/cancel", authenticateFirebase, async (req: AuthenticatedReques
       .maybeSingle();
     if (loadError) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Order could not be loaded.");
     if (!existing) throw new OrderContractError(404, "ORDER_NOT_FOUND", "Order not found.");
+    assertPickupWritesDisabled(existing);
     if (lifecycleStateFromOrder(existing as StoredOrder) !== "pending") {
       throw new OrderContractError(
         409,
@@ -241,6 +226,7 @@ const updateMerchantOrder = async (
   action: "accept" | "ready",
 ): Promise<StoredOrder> => {
   const order = await loadMerchantOrder(uid, orderId);
+  assertPickupWritesDisabled(order);
   const current = lifecycleStateFromOrder(order);
 
   let update: Record<string, unknown>;

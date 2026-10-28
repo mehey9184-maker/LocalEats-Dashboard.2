@@ -1,3 +1,4 @@
+import {pickupWriteGate} from "./middleware/pickupWriteGate.js";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -19,6 +20,12 @@ const PORT = process.env.PORT || 4000;
 
 configureApiCacheSafety(app);
 
+app.use((req,res,next)=>{
+  if(!isAllowedOrigin(req.headers.origin)) {
+    res.status(403).json({success:false,code:"CORS_ORIGIN_DENIED",error:"Origin is not allowed."});return;
+  }
+  next();
+});
 app.use(cors({
   origin: (origin, callback) => {
     if (isAllowedOrigin(origin)) {
@@ -31,6 +38,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+app.use(pickupWriteGate);
 app.use(express.json());
 
 // Routes

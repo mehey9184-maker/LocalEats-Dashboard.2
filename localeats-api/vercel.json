@@ -1,0 +1,7 @@
+{
+  "git": {
+    "deploymentEnabled": {
+      "integration/customer-api-read-compat": true
+    }
+  }
+}

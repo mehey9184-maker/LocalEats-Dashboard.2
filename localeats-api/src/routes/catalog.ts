@@ -1,4 +1,6 @@
 import { Router, Request, Response } from "express";
+import {calculateDistanceKm} from "../orders/orderContract.js";
+import {isPickupPilotShop} from "../orders/pickupRead.js";
 import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 
 const PUBLIC_SHOP_FIELDS = "id,name,description,location,category,logo_url,rating,opening_time,closing_time,is_active,latitude,longitude,lat,lng,story";
@@ -47,6 +49,25 @@ export class SupabaseCatalogRepository implements CatalogRepository {
 
 export const makeCatalogRouter = (repository: CatalogRepository): Router => {
   const router = Router();
+
+  router.get("/pickup-shops", async (req:Request,res:Response):Promise<void>=>{
+    const rawLat=req.query.lat,rawLng=req.query.lng;
+    const numberText=/^-?\d+(?:\.\d+)?$/;
+    if(typeof rawLat!=="string" || typeof rawLng!=="string" || !numberText.test(rawLat) || !numberText.test(rawLng) ||
+      !Number.isFinite(Number(rawLat)) || Math.abs(Number(rawLat))>90 || !Number.isFinite(Number(rawLng)) || Math.abs(Number(rawLng))>180) {
+      res.status(400).json({success:false,code:"INVALID_COORDINATES",error:"Your real location is required."});return;
+    }
+    try {
+      const shops=(await repository.getApprovedShops()).flatMap(shop=>{
+        const lat=shop.lat ?? shop.latitude,lng=shop.lng ?? shop.longitude;
+        if(shop.is_active!==true || !isPickupPilotShop(shop.location) || typeof lat!=="number" ||
+          !Number.isFinite(lat) || Math.abs(lat)>90 || typeof lng!=="number" || !Number.isFinite(lng) || Math.abs(lng)>180)return [];
+        const distance_km=calculateDistanceKm(Number(rawLat),Number(rawLng),lat,lng);
+        return distance_km<=4 ? [{...shop,distance_km}] : [];
+      }).sort((a,b)=>a.distance_km-b.distance_km);
+      res.json({success:true,shops});
+    }catch {res.status(503).json({success:false,error:"Pickup shops could not be loaded."});}
+  });
 
   router.get("/shops", async (req: Request, res: Response): Promise<void> => {
     try {

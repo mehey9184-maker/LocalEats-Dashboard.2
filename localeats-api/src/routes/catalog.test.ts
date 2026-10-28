@@ -44,6 +44,18 @@ function createTestApp() {
   return { app, fakeDb };
 }
 
+test("Pickup catalog enforces real coordinates, active pilot metadata and maximum 4 km",async()=>{
+ const {app,fakeDb}=createTestApp();
+ const valid={id:"eligible",name:"Pickup",is_active:true,location:"Ivory Park",lat:-25.98,lng:28.2};
+ fakeDb.mockShopData=[valid,{...valid,id:"offline",is_active:false},{...valid,id:"outside-area",location:"Elsewhere"},
+  {...valid,id:"distant",lat:-26.5},{...valid,id:"no-gps",lat:null,lng:null}];
+ await runWithServer(app,async base=>{
+  const noLocation=await fetch(base+"/api/v1/catalog/pickup-shops");assert.equal(noLocation.status,400);
+  const result=await fetch(base+"/api/v1/catalog/pickup-shops?lat=-25.98&lng=28.2");assert.equal(result.status,200);
+  const body=await result.json();assert.deepEqual(body.shops.map((shop:any)=>shop.id),["eligible"]);assert.equal(body.shops[0].distance_km,0);
+ });
+});
+
 async function runWithServer(app: express.Express, fn: (baseUrl: string) => Promise<void>) {
   return new Promise<void>((resolve, reject) => {
     const server = http.createServer(app);

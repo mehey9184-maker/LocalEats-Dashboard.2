@@ -40,6 +40,8 @@ export const isAllowedOrigin = (
   environment: CorsOriginEnvironment = process.env
 ): boolean => {
   if (origin === undefined) return true;
+  // Canonical Customer Production origin only; Firebase still authorizes private reads/quotes.
+  if (origin === "https://www.localeatssa.co.za") return true;
 
   const productionOrigin = environment.MERCHANT_DASHBOARD_ORIGIN;
   if (productionOrigin && origin === productionOrigin) return true;
