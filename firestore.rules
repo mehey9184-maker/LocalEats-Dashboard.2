@@ -91,23 +91,13 @@ service cloud.firestore {
         isShopOwner(resource.data.shop_id)
       );
 
-      // Order creation is strictly server-authoritative via createOrder Cloud Function
+      // Order creation is API-owned. The obsolete createOrder callable is guarded separately.
       allow create: if false;
 
-      // Updates: Client or Merchant operational transitions only (Financials locked)
-      // Rider status transitions (claim, pickup, complete) are managed via Cloud Functions
-      allow update: if isAuthenticated() && (
-        // Customer updates (e.g. cancellation / notes before prep)
-        (resource.data.user_id == request.auth.uid &&
-         orderFinancialsAndCoreUnchanged() &&
-         unchanged('rider_id') &&
-         unchanged('delivery_status')) ||
-
-        // Merchant kitchen status workflow (e.g. accepted, preparing, ready_for_pickup)
-        (isShopOwner(resource.data.shop_id) &&
-         orderFinancialsAndCoreUnchanged() &&
-         unchanged('rider_id'))
-      );
+      // Legacy history remains readable above. Creation, kitchen/payment facts
+      // and fulfillment transitions are API-owned; no browser order mutation.
+      // Rider Phase 1 continuation uses its authenticated API / Supabase routes.
+      allow update: if false;
 
       allow delete: if false;
     }

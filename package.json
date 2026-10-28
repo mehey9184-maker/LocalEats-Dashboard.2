@@ -8,6 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "test:rules:static": "node --test tests/firestore-order-guard.test.mjs",
     "test:pickup": "node --experimental-strip-types --test tests/pickup-client.test.mjs tests/legacy-browser-writes.test.mjs"
   },
   "dependencies": {
