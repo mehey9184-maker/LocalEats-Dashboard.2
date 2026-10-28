@@ -7,7 +7,7 @@
   ],
   "git": {
     "deploymentEnabled": {
-      "launch/pickup-only-pilot-01": false
+      "launch/pickup-only-pilot-01": true
     }
   }
 }
