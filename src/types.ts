@@ -117,6 +117,10 @@ export interface MenuItem {
 }
 
 export interface Order {
+  delivery_type?: "collection" | "delivery" | null;
+  pickup_status?: string;
+  payment_status?: "unpaid" | "paid" | null;
+  revision?: number | null;
   id: string;
   shop_id: number;
   user_id: string;

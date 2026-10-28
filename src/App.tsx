@@ -1,3 +1,4 @@
+import {isPickupOrder} from "./services/merchantPickupPolicy";
 import { checkPrinterConnectivity, printViaBluetooth, printViaUSB } from "./utils/escPosEngine";
 import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
 import React, {
@@ -633,7 +634,7 @@ function App() {
       const cachedOrders = localStorage.getItem("le_orders");
       if (cachedOrders) {
         const parsed = JSON.parse(cachedOrders);
-        if (Array.isArray(parsed)) setOrders(parsed);
+        // Cached orders cannot establish API pickup authority; load them only from authenticated reads.
       }
     } catch (e) {
       console.error("Error parsing cached orders. Resetting item.", e);
@@ -753,6 +754,8 @@ function App() {
   // Automatic Shop Opening/Closing based on synchronized internet/server hours
   useEffect(() => {
     const checkShopHours = async () => {
+      if(window.location.hostname.endsWith(".vercel.app"))return; // Preview verification must not auto-toggle live shops.
+
       if (merchantShopGate.status !== "ready" || !user || shops.length === 0) return;
 
       // Auto schedule is OFF by default. Only run if merchant explicitly enabled automated schedule.
@@ -1138,7 +1141,7 @@ function App() {
     });
 
     // Insert Firestore orders (merges or adds new orders from client app)
-    firestoreOrdersList.forEach((order) => {
+    firestoreOrdersList.filter(order=>!isPickupOrder(order)).forEach((order) => {
       const existing = orderMap.get(String(order.id));
       if (!existing) {
         orderMap.set(String(order.id), order);
@@ -1184,7 +1187,7 @@ function App() {
       processAndSetOrders([], apiOrders);
     } catch (apiError) {
       console.warn("[Orders Sync] Authoritative API unavailable:", apiError);
-      toast.error("Orders could not be refreshed. No cached order changes were applied.");
+      toast.error(apiError instanceof Error ? apiError.message : "Orders could not be refreshed. No cached order changes were applied.");
     }
   }, [user, shops, processAndSetOrders, merchantShopGate.status, currentShop]);
 

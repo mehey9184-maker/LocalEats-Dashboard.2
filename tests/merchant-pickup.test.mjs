@@ -1,0 +1,51 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {isPickupOrder,requireOwnedShop,pickupState,mapApiOrder,pickupCommand,pickupMutationsDisabled,pickupPaymentLabel} from '../src/services/merchantPickupPolicy.ts';
+const order={id:'o',shop_id:'shop-string',delivery_type:'collection',status:'pending',payment_status:'unpaid',revision:0,total_price:25};
+test('shop authority requires actual Firebase UID equality',()=>{
+ assert.equal(requireOwnedShop({id:'s',owner_id:'u'},'u').id,'s');
+ for(const uid of ['', 'other'])assert.throws(()=>requireOwnedShop({id:'s',owner_id:'u'},uid));
+ assert.throws(()=>requireOwnedShop({id:'s'},'u'));
+});
+test('only persisted collection identifies pickup; historical unknown/delivery is not reclassified',()=>{
+ assert.equal(isPickupOrder(order),true);assert.equal(isPickupOrder({order_type:'pickup'}),false);
+ assert.equal(isPickupOrder({delivery_type:'delivery'}),false);
+ const mapped=mapApiOrder({...order,status:'ready_for_pickup'});assert.equal(mapped.status,'ready');assert.equal(mapped.pickup_status,'ready_for_pickup');
+ assert.throws(()=>mapApiOrder({...order,total_price:NaN}));
+});
+test('accept/ready commands preserve canonical status and concurrency contract',()=>{
+ const accept=pickupCommand(order,'accept');assert.equal(accept.path,'accept');assert.equal(accept.body.expected_revision,0);
+ assert.equal(pickupCommand({...order,status:'preparing',revision:1},'ready').path,'ready');
+ assert.throws(()=>pickupCommand(order,'ready'));
+ for(const status of ['cancelled','collected','unknown'])assert.throws(()=>pickupCommand({...order,status},'accept'));
+ assert.throws(()=>pickupState({...order,payment_status:'paid'}));
+});
+test('independent payment and real handover required; no Collected-to-paid inference',()=>{
+ const ready={...order,status:'ready_for_pickup',revision:2};
+ assert.throws(()=>pickupCommand(ready,'collect',{handover_confirmed:true}));
+ assert.equal(pickupCommand(ready,'confirm_payment',{payment_method:'card_machine'}).path,'payment-confirmation');
+ assert.throws(()=>pickupCommand({...ready,payment_status:'paid'},'collect'));
+ assert.equal(pickupCommand({...ready,payment_status:'paid'},'collect',{handover_confirmed:true}).path,'collect');
+ assert.equal(pickupPaymentLabel({...ready,payment_method:'card_machine'}),'Unpaid · pay at shop');
+ assert.equal(pickupPaymentLabel({...ready,payment_status:null}),'Payment status unavailable');
+});
+test('all pickup writes stop before transport and original entry is retained',()=>{
+ let sent=false;assert.throws(()=>{pickupMutationsDisabled();sent=true;});assert.equal(sent,false);
+ const service=readFileSync(new URL('../src/services/MerchantApi.ts',import.meta.url),'utf8');
+ const start=service.indexOf('static async transitionPickupOrder');
+ assert.ok(service.indexOf('pickupMutationsDisabled();',start)<service.indexOf('await fetch(',start));
+ const entry=readFileSync(new URL('../src/main.tsx',import.meta.url),'utf8');assert.match(entry,/import App from '.\/App.tsx'/);assert.doesNotMatch(entry,/PickupMerchantApp/);
+ const workflow=readFileSync(new URL('../src/hooks/useOrderWorkflow.ts',import.meta.url),'utf8');assert.match(workflow,/Pickup orders cannot enter Rider dispatch/);
+});
+
+test('pickup rows with missing schema/state cannot be silently displayed as pending',()=>{
+ assert.throws(()=>mapApiOrder({...order,revision:undefined}));
+ assert.throws(()=>mapApiOrder({...order,status:'cancelled',payment_status:'paid'}));
+});
+
+test('command extras cannot override revision/identity and rejection needs a real reason',()=>{
+ assert.throws(()=>pickupCommand(order,'accept',{expected_revision:99}));
+ assert.throws(()=>pickupCommand(order,'reject'));
+ assert.equal(pickupCommand(order,'reject',{reason:'Out of stock'}).body.expected_revision,0);
+});

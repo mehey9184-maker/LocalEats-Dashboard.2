@@ -1,3 +1,5 @@
+import {PickupOrderActions} from "./PickupOrderActions";
+import {isPickupOrder,pickupPaymentLabel} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
@@ -73,6 +75,7 @@ import { DispatchAlertModal } from "./DispatchAlertModal";
 import { format } from "date-fns";
 
 export const isOrderDelivery = (order: Order): boolean => {
+  if(isPickupOrder(order))return false;
   return order.order_type === "delivery" || !!order.address;
 };
 
@@ -409,6 +412,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   };
 
   const renderRiderStatusBadge = (order: Order) => {
+    if (isPickupOrder(order)) return <PickupOrderActions order={order}/>;
     if (!isOrderDelivery(order)) {
       return (
         <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 text-[8px] font-extrabold uppercase">
@@ -431,7 +435,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             <AlertTriangle size={11} className="text-amber-500 shrink-0" />
             <span>Finding Rider (Unassigned)</span>
           </div>
-          <button
+          <button disabled={isPickupOrder(order)}
             onClick={(e) => {
               e.stopPropagation();
               if (connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
@@ -1494,6 +1498,8 @@ Notes: "${order.notes || "None"}"
                         )
                       }
                     >
+                    {isPickupOrder(order) && <PickupOrderActions order={order}/>}
+
                       <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
                         <div className="relative flex items-start gap-3 w-full sm:w-auto">
                           {order.status === "pending" && (
@@ -1552,7 +1558,7 @@ Notes: "${order.notes || "None"}"
                                 : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200/50"
                             )}>
                               <CreditCard size={11} fill="currentColor" />
-                              {(order.payment_method === "cod" || order.payment_method === "Cash" || order.payment_method === "cash_on_delivery") ? "CASH ON ARRIVAL" : "ONLINE PAID"}
+                              {isPickupOrder(order) ? pickupPaymentLabel(order) : (order.payment_method === "cod" || order.payment_method === "Cash" || order.payment_method === "cash_on_delivery") ? "CASH ON ARRIVAL" : "ONLINE PAID"}
                             </span>
                           </div>
                           <h4
@@ -1633,7 +1639,7 @@ Notes: "${order.notes || "None"}"
                               </div>
                             )}
                             {order.status !== 'completed' && order.status !== 'cancelled' && (
-                              <button
+                              <button disabled={isPickupOrder(order)}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   const newEta = prompt("Enter estimated delivery time (e.g. 20-30 mins):", order.estimated_delivery_time || "25 mins");
@@ -2016,7 +2022,7 @@ Notes: "${order.notes || "None"}"
                                     </p>
                                     {order.rider_id &&
                                       order.delivery_status !== "delivered" && (
-                                        <button
+                                        <button disabled={isPickupOrder(order)}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             onUnassignRider(order.id);
@@ -2255,7 +2261,7 @@ Notes: "${order.notes || "None"}"
                                                       Wake to Tip
                                                     </button>
                                                   ) : (
-                                                    <button
+                                                    <button disabled={isPickupOrder(order)}
                                                       onClick={(e) => {
                                                         e.stopPropagation();
                                                         if (rider.connection_code === "IN-HOUSE") {
@@ -2286,7 +2292,7 @@ Notes: "${order.notes || "None"}"
                                               </div>
                                             );
                                           })}
-                                          <button
+                                          <button disabled={isPickupOrder(order)}
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               onRequestRider(order.id);
@@ -2299,7 +2305,7 @@ Notes: "${order.notes || "None"}"
                                         </div>
                                       </div>
                                     ) : (
-                                      <button
+                                      <button disabled={isPickupOrder(order)}
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           if (connectedRiders.length > 0) {
@@ -2338,7 +2344,7 @@ Notes: "${order.notes || "None"}"
                             <div className="flex-1 flex flex-col gap-2">
                               {isOrderDelivery(order) &&
                                 !order.delivery_status && (
-                                  <button
+                                  <button disabled={isPickupOrder(order)}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       onRequestRider(order.id);
@@ -2380,7 +2386,7 @@ Notes: "${order.notes || "None"}"
                                     placeholder="Receipt message..."
                                   />
                                   <div className="flex gap-2">
-                                    <button
+                                    <button disabled={isPickupOrder(order)}
                                       onClick={() => {
                                         const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
                                         onUpdateStatus(
@@ -2419,7 +2425,7 @@ Notes: "${order.notes || "None"}"
                                     onClick={() =>
                                       setAcceptingOrderId(order.id)
                                     }
-                                    disabled={isLimitReached}
+                                    disabled={isPickupOrder(order) || (isLimitReached)}
                                     className={cn(
                                       "w-full bg-primary text-white font-bold rounded-full shadow-md hover:bg-primary-container transition-colors disabled:opacity-50 disabled:grayscale",
                                       kitchenMode
@@ -2438,7 +2444,7 @@ Notes: "${order.notes || "None"}"
                             <div className="flex-1 flex flex-col gap-2">
                               {isOrderDelivery(order) &&
                                 !order.delivery_status && (
-                                  <button
+                                  <button disabled={isPickupOrder(order)}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       onRequestRider(order.id);
@@ -2476,7 +2482,7 @@ Notes: "${order.notes || "None"}"
                                       />
                                     </div>
                                     <div className="flex gap-2">
-                                      <button
+                                      <button disabled={isPickupOrder(order)}
                                         onClick={() => {
                                           onUpdateStatus(order.id, "preparing", undefined, estimatedTime);
                                           setPreparingOrderId(null);
@@ -2530,7 +2536,7 @@ Notes: "${order.notes || "None"}"
                                   </div>
                                   <div className="flex gap-2">
                                     <button
-                                      disabled={updatingOrderId === order.id}
+                                      disabled={isPickupOrder(order) || (updatingOrderId === order.id)}
                                       onClick={async () => {
                                         setUpdatingOrderId(order.id);
                                         await onUpdateStatus(
@@ -2558,7 +2564,7 @@ Notes: "${order.notes || "None"}"
                               ) : (
                                 <button
                                   onClick={() => setReadyOrderId(order.id)}
-                                  disabled={updatingOrderId === order.id}
+                                  disabled={isPickupOrder(order) || (updatingOrderId === order.id)}
                                   className={cn(
                                     "w-full bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-full shadow-[0_8px_24px_-4px_rgba(167,52,0,0.2)] hover:scale-[0.98] transition-transform",
                                     kitchenMode
@@ -2573,7 +2579,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           )}
                           {order.status === "ready" && (
-                            <button
+                            <button disabled={isPickupOrder(order)}
                               onClick={() =>
                                 onUpdateStatus(order.id, "completed")
                               }
@@ -2636,7 +2642,7 @@ Notes: "${order.notes || "None"}"
                             </button>
                             {order.status !== "completed" &&
                               order.status !== "cancelled" && (
-                                <button
+                                <button disabled={isPickupOrder(order)}
                                   onClick={() => {
                                     setCancellingOrder(order);
                                     setCancelReasonPreset("Out of ingredients / Items unavailable");
@@ -2749,6 +2755,7 @@ Notes: "${order.notes || "None"}"
 
   return (
     <div className="space-y-8">
+      <p role="status" className="text-xs text-on-surface-variant mb-3">Pickup order, payment and collection changes are disabled pending separately approved database activation. Existing management and historical delivery records remain available.</p>
       <section className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
           <div className="max-w-2xl space-y-1">
@@ -3502,7 +3509,7 @@ Notes: "${order.notes || "None"}"
                               placeholder="Receipt message..."
                             />
                             <div className="flex gap-2">
-                              <button
+                              <button disabled={isPickupOrder(order)}
                                 onClick={() => {
                                   const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
                                   onUpdateStatus(order.id, "preparing", finalMsg);
@@ -3532,7 +3539,7 @@ Notes: "${order.notes || "None"}"
                                 <span className="text-[8px] font-bold text-error leading-none mb-0.5">LIMIT REACHED</span>
                               )}
                               <button
-                                disabled={isLimitReached}
+                                disabled={isPickupOrder(order) || (isLimitReached)}
                                 onClick={async (e) => {
                                   e.stopPropagation();
                                   if (isOrderDelivery(order) && !order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
@@ -3683,7 +3690,7 @@ Notes: "${order.notes || "None"}"
                         {/* Delivery Track Badge & Gated Dispatch Action */}
                         <div className="mt-2.5 space-y-1.5">
                           {isDelivery && order.status !== "dispatched" && (
-                            <button
+                            <button disabled={isPickupOrder(order)}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (!order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
@@ -3723,7 +3730,7 @@ Notes: "${order.notes || "None"}"
                                 autoFocus
                               />
                               <div className="flex gap-2">
-                                <button
+                                <button disabled={isPickupOrder(order)}
                                   onClick={() => {
                                     onUpdateStatus(order.id, "preparing", undefined, estimatedTime);
                                     setPreparingOrderId(null);
@@ -3772,7 +3779,7 @@ Notes: "${order.notes || "None"}"
                                 autoFocus
                               />
                               <div className="flex gap-2">
-                                <button
+                                <button disabled={isPickupOrder(order)}
                                   onClick={() => {
                                     onUpdateStatus(order.id, "ready", undefined, estimatedTime);
                                     setReadyOrderId(null);
@@ -3792,7 +3799,7 @@ Notes: "${order.notes || "None"}"
                           ) : (
                             <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
                               <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
-                              <button
+                              <button disabled={isPickupOrder(order)}
                                 onClick={(e) => {
                                   setReadyOrderId(order.id);
                                   const card = e.currentTarget.closest(".order-card");
@@ -3945,7 +3952,7 @@ Notes: "${order.notes || "None"}"
                         {/* Gated Dispatch Action & Rider details */}
                         {isOrderDelivery(order) && order.status !== "dispatched" && (
                           <div className="mt-2.5">
-                            <button
+                            <button disabled={isPickupOrder(order)}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (!order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
@@ -3984,7 +3991,7 @@ Notes: "${order.notes || "None"}"
                         {/* Action buttons */}
                         <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
                           <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
-                          <button
+                          <button disabled={isPickupOrder(order)}
                             onClick={() => onUpdateStatus(order.id, "completed")}
                             className="w-full mt-4 py-5 bg-blue-600 text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-blue-500 active:scale-95 transition-all cursor-pointer text-center block"
                           >
@@ -4878,7 +4885,7 @@ Notes: "${order.notes || "None"}"
                         <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant/60">Payment Method</span>
                         <p className="text-sm font-extrabold text-on-surface mt-0.5 flex items-center gap-1.5">
                           <CreditCard size={14} className="text-primary" />
-                          {orderToAccept.payment_method === "cod" ? "Cash on Arrival" : "Online Paid"}
+                          {isPickupOrder(orderToAccept) ? pickupPaymentLabel(orderToAccept) : orderToAccept.payment_method === "cod" ? "Cash on Arrival" : "Online Paid"}
                         </p>
                       </div>
                     </div>

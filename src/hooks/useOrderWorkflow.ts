@@ -1,3 +1,4 @@
+import {isPickupOrder} from "../services/merchantPickupPolicy";
 import React from "react";
 import { toast } from "sonner";
 import { MerchantApi, MerchantApiError } from "../services/MerchantApi";
@@ -27,6 +28,7 @@ const displayWorkflowError = (error: unknown): void => {
 };
 
 export const useOrderWorkflow = ({
+  orders,
   setOrders,
   fetchOrders,
 }: OrderWorkflowProps) => {
@@ -46,6 +48,14 @@ export const useOrderWorkflow = ({
     _estimatedTime?: string,
   ) => {
     try {
+      const current=orders.find(order=>String(order.id)===String(id));
+      if(!current)throw new MerchantApiError("Refresh the API orders before changing this order.",409);
+      if(isPickupOrder(current)){
+        const action=status==="preparing" ? "accept" : status==="ready" ? "ready" : status==="cancelled" ? "reject" : status==="completed" ? "collect" : null;
+        if(!action)throw new MerchantApiError("Unsupported pickup action.",409);
+        const order=await MerchantApi.transitionPickupOrder(current as unknown as Record<string,unknown>,action, action==="reject" ? {reason:_message || ""} : {});
+        replaceConfirmedOrder(order);await fetchOrders();return;
+      }
       if (status === "preparing") {
         const order = await MerchantApi.transitionOrder(id, "accept");
         replaceConfirmedOrder(order);
@@ -78,6 +88,7 @@ export const useOrderWorkflow = ({
     _targetRiderPhone?: string,
   ) => {
     try {
+      if(orders.find(order=>String(order.id)===String(id))?.delivery_type!=="delivery")throw new MerchantApiError("Pickup orders cannot enter Rider dispatch. Only explicit delivery orders are eligible.",409);
       if (targetRiderId || targetRiderName) {
         throw new MerchantApiError(
           "Direct rider assignment is disabled until the server can verify the rider and shop pairing.",

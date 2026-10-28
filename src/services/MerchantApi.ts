@@ -1,3 +1,5 @@
+import {auth} from "../lib/firebase";
+import {isPickupOrder,mapApiOrder,requireOwnedShop,pickupCommand,pickupMutationsDisabled,type PickupAction} from "./merchantPickupPolicy";
 import { getApiAuthHeaders } from "../lib/apiAuth";
 
 export type VerifiedMerchantShop = {
@@ -83,10 +85,20 @@ export class MerchantApi {
         response.status,
       );
     }
-    if (!Array.isArray(data.orders)) {
+    if (data.success!==true || !Array.isArray(data.orders)) {
       throw new MerchantApiError("LocalEats order service returned invalid orders.", response.status);
     }
-    return data.orders;
+    return data.orders.map(mapApiOrder);
+  }
+
+  static async transitionPickupOrder(order:Record<string,unknown>,action:PickupAction,extra:Record<string,unknown>={}):Promise<Record<string,unknown>> {
+    const command=pickupCommand(order,action,extra);
+    pickupMutationsDisabled(); // Deliberate local gate: no activation environment flag or hidden bypass.
+    const headers=await getApiAuthHeaders();
+    const response=await fetch(`${getApiUrl()}/api/v1/merchant/orders/${encodeURIComponent(String(order.id))}/${command.path}`,{method:"POST",headers,body:JSON.stringify(command.body)});
+    const result=await readJsonResponse(response);
+    if(!response.ok || result.success!==true || !result.order || typeof result.order.id!=="string")throw new MerchantApiError(typeof result.error==="string" ? result.error : "The API did not confirm persistence.",response.status);
+    return mapApiOrder(result.order);
   }
 
   static async transitionOrder(orderId: string, action: "accept" | "ready"): Promise<Record<string, unknown>> {
@@ -154,6 +166,7 @@ export class MerchantApi {
       throw new MerchantApiError("LocalEats merchant service returned an invalid shop.", response.status);
     }
 
+    requireOwnedShop(shop,auth.currentUser?.uid || "");
     return shop as VerifiedMerchantShop;
   }
 
