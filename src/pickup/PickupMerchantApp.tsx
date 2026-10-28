@@ -6,7 +6,7 @@ import "./pickup.css";
 const api=createPickupApi(localPickupFixture ? "" : import.meta.env.VITE_LOCALEATS_API_URL || "",async()=>{
  if(!pickupAuth.currentUser) throw new Error("Sign in to continue.");
  return pickupAuth.currentUser.getIdToken();
-});
+},fetch,{requireExplicitHttps:import.meta.env.PROD});
 const money=(amount:number)=>new Intl.NumberFormat("en-ZA",{style:"currency",currency:"ZAR"}).format(Number(amount));
 type Pending={orderId:string;action:string;body:Record<string,unknown>};
 export default function PickupMerchantApp() {

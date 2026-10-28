@@ -35,3 +35,29 @@ test("lost-response retry preserves the original intent and idempotency key",asy
  await assert.rejects(()=>client.create(payload),error=>error.code==="CONNECTION_LOST");
  assert.equal((await client.create(payload)).order.id,"saved");assert.equal(calls[0],calls[1]);
 });
+
+
+test("production connectivity fails before token retrieval or transport for invalid API origins",async()=>{
+ for(const base of ["", "/api/v1", "//api.example.test", "http://api.example.test", "https://api.example.test/api/v1",
+   "https://user:pass@api.example.test", "https://api.example.test?key=secret", "https://api.example.test/#fragment",
+   "https://localhost", "https://127.0.0.1", "https://[::1]"]){
+  let calls=0;
+  const client=createPickupApi(base,async()=>{calls++;return "identity";},async()=>{calls++;throw Error("must not send");},
+   {requireExplicitHttps:true});
+  await assert.rejects(()=>client.orders(),error=>error.status===503 && error.code==="API_CONFIGURATION_INVALID");
+  await assert.rejects(()=>client.shops({lat:-26,lng:28}),error=>error.code==="API_CONFIGURATION_INVALID");
+  assert.equal(calls,0);
+ }
+});
+
+test("production uses the configured HTTPS API origin, retaining identity and replay body",async()=>{
+ const calls=[];
+ const client=createPickupApi("https://api.example.test/",async()=>"identity",async(url,options)=>{
+  calls.push({url,options});return new Response(JSON.stringify({success:true,order:{id:"saved"},replayed:true}));
+ },{requireExplicitHttps:true});
+ const payload={idempotency_key:"same-intent"};
+ assert.equal((await client.create(payload)).replayed,true);
+ assert.equal(calls[0].url,"https://api.example.test/api/v1/orders");
+ assert.equal(calls[0].options.headers.Authorization,"Bearer fb-identity");
+ assert.equal(calls[0].options.body,JSON.stringify(payload));
+});

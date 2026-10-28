@@ -89,3 +89,14 @@ test("pickup quote rejects missing or outside-pilot shop metadata without classi
   await assert.rejects(()=>pickupPricing(repository,"customer",parsePickupInput(raw(),false)),/OUTSIDE_PICKUP_PILOT/);
  }
 });
+
+
+test("missing schema RPC or database legacy-write rejection never confirms creation",async()=>{
+ const input=await request();
+ for(const error of [{code:"PGRST202",message:"Could not find the function public.pickup_create_order"},
+  {code:"42703",message:"column delivery_type does not exist"},
+  {code:"P0001",message:"PICKUP_CONTRACT_REQUIRED"}]){
+  await assert.rejects(()=>createPickup(rpc(async()=>({data:null,error})),repo(),"customer",input),
+   (failure:unknown)=>failure instanceof Error && (failure as Error & {status:number}).status===(error.code==="P0001" ? 409 : 503));
+ }
+});

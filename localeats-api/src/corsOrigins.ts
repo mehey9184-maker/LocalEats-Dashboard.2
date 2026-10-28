@@ -41,7 +41,7 @@ export const isAllowedOrigin = (
 ): boolean => {
   if (origin === undefined) return true;
 
-  const productionOrigin = environment.MERCHANT_DASHBOARD_ORIGIN;
+  const productionOrigin = normalizeExactBrowserOrigin(environment.MERCHANT_DASHBOARD_ORIGIN);
   if (productionOrigin && origin === productionOrigin) return true;
 
   const superAdminOrigin = normalizeExactBrowserOrigin(

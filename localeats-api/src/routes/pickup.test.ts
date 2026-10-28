@@ -45,7 +45,16 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
   try {
     assert.equal((await call("/api/v1/orders/quote",undefined,input)).status,401);
     assert.equal((await call("/api/v1/orders/quote","expired",input)).status,401);
-    assert.equal((await call("/api/v1/orders","customer",{})).status,426);
+    // Old deployed API clients must fail before catalog reads or any persistence attempt.
+    for (const path of ["/api/v1/orders", "/api/v1/orders/quote"]) {
+      const beforeReads=reads.length, beforeWrites=rpcCalls.length;
+      const rejected=await call(path,"customer",{shop_id:"shop",items:[{menu_item_id:"item",quantity:1}],total_price:1});
+      assert.equal(rejected.status,426);
+      assert.equal(rejected.body.success,false);
+      assert.equal(rejected.body.code,"PICKUP_CONTRACT_REQUIRED");
+      assert.equal(rejected.body.order,undefined);
+      assert.equal(reads.length,beforeReads);assert.equal(rpcCalls.length,beforeWrites);
+    }
     const quote=await call("/api/v1/orders/quote","customer",input);
     assert.equal(quote.status,200);assert.equal(quote.body.quote.total_minor,2750);assert.equal(quote.cache,"no-store");
     const consent={currency:"ZAR",total_minor:quote.body.quote.total_minor,pricing_fingerprint:quote.body.quote.pricing_fingerprint};

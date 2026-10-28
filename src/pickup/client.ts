@@ -11,12 +11,28 @@ type ApiResponse={success?:boolean;code?:string;error?:string;order?:PickupOrder
  shops?:{id:string;name:string;location:string;distance_km:number}[];
  menu_items?:{id:string;name:string;price:number;is_available:boolean}[];quote?:PickupQuote;
  notifications?:{id:string;order_id:string}[];events?:{id:string;kind:string;occurred_at:string;details?:{reason?:string}}[]};
-export function createPickupApi(baseUrl:string,token:()=>Promise<string>,transport:typeof fetch=fetch) {
+export function pickupApiOrigin(baseUrl:string,requireExplicitHttps=false):string {
+ const value=baseUrl.trim();
+ if (!value && !requireExplicitHttps) return ""; // Local Vite proxy / explicit development fixtures only.
+ try {
+  const url=new URL(value);
+  const loopback=["localhost","127.0.0.1","[::1]"].includes(url.hostname);
+  if(url.username || url.password || url.pathname!=="/" || url.search || url.hash ||
+    (url.protocol!=="https:" && !(url.protocol==="http:" && loopback && !requireExplicitHttps)) ||
+    (requireExplicitHttps && loopback)) throw new Error("invalid origin");
+  return url.origin;
+ } catch {
+  throw new PickupApiError(503,"API_CONFIGURATION_INVALID","Ordering service is not configured. Please try again later.");
+ }
+}
+export function createPickupApi(baseUrl:string,token:()=>Promise<string>,transport:typeof fetch=fetch,
+ options:{requireExplicitHttps?:boolean}={}) {
  const request=async(path:string,method="GET",body?:unknown,publicRead=false):Promise<ApiResponse>=>{
+   const origin=pickupApiOrigin(baseUrl,options.requireExplicitHttps);
    const bearer=publicRead ? "" : await token();
    if(!publicRead && !bearer) throw new PickupApiError(401,"UNAUTHORIZED","Sign in again to continue.");
    let response:Response;
-   try {response=await transport(baseUrl.replace(/\/$/,"")+path,{method,cache:"no-store",
+   try {response=await transport(origin+path,{method,cache:"no-store",
      headers:{"Content-Type":"application/json",...(bearer ? {Authorization:"Bearer fb-"+bearer} : {})},
      ...(body===undefined ? {} : {body:JSON.stringify(body)})});}
    catch {throw new PickupApiError(0,"CONNECTION_LOST","Connection lost. The outcome may be unknown. Retry the same request.");}
