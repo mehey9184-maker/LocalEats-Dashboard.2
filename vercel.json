@@ -4,5 +4,10 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "launch/pickup-only-pilot-01": false
+    }
+  }
 }
