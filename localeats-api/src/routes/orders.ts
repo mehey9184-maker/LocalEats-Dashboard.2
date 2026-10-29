@@ -1,3 +1,4 @@
+import {assertControlledPickup} from "../middleware/controlledPickup.js";
 import {assertPickupWritesDisabled} from "../middleware/pickupWriteGate.js";
 import { Router, type Response } from "express";
 import { authenticateFirebase, type AuthenticatedRequest } from "../middleware/authenticateFirebase.js";
@@ -85,7 +86,9 @@ router.post("/", authenticateFirebase, async (req: AuthenticatedRequest, res: Re
     if (!userId) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
 
     assertPickupWritesDisabled({delivery_type:"collection"});
-    const result = await createPickup(supabaseAdmin, repository, userId, parsePickupInput(req.body,true));
+    const request=parsePickupInput(req.body,true);
+    assertControlledPickup({shop_id:request.input.shop_id,user_id:userId});
+    const result = await createPickup(supabaseAdmin, repository, userId, request);
     res.status(result.replayed ? 200 : 201).json({
       success: true,
       replayed: result.replayed,
@@ -157,6 +160,7 @@ router.post("/:id/cancel", authenticateFirebase, async (req: AuthenticatedReques
     if (loadError) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Order could not be loaded.");
     if (!existing) throw new OrderContractError(404, "ORDER_NOT_FOUND", "Order not found.");
     if (existing.create_intent_hash != null || existing.delivery_type === "collection") {
+      assertControlledPickup(existing);
       assertPickupWritesDisabled({delivery_type:"collection"});
       const result=await commandPickup(supabaseAdmin,userId,orderId,"cancel",req.body);
       res.status(200).json({success:true,replayed:result.replayed,order:customerOrderResponse(result.order)});
@@ -257,6 +261,7 @@ const updateMerchantOrder = async (
 ): Promise<StoredOrder> => {
   const order = await loadMerchantOrder(uid, orderId);
   if (order.create_intent_hash != null || order.delivery_type === "collection") {
+    assertControlledPickup(order);
     assertPickupWritesDisabled({delivery_type:"collection"});
     const result=await commandPickup(supabaseAdmin,uid,orderId,action,body);
     if (action === "ready") await drainPickupPush(supabaseAdmin,uid);
@@ -330,6 +335,8 @@ for (const [path,action] of [["reject","reject"],["payment-confirmation","confir
       const uid=req.authUser?.uid;
       if (!uid) throw new OrderContractError(401,"UNAUTHORIZED","Authentication required.");
       assertPickupWritesDisabled({delivery_type:"collection"});
+      const order=await loadMerchantOrder(uid,routeParam(req.params.id));
+      assertControlledPickup(order);
       const result=await commandPickup(supabaseAdmin,uid,routeParam(req.params.id),action,req.body);
       res.status(200).json({success:true,replayed:result.replayed,order:withoutDeliveryProofState(result.order)});
     } catch(error) { sendOrderError(res,error); }

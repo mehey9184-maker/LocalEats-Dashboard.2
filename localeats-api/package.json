@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test dist/legacyOrderGuard.test.js dist/corsOrigins.test.js dist/orders/orderContract.test.js dist/orders/orderService.test.js dist/routes/catalog.test.js dist/routes/riderAccess.test.js dist/routes/adminRiders.test.js dist/middleware/apiCacheSafety.test.js dist/contracts/pickupDraft.test.js dist/orders/pickupService.test.js dist/orders/pickupRead.test.js dist/routes/pickupCompat.test.js dist/routes/pickup.test.js dist/middleware/pickupWriteGate.test.js",
+    "test": "npm run build && node --test dist/legacyOrderGuard.test.js dist/corsOrigins.test.js dist/orders/orderContract.test.js dist/orders/orderService.test.js dist/routes/catalog.test.js dist/routes/riderAccess.test.js dist/routes/adminRiders.test.js dist/middleware/apiCacheSafety.test.js dist/contracts/pickupDraft.test.js dist/orders/pickupService.test.js dist/orders/pickupRead.test.js dist/routes/pickupCompat.test.js dist/routes/pickup.test.js dist/middleware/pickupWriteGate.test.js dist/middleware/controlledPickup.test.js",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts"
   },

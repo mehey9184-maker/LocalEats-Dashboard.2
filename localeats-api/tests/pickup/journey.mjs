@@ -16,6 +16,7 @@ import {configureApiCacheSafety} from "../../dist/middleware/apiCacheSafety.js";
 const [connection,bin,mode]=process.argv.slice(2);
 if(!connection?.includes("hostaddr=127.0.0.1") || !bin)throw Error("Only explicit loopback fixture connections accepted.");
 process.env.PICKUP_WRITES_ENABLED="true";
+process.env.PICKUP_TEST_CUSTOMER_UID="customer";
 const quote=value=>value===null ? "null" : "'"+String(value).replaceAll("'","''")+"'";
 const ident=value=>{if(!/^[a-z_]+$/.test(value))throw Error("Unsafe identifier");return '"'+value+'"';};
 const sql=statement=>execFileSync(bin,["-X","--no-password","-d",connection,"-v","ON_ERROR_STOP=1","-At","-c",statement],{encoding:"utf8",stdio:["ignore","pipe","pipe"]}).trim();
@@ -60,11 +61,11 @@ authAdmin.verifyIdToken=async token=>{
  return {uid:token};
 };
 sql("insert into public.shops(id,owner_id,name,location,is_active,approval_status,lat,lng) values"+
- "('journey','merchant','Journey fixture kitchen','Tembisa',true,'approved',-26.0,28.0),"+
+ "('shop-my-kota-ivory-park','merchant','Journey fixture kitchen','Tembisa',true,'approved',-26.0,28.0),"+
  "('far','merchant','Far fixture kitchen','Tembisa',true,'approved',-27.0,28.0),"+
  "('closed','merchant','Closed fixture kitchen','Tembisa',false,'approved',-26.0,28.0),"+
  "('elsewhere','merchant','Outside fixture kitchen','Elsewhere',true,'approved',-26.0,28.0);"+
- "insert into public.menu_items values('journey-food','journey','Fixture meal',30,true);"+
+ "insert into public.menu_items values('journey-food','shop-my-kota-ivory-park','Fixture meal',30,true);"+
  "update public.menu_items set is_available=false where id='item';");
 const app=express();
 app.use((req,res,next)=>{const origin=req.headers.origin;if(origin && /^http:\/\/(?:127\.0\.0\.1|localhost):[0-9]+$/.test(origin))res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Access-Control-Allow-Headers","Content-Type,Authorization");res.setHeader("Access-Control-Allow-Methods","GET,POST,PUT,DELETE,OPTIONS");if(req.method==="OPTIONS"){res.sendStatus(204);return;}next();});
@@ -109,15 +110,15 @@ const base="http://127.0.0.1:"+server.address().port;
 const customer=customerClient(base,async()=>"customer"),merchant=merchantClient(base,async()=>"merchant");
 const other=customerClient(base,async()=>"other-customer"),otherMerchant=merchantClient(base,async()=>"other-merchant");
 const command=(revision,extra={})=>({command_id:crypto.randomUUID(),expected_revision:revision,...extra});
-const intent=()=>({contract_version:"pickup-v1",idempotency_key:crypto.randomUUID(),shop_id:"journey",
+const intent=()=>({contract_version:"pickup-v1",idempotency_key:crypto.randomUUID(),shop_id:"shop-my-kota-ivory-park",
  items:[{menu_item_id:"journey-food",quantity:2}],delivery_type:"collection",delivery_schedule_mode:"standard",
  payment_method:"cash",customer_details:{name:"Fixture customer",phone:"+27712345678"},launch_location:{lat:-26,lng:28}});
 const readyBody=command(1);
 try {
  const shops=await customer.shops({lat:-26,lng:28});
- assert(shops.shops.some(s=>s.id==="journey"));
+ assert(shops.shops.some(s=>s.id==="shop-my-kota-ivory-park"));
  assert(!shops.shops.some(s=>["far","closed","elsewhere"].includes(s.id)));
- assert.equal((await customer.menu("journey")).menu_items[0].price,30);
+ assert.equal((await customer.menu("shop-my-kota-ivory-park")).menu_items[0].price,30);
  const body=intent(),preview=await customer.quote(body);
  assert.equal(preview.quote.total_minor,6250);
  const accepted={...body,consent:{currency:"ZAR",total_minor:preview.quote.total_minor,pricing_fingerprint:preview.quote.pricing_fingerprint}};
@@ -126,7 +127,7 @@ try {
  const created=await customer.create(accepted),id=created.order.id;
  assert.equal(created.replayed,true);
  assert.equal(jsonSql("select count(*) from public.orders where idempotency_key="+quote(body.idempotency_key)),1);
- await assert.rejects(()=>other.create(accepted),/IDEMPOTENCY_CONFLICT/);
+ await assert.rejects(()=>other.create(accepted),/PICKUP_TEST_NOT_ALLOWED/);
  const incoming=(await merchant.orders(true)).orders.find(o=>o.id===id);
  assert.equal(incoming.phone,"+27712345678");assert.equal(incoming.items[0].quantity,2);assert.equal(Number(incoming.total_price),62.5);
  await assert.rejects(()=>otherMerchant.command(id,"accept",command(0)),error=>error.code==="FORBIDDEN" && error.status===403);
