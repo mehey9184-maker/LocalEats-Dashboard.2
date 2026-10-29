@@ -26,7 +26,7 @@ Runner creates a unique loopback-only synthetic PostgreSQL cluster, applies the 
 
 Validation result: 132 API tests pass (including retained compatibility and Rider coverage), 9 Merchant policy/menu tests and 3 actual Merchant service activation/recovery tests pass. Customer has 3 render, 6 integration and 3 service activation/recovery tests passing. Both production builds pass; Customer TypeScript passes; Merchant retains 61 baseline diagnostics with zero new diagnostics. Disposable PostgreSQL SQL integrity/race assertions and HTTP two-client journey pass.
 
-API Preview/Production SUPABASE_URL binding independently reconfirmed to the specified project without displaying credentials. No existing activation variables are set on any of the three Vercel projects; defaults remain off. Customer/Merchant Production API origin is the existing https://localeats-api.vercel.app. New Preview frontends use that read-only Production API while activation is off.
+API Preview/Production SUPABASE_URL binding independently reconfirmed to the specified project without displaying credentials. No existing activation variables are set on any of the three Vercel projects; defaults remain off. Customer/Merchant Production API origin is the existing https://localeats-api.vercel.app. New review frontends use the dedicated default-off API Preview branch alias https://localeats-api-git-activation-p-dc232e-mehey9184-makers-projects.vercel.app. Exact review origins are configured only on that API Preview branch; broad Merchant Preview host matching is blanked only in that scope.
 
 ## Required owner approval and ordered cutover
 1. Review/approve this exact SQL and explicitly accept the full-restore limitation, or first validate restore on compatible disposable Supabase/Postgres infrastructure. Reconfirm backup freshness, target and schema immediately before application.
@@ -41,3 +41,11 @@ Turn the API switch off first and rebuild frontend switches off. Preserve nullab
 
 ## Remaining gates
 Production migration application and write switches are explicitly unapproved. Full Supabase-specific restore fidelity is unresolved. Fresh authenticated two-account acceptance after cutover is still required. Zero additional paid services were introduced; commercial use requires confirmation the existing hosting plan permits it, without assuming Vercel Hobby commercial eligibility. No live ordering/payment mutation was performed.
+
+## Published default-off review deployments
+- API/Merchant application commit: a356d6e9e949cafce931468c9d22340e9153e0b5.
+- Customer application commit: 1b8361387ab59ec57d42143e65b7d4ed79f6015e.
+- Customer: https://project-x7cvt-7o50q8hpk-mehey9184-makers-projects.vercel.app
+- Merchant: https://local-eats-dashboard-2-6m8o-eh22snlma-mehey9184-makers-projects.vercel.app
+- API: https://localeats-api-git-activation-p-dc232e-mehey9184-makers-projects.vercel.app (latest pinned deployment localeats-pvlbc0sqp-mehey9184-makers-projects.vercel.app).
+All READY. API health 200 and real My-Kota menu read 200 with one R25 item. Original Customer welcome and Merchant sign-in pages load. This does not claim fresh authenticated original-UI ordering against the shared database. PICKUP_WRITES_ENABLED=false and VITE_PICKUP_ORDERING_ENABLED=false are explicit branch-only Preview settings. No Production settings changed. Both remote main SHAs and all three Production aliases remain unchanged. A later documentation-only commit does not change the tested application source.
