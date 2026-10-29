@@ -49,3 +49,16 @@ test('command extras cannot override revision/identity and rejection needs a rea
  assert.throws(()=>pickupCommand(order,'reject'));
  assert.equal(pickupCommand(order,'reject',{reason:'Out of stock'}).body.expected_revision,0);
 });
+import {validateMerchantMenu,menuWritesUnavailable} from '../src/services/merchantMenuPolicy.ts';
+test('authoritative menu rejects cross-shop and invalid prices, deduplicates real IDs',()=>{
+ const item={id:'item',shop_id:'my-kota',name:'Kota',price:25,is_available:true};
+ assert.deepEqual(validateMerchantMenu([item,item],'my-kota'),[item]);
+ for(const row of [{...item,shop_id:'other'},{...item,price:NaN},{...item,price:-1}])assert.throws(()=>validateMerchantMenu([row],'my-kota'));
+ assert.throws(()=>validateMerchantMenu([item,{...item,price:30}],'my-kota'));
+ assert.equal(menuWritesUnavailable(),true);
+});
+test('historical payment method and completion never prove payment',()=>{
+ for(const payment_method of ['online','card','cod','cash'])assert.equal(pickupPaymentLabel({payment_method,status:'completed'}),'Payment status unavailable');
+ assert.equal(pickupPaymentLabel({payment_status:'paid',payment_method:'cash'}),'Paid');
+ assert.equal(pickupPaymentLabel({payment_status:'unpaid',payment_method:'online'}),'Unpaid');
+});

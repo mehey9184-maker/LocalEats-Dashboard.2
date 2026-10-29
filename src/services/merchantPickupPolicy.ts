@@ -36,6 +36,6 @@ export function pickupMutationsDisabled():void {
  throw new Error("Pickup actions are not enabled until database migration and activation are separately approved. No order, payment or collection change was saved.");
 }
 export function pickupPaymentLabel(order:any):string {
- if(!isPickupOrder(order))return "";
+ if(!isPickupOrder(order))return order.payment_status==="paid" ? "Paid" : order.payment_status==="unpaid" ? "Unpaid" : "Payment status unavailable";
  return order.payment_status==="paid" ? "Paid at shop" : order.payment_status==="unpaid" ? "Unpaid · pay at shop" : "Payment status unavailable";
 }

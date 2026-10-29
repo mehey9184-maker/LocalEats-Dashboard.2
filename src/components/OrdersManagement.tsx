@@ -1558,7 +1558,7 @@ Notes: "${order.notes || "None"}"
                                 : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200/50"
                             )}>
                               <CreditCard size={11} fill="currentColor" />
-                              {isPickupOrder(order) ? pickupPaymentLabel(order) : (order.payment_method === "cod" || order.payment_method === "Cash" || order.payment_method === "cash_on_delivery") ? "CASH ON ARRIVAL" : "ONLINE PAID"}
+                              {pickupPaymentLabel(order)}
                             </span>
                           </div>
                           <h4
@@ -4885,7 +4885,7 @@ Notes: "${order.notes || "None"}"
                         <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant/60">Payment Method</span>
                         <p className="text-sm font-extrabold text-on-surface mt-0.5 flex items-center gap-1.5">
                           <CreditCard size={14} className="text-primary" />
-                          {isPickupOrder(orderToAccept) ? pickupPaymentLabel(orderToAccept) : orderToAccept.payment_method === "cod" ? "Cash on Arrival" : "Online Paid"}
+                          {pickupPaymentLabel(orderToAccept)}
                         </p>
                       </div>
                     </div>

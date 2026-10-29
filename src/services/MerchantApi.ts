@@ -1,3 +1,4 @@
+import {validateMerchantMenu} from "./merchantMenuPolicy";
 import {auth} from "../lib/firebase";
 import {isPickupOrder,mapApiOrder,requireOwnedShop,pickupCommand,pickupMutationsDisabled,type PickupAction} from "./merchantPickupPolicy";
 import { getApiAuthHeaders } from "../lib/apiAuth";
@@ -69,6 +70,17 @@ const readJsonResponse = async (response: Response): Promise<MerchantApiResponse
 };
 
 export class MerchantApi {
+  static async getMenuItems(shopId: string | number): Promise<any[]> {
+    const uid = auth.currentUser?.uid;
+    const shop = await this.getMerchantShop();
+    if (!shop || String(shop.id) !== String(shopId)) throw new MerchantApiError("Menu shop ownership could not be verified.");
+    const response = await fetch(`${getApiUrl()}/api/v1/catalog/shops/${encodeURIComponent(String(shop.id))}/menu`, {headers: await getApiAuthHeaders()});
+    const data = await readJsonResponse(response);
+    if (!response.ok || data.success !== true || !Array.isArray(data.menu_items)) throw new MerchantApiError("Unable to load the authoritative shop menu.", response.status);
+    if (!uid || auth.currentUser?.uid !== uid) throw new MerchantApiError("Your session changed. Refresh the menu.");
+    return validateMerchantMenu(data.menu_items, shop.id);
+  }
+
   static async getOrders(): Promise<Record<string, unknown>[]> {
     const apiUrl = getApiUrl();
     const headers = await getApiAuthHeaders();

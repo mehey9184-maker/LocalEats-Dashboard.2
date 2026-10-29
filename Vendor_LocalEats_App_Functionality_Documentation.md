@@ -429,3 +429,10 @@ Preview does not automatically toggle live shop availability based on operating 
 Validation: seven focused tests cover UID/shop authorization, API-only pickup classification, malformed/missing-schema failure, canonical transitions/revisions, independent payment/handover, terminal guards and no transport/success while disabled. Full Merchant TypeScript retains baseline diagnostics; scoped validation compares changed sources against current-main diagnostics rather than claiming an unrelated repository-wide cleanup. Build/runtime evidence is reported at completion. No live pickup order is fabricated to populate an empty UI.
 
 Final local validation: seven focused tests pass; Vite production build passes. Existing unresolved assets/map-bg.png, large-bundle and qrcode mixed-import warnings remain. TypeScript baseline/current are both 62 diagnostics with zero new diagnostics under an in-memory current-main comparison. This is not a claim that full repository TypeScript is clean. Original entry/SignIn/styles/RiderManagement and API implementation/migrations match main.
+
+### Merchant menu, availability and payment corrections (2026-10-29)
+- Original Menu Management and overview now load the signed-in API-owned shop menu through the catalog API, with validated prices/shop IDs and duplicate-ID protection. No Firestore/cache menu fallback is displayed.
+- Menu editing/import remains explicitly unavailable until an authoritative merchant write contract exists; no optimistic price/availability success is allowed.
+- Shop availability is labelled separately from disabled pickup checkout. Setup hours use the API shop hours; missing timestamps no longer imply offline status.
+- Paid badges require explicit payment_status, including historical orders. Payment method or completion alone never establishes payment.
+- No schema, business records, Rider implementation, or Production settings changed.

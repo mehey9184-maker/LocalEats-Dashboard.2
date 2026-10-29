@@ -560,8 +560,7 @@ const OnboardingChecklist = ({
   const userOwnedShops = useMemo(() => shops.filter((s) => isShopOwnedByUser(s, user)), [shops, user]);
   const hasShop = userOwnedShops.length > 0;
   const hasOperatingHours =
-    user?.user_metadata?.operating_hours?.open &&
-    user?.user_metadata?.operating_hours?.close;
+    userOwnedShops.some(shop => Boolean(shop.opening_time && shop.closing_time));
 
   const tasks = [
     { key: "shop", completed: hasShop, label: "Create Shop Profile", desc: "Required to start selling", icon: Store },
@@ -700,7 +699,7 @@ const OnboardingChecklist = ({
       {!hasOperatingHours && hasShop && (
         <p className="mt-4 text-[11px] text-orange-600 dark:text-orange-400 font-bold flex items-center gap-2 bg-orange-500/5 border border-orange-500/10 p-3 rounded-2xl">
           <AlertCircle size={14} />
-          Your virtual kitchen is offline. Please complete operating hours setup to activate standard opening loops.
+          Operating hours are not configured. Saved shop availability is separate; pickup checkout remains temporarily disabled.
         </p>
       )}
 
@@ -2050,14 +2049,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                     "w-1.5 h-1.5 rounded-full",
                     currentShop.is_active ? "bg-emerald-500 animate-pulse" : "bg-error"
                   )} />
-                  {currentShop.is_active ? "Live & Accepting Orders" : "Offline / Paused"}
+                  {currentShop.is_active ? "Shop available" : "Shop unavailable"}
                 </span>
               </div>
 
               <p className="text-xs md:text-sm text-on-surface-variant font-medium leading-relaxed max-w-xl">
                 {currentShop.is_active
-                  ? "Your storefront is fully active on the LocalEats map. Customers can place orders, view items, and pairing requests from nearby riders will automatically dispatch."
-                  : "Your storefront is currently hidden from the customer feed. Toggle below to open your virtual kitchen and go live."}
+                  ? "Your shop is marked available. Customers can browse eligible menus. Pickup checkout is temporarily disabled pending database activation."
+                  : "Your shop is marked unavailable. Pickup checkout also remains temporarily disabled."}
               </p>
 
               {currentShop.opening_time && currentShop.closing_time && (
@@ -2074,7 +2073,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               ) : (
                 <p className="text-[10px] font-mono font-black text-amber-500 flex items-center gap-1.5 pt-1 uppercase tracking-widest">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500/80 animate-pulse" />
-                  Store Status: Saved Offline (Automatic Fallback Active)
+                  Availability read from API · Last update time unavailable
                 </p>
               )}
             </div>
