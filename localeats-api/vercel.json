@@ -2,7 +2,7 @@
   "git": {
     "deploymentEnabled": {
       "integration/customer-api-read-compat": true,
-      "main": true,
+      "main": false,
       "integration/merchant-original-ui-pickup": false
     }
   }

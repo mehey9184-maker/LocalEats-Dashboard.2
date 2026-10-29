@@ -436,3 +436,7 @@ Final local validation: seven focused tests pass; Vite production build passes. 
 - Shop availability is labelled separately from disabled pickup checkout. Setup hours use the API shop hours; missing timestamps no longer imply offline status.
 - Paid badges require explicit payment_status, including historical orders. Payment method or completion alone never establishes payment.
 - No schema, business records, Rider implementation, or Production settings changed.
+
+### Merchant Production release boundary (2026-10-29)
+- Merchant main deployment enabled; API main automatic deployment disabled to retain the existing API compatibility deployment and write gates. API application source is unchanged.
+- Merchant Production uses https://localeats-api.vercel.app; Preview overrides remain separate. Pickup mutations remain blocked.
