@@ -33,7 +33,7 @@ test('independent payment and real handover required; no Collected-to-paid infer
 test('all pickup writes stop before transport and original entry is retained',()=>{
  let sent=false;assert.throws(()=>{pickupMutationsDisabled();sent=true;});assert.equal(sent,false);
  const service=readFileSync(new URL('../src/services/MerchantApi.ts',import.meta.url),'utf8');
- const start=service.indexOf('static async transitionPickupOrder');
+ const start=service.indexOf('private static async sendPickupCommand');
  assert.ok(service.indexOf('pickupMutationsDisabled();',start)<service.indexOf('await fetch(',start));
  const entry=readFileSync(new URL('../src/main.tsx',import.meta.url),'utf8');assert.match(entry,/import App from '.\/App.tsx'/);assert.doesNotMatch(entry,/PickupMerchantApp/);
  const workflow=readFileSync(new URL('../src/hooks/useOrderWorkflow.ts',import.meta.url),'utf8');assert.match(workflow,/Pickup orders cannot enter Rider dispatch/);

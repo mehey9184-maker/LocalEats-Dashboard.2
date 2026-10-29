@@ -25,7 +25,7 @@ test("archived/offline/out-of-area/out-of-radius shops, invalid contact and pric
  const base=repository(),shop=await base.findShop();
  for(const [patch,expected] of [[{archived_at:"old"},"SHOP_UNAVAILABLE"],[{is_active:false},"SHOP_UNAVAILABLE"],[{location:"Elsewhere"},"OUTSIDE_PICKUP_PILOT"],[{lat:-26.5},"OUTSIDE_PICKUP_RADIUS"]] as const)
   await assert.rejects(pickupReadQuote({...base,findShop:async()=>({...shop,...patch})},"u",request()),code(expected));
- await assert.rejects(pickupReadQuote(base,"u",{...request(),customer_details:{name:"Test",phone:"bad"}}),code("INVALID_CUSTOMER_PHONE"));
+ await assert.rejects(pickupReadQuote(base,"u",{...request(),customer_details:{name:"Test",phone:"bad"}}),code("INVALID_PHONE"));
  await assert.rejects(pickupReadQuote({...base,findMenuItems:async()=>[{id:"m",shop_id:"s",name:"Bad",price:"",is_available:true}]},"u",request()),code("INVALID_SERVER_PRICE"));
  await assert.rejects(pickupReadQuote({...base,findMenuItems:async()=>[{id:"m",shop_id:"s",name:"Gone",price:5,is_available:false}]},"u",request()),code("MENU_ITEM_UNAVAILABLE"));
 });

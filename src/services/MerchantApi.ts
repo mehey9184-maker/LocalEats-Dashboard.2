@@ -103,14 +103,33 @@ export class MerchantApi {
     return data.orders.map(mapApiOrder);
   }
 
-  static async transitionPickupOrder(order:Record<string,unknown>,action:PickupAction,extra:Record<string,unknown>={}):Promise<Record<string,unknown>> {
-    const command=pickupCommand(order,action,extra);
-    pickupMutationsDisabled(); // Deliberate local gate: no activation environment flag or hidden bypass.
-    const headers=await getApiAuthHeaders();
-    const response=await fetch(`${getApiUrl()}/api/v1/merchant/orders/${encodeURIComponent(String(order.id))}/${command.path}`,{method:"POST",headers,body:JSON.stringify(command.body)});
+  static hasPendingPickupCommand(order:any):boolean {
+    const uid=auth.currentUser?.uid; return !!uid && !!sessionStorage.getItem(`pickup-command:${uid}:${order.id}`);
+  }
+  private static async sendPickupCommand(order:Record<string,unknown>,command:any,key:string) {
+    pickupMutationsDisabled();
+    sessionStorage.setItem(key,JSON.stringify(command));
+    const response=await fetch(`${getApiUrl()}/api/v1/merchant/orders/${encodeURIComponent(String(order.id))}/${command.path}`,{method:"POST",headers:await getApiAuthHeaders(),body:JSON.stringify(command.body)});
     const result=await readJsonResponse(response);
-    if(!response.ok || result.success!==true || !result.order || typeof result.order.id!=="string")throw new MerchantApiError(typeof result.error==="string" ? result.error : "The API did not confirm persistence.",response.status);
-    return mapApiOrder(result.order);
+    if(!response.ok || result.success!==true || !result.order || typeof result.order.id!=="string") {
+      if([400,403,404,409,422].includes(response.status))sessionStorage.removeItem(key);
+      throw new MerchantApiError(typeof result.error==="string" ? result.error : "The API did not confirm persistence.",response.status);
+    }
+    const confirmed=mapApiOrder(result.order);
+    if(String(confirmed.id)!==String(order.id) || String(confirmed.shop_id)!==String(order.shop_id))throw new MerchantApiError("The API confirmed a different order.");
+    sessionStorage.removeItem(key);return confirmed;
+  }
+  static async retryPendingPickupOrder(order:Record<string,unknown>) {
+    const uid=auth.currentUser?.uid;if(!uid)throw new MerchantApiError("Sign in first.");
+    const key=`pickup-command:${uid}:${order.id}`,stored=sessionStorage.getItem(key);
+    if(!stored)throw new MerchantApiError("No unresolved command exists.");
+    return this.sendPickupCommand(order,JSON.parse(stored),key);
+  }
+  static async transitionPickupOrder(order:Record<string,unknown>,action:PickupAction,extra:Record<string,unknown>={}):Promise<Record<string,unknown>> {
+    const uid=auth.currentUser?.uid;if(!uid)throw new MerchantApiError("Sign in before changing an order.");
+    const key=`pickup-command:${uid}:${order.id}`;
+    if(sessionStorage.getItem(key))throw new MerchantApiError("Use Retry previous action before sending another command.");
+    return this.sendPickupCommand(order,pickupCommand(order,action,extra),key);
   }
 
   static async transitionOrder(orderId: string, action: "accept" | "ready"): Promise<Record<string, unknown>> {

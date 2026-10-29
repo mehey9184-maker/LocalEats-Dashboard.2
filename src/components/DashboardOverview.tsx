@@ -1,3 +1,4 @@
+import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 import { FoodPlaceholder } from "../components/MenuManagement";
 import { isPlaceholderImage } from "../constants";
 import { updateFirestoreShop } from "../lib/firebase";
@@ -699,7 +700,7 @@ const OnboardingChecklist = ({
       {!hasOperatingHours && hasShop && (
         <p className="mt-4 text-[11px] text-orange-600 dark:text-orange-400 font-bold flex items-center gap-2 bg-orange-500/5 border border-orange-500/10 p-3 rounded-2xl">
           <AlertCircle size={14} />
-          Operating hours are not configured. Saved shop availability is separate; pickup checkout remains temporarily disabled.
+          Operating hours are not configured. Saved shop availability and order eligibility are separate.
         </p>
       )}
 
@@ -2055,8 +2056,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
               <p className="text-xs md:text-sm text-on-surface-variant font-medium leading-relaxed max-w-xl">
                 {currentShop.is_active
-                  ? "Your shop is marked available. Customers can browse eligible menus. Pickup checkout is temporarily disabled pending database activation."
-                  : "Your shop is marked unavailable. Pickup checkout also remains temporarily disabled."}
+                  ? pickupOrderingEnabled() ? "Your shop is marked available. Pickup actions require API confirmation; payment and handover are separate." : "Your shop is marked available. Customers can browse eligible menus. Pickup checkout is temporarily disabled pending database activation."
+                  : "Your shop is marked unavailable. Customers cannot place new pickup orders while it is unavailable."}
               </p>
 
               {currentShop.opening_time && currentShop.closing_time && (

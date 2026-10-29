@@ -32,7 +32,9 @@ export function pickupCommand(order:any,action:PickupAction,extra:Record<string,
  return {path:action==="confirm_payment" ? "payment-confirmation" : action,
   body:{command_id:crypto.randomUUID(),expected_revision:order.revision,...extra}};
 }
+export function pickupOrderingEnabled():boolean { return import.meta.env?.VITE_PICKUP_ORDERING_ENABLED === "true"; }
 export function pickupMutationsDisabled():void {
+ if(pickupOrderingEnabled())return;
  throw new Error("Pickup actions are not enabled until database migration and activation are separately approved. No order, payment or collection change was saved.");
 }
 export function pickupPaymentLabel(order:any):string {

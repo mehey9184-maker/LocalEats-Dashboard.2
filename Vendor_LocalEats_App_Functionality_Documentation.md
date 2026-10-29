@@ -440,3 +440,6 @@ Final local validation: seven focused tests pass; Vite production build passes. 
 ### Merchant Production release boundary (2026-10-29)
 - Merchant main deployment enabled; API main automatic deployment disabled to retain the existing API compatibility deployment and write gates. API application source is unchanged.
 - Merchant Production uses https://localeats-api.vercel.app; Preview overrides remain separate. Pickup mutations remain blocked.
+
+## Pickup activation preparation — 2026-10-29
+Reuses the reviewed launch SQL/RPC implementation on activation/pickup-workflow while preserving original Merchant App and Rider source. API PICKUP_WRITES_ENABLED must equal true; absent/false remains denied. Merchant VITE_PICKUP_ORDERING_ENABLED must equal true at build time; otherwise original block remains. Merchant commands preserve UID/order-scoped unresolved commands for exact replay, including after state refresh. Actual payment and handover require separate confirmations. Ready events persist independently of request-driven best-effort FCM. No Production SQL, settings, records, main push or deployment authorized in this preparation. See docs/PICKUP_ACTIVATION_REVIEW.md for test evidence, rollback and remaining gates.

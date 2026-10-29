@@ -17,3 +17,15 @@ test("catalog, quote, history and Rider continuation paths retain routing",()=>{
  assert.throws(()=>assertPickupWritesDisabled({delivery_type:"collection"}));
  assert.throws(()=>assertPickupWritesDisabled({create_intent_hash:"managed"}));
 });
+
+test("activation requires exact server opt-in; obsolete generic writes remain closed",()=>{
+ const old=process.env.PICKUP_WRITES_ENABLED;
+ try{
+  for(const value of [undefined,"false","1","TRUE","true"]){
+   if(value===undefined)delete process.env.PICKUP_WRITES_ENABLED;else process.env.PICKUP_WRITES_ENABLED=value;
+   let reached=false;const res:any={status(){return this;},set(){return this;},json(){}};
+   pickupWriteGate({method:"POST",path:"/api/v1/orders"} as any,res,()=>{reached=true;});assert.equal(reached,value==="true");
+  }
+  let reached=false;pickupWriteGate({method:"PATCH",path:"/api/v1/orders/id"} as any,{status(){return this;},set(){return this;},json(){}} as any,()=>{reached=true;});assert.equal(reached,false);
+ }finally{if(old===undefined)delete process.env.PICKUP_WRITES_ENABLED;else process.env.PICKUP_WRITES_ENABLED=old;}
+});

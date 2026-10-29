@@ -1,3 +1,4 @@
+import {pickupOrderingEnabled} from "./services/merchantPickupPolicy";
 import {isPickupOrder} from "./services/merchantPickupPolicy";
 import { checkPrinterConnectivity, printViaBluetooth, printViaUSB } from "./utils/escPosEngine";
 import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
@@ -1192,6 +1193,7 @@ function App() {
   }, [user, shops, processAndSetOrders, merchantShopGate.status, currentShop]);
 
   const menuReadRequest = useRef(0);
+  useEffect(()=>{const refresh=()=>{void fetchOrders();};window.addEventListener("merchant-pickup-order-confirmed",refresh);return()=>window.removeEventListener("merchant-pickup-order-confirmed",refresh);},[fetchOrders]);
   const fetchAllMenuItems = useCallback(async () => {
     const request = ++menuReadRequest.current;
     if (!user || merchantShopGate.status !== "ready" || !currentShop) { setMenuItems([]); return; }
@@ -2236,7 +2238,7 @@ function App() {
                     {currentShop.is_active ? "Open" : "Closed"}
                   </span>
                   <span className="hidden sm:inline ml-1 opacity-70">
-                    {currentShop.is_active ? "• Shop available · Pickup checkout disabled" : "• Shop unavailable · Pickup checkout disabled"}
+                    {currentShop.is_active ? pickupOrderingEnabled() ? "• Shop available · Pickup pilot" : "• Shop available · Pickup checkout disabled" : "• Shop unavailable"}
                   </span>
                 </button>
               )}

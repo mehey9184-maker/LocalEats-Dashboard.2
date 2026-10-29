@@ -1,3 +1,5 @@
+import {legacyOrderGuard} from "./legacyOrderGuard.js";
+import {pickupNotificationRoutes} from "./routes/pickupNotifications.js";
 import {pickupWriteGate} from "./middleware/pickupWriteGate.js";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
@@ -38,6 +40,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+app.use(legacyOrderGuard);
 app.use(pickupWriteGate);
 app.use(express.json());
 
@@ -51,6 +54,7 @@ app.use("/api/v1/rider", riderRouter);
 app.use("/api/v1/merchant/riders", merchantRiderRouter);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/catalog", catalogRoutes);
+app.use("/api/v1", pickupNotificationRoutes);
 
 // 404 Handler
 app.use((req: Request, res: Response) => {
