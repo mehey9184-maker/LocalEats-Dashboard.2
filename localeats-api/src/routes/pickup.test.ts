@@ -59,7 +59,7 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
       assert.equal(reads.length,beforeReads);assert.equal(rpcCalls.length,beforeWrites);
     }
     const quote=await call("/api/v1/orders/quote","customer",input);
-    assert.equal(quote.status,200);assert.equal(quote.body.quote.total_minor,2750);assert.equal(quote.cache,"no-store");
+    assert.equal(quote.status,200);assert.equal(quote.body.quote.total_minor,2500);assert.equal(quote.cache,"no-store");
     const consent={currency:"ZAR",total_minor:quote.body.quote.total_minor,pricing_fingerprint:quote.body.quote.pricing_fingerprint};
     // Every denied creation must stop before reads, pricing, replay or RPC persistence.
     for(const scenario of ["shop","customer","absent","disabled"]){

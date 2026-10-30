@@ -10,7 +10,8 @@
       "integration/customer-api-read-compat": false,
       "main": true,
       "integration/merchant-original-ui-pickup": true,
-      "activation/pickup-workflow": false
+      "activation/pickup-workflow": false,
+      "fix/pickup-zero-fee": false
     }
   }
 }

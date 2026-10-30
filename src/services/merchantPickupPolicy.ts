@@ -41,3 +41,10 @@ export function pickupPaymentLabel(order:any):string {
  if(!isPickupOrder(order))return order.payment_status==="paid" ? "Paid" : order.payment_status==="unpaid" ? "Unpaid" : "Payment status unavailable";
  return order.payment_status==="paid" ? "Paid at shop" : order.payment_status==="unpaid" ? "Unpaid · pay at shop" : "Payment status unavailable";
 }
+
+export function pickupAmountLabel(order:any):string {
+ if(!isPickupOrder(order) || typeof order.total_price!=="number" || !Number.isFinite(order.total_price) || order.total_price<0)
+  throw new Error("Pickup payable amount is unavailable.");
+ const fee=typeof order.service_fee==="number" && Number.isFinite(order.service_fee) && order.service_fee>=0 ? `R ${order.service_fee.toFixed(2)}` : "unavailable";
+ return `Pay at shop: R ${order.total_price.toFixed(2)} · Pickup service fee: ${fee}`;
+}

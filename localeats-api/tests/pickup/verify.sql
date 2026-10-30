@@ -23,13 +23,15 @@ reset role;
 select pg_temp.assert_ok((select delivery_status='picked_up' and create_intent_hash is null from public.orders where id='550e8400-e29b-41d4-a716-000000000093'),'delivery drain retained');
 create function pg_temp.record(key text default '550e8400-e29b-41d4-a716-000000000001') returns jsonb language sql as $$
  select jsonb_build_object('shop_id','shop','idempotency_key',key,'items',jsonb_build_array(jsonb_build_object('menu_item_id','item','name','Fixture meal','unit_price',25,'quantity',1,'line_total',25)),
-   'product_name','Fixture meal','price',25,'service_fee',2.5,'total_price',27.5,'payment_method','cash','customer_name','Fixture customer','phone','+27712345678','email','','address','','city','','launch_location',jsonb_build_object('lat',-26.0,'lng',28.0));
+   'product_name','Fixture meal','price',25,'service_fee',0,'total_price',25,'payment_method','cash','customer_name','Fixture customer','phone','+27712345678','email','','address','','city','','launch_location',jsonb_build_object('lat',-26.0,'lng',28.0));
 $$;
 set role service_role;
 select public.pickup_create_order('customer',repeat('a',64),pg_temp.record()) as result \gset created_
 reset role;
 select (:'created_result'::jsonb->'order'->>'id') as oid \gset
 select pg_temp.assert_ok((select count(*)=1 from public.pickup_order_events where order_id=:'oid'),'creation fact committed');
+select pg_temp.assert_ok((select price=25 and total_price=25 and service_fee=0 and delivery_fee=0 and discount_amount=0 and payment_status='unpaid' from public.orders where id=:'oid'),'zero-fee persisted pickup amount');
+select pg_temp.expect_error($q$select public.pickup_create_order('customer',repeat('f',64),jsonb_set(pg_temp.record('550e8400-e29b-41d4-a716-000000000099'),'{service_fee}','2.5'))$q$,'PRICE_CHANGED');
 -- Immutable create replay survives catalog closure and never transfers customer ownership.
 update public.shops set is_active=false;
 set role service_role;
@@ -90,7 +92,7 @@ set role service_role;
 select public.pickup_order_command('merchant',:'oid','confirm_payment','550e8400-e29b-41d4-a716-000000000023',2,null,'card_machine');
 reset role;
 select pg_temp.assert_ok((select status='ready_for_pickup' and payment_status='paid' and payment_method='card_machine' from public.orders where id=:'oid'),'payment did not collect');
-select pg_temp.assert_ok((select details->>'method'='card_machine' and (details->>'amount')::numeric=27.5 from public.pickup_order_events where order_id=:'oid' and kind='payment_confirmed'),'payment fact server amount and method');
+select pg_temp.assert_ok((select details->>'method'='card_machine' and (details->>'amount')::numeric=25 from public.pickup_order_events where order_id=:'oid' and kind='payment_confirmed'),'payment fact server amount and method');
 select pg_temp.assert_ok((public.pickup_create_order('customer',repeat('a',64),pg_temp.record())->>'replayed')::boolean,'creation replay after method switch');
 select pg_temp.expect_error(format('select public.pickup_order_command(%L,%L,%L,%L,3)','merchant',:'oid','collect','550e8400-e29b-41d4-a716-000000000024'),'HANDOVER_CONFIRMATION_REQUIRED');
 set role service_role;

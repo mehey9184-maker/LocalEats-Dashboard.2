@@ -100,3 +100,29 @@ test("missing schema RPC or database legacy-write rejection never confirms creat
    (failure:unknown)=>failure instanceof Error && (failure as Error & {status:number}).status===(error.code==="P0001" ? 409 : 503));
  }
 });
+
+import {pickupReadQuote} from './pickupRead.js';
+test("R25 and two R25 pickup items quote and persist identical zero-fee menu totals",async()=>{
+ for(const quantity of [1,2]){
+  const repository=repo();const body={...raw(),items:[{menu_item_id:"item",quantity}]};
+  const parsed=parsePickupInput(body,false),price=await pickupPricing(repository,"customer",parsed),quote=pickupQuote(price);
+  assert.equal(quote.total_minor,quantity*2500);assert.equal(quote.subtotal_minor,quantity*2500);
+  assert.equal(quote.service_fee_minor,0);assert.equal(quote.delivery_fee_minor,0);assert.equal(quote.discount_minor,0);
+  assert.deepEqual(await pickupReadQuote(repository as any,"customer",body),quote);
+  let calls=0;
+  const client=rpc(async(name,args)=>{
+   calls++;assert.equal(name,"pickup_create_order");const record=args.p_record as any;
+   assert.equal(record.price,quantity*25);assert.equal(record.service_fee,0);assert.equal(record.total_price,quote.total_minor/100);
+   return {data:{order:{id,user_id:"customer",...record,delivery_type:"collection",payment_status:"unpaid"},replayed:false},error:null};
+  });
+  const creation=parsePickupInput({...body,consent:{currency:"ZAR",total_minor:quote.total_minor,pricing_fingerprint:quote.pricing_fingerprint}},true);
+  const saved=await createPickup(client,repository,"customer",creation);
+  assert.equal(saved.order.total_price,quantity*25);assert.equal(saved.order.payment_status,"unpaid");assert.equal(calls,1);
+  const oldConsent={...creation,consent:{...creation.consent!,totalMinor:quote.total_minor+250}};
+  await assert.rejects(createPickup(client,repository,"customer",oldConsent),/PRICE_CHANGED/);assert.equal(calls,1);
+ }
+});
+test("unverified pickup discounts and additional VAT cannot affect server prices",()=>{
+ for(const fields of [{promo_code:"LOCAL10"},{discount_amount:5},{vat:3.75},{service_fee:2.5}])
+  assert.throws(()=>parsePickupInput({...raw(),...fields},false));
+});

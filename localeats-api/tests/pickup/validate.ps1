@@ -17,7 +17,7 @@ try {
   if (-not $launch.WaitForExit(20000)) { throw 'pg_ctl launch did not exit within 20 seconds.' }
   if ($launch.ExitCode -ne 0) { throw 'Disposable PostgreSQL start failed.' }
   $started=$true
-  foreach($file in @((Join-Path $PSScriptRoot 'schema.sql'),(Join-Path $repoRoot 'supabase/drafts/pickup_launch_foundation.sql'),(Join-Path $PSScriptRoot 'verify.sql'))) {
+  foreach($file in @((Join-Path $PSScriptRoot 'schema.sql'),(Join-Path $repoRoot 'supabase/drafts/pickup_launch_foundation.sql'),(Join-Path $repoRoot 'supabase/drafts/pickup_zero_fee.sql'),(Join-Path $PSScriptRoot 'verify.sql'))) {
     & (Join-Path $PostgresBin 'psql.exe') -X --no-password -d $testConnection -v ON_ERROR_STOP=1 -f $file
     if ($LASTEXITCODE -ne 0) { throw "Disposable validation failed: $file" }
   }

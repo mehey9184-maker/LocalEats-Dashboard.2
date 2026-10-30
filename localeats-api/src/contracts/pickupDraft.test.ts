@@ -94,3 +94,15 @@ test("draft migration separates immutable events from mutable push jobs and deni
   assert.match(sql,/new\.payment_status is distinct from old\.payment_status/);
   assert.match(sql,/old\.payment_status = 'paid'/);
 });
+
+
+test("zero-fee draft replaces only creation fee and preserves the approved foundation",async()=>{
+ const {readFileSync}=await import("node:fs");
+ const foundation=readFileSync(new URL("../../../supabase/drafts/pickup_launch_foundation.sql",import.meta.url),"utf8").replaceAll("\r\n","\n");
+ const draft=readFileSync(new URL("../../../supabase/drafts/pickup_zero_fee.sql",import.meta.url),"utf8").replaceAll("\r\n","\n");
+ const original=foundation.slice(foundation.indexOf("create function public.pickup_create_order("),foundation.indexOf("$create$;",foundation.indexOf("create function public.pickup_create_order("))+10);
+ const replaced=draft.slice(draft.indexOf("create or replace function public.pickup_create_order("),draft.indexOf("$create$;",draft.indexOf("create or replace function public.pickup_create_order("))+10);
+ assert.equal(replaced,original.replace("create function","create or replace function").replace("fee := case when subtotal > 0 then 2.50 else 0 end;","fee := 0;"));
+ assert.match(draft,/PICKUP_CREATE_FUNCTION_DRIFT/);
+ assert.doesNotMatch(draft,/alter table|drop table|delete from|update public\.orders/i);
+});

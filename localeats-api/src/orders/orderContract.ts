@@ -393,7 +393,7 @@ export const calculateAuthoritativePrice = (
 
   const subtotal = roundMoney(lines.reduce((sum, line) => sum + line.line_total, 0));
   const deliveryFee = input.delivery_type === "delivery" ? PILOT_DELIVERY_FEE : 0;
-  const serviceFee = subtotal > 0 ? PILOT_SERVICE_FEE : 0;
+  const serviceFee = input.delivery_type === "delivery" && subtotal > 0 ? PILOT_SERVICE_FEE : 0;
   const totalPrice = roundMoney(subtotal + deliveryFee + serviceFee + input.tip_amount);
 
   if (!Number.isFinite(totalPrice) || !Number.isSafeInteger(Math.round(totalPrice * 100))) {

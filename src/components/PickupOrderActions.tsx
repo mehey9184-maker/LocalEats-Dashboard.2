@@ -1,7 +1,7 @@
 import React,{useState} from "react";
 import {MerchantApi} from "../services/MerchantApi";
 import {pickupOrderingEnabled,type PickupAction} from "../services/merchantPickupPolicy";
-import {pickupState,pickupPaymentLabel} from "../services/merchantPickupPolicy";
+import {pickupState,pickupPaymentLabel,pickupAmountLabel} from "../services/merchantPickupPolicy";
 export function PickupOrderActions({order}:{order:any}){
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
  let status:string;
@@ -22,6 +22,7 @@ export function PickupOrderActions({order}:{order:any}){
  };
  return <div className="space-y-2 py-2">
   <p className="text-xs font-bold">Pickup · {status==="collected" ? "Collected" : status==="ready_for_pickup" ? "Ready" : status} · {pickupPaymentLabel(order)}</p>
+  <p className="text-xs">{pickupAmountLabel(order)}</p>
   {order.phone && <a className="text-xs underline" href={`tel:${String(order.phone).replace(/[^+0-9]/g,"")}`}>Optional call: {order.phone}</a>}
   <div className="flex flex-wrap gap-2">{actions.map(action=><button key={action} type="button" disabled={busy || !pickupOrderingEnabled()} onClick={()=>void act(action)} title={pickupOrderingEnabled()?"Confirm actual order facts":"Requires separately approved pickup database activation"} className="px-3 py-2 rounded-full bg-surface-container-high text-on-surface-variant text-xs font-bold opacity-50">{action}</button>)}</div>
   {pickupOrderingEnabled() && MerchantApi.hasPendingPickupCommand(order) && <button type="button" disabled={busy} onClick={async()=>{setBusy(true);try{await MerchantApi.retryPendingPickupOrder(order);window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));setError("");}catch(e){setError(e instanceof Error?e.message:"Outcome unconfirmed.");}finally{setBusy(false);}}}>Retry previous action</button>}
