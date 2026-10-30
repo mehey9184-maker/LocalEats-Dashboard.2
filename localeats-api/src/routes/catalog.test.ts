@@ -25,7 +25,7 @@ class FakeSupabase {
         this.calls.push({ method: 'execute', table: this.table });
         if (this.mockError) return reject(this.mockError);
         
-        if (this.table === 'shops') resolve({ data: this.mockShopData, error: null });
+        if (this.table === 'shops_with_availability') {const map=(s:any)=>({...s,effective_is_active:s.is_active===true,availability_revision:0});resolve({data:Array.isArray(this.mockShopData)?this.mockShopData.map(map):this.mockShopData?map(this.mockShopData):null,error:null});}
         else if (this.table === 'menu_items') resolve({ data: this.mockMenuData, error: null });
         else resolve({ data: null, error: null });
       }

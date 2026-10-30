@@ -21,7 +21,7 @@ const quote=value=>value===null ? "null" : "'"+String(value).replaceAll("'","''"
 const ident=value=>{if(!/^[a-z_]+$/.test(value))throw Error("Unsafe identifier");return '"'+value+'"';};
 const sql=statement=>execFileSync(bin,["-X","--no-password","-d",connection,"-v","ON_ERROR_STOP=1","-At","-c",statement],{encoding:"utf8",stdio:["ignore","pipe","pipe"]}).trim();
 const jsonSql=statement=>JSON.parse(sql(statement) || "null");
-const allowed=["orders","shops","menu_items","pickup_order_events","pickup_push_subscriptions","rider_profiles"];
+const allowed=["orders","shops_with_availability","shops","menu_items","pickup_order_events","pickup_push_subscriptions","rider_profiles"];
 let failDatabase=false;
 supabaseAdmin.from=table=>{
  if(!allowed.includes(table))throw Error("Unexpected fixture table "+table);

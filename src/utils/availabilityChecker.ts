@@ -1,3 +1,4 @@
+import {MerchantApi,MerchantApiError} from "../services/MerchantApi";
 import { Shop } from "../types";
 /**
  * Availability Checker Utility for LocalEats
@@ -169,28 +170,7 @@ export function getOnlineRidersCount(riders: RiderLike[] | null | undefined): nu
 export function isShopOpen(shop: ShopLike | null | undefined): boolean {
   if (!shop) return false;
 
-  const shopId = shop.id;
-  if (shopId !== undefined && shopId !== null) {
-    // Check manual override in local cache if present
-    try {
-      const overrideData = localStorage.getItem(`localeats_manual_status_override_${shopId}`);
-      if (overrideData) {
-        const { status, timestamp } = JSON.parse(overrideData);
-        if (Date.now() - timestamp < 12 * 60 * 60 * 1000) {
-          return Boolean(status);
-        }
-      }
-
-      const holiday = localStorage.getItem(`localeats_holiday_mode_${shopId}`);
-      if (holiday === "true") {
-        return false;
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  return Boolean(shop.is_active ?? true);
+  return shop.is_active === true;
 }
 
 /**
@@ -217,18 +197,20 @@ export function isWithinOperatingHours(
     return { inHours: true }; // No hours restriction defined
   }
 
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const parts = new Intl.DateTimeFormat("en-GB",{timeZone:"Africa/Johannesburg",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now);
+  const hours = parts.find(p=>p.type==="hour")!.value;
+  const minutes = parts.find(p=>p.type==="minute")!.value;
   const currentTime = `${hours}:${minutes}`;
 
   const { open, close } = operatingHours;
   let isOpen = false;
 
-  if (open <= close) {
-    isOpen = currentTime >= open && currentTime <= close;
+  if (open === close) return {inHours:false,reason:"Opening and closing times are equal"};
+  if (open < close) {
+    isOpen = currentTime >= open && currentTime < close;
   } else {
     // Overnight window (e.g. 18:00 - 02:00)
-    isOpen = currentTime >= open || currentTime <= close;
+    isOpen = currentTime >= open || currentTime < close;
   }
 
   return {
@@ -264,36 +246,7 @@ export function checkShopAvailability(
     };
   }
 
-  const shopId = shop.id;
-  let isActive = Boolean(shop.is_active ?? true);
-
-  // Check manual overrides
-  if (shopId !== undefined && shopId !== null) {
-    try {
-      const overrideData = localStorage.getItem(`localeats_manual_status_override_${shopId}`);
-      if (overrideData) {
-        const { status, timestamp } = JSON.parse(overrideData);
-        if (Date.now() - timestamp < 12 * 60 * 60 * 1000) {
-          isActive = Boolean(status);
-        }
-      }
-
-      const holiday = localStorage.getItem(`localeats_holiday_mode_${shopId}`);
-      if (holiday === "true") {
-        isActive = false;
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // Check schedule if auto schedule is enabled
-  if (options?.autoSchedule && (options.operatingHours || options.holidaySchedule)) {
-    const hoursResult = isWithinOperatingHours(options.operatingHours, options.holidaySchedule);
-    if (!hoursResult.inHours) {
-      isActive = false;
-    }
-  }
+  const isActive = shop.is_active === true;
 
   const onlineRiderCount = getOnlineRidersCount(options?.riders);
   const hasOnlineRiders = onlineRiderCount > 0;
@@ -348,123 +301,25 @@ export async function syncShopAvailability(params: {
   onSuccess?: (freshShop?: Shop | null) => void;
   onError?: (err: unknown) => void;
 }): Promise<{ success: boolean; error?: string; freshShop?: Shop | null }> {
-  const { shopId, isOpen, supabase, updateFirestoreShop, getFirestoreShopById } = params;
-  const numId = Number(shopId);
-
-  console.log(`[Diagnostic] syncShopAvailability initiated: toggling shopId ${shopId} to is_active=${isOpen}`);
-
-  // 1. Update local storage caches immediately for zero-latency UI
   try {
-    localStorage.setItem(
-      `localeats_manual_status_override_${shopId}`,
-      JSON.stringify({ status: isOpen, timestamp: Date.now() })
-    );
-    if (isOpen) {
-      localStorage.removeItem(`localeats_holiday_mode_${shopId}`);
-    } else {
-      localStorage.setItem(`localeats_holiday_mode_${shopId}`, "true");
+    let shop;
+    try {shop=await MerchantApi.setAvailability(params.shopId,params.isOpen);}
+    catch(error){
+      if(!(error instanceof MerchantApiError) || error.code!=="OUTSIDE_HOURS_CONFIRMATION_REQUIRED") throw error;
+      if(!window.confirm("Open outside scheduled hours for 1 hour? You can close early. Your normal hours will stay unchanged.")) return {success:false,error:"Opening cancelled. Shop status was not changed."};
+      shop=await MerchantApi.setAvailability(params.shopId,params.isOpen,true,(error as any).expectedRevision);
     }
-
-    // Update cached shops
-    const cached = localStorage.getItem("localeats_cached_shops");
-    if (cached) {
-      const list = JSON.parse(cached);
-      if (Array.isArray(list)) {
-        const updated = list.map((s: { id?: string | number; [key: string]: unknown }) =>
-          String(s.id) === String(shopId) || (!isNaN(numId) && s.id === numId)
-            ? { ...s, is_active: isOpen }
-            : s
-        );
-        localStorage.setItem("localeats_cached_shops", JSON.stringify(updated));
-      }
-    }
-  } catch (e) {
-    console.warn("[Availability Sync] Local storage update warning:", e);
-  }
-
-  let firestoreError: Error | null = null;
-  let supabaseError: { message: string } | null = null;
-
-  // 2. Synchronize to Firestore
-  if (updateFirestoreShop) {
+    // Clean old browser-only authority only after confirmed server persistence.
     try {
-      const res = await updateFirestoreShop(shopId, {
-        is_active: isOpen,
-        updated_at: new Date().toISOString(),
-      });
-      if (res?.error) firestoreError = res.error;
-    } catch (e: unknown) {
-      firestoreError = e instanceof Error ? e : new Error(String(e));
-    }
-  }
+      localStorage.removeItem(`localeats_manual_status_override_${params.shopId}`);
+      localStorage.removeItem(`localeats_holiday_mode_${params.shopId}`);
+    } catch { /* Cache cleanup cannot change a confirmed server result. */ }
+    const freshShop=shop as Shop;
+    window.dispatchEvent(new CustomEvent("localeats:availability-confirmed",{detail:freshShop}));
+    params.onSuccess?.(freshShop);
+    return {success:true,freshShop};
+  }catch(error){const message=error instanceof Error?error.message:"Availability was not saved.";params.onError?.(message);return {success:false,error:message};}
 
-  // 3. Synchronize to Supabase `shops` table (Ensuring client app sees updated status)
-  if (supabase) {
-    try {
-      const { error } = await supabase
-        .from("shops")
-        .update({
-          is_active: isOpen,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", isNaN(numId) ? shopId : numId);
-
-      if (error) {
-        // Fallback without updated_at if column mismatch
-        const fallback = await supabase
-          .from("shops")
-          .update({ is_active: isOpen })
-          .eq("id", isNaN(numId) ? shopId : numId);
-        if (fallback.error) supabaseError = fallback.error;
-      }
-    } catch (e: unknown) {
-      supabaseError = e instanceof Error ? { message: e.message } : { message: String(e) };
-    }
-  }
-
-  if (firestoreError && supabaseError) {
-    const msg = supabaseError?.message || firestoreError?.message || "Failed to sync shop status";
-    console.error(`[Diagnostic] syncShopAvailability FAILED for shopId ${shopId}:`, msg);
-    params.onError?.(msg);
-    return { success: false, error: msg };
-  }
-
-  // 4. Immediately re-fetch the shop's status from the database to ensure state certainty
-  let freshShop: Shop | null = null;
-  if (getFirestoreShopById) {
-    try {
-      freshShop = await getFirestoreShopById(shopId);
-      if (freshShop) {
-        console.log(`[Diagnostic] syncShopAvailability fresh shop fetched from Firestore:`, {
-          shopId,
-          is_active: freshShop.is_active,
-        });
-        // Update cached shops with latest verified database record
-        try {
-          const cached = localStorage.getItem("localeats_cached_shops");
-          if (cached) {
-            const list = JSON.parse(cached);
-            if (Array.isArray(list)) {
-              const updated = list.map((s: { id?: string | number; [key: string]: unknown }) =>
-                String(s.id) === String(shopId) || (!isNaN(numId) && s.id === numId)
-                  ? { ...s, ...freshShop, is_active: freshShop?.is_active ?? isOpen }
-                  : s
-              );
-              localStorage.setItem("localeats_cached_shops", JSON.stringify(updated));
-            }
-          }
-        } catch {
-          // ignore cache error
-        }
-      }
-    } catch (fetchErr) {
-      console.warn("[Availability Sync] Error re-fetching shop status after update:", fetchErr);
-    }
-  }
-
-  console.log(`[Diagnostic] syncShopAvailability SUCCESS for shopId ${shopId}. is_active is now ${isOpen}`);
-  params.onSuccess?.(freshShop);
-  return { success: true, freshShop };
 }
 
 /**

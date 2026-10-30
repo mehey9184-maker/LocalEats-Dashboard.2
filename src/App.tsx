@@ -123,8 +123,6 @@ import {
   cleanLocalStorageCache,
 } from "./utils/storageCleanup";
 import {
-  getNetworkDate,
-  getNetworkFormattedTimeHHMM,
 } from "./utils/timeSync";
 import {
   QueuedPrintJob,
@@ -752,112 +750,13 @@ function App() {
     cleanLocalStorageCache();
   }, []);
 
-  // Automatic Shop Opening/Closing based on synchronized internet/server hours
+  // Availability is evaluated by Postgres; a dashboard must never auto-write a schedule.
   useEffect(() => {
-    const checkShopHours = async () => {
-      if(window.location.hostname.endsWith(".vercel.app"))return; // Preview verification must not auto-toggle live shops.
+    const confirmed=(event:Event)=>{const shop=(event as CustomEvent<Shop>).detail;setShops(prev=>prev.map(s=>String(s.id)===String(shop.id)?{...s,...shop}:s));};
+    window.addEventListener("localeats:availability-confirmed",confirmed);
+    return ()=>window.removeEventListener("localeats:availability-confirmed",confirmed);
+  },[]);
 
-      if (merchantShopGate.status !== "ready" || !user || shops.length === 0) return;
-
-      // Auto schedule is OFF by default. Only run if merchant explicitly enabled automated schedule.
-      const autoScheduleEnabled = user.user_metadata?.auto_schedule_enabled === true;
-      if (!autoScheduleEnabled) return;
-
-      const now = getNetworkDate();
-      const currentTime = getNetworkFormattedTimeHHMM();
-
-      // Check if within scheduled Holiday Mode range
-      let isHoliday = false;
-      const holidaySchedule = user.user_metadata?.holiday_schedule;
-      if (holidaySchedule && holidaySchedule.start && holidaySchedule.end) {
-        const startDate = new Date(holidaySchedule.start);
-        const endDate = new Date(holidaySchedule.end);
-        endDate.setHours(23, 59, 59, 999); // Inclusive of the end day
-        if (now >= startDate && now <= endDate) {
-          isHoliday = true;
-        }
-      }
-
-      // each shop owned by the user
-      for (const shop of shops) {
-        if (shop.owner_id !== user.id) continue;
-
-        const operatingHours = shop.operating_hours;
-        if (!operatingHours || !operatingHours.open || !operatingHours.close)
-          continue;
-
-        // Determine if shop should be open based on internet time
-        let isOpen = false;
-        if (!isHoliday) {
-          if (operatingHours.open <= operatingHours.close) {
-            isOpen = currentTime >= operatingHours.open && currentTime <= operatingHours.close;
-          } else {
-            isOpen = currentTime >= operatingHours.open || currentTime <= operatingHours.close;
-          }
-        }
-
-        if (shop.is_active !== isOpen) {
-          const overrideData = localStorage.getItem(`localeats_manual_status_override_${shop.id}`);
-          if (overrideData) {
-            try {
-              const { status: manualStatus, timestamp } = JSON.parse(overrideData);
-              if (Date.now() - timestamp < 12 * 60 * 60 * 1000) {
-                if (manualStatus !== isOpen) {
-                   continue; // Respect the manual override, skip auto-toggle
-                } else {
-                   // If they align now, we can clear the override
-                   localStorage.removeItem(`localeats_manual_status_override_${shop.id}`);
-                }
-              }
-            } catch {
-              // Ignore invalid JSON parsing of override data
-            }
-          }
-
-          const holidayMode = localStorage.getItem(`localeats_holiday_mode_${shop.id}`);
-          if (isOpen && holidayMode === "true") {
-             continue; // Do not auto open if in manual holiday mode
-          }
-
-          console.log(
-            `Auto-toggling shop ${shop.name} to ${isOpen ? "Open" : "Closed"}`,
-          );
-
-          const { success } = await syncShopAvailability({
-            shopId: shop.id,
-            isOpen,
-            supabase,
-            updateFirestoreShop,
-          });
-
-          if (success) {
-            setShops((prev) =>
-              prev.map((s) =>
-                s.id === shop.id ? { ...s, is_active: isOpen } : s,
-              ),
-            );
-            toast.info(`Shop ${isOpen ? "Opened" : "Closed"} Automatically`, {
-              description: `Based on your operating hours: ${operatingHours.open} - ${operatingHours.close}`,
-              icon: isOpen ? (
-                <Store className="text-emerald-500" />
-              ) : (
-                <PauseCircle className="text-primary" />
-              ),
-              duration: 5000,
-            });
-          }
-        }
-      }
-    };
-
-    // every minute
-    const interval = setInterval(() => {
-      void checkShopHours();
-    }, 60000);
-    void checkShopHours(); // Run once on mount or when shops/user change
-
-    return () => clearInterval(interval);
-  }, [user, shops, user?.user_metadata?.auto_schedule_enabled, merchantShopGate.status]);
 
   // VAPID Push configuration moved to custom hook usePushNotifications
   const { pushEnabled, requestPushPermissions } = usePushNotifications(false);
@@ -1214,6 +1113,14 @@ function App() {
 
     await refreshAuthoritativeMerchantShop();
   }, [user, refreshAuthoritativeMerchantShop]);
+
+  useEffect(()=>{
+    if(!user) return;
+    const refresh=()=>{if(document.visibilityState==="visible")void fetchShops();};
+    const timer=setInterval(refresh,30000);
+    window.addEventListener("focus",refresh);
+    return ()=>{clearInterval(timer);window.removeEventListener("focus",refresh);};
+  },[user,fetchShops]);
 
   const { serviceLoading } = useAppInitializer({
     user,
@@ -2179,13 +2086,6 @@ function App() {
                     if (!currentShop) return;
                     const newStatus = !currentShop.is_active;
 
-                    // Optimistic update
-                    setShops((prev) =>
-                      prev.map((s) =>
-                        s.id === currentShop.id ? { ...s, is_active: newStatus } : s,
-                      ),
-                    );
-
                     const { success, error, freshShop } = await syncShopAvailability({
                       shopId: currentShop.id,
                       isOpen: newStatus,
@@ -2200,7 +2100,7 @@ function App() {
                       );
                       // Force a re-fetch of the current state immediately after success
                       try {
-                        const verifiedShop = freshShop || (await getFirestoreShopById(currentShop.id));
+                        const verifiedShop = freshShop;
                         if (verifiedShop) {
                            setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
                         }
@@ -2210,11 +2110,6 @@ function App() {
                       }
                     } else {
                       // Rollback on error
-                      setShops((prev) =>
-                        prev.map((s) =>
-                          s.id === currentShop.id ? { ...s, is_active: !newStatus } : s,
-                        ),
-                      );
                       toast.error(typeof error === "string" ? error : "Failed to update shop status");
                     }
                   }}
@@ -2314,7 +2209,7 @@ function App() {
            <button
              onClick={async () => {
                 const newStatus = true;
-                setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, is_active: newStatus } : s));
+
                 const { success, error, freshShop } = await syncShopAvailability({
                   shopId: currentShop.id,
                   isOpen: newStatus,
@@ -2326,7 +2221,7 @@ function App() {
                   toast.success("Shop is now Open and accepting customer orders!");
                   // Force a re-fetch of the current state immediately after success
                   try {
-                    const verifiedShop = freshShop || (await getFirestoreShopById(currentShop.id));
+                    const verifiedShop = freshShop;
                     if (verifiedShop) {
                        setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
                     }
@@ -2335,7 +2230,7 @@ function App() {
                     console.error("Failed to re-fetch after toggling:", e);
                   }
                 } else {
-                  setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, is_active: !newStatus } : s));
+
                   toast.error(typeof error === "string" ? error : "Failed to go online");
                 }
              }}
@@ -2723,14 +2618,9 @@ function App() {
                              <button
                                key={statusOption}
                                onClick={() => {
-                                 setStoreStatus(statusOption);
+
                                  if (currentShop) {
                                    const isActive = statusOption === "open" || statusOption === "busy";
-                                   setShops((prev) =>
-                                     prev.map((s) =>
-                                       s.id === currentShop.id ? { ...s, is_active: isActive } : s,
-                                     ),
-                                   );
                                    void syncShopAvailability({
                                      shopId: currentShop.id,
                                      isOpen: isActive,
@@ -2738,10 +2628,11 @@ function App() {
                                      updateFirestoreShop,
                                      getFirestoreShopById,
                                      onSuccess: async (freshShop) => {
+                                       setStoreStatus(statusOption);
                                        toast.success(`Shop is now ${statusOption === "open" ? "OPEN" : statusOption === "busy" ? "BUSY" : "CLOSED"}`);
                                        // Force a re-fetch of the current state immediately after success
                                        try {
-                                         const verifiedShop = freshShop || (await getFirestoreShopById(currentShop.id));
+                                         const verifiedShop = freshShop;
                                          if (verifiedShop) {
                                             setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
                                          }
@@ -2751,11 +2642,6 @@ function App() {
                                        }
                                      },
                                      onError: (err) => {
-                                       setShops((prev) =>
-                                         prev.map((s) =>
-                                           s.id === currentShop.id ? { ...s, is_active: !isActive } : s,
-                                         ),
-                                       );
                                        toast.error(typeof err === "string" ? err : "Failed to update status");
                                      },
                                    });
@@ -2808,28 +2694,11 @@ function App() {
                              <div className="flex flex-col">
                                <span className="text-xs font-bold text-on-surface">Auto-Schedule Opening</span>
                                <span className="text-[9px] text-on-surface-variant font-medium">
-                                 {user?.user_metadata?.auto_schedule_enabled ? "Enabled — Auto opens/closes on schedule" : "Disabled — Strictly manual status control"}
+                                 {"Server-managed in South African time; manual close takes priority"}
                                </span>
                              </div>
                              <button
-                               onClick={async () => {
-                                 const currentVal = !!user?.user_metadata?.auto_schedule_enabled;
-                                 const newVal = !currentVal;
-                                 const { data: updateRes, error } = await supabase.auth.updateUser({
-                                   data: { auto_schedule_enabled: newVal }
-                                 });
-                                 if (updateRes?.user) {
-                                   setUser(updateRes.user);
-                                   toast.success(
-                                     newVal 
-                                       ? "Automated Store Schedule ENABLED. Your store will open/close automatically based on set hours." 
-                                       : "Automated Store Schedule DISABLED. Your store status is now strictly managed manually by you.",
-                                     { icon: <Sparkles className="text-primary" /> }
-                                   );
-                                 } else if (error) {
-                                   toast.error("Failed to update auto-schedule setting.");
-                                 }
-                               }}
+                               disabled title="Schedule is evaluated by the LocalEats server in South African time."
                                className={cn(
                                  "w-10 h-5 rounded-full transition-all relative shrink-0 cursor-pointer ml-1",
                                  user?.user_metadata?.auto_schedule_enabled ? "bg-emerald-500" : "bg-outline-variant/40"
@@ -2846,23 +2715,9 @@ function App() {
                                  if (!currentShop) return;
                                  const newStatus = !currentShop.is_active; // If we're toggling, newStatus is the opposite of currentShop.is_active
 
-                                 localStorage.removeItem(`localeats_manual_status_override_${currentShop.id}`);
-                                 if (!newStatus) {
-                                   localStorage.setItem(`localeats_holiday_mode_${currentShop.id}`, "true");
-                                 } else {
-                                   localStorage.removeItem(`localeats_holiday_mode_${currentShop.id}`);
-                                 }
+                                 const { success, error } = await syncShopAvailability({shopId:currentShop.id,isOpen:newStatus});
 
-                                 // Optimistic update
-                                 setShops((prev) =>
-                                   prev.map((s) =>
-                                     s.id === currentShop.id ? { ...s, is_active: newStatus } : s,
-                                   ),
-                                 );
-
-                                 const { error } = await updateFirestoreShop(currentShop.id, { is_active: newStatus });
-
-                                 if (!error) {
+                                 if (success) {
                                    toast.success(
                                      newStatus 
                                        ? "Holiday Mode disabled. Your store is now accepting orders." 
@@ -2870,11 +2725,6 @@ function App() {
                                      { icon: <PauseCircle className="text-primary"/> }
                                    );
                                  } else {
-                                   setShops((prev) =>
-                                     prev.map((s) =>
-                                       s.id === currentShop.id ? { ...s, is_active: !newStatus } : s,
-                                     ),
-                                   );
                                    toast.error("Failed to toggle Holiday Mode.");
                                  }
                                }}

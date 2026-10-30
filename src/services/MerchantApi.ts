@@ -35,6 +35,7 @@ type MerchantApiResponse = {
 
 export class MerchantApiError extends Error {
   status: number | null;
+  code?: string;
 
   constructor(message: string, status: number | null = null) {
     super(message);
@@ -70,6 +71,22 @@ const readJsonResponse = async (response: Response): Promise<MerchantApiResponse
 };
 
 export class MerchantApi {
+  static async setAvailability(shopId:string|number,open:boolean,confirmOutsideHours=false,expectedRevision?:number):Promise<VerifiedMerchantShop> {
+    const uid=auth.currentUser?.uid;
+    const shop=await this.getMerchantShop();
+    if(!uid || !shop || String(shop.id)!==String(shopId)) throw new MerchantApiError("Shop ownership could not be verified.");
+    const revision=expectedRevision ?? Number(shop.availability_revision);
+    if(!Number.isSafeInteger(revision) || revision<0) throw new MerchantApiError("Availability schema is not activated yet.");
+    const response=await fetch(`${getApiUrl()}/api/v1/merchant/shop/availability`,{method:"PATCH",headers:await getApiAuthHeaders(),body:JSON.stringify({shop_id:String(shopId),open,confirm_outside_hours:confirmOutsideHours,expected_revision:revision})});
+    const data=await readJsonResponse(response);
+    if(!response.ok || data.success!==true){const error=new MerchantApiError(typeof data.error==="string"?data.error:"Availability was not saved.",response.status);error.code=typeof data.code==="string"?data.code:undefined;
+      // Preserve the revision for the explicit outside-hours confirmation, never rebase a stale command.
+      (error as any).expectedRevision=revision;throw error;}
+    if(auth.currentUser?.uid!==uid || !data.shop || String(data.shop.id)!==String(shopId) || typeof data.shop.is_active!=="boolean") throw new MerchantApiError("Availability persistence was not confirmed. Refresh before retrying.");
+    requireOwnedShop(data.shop,uid);
+    return data.shop;
+  }
+
   static async getMenuItems(shopId: string | number): Promise<any[]> {
     const uid = auth.currentUser?.uid;
     const shop = await this.getMerchantShop();

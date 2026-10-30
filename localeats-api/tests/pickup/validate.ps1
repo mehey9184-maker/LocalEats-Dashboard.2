@@ -17,7 +17,7 @@ try {
   if (-not $launch.WaitForExit(20000)) { throw 'pg_ctl launch did not exit within 20 seconds.' }
   if ($launch.ExitCode -ne 0) { throw 'Disposable PostgreSQL start failed.' }
   $started=$true
-  foreach($file in @((Join-Path $PSScriptRoot 'schema.sql'),(Join-Path $repoRoot 'supabase/drafts/pickup_launch_foundation.sql'),(Join-Path $repoRoot 'supabase/drafts/pickup_zero_fee.sql'),(Join-Path $PSScriptRoot 'verify.sql'))) {
+  foreach($file in @((Join-Path $PSScriptRoot 'schema.sql'),(Join-Path $repoRoot 'supabase/drafts/pickup_launch_foundation.sql'),(Join-Path $repoRoot 'supabase/drafts/pickup_zero_fee.sql'),(Join-Path $repoRoot 'supabase/drafts/merchant_availability.sql'),(Join-Path $PSScriptRoot 'availability.sql'),(Join-Path $PSScriptRoot 'verify.sql'))) {
     & (Join-Path $PostgresBin 'psql.exe') -X --no-password -d $testConnection -v ON_ERROR_STOP=1 -f $file
     if ($LASTEXITCODE -ne 0) { throw "Disposable validation failed: $file" }
   }
@@ -37,6 +37,20 @@ try {
   if((Get-Content (Join-Path $cluster ($loser+'.err')) -Raw) -notmatch 'ORDER_STATE_CHANGED') { throw 'Unexpected race failure.' }
   & (Join-Path $PostgresBin 'psql.exe') -X --no-password -d $testConnection -v ON_ERROR_STOP=1 -f (Join-Path $PSScriptRoot 'race-verify.sql')
   if($LASTEXITCODE -ne 0) { throw 'Race verification failed.' }
+  $close=Start-FixtureSql 'availability-race-close.sql' 'availability-close'
+  $locked=$false
+  for($attempt=0;$attempt -lt 50;$attempt++) {
+    $check=& (Join-Path $PostgresBin 'psql.exe') -X --no-password -d $testConnection -At -c "select exists(select 1 from pg_locks where relation='public.shops'::regclass and mode='RowExclusiveLock' and granted);"
+    if($check -eq 't') {$locked=$true;break}
+    Start-Sleep -Milliseconds 20
+  }
+  if(-not $locked){throw 'Close transaction did not acquire the expected shop lock.'}
+  $blocked=Start-FixtureSql 'availability-race-create.sql' 'availability-create'
+  if(-not $close.WaitForExit(20000) -or $close.ExitCode -ne 0){throw 'Concurrent close failed.'}
+  if(-not $blocked.WaitForExit(20000) -or $blocked.ExitCode -eq 0 -or (Get-Content (Join-Path $cluster 'availability-create.err') -Raw) -notmatch 'SHOP_UNAVAILABLE'){throw 'Creation must fail after the winning close.'}
+  & (Join-Path $PostgresBin 'psql.exe') -X --no-password -d $testConnection -v ON_ERROR_STOP=1 -f (Join-Path $PSScriptRoot 'availability-race-verify.sql')
+  if($LASTEXITCODE -ne 0){throw 'Close/create invariant failed.'}
+  Write-Output 'AVAILABILITY_CLOSE_CREATE_RACE_PASSED'
   if($Journey -or $Serve) {
     $mode=if($Serve){'serve'}else{'test'}
     & node --experimental-strip-types (Join-Path $PSScriptRoot 'journey.mjs') $testConnection (Join-Path $PostgresBin 'psql.exe') $mode

@@ -5,7 +5,8 @@
       "main": false,
       "integration/merchant-original-ui-pickup": false,
       "activation/pickup-workflow": false,
-      "fix/pickup-zero-fee": false
+      "fix/pickup-zero-fee": false,
+      "fix/merchant-authoritative-availability": false
     }
   }
 }

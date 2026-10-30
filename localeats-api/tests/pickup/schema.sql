@@ -30,3 +30,5 @@ insert into public.orders(id,shop_id,user_id,status,delivery_status,rider_id) va
  ('550e8400-e29b-41d4-a716-000000000091','shop','historical','cancelled','none',null),
  ('550e8400-e29b-41d4-a716-000000000092','shop','historical','delivered','delivered','550e8400-e29b-41d4-a716-000000000099'),
  ('550e8400-e29b-41d4-a716-000000000093','shop','historical','ready_for_pickup','rider_assigned','550e8400-e29b-41d4-a716-000000000099');
+
+alter table public.shops add column opening_time text default '00:00', add column closing_time text default '23:59';

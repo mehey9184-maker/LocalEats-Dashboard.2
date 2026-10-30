@@ -1,3 +1,4 @@
+import {effectiveShop} from "./shopAvailability.js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { deriveDeliveryProof, type DeliveryProof } from "./deliveryProof.js";
 import {
@@ -306,12 +307,12 @@ export class SupabaseOrderRepository implements OrderRepository {
 
   async findShop(shopId: string): Promise<ShopForOrder | null> {
     const { data, error } = await this.client
-      .from("shops")
-      .select("id,name,is_active,approval_status,archived_at,location,latitude,longitude,lat,lng")
+      .from("shops_with_availability")
+      .select("id,name,is_active,effective_is_active,availability_revision,approval_status,archived_at,location,latitude,longitude,lat,lng")
       .eq("id", shopId)
       .maybeSingle();
     if (error) throwDatabaseError("shop lookup", error);
-    return (data as ShopForOrder | null) ?? null;
+    return data ? effectiveShop(data as any) as ShopForOrder : null;
   }
 
   async findMenuItems(shopId: string, itemIds: string[]): Promise<MenuItemForOrder[]> {

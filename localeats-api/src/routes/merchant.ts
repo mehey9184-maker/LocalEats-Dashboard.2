@@ -1,8 +1,23 @@
+import {effectiveShop} from "../orders/shopAvailability.js";
 import { Router, Response } from "express";
 import { AuthenticatedRequest, authenticateFirebase } from "../middleware/authenticateFirebase.js";
 import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 
 const router = Router();
+router.patch("/shop/availability", authenticateFirebase, async (req:AuthenticatedRequest,res:Response):Promise<void>=>{
+ if(process.env.MERCHANT_AVAILABILITY_WRITES_ENABLED!=="true") {res.status(503).json({success:false,code:"AVAILABILITY_WRITES_DISABLED",error:"Availability updates are not activated yet."});return;}
+ const body=req.body;
+ if(!body || typeof body!=="object" || Array.isArray(body) || Object.keys(body).some(k=>!["shop_id","open","confirm_outside_hours","expected_revision"].includes(k)) || typeof body.shop_id!=="string" || !body.shop_id.trim() || typeof body.open!=="boolean" || typeof body.confirm_outside_hours!=="boolean" || !Number.isSafeInteger(body.expected_revision) || body.expected_revision<0) {
+  res.status(400).json({success:false,code:"INVALID_REQUEST",error:"Invalid availability request."});return;
+ }
+ try {
+  const {data,error}=await supabaseAdmin.rpc("merchant_set_availability",{p_uid:req.authUser!.uid,p_shop_id:body.shop_id,p_open:body.open,p_confirm_outside:body.confirm_outside_hours,p_expected_revision:body.expected_revision});
+  if(error){const code=error.message;const status=code==="FORBIDDEN"?403:["AVAILABILITY_CHANGED","OUTSIDE_HOURS_CONFIRMATION_REQUIRED","SHOP_UNAVAILABLE"].includes(code)?409:503;
+   res.status(status).json({success:false,code:status===503?"AVAILABILITY_PERSISTENCE_UNAVAILABLE":code,error:status===503?"Availability could not be saved.":code});return;}
+  if(!data || data.id!==body.shop_id || data.owner_id!==req.authUser!.uid || data.is_active!==body.open || data.effective_is_active!==body.open || !Number.isSafeInteger(Number(data.availability_revision))) throw Error("Unconfirmed persistence");
+  res.json({success:true,shop:effectiveShop(data)});
+ }catch{res.status(503).json({success:false,code:"AVAILABILITY_PERSISTENCE_UNCONFIRMED",error:"Availability was not confirmed. Refresh before retrying."});}
+});
 
 const ALLOWED_CREATE_FIELDS = new Set([
   "name",
@@ -34,7 +49,7 @@ router.get("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res:
     }
 
     const { data: shops, error } = await supabaseAdmin
-      .from("shops")
+      .from("shops_with_availability")
       .select("*")
       .eq("owner_id", uid)
       .is("archived_at", null);
@@ -42,10 +57,7 @@ router.get("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res:
     if (error) {
       console.error("Supabase merchant shop query error:", error);
 
-      res.status(500).json({
-        success: false,
-        error: "Internal Server Error",
-      });
+      res.status(503).json({success:false,code:"AVAILABILITY_SCHEMA_UNAVAILABLE",error:"Shop availability is not activated or could not be loaded."});
       return;
     }
 
@@ -67,7 +79,7 @@ router.get("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res:
 
     res.status(200).json({
       success: true,
-      shop: shops[0],
+      shop: effectiveShop(shops[0]),
     });
   } catch (err) {
     console.error("Error fetching merchant shop:", err);

@@ -2060,6 +2060,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   : "Your shop is marked unavailable. Customers cannot place new pickup orders while it is unavailable."}
               </p>
 
+              {currentShop.availability_override_until && currentShop.is_active && <p className="text-xs text-on-surface-variant">Open outside hours until {new Intl.DateTimeFormat("en-ZA",{timeZone:"Africa/Johannesburg",hour:"2-digit",minute:"2-digit"}).format(new Date(currentShop.availability_override_until))} SAST. You can close early.</p>}
               {currentShop.opening_time && currentShop.closing_time && (
                 <p className="text-[10px] font-mono font-black text-on-surface-variant/60 uppercase tracking-widest flex items-center gap-1.5 pt-1">
                   <Clock size={12} /> Standard hours: {currentShop.opening_time} - {currentShop.closing_time}
@@ -2102,6 +2103,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   });
 
                   if (success) {
+                    await Promise.resolve(onRefresh());
                     toast.success(
                       `Storefront is now ${newStatus ? "Open & Live" : "Closed & Offline"}!`
                     );
