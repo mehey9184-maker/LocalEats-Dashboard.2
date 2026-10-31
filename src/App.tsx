@@ -339,9 +339,11 @@ function App() {
     setMerchantShopGate({ status: "approval-required", shop });
   }, []);
 
-  const resolveMerchantShop = useCallback(async (firebaseUid: string): Promise<Shop | null> => {
-    setOrders([]);
-    setMerchantShopGate({ status: "checking" });
+  const resolveMerchantShop = useCallback(async (firebaseUid: string, options?: { background?: boolean }): Promise<Shop | null> => {
+    // A periodic or focus refresh must not replace a working dashboard with the full-screen
+    // "Verifying" overlay or blank the order list. Only the initial verification does that.
+    if (!options?.background) setOrders([]);
+    setMerchantShopGate((prev) => (options?.background && prev.status === "ready" ? prev : { status: "checking" }));
     try {
       const verifiedShop = await MerchantApi.getMerchantShop();
       if (!verifiedShop || verifiedShop.id === null || verifiedShop.id === undefined) {
@@ -397,7 +399,7 @@ function App() {
       });
       return;
     }
-    await resolveMerchantShop(firebaseUid);
+    await resolveMerchantShop(firebaseUid, { background: true });
   }, [resolveMerchantShop]);
 
   // Centralized Shop Location & Sync State Engine
