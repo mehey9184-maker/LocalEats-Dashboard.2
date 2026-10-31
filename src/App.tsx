@@ -119,6 +119,7 @@ import { NotificationCenterSidePanel } from "./components/NotificationCenterSide
 import {
   syncShopAvailability,
 } from "./utils/availabilityChecker";
+import { acceptShopSnapshot, latestKnownShop } from "./utils/availabilityCoordinator";
 import {
   cleanLocalStorageCache,
 } from "./utils/storageCleanup";
@@ -353,7 +354,9 @@ function App() {
         return null;
       }
 
-      const shop = verifiedShop as Shop;
+      // A read that started before a newer save finished must not overwrite the saved state.
+      const fetchedShop = verifiedShop as Shop;
+      const shop = acceptShopSnapshot(fetchedShop) ? fetchedShop : (latestKnownShop<Shop>(fetchedShop.id) ?? fetchedShop);
       acceptAuthoritativeMerchantShop(firebaseUid, shop);
       return shop;
     } catch (error) {
@@ -752,7 +755,7 @@ function App() {
 
   // Availability is evaluated by Postgres; a dashboard must never auto-write a schedule.
   useEffect(() => {
-    const confirmed=(event:Event)=>{const shop=(event as CustomEvent<Shop>).detail;setShops(prev=>prev.map(s=>String(s.id)===String(shop.id)?{...s,...shop}:s));};
+    const confirmed=(event:Event)=>{const shop=(event as CustomEvent<Shop>).detail;if(!acceptShopSnapshot(shop))return;setShops(prev=>prev.map(s=>String(s.id)===String(shop.id)?{...s,...shop}:s));};
     window.addEventListener("localeats:availability-confirmed",confirmed);
     return ()=>window.removeEventListener("localeats:availability-confirmed",confirmed);
   },[]);

@@ -1,5 +1,6 @@
 import {MerchantApi,MerchantApiError} from "../services/MerchantApi";
 import { Shop } from "../types";
+import {acceptShopSnapshot,knownRevision,noteShopRevision,recordAvailabilityEvent,revisionOf,runExclusiveAvailability} from "./availabilityCoordinator";
 /**
  * Availability Checker Utility for LocalEats
  * 
@@ -288,11 +289,7 @@ export interface SupabaseClientLike {
   };
 }
 
-/**
- * Synchronizes shop status (is_active: boolean) to BOTH Supabase and Firestore
- * to guarantee that client storefronts and merchant apps are perfectly in sync.
- */
-export async function syncShopAvailability(params: {
+type SyncShopAvailabilityParams = {
   shopId: number | string;
   isOpen: boolean;
   supabase?: SupabaseClientLike | null;
@@ -300,10 +297,27 @@ export async function syncShopAvailability(params: {
   getFirestoreShopById?: (shopId: string | number) => Promise<Shop | null>;
   onSuccess?: (freshShop?: Shop | null) => void;
   onError?: (err: unknown) => void;
-}): Promise<{ success: boolean; error?: string; freshShop?: Shop | null }> {
+};
+type SyncShopAvailabilityResult = { success: boolean; error?: string; freshShop?: Shop | null };
+
+/** After a revision conflict, show the server's current state instead of guessing. */
+async function refreshShopAfterConflict(): Promise<void> {
+  try {
+    const shop = await MerchantApi.getMerchantShop();
+    if (shop && acceptShopSnapshot(shop)) {
+      window.dispatchEvent(new CustomEvent("localeats:availability-confirmed", { detail: shop }));
+    }
+  } catch {
+    /* The periodic refresh will retry. A failed refresh must not hide the conflict. */
+  }
+}
+
+async function performAvailabilityChange(params: SyncShopAvailabilityParams): Promise<SyncShopAvailabilityResult> {
+  const expected = knownRevision(params.shopId);
+  recordAvailabilityEvent({ shopId: params.shopId, event: "command_started", requestedOpen: params.isOpen, expectedRevision: expected ?? null });
   try {
     let shop;
-    try {shop=await MerchantApi.setAvailability(params.shopId,params.isOpen);}
+    try {shop=await MerchantApi.setAvailability(params.shopId,params.isOpen,false,expected);}
     catch(error){
       if(!(error instanceof MerchantApiError) || error.code!=="OUTSIDE_HOURS_CONFIRMATION_REQUIRED") throw error;
       if(!window.confirm("Open outside scheduled hours for 1 hour? You can close early. Your normal hours will stay unchanged.")) return {success:false,error:"Opening cancelled. Shop status was not changed."};
@@ -315,11 +329,45 @@ export async function syncShopAvailability(params: {
       localStorage.removeItem(`localeats_holiday_mode_${params.shopId}`);
     } catch { /* Cache cleanup cannot change a confirmed server result. */ }
     const freshShop=shop as Shop;
+    noteShopRevision(freshShop);
+    recordAvailabilityEvent({ shopId: params.shopId, event: "command_saved", requestedOpen: params.isOpen, expectedRevision: expected ?? null, savedRevision: revisionOf(freshShop), status: 200 });
     window.dispatchEvent(new CustomEvent("localeats:availability-confirmed",{detail:freshShop}));
     params.onSuccess?.(freshShop);
     return {success:true,freshShop};
-  }catch(error){const message=error instanceof Error?error.message:"Availability was not saved.";params.onError?.(message);return {success:false,error:message};}
+  }catch(error){
+    const code = error instanceof MerchantApiError ? error.code ?? null : null;
+    const status = error instanceof MerchantApiError ? error.status : null;
+    recordAvailabilityEvent({ shopId: params.shopId, event: "command_failed", requestedOpen: params.isOpen, expectedRevision: expected ?? null, code, status });
+    let message=error instanceof Error?error.message:"Availability was not saved.";
+    if (code === "AVAILABILITY_CHANGED") {
+      await refreshShopAfterConflict();
+      message = "This shop's availability was changed elsewhere. The latest status is now shown. Please check it and try again.";
+    }
+    params.onError?.(message);
+    return {success:false,error:message};
+  }
+}
 
+/**
+ * Saves shop availability through the authoritative LocalEats API only (the parameters that
+ * mention Supabase/Firestore are legacy and ignored). All Merchant controls share one
+ * pending command per shop: a repeat of the same target joins it, a conflicting target is
+ * refused until it finishes. Success is reported only after the server confirms the save.
+ */
+export async function syncShopAvailability(params: SyncShopAvailabilityParams): Promise<SyncShopAvailabilityResult> {
+  const outcome = await runExclusiveAvailability(params.shopId, params.isOpen, () => performAvailabilityChange(params));
+  if (outcome.kind === "busy") {
+    recordAvailabilityEvent({ shopId: params.shopId, event: "command_refused_busy", requestedOpen: params.isOpen });
+    const error = "Another availability change is still being saved. Wait a moment, then try again.";
+    params.onError?.(error);
+    return { success: false, error };
+  }
+  if (outcome.kind === "joined") {
+    recordAvailabilityEvent({ shopId: params.shopId, event: "duplicate_joined", requestedOpen: params.isOpen });
+    if (outcome.result.success) params.onSuccess?.(outcome.result.freshShop);
+    else params.onError?.(outcome.result.error);
+  }
+  return outcome.result;
 }
 
 /**
