@@ -9,6 +9,7 @@ import {effectiveShop} from "../orders/shopAvailability.js";
 test("availability requires Firebase, server activation, ownership, revision and confirmed persistence",async()=>{
  const verify=authAdmin.verifyIdToken,rpc=supabaseAdmin.rpc,old=process.env.MERCHANT_AVAILABILITY_WRITES_ENABLED;
  let calls=0,mode="ok";
+ const logged:string[]=[],realInfo=console.info;console.info=(...a:any[])=>{logged.push(a.map(String).join(" "));};
  (authAdmin as any).verifyIdToken=async(token:string)=>{if(token==="expired")throw Error("expired");return {uid:token};};
  (supabaseAdmin as any).rpc=async(name:string,args:any)=>{calls++;assert.equal(name,"merchant_set_availability");assert.equal(args.p_uid,"merchant");
   if(args.p_shop_id!=="owned")return {error:{message:"FORBIDDEN"}};
@@ -32,7 +33,13 @@ test("availability requires Firebase, server activation, ownership, revision and
   mode="failure";const failed=await call("merchant");assert.equal(failed.status,503);assert.equal(failed.body.shop,undefined);
   mode="null";assert.equal((await call("merchant")).body.code,"AVAILABILITY_PERSISTENCE_UNCONFIRMED");
   mode="ok";assert.equal((await call("merchant")).body.shop.is_active,false);
- }finally{authAdmin.verifyIdToken=verify;supabaseAdmin.rpc=rpc;if(old===undefined)delete process.env.MERCHANT_AVAILABILITY_WRITES_ENABLED;else process.env.MERCHANT_AVAILABILITY_WRITES_ENABLED=old;server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+  const lines=logged.filter(l=>l.startsWith("[merchant-availability]")).map(l=>JSON.parse(l.slice(l.indexOf("{"))));
+  assert.deepEqual(lines.map(l=>l.outcome),["FORBIDDEN","AVAILABILITY_CHANGED","OUTSIDE_HOURS_CONFIRMATION_REQUIRED","PERSISTENCE_ERROR","UNCONFIRMED","SAVED"]);
+  const saved=lines[lines.length-1];assert.equal(saved.shop_id,"owned");assert.equal(saved.requested_open,false);assert.equal(saved.expected_revision,0);assert.equal(saved.saved_revision,1);
+  const allowed=new Set(["outcome","shop_id","requested_open","confirm_outside_hours","expected_revision","saved_revision"]);
+  for(const l of lines){for(const k of Object.keys(l))assert.ok(allowed.has(k),`unexpected log field ${k}`);for(const v of Object.values(l))assert.notEqual(v,"merchant","the caller uid must never be logged");}
+  const text=logged.join("\n");for(const secret of ["expired","fb-","authorization","Bearer"])assert.equal(text.includes(secret),false,`availability log must not contain ${secret}`);
+ }finally{console.info=realInfo;authAdmin.verifyIdToken=verify;supabaseAdmin.rpc=rpc;if(old===undefined)delete process.env.MERCHANT_AVAILABILITY_WRITES_ENABLED;else process.env.MERCHANT_AVAILABILITY_WRITES_ENABLED=old;server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
 });
 test("all read paths trust the database calculation and fail closed on incomplete data",()=>{
  assert.equal(effectiveShop({is_active:true,effective_is_active:false,availability_revision:1}).is_active,false);

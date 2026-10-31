@@ -11,12 +11,16 @@ router.patch("/shop/availability", authenticateFirebase, async (req:Authenticate
   res.status(400).json({success:false,code:"INVALID_REQUEST",error:"Invalid availability request."});return;
  }
  try {
+  // One sanitised line per accepted request so a future incident can be reconstructed from logs.
+  // Never include the caller's uid, token, headers or any customer data.
+  const audit=(outcome:string,savedRevision:number|null=null)=>console.info("[merchant-availability]",JSON.stringify({outcome,shop_id:body.shop_id,requested_open:body.open,confirm_outside_hours:body.confirm_outside_hours,expected_revision:body.expected_revision,saved_revision:savedRevision}));
   const {data,error}=await supabaseAdmin.rpc("merchant_set_availability",{p_uid:req.authUser!.uid,p_shop_id:body.shop_id,p_open:body.open,p_confirm_outside:body.confirm_outside_hours,p_expected_revision:body.expected_revision});
-  if(error){const code=error.message;const status=code==="FORBIDDEN"?403:["AVAILABILITY_CHANGED","OUTSIDE_HOURS_CONFIRMATION_REQUIRED","SHOP_UNAVAILABLE"].includes(code)?409:503;
+  if(error){const code=error.message;audit(["FORBIDDEN","AVAILABILITY_CHANGED","OUTSIDE_HOURS_CONFIRMATION_REQUIRED","SHOP_UNAVAILABLE"].includes(code)?code:"PERSISTENCE_ERROR");const status=code==="FORBIDDEN"?403:["AVAILABILITY_CHANGED","OUTSIDE_HOURS_CONFIRMATION_REQUIRED","SHOP_UNAVAILABLE"].includes(code)?409:503;
    res.status(status).json({success:false,code:status===503?"AVAILABILITY_PERSISTENCE_UNAVAILABLE":code,error:status===503?"Availability could not be saved.":code});return;}
   if(!data || data.id!==body.shop_id || data.owner_id!==req.authUser!.uid || data.is_active!==body.open || data.effective_is_active!==body.open || !Number.isSafeInteger(Number(data.availability_revision))) throw Error("Unconfirmed persistence");
+  audit("SAVED",Number(data.availability_revision));
   res.json({success:true,shop:effectiveShop(data)});
- }catch{res.status(503).json({success:false,code:"AVAILABILITY_PERSISTENCE_UNCONFIRMED",error:"Availability was not confirmed. Refresh before retrying."});}
+ }catch{console.info("[merchant-availability]",JSON.stringify({outcome:"UNCONFIRMED",shop_id:body.shop_id,requested_open:body.open}));res.status(503).json({success:false,code:"AVAILABILITY_PERSISTENCE_UNCONFIRMED",error:"Availability was not confirmed. Refresh before retrying."});}
 });
 
 const ALLOWED_CREATE_FIELDS = new Set([
