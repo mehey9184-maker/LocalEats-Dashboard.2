@@ -14,7 +14,7 @@ router.patch("/shop/availability", authenticateFirebase, async (req:Authenticate
   const {data,error}=await supabaseAdmin.rpc("merchant_set_availability",{p_uid:req.authUser!.uid,p_shop_id:body.shop_id,p_open:body.open,p_confirm_outside:body.confirm_outside_hours,p_expected_revision:body.expected_revision});
   if(error){const code=error.message;const status=code==="FORBIDDEN"?403:["AVAILABILITY_CHANGED","OUTSIDE_HOURS_CONFIRMATION_REQUIRED","SHOP_UNAVAILABLE"].includes(code)?409:503;
    res.status(status).json({success:false,code:status===503?"AVAILABILITY_PERSISTENCE_UNAVAILABLE":code,error:status===503?"Availability could not be saved.":code});return;}
-  if(!data || data.id!==body.shop_id || data.owner_id!==req.authUser!.uid || data.is_active!==body.open || data.effective_is_active!==body.open || !Number.isSafeInteger(Number(data.availability_revision))) throw Error("Unconfirmed persistence");
+  if(!data || data.id!==body.shop_id || data.owner_id!==req.authUser!.uid || data.is_active!==body.open || data.effective_is_active!==body.open || !Number.isSafeInteger(Number(data.availability_revision)) || Number(data.availability_revision)<=body.expected_revision) throw Error("Unconfirmed persistence");
   res.json({success:true,shop:effectiveShop(data)});
  }catch{res.status(503).json({success:false,code:"AVAILABILITY_PERSISTENCE_UNCONFIRMED",error:"Availability was not confirmed. Refresh before retrying."});}
 });

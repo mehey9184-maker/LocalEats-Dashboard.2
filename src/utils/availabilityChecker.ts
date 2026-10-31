@@ -1,5 +1,13 @@
 import {MerchantApi,MerchantApiError} from "../services/MerchantApi";
 import { Shop } from "../types";
+import {
+  availabilityRevisionOf,
+  isSavedAvailabilityRevisionCurrent,
+  logAvailabilityDiagnostic,
+  runExclusiveAvailabilityCommand,
+  shouldAcceptAvailabilityShop,
+  type AvailabilityCommandResult,
+} from "./merchantAvailabilityCommand";
 /**
  * Availability Checker Utility for LocalEats
  * 
@@ -300,14 +308,32 @@ export async function syncShopAvailability(params: {
   getFirestoreShopById?: (shopId: string | number) => Promise<Shop | null>;
   onSuccess?: (freshShop?: Shop | null) => void;
   onError?: (err: unknown) => void;
-}): Promise<{ success: boolean; error?: string; freshShop?: Shop | null }> {
+}): Promise<AvailabilityCommandResult> {
+  return runExclusiveAvailabilityCommand(params.shopId, params.isOpen, () => executeShopAvailability(params));
+}
+
+async function executeShopAvailability(params: {
+  shopId: number | string;
+  isOpen: boolean;
+  onSuccess?: (freshShop?: Shop | null) => void;
+  onError?: (err: unknown) => void;
+}): Promise<AvailabilityCommandResult> {
   try {
     let shop;
+    let expectedRevision: number | undefined;
     try {shop=await MerchantApi.setAvailability(params.shopId,params.isOpen);}
     catch(error){
       if(!(error instanceof MerchantApiError) || error.code!=="OUTSIDE_HOURS_CONFIRMATION_REQUIRED") throw error;
-      if(!window.confirm("Open outside scheduled hours for 1 hour? You can close early. Your normal hours will stay unchanged.")) return {success:false,error:"Opening cancelled. Shop status was not changed."};
-      shop=await MerchantApi.setAvailability(params.shopId,params.isOpen,true,(error as any).expectedRevision);
+      expectedRevision=error.expectedRevision;
+      if(!window.confirm("Open outside scheduled hours for 1 hour? You can close early. Your normal hours will stay unchanged.")) {
+        logAvailabilityDiagnostic({outcome:"outside_hours_cancelled",shopId:String(params.shopId),requestedOpen:params.isOpen,expectedRevision:expectedRevision??null,code:error.code});
+        return {success:false,error:"Opening cancelled. Shop status was not changed."};
+      }
+      shop=await MerchantApi.setAvailability(params.shopId,params.isOpen,true,expectedRevision);
+    }
+    const savedRevision=availabilityRevisionOf(shop);
+    if(expectedRevision!==undefined && !isSavedAvailabilityRevisionCurrent(expectedRevision,shop)) {
+      throw new MerchantApiError("Stale availability response ignored. Refresh before retrying.");
     }
     // Clean old browser-only authority only after confirmed server persistence.
     try {
@@ -315,11 +341,30 @@ export async function syncShopAvailability(params: {
       localStorage.removeItem(`localeats_holiday_mode_${params.shopId}`);
     } catch { /* Cache cleanup cannot change a confirmed server result. */ }
     const freshShop=shop as Shop;
+    logAvailabilityDiagnostic({outcome:"saved",shopId:String(params.shopId),requestedOpen:params.isOpen,expectedRevision:expectedRevision??null,savedRevision});
     window.dispatchEvent(new CustomEvent("localeats:availability-confirmed",{detail:freshShop}));
     params.onSuccess?.(freshShop);
     return {success:true,freshShop};
-  }catch(error){const message=error instanceof Error?error.message:"Availability was not saved.";params.onError?.(message);return {success:false,error:message};}
-
+  }catch(error){
+    const code=error instanceof MerchantApiError?error.code:undefined;
+    logAvailabilityDiagnostic({outcome:"failed",shopId:String(params.shopId),requestedOpen:params.isOpen,expectedRevision:error instanceof MerchantApiError?error.expectedRevision??null:null,code});
+    if(code==="AVAILABILITY_CHANGED") {
+      try {
+        const shop=await MerchantApi.getMerchantShop();
+        if(shop && shouldAcceptAvailabilityShop(undefined,shop)) {
+          window.dispatchEvent(new CustomEvent("localeats:availability-confirmed",{detail:shop as Shop}));
+        }
+        const message="Shop status changed elsewhere. Display refreshed from the server.";
+        params.onError?.(message);
+        return {success:false,error:message,freshShop:shop as Shop,conflict:true};
+      } catch {
+        /* Fall through to the original failure if the refresh cannot be confirmed. */
+      }
+    }
+    const message=error instanceof Error?error.message:"Availability was not saved.";
+    params.onError?.(message);
+    return {success:false,error:message};
+  }
 }
 
 /**

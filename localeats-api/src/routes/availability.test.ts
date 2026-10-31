@@ -16,6 +16,7 @@ test("availability requires Firebase, server activation, ownership, revision and
   if(mode==="null")return {data:null,error:null};
   if(mode==="conflict")return {error:{message:"AVAILABILITY_CHANGED"}};
   if(mode==="confirm")return {error:{message:"OUTSIDE_HOURS_CONFIRMATION_REQUIRED"}};
+  if(mode==="stale")return {data:{id:"owned",owner_id:"merchant",is_active:args.p_open,effective_is_active:args.p_open,availability_revision:args.p_expected_revision},error:null};
   return {data:{id:"owned",owner_id:"merchant",is_active:args.p_open,effective_is_active:args.p_open,availability_revision:1},error:null};};
  const app=express();app.use(express.json());app.use("/merchant",merchant);
  const server=app.listen(0,"127.0.0.1");await once(server,"listening");const base=`http://127.0.0.1:${(server.address() as any).port}/merchant/shop/availability`;
@@ -31,6 +32,7 @@ test("availability requires Firebase, server activation, ownership, revision and
   mode="confirm";assert.equal((await call("merchant")).body.code,"OUTSIDE_HOURS_CONFIRMATION_REQUIRED");
   mode="failure";const failed=await call("merchant");assert.equal(failed.status,503);assert.equal(failed.body.shop,undefined);
   mode="null";assert.equal((await call("merchant")).body.code,"AVAILABILITY_PERSISTENCE_UNCONFIRMED");
+  mode="stale";assert.equal((await call("merchant")).body.code,"AVAILABILITY_PERSISTENCE_UNCONFIRMED");
   mode="ok";assert.equal((await call("merchant")).body.shop.is_active,false);
  }finally{authAdmin.verifyIdToken=verify;supabaseAdmin.rpc=rpc;if(old===undefined)delete process.env.MERCHANT_AVAILABILITY_WRITES_ENABLED;else process.env.MERCHANT_AVAILABILITY_WRITES_ENABLED=old;server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
 });

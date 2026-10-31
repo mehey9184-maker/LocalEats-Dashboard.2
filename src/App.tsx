@@ -1,4 +1,4 @@
-import {pickupOrderingEnabled} from "./services/merchantPickupPolicy";
+﻿import {pickupOrderingEnabled} from "./services/merchantPickupPolicy";
 import {isPickupOrder} from "./services/merchantPickupPolicy";
 import { checkPrinterConnectivity, printViaBluetooth, printViaUSB } from "./utils/escPosEngine";
 import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
@@ -119,6 +119,12 @@ import { NotificationCenterSidePanel } from "./components/NotificationCenterSide
 import {
   syncShopAvailability,
 } from "./utils/availabilityChecker";
+import {
+  isAvailabilityCommandPending,
+  logAvailabilityDiagnostic,
+  shouldAcceptAvailabilityShop,
+  subscribeAvailabilityCommand,
+} from "./utils/merchantAvailabilityCommand";
 import {
   cleanLocalStorageCache,
 } from "./utils/storageCleanup";
@@ -313,6 +319,8 @@ function App() {
     enableAudio,
   } = useKitchenAlerter(orders);
   const [shops, setShops] = useState<Shop[]>([]);
+  shopsRef.current = shops;
+  const [availabilityBusy, setAvailabilityBusy] = useState(false);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [merchantShopGate, setMerchantShopGate] = useState<MerchantShopGateState>({ status: "checking" });
@@ -327,6 +335,19 @@ function App() {
 
   const acceptAuthoritativeMerchantShop = useCallback((firebaseUid: string, shop: Shop) => {
     registerVerifiedShopId(firebaseUid, shop.id);
+    const current = shopsRef.current.find((s) => String(s.id) === String(shop.id));
+    if (current && !shouldAcceptAvailabilityShop(current, shop)) {
+      logAvailabilityDiagnostic({
+        outcome: "stale_read_ignored",
+        shopId: String(shop.id),
+        expectedRevision: current.availability_revision ?? null,
+        savedRevision: shop.availability_revision ?? null,
+      });
+      if (current.approval_status === "approved") {
+        setMerchantShopGate({ status: "ready", shop: current });
+      }
+      return;
+    }
     setShops([shop]);
     if (shop.approval_status === "approved") {
       setMerchantShopGate({ status: "ready", shop });
@@ -752,10 +773,31 @@ function App() {
 
   // Availability is evaluated by Postgres; a dashboard must never auto-write a schedule.
   useEffect(() => {
-    const confirmed=(event:Event)=>{const shop=(event as CustomEvent<Shop>).detail;setShops(prev=>prev.map(s=>String(s.id)===String(shop.id)?{...s,...shop}:s));};
+    const confirmed=(event:Event)=>{
+      const shop=(event as CustomEvent<Shop>).detail;
+      setShops(prev=>prev.map(s=>{
+        if(String(s.id)!==String(shop.id)) return s;
+        if(!shouldAcceptAvailabilityShop(s, shop)) {
+          logAvailabilityDiagnostic({
+            outcome:"stale_read_ignored",
+            shopId:String(shop.id),
+            expectedRevision:s.availability_revision ?? null,
+            savedRevision:shop.availability_revision ?? null,
+          });
+          return s;
+        }
+        return {...s,...shop};
+      }));
+    };
     window.addEventListener("localeats:availability-confirmed",confirmed);
     return ()=>window.removeEventListener("localeats:availability-confirmed",confirmed);
   },[]);
+
+  useEffect(() => {
+    const syncBusy = () => setAvailabilityBusy(isAvailabilityCommandPending(currentShop?.id));
+    syncBusy();
+    return subscribeAvailabilityCommand(syncBusy);
+  }, [currentShop?.id]);
 
 
   // VAPID Push configuration moved to custom hook usePushNotifications
@@ -2082,8 +2124,9 @@ function App() {
               />
               {currentShop && (
                 <button
+                  disabled={availabilityBusy}
                   onClick={async () => {
-                    if (!currentShop) return;
+                    if (!currentShop || availabilityBusy) return;
                     const newStatus = !currentShop.is_active;
 
                     const { success, error, freshShop } = await syncShopAvailability({
@@ -2095,13 +2138,13 @@ function App() {
                     });
 
                     if (success) {
+                      const open = freshShop?.is_active === true;
                       toast.success(
-                        `Shop is now ${newStatus ? "Open & Live" : "Closed & Offline"}`,
+                        `Shop is now ${open ? "Open & Live" : "Closed & Offline"}`,
                       );
-                      // Force a re-fetch of the current state immediately after success
                       try {
                         const verifiedShop = freshShop;
-                        if (verifiedShop) {
+                        if (verifiedShop && shouldAcceptAvailabilityShop(currentShop, verifiedShop)) {
                            setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
                         }
                         await fetchShops();
@@ -2109,8 +2152,9 @@ function App() {
                         console.error("Failed to re-fetch after toggling:", e);
                       }
                     } else {
-                      // Rollback on error
                       toast.error(typeof error === "string" ? error : "Failed to update shop status");
+                      // Always refresh from server on failure so display reflects real state, not a stale guess.
+                      try { await refreshAuthoritativeMerchantShop(); } catch { /* best-effort */ }
                     }
                   }}
                   className={cn(
@@ -2207,7 +2251,9 @@ function App() {
              Store Offline - Not Receiving Orders
            </div>
            <button
+             disabled={availabilityBusy}
              onClick={async () => {
+                if (availabilityBusy) return;
                 const newStatus = true;
 
                 const { success, error, freshShop } = await syncShopAvailability({
@@ -2217,12 +2263,11 @@ function App() {
                   updateFirestoreShop,
                   getFirestoreShopById,
                 });
-                if (success) {
+                if (success && freshShop?.is_active === true) {
                   toast.success("Shop is now Open and accepting customer orders!");
-                  // Force a re-fetch of the current state immediately after success
                   try {
                     const verifiedShop = freshShop;
-                    if (verifiedShop) {
+                    if (verifiedShop && shouldAcceptAvailabilityShop(currentShop, verifiedShop)) {
                        setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
                     }
                     await fetchShops();
@@ -2230,8 +2275,9 @@ function App() {
                     console.error("Failed to re-fetch after toggling:", e);
                   }
                 } else {
-
                   toast.error(typeof error === "string" ? error : "Failed to go online");
+                  // Refresh from server so display reflects real state, not a stale guess.
+                  try { await refreshAuthoritativeMerchantShop(); } catch { /* best-effort */ }
                 }
              }}
              className="px-4 py-1 bg-white text-error rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-zinc-100 transition-colors ml-2 shadow-xs cursor-pointer active:scale-95 border border-white"
@@ -2617,9 +2663,9 @@ function App() {
                            return (
                              <button
                                key={statusOption}
+                               disabled={availabilityBusy}
                                onClick={() => {
-
-                                 if (currentShop) {
+                                 if (!currentShop || availabilityBusy) return;
                                    const isActive = statusOption === "open" || statusOption === "busy";
                                    void syncShopAvailability({
                                      shopId: currentShop.id,
@@ -2628,12 +2674,12 @@ function App() {
                                      updateFirestoreShop,
                                      getFirestoreShopById,
                                      onSuccess: async (freshShop) => {
-                                       setStoreStatus(statusOption);
-                                       toast.success(`Shop is now ${statusOption === "open" ? "OPEN" : statusOption === "busy" ? "BUSY" : "CLOSED"}`);
-                                       // Force a re-fetch of the current state immediately after success
+                                       const open = freshShop?.is_active === true;
+                                       setStoreStatus(open ? (statusOption === "busy" ? "busy" : "open") : "closed");
+                                       toast.success(`Shop is now ${open ? (statusOption === "busy" ? "BUSY" : "OPEN") : "CLOSED"}`);
                                        try {
                                          const verifiedShop = freshShop;
-                                         if (verifiedShop) {
+                                         if (verifiedShop && shouldAcceptAvailabilityShop(currentShop, verifiedShop)) {
                                             setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
                                          }
                                          await fetchShops();
@@ -2645,7 +2691,6 @@ function App() {
                                        toast.error(typeof err === "string" ? err : "Failed to update status");
                                      },
                                    });
-                                 }
                                }}
                                className={cn(
                                  "px-4 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all",
@@ -2711,21 +2756,23 @@ function App() {
                            <div className="flex items-center gap-2">
                              <span className="text-xs font-bold text-on-surface-variant">Manual Holiday Mode</span>
                              <button
+                               disabled={availabilityBusy}
                                onClick={async () => {
-                                 if (!currentShop) return;
-                                 const newStatus = !currentShop.is_active; // If we're toggling, newStatus is the opposite of currentShop.is_active
+                                 if (!currentShop || availabilityBusy) return;
+                                 const newStatus = !currentShop.is_active;
 
-                                 const { success, error } = await syncShopAvailability({shopId:currentShop.id,isOpen:newStatus});
+                                 const { success, error, freshShop } = await syncShopAvailability({shopId:currentShop.id,isOpen:newStatus});
 
                                  if (success) {
+                                   const open = freshShop?.is_active === true;
                                    toast.success(
-                                     newStatus 
-                                       ? "Holiday Mode disabled. Your store is now accepting orders." 
+                                     open
+                                       ? "Holiday Mode disabled. Your store is now accepting orders."
                                        : "Holiday Mode enabled. Your store is now temporarily closed.",
                                      { icon: <PauseCircle className="text-primary"/> }
                                    );
                                  } else {
-                                   toast.error("Failed to toggle Holiday Mode.");
+                                   toast.error(typeof error === "string" ? error : "Failed to toggle Holiday Mode.");
                                  }
                                }}
                                className={cn(

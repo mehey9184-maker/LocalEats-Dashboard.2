@@ -36,6 +36,7 @@ type MerchantApiResponse = {
 export class MerchantApiError extends Error {
   status: number | null;
   code?: string;
+  expectedRevision?: number;
 
   constructor(message: string, status: number | null = null) {
     super(message);
@@ -81,8 +82,9 @@ export class MerchantApi {
     const data=await readJsonResponse(response);
     if(!response.ok || data.success!==true){const error=new MerchantApiError(typeof data.error==="string"?data.error:"Availability was not saved.",response.status);error.code=typeof data.code==="string"?data.code:undefined;
       // Preserve the revision for the explicit outside-hours confirmation, never rebase a stale command.
-      (error as any).expectedRevision=revision;throw error;}
-    if(auth.currentUser?.uid!==uid || !data.shop || String(data.shop.id)!==String(shopId) || typeof data.shop.is_active!=="boolean") throw new MerchantApiError("Availability persistence was not confirmed. Refresh before retrying.");
+      error.expectedRevision=revision;throw error;}
+    const savedRevision=Number(data.shop?.availability_revision);
+    if(auth.currentUser?.uid!==uid || !data.shop || String(data.shop.id)!==String(shopId) || typeof data.shop.is_active!=="boolean" || !Number.isSafeInteger(savedRevision) || savedRevision<=revision) throw new MerchantApiError("Availability persistence was not confirmed. Refresh before retrying.");
     requireOwnedShop(data.shop,uid);
     return data.shop;
   }

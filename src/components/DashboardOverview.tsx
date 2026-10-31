@@ -1,8 +1,13 @@
-import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
+﻿import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 import { FoodPlaceholder } from "../components/MenuManagement";
 import { isPlaceholderImage } from "../constants";
 import { updateFirestoreShop } from "../lib/firebase";
 import { syncShopAvailability } from "../utils/availabilityChecker";
+import {
+  isAvailabilityCommandPending,
+  shouldAcceptAvailabilityShop,
+  subscribeAvailabilityCommand,
+} from "../utils/merchantAvailabilityCommand";
 import { Skeleton } from "../components/ui/Skeleton";
 import { getSupportedCity } from "../utils";
 import { RealtimeChannel } from "@supabase/supabase-js";
@@ -1026,6 +1031,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   >([]);
   const [chartMetric, setChartMetric] = useState<"orders" | "revenue">("revenue");
   const [isStatusToggling, setIsStatusToggling] = useState(false);
+  useEffect(() => {
+    const syncBusy = () => setIsStatusToggling(isAvailabilityCommandPending(currentShop?.id));
+    syncBusy();
+    return subscribeAvailabilityCommand(syncBusy);
+  }, [currentShop?.id]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [layoutMode, setLayoutMode] = useState<"compact" | "advanced">(() => {
     return (localStorage.getItem("localeats_dashboard_layout") as "compact" | "advanced") || "compact";
@@ -1618,7 +1628,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             </div>
           </div>
           <button
+            disabled={isStatusToggling}
             onClick={async () => {
+              if (isStatusToggling) return;
               const anyActive = shops.some(s => s.is_active);
               const newStatus = !anyActive;
 
@@ -1626,6 +1638,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               toast.loading(`Setting all storefronts to ${newStatus ? "Online" : "Offline"}...`, { id: "bulk-status-toggle" });
               
               let error = null;
+              let confirmedOpen: boolean | null = null;
               for (const s of shops) {
                 const res = await syncShopAvailability({
                   shopId: s.id,
@@ -1634,13 +1647,15 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   updateFirestoreShop,
                 });
                 if (!res.success) error = res.error;
+                else confirmedOpen = res.freshShop?.is_active === true;
               }
 
               if (!error) {
-                toast.success(`All storefronts are now ${newStatus ? "Online & Live" : "Offline & Closed"}!`, { id: "bulk-status-toggle" });
+                toast.success(`All storefronts are now ${confirmedOpen ? "Online & Live" : "Offline & Closed"}!`, { id: "bulk-status-toggle" });
                 onRefresh();
               } else {
-                toast.error("Failed to update all storefronts. Please check your connection.", { id: "bulk-status-toggle" });
+                toast.error(typeof error === "string" ? error : "Failed to update all storefronts. Please check your connection.", { id: "bulk-status-toggle" });
+                try { await Promise.resolve(onRefresh()); } catch { /* best-effort */ }
               }
             }}
             className={cn(
@@ -2089,30 +2104,25 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               <button
                 disabled={isStatusToggling}
                 onClick={async () => {
-                  setIsStatusToggling(true);
+                  if (isStatusToggling) return;
                   const newStatus = !currentShop.is_active;
 
-                  // Optimistic update
-                  
-
-                  const { success, error } = await syncShopAvailability({
+                  const { success, error, freshShop } = await syncShopAvailability({
                     shopId: currentShop.id,
                     isOpen: newStatus,
                     supabase: supabase as any,
                     updateFirestoreShop,
                   });
 
-                  if (success) {
+                  if (success && shouldAcceptAvailabilityShop(currentShop, freshShop)) {
                     await Promise.resolve(onRefresh());
                     toast.success(
-                      `Storefront is now ${newStatus ? "Open & Live" : "Closed & Offline"}!`
+                      `Storefront is now ${freshShop?.is_active ? "Open & Live" : "Closed & Offline"}!`
                     );
                   } else {
-                    // Rollback
-                    
                     toast.error(typeof error === "string" ? error : "Failed to update storefront status");
+                    try { await Promise.resolve(onRefresh()); } catch { /* best-effort */ }
                   }
-                  setIsStatusToggling(false);
                 }}
                 className={cn(
                   "w-full px-6 py-3 rounded-2xl font-headline font-black text-xs uppercase tracking-widest transition-all duration-300 shadow-md flex items-center justify-center gap-2",
