@@ -1752,7 +1752,9 @@ Notes: "${order.notes || "None"}"
                                               item !== null &&
                                               "price" in item
                                               ? ((item as unknown) as Record<string, unknown>).price as number
-                                              : 0,
+                                              : isPickupOrder(order) && typeof item === "object" && item !== null && "unit_price" in item
+                                                ? ((item as unknown) as Record<string, unknown>).unit_price as number
+                                                : 0,
                                           ).toFixed(2)}
                                         </td>
                                         <td className="px-4 py-3 text-right font-bold text-on-surface">
@@ -1763,7 +1765,9 @@ Notes: "${order.notes || "None"}"
                                                 item !== null &&
                                                 "price" in item
                                                 ? ((item as unknown) as Record<string, unknown>).price as number
-                                                : 0,
+                                                : isPickupOrder(order) && typeof item === "object" && item !== null && "unit_price" in item
+                                                  ? ((item as unknown) as Record<string, unknown>).unit_price as number
+                                                  : 0,
                                             ) *
                                             Number(
                                               typeof item === "object" &&
@@ -3468,7 +3472,10 @@ Notes: "${order.notes || "None"}"
                             const isObj = typeof item === "object" && item !== null;
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
-                            const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
+                            const fields = isObj ? (item as Record<string, unknown>) : {};
+                            const price = isPickupOrder(order)
+                              ? Number(fields.line_total ?? (Number(fields.unit_price) * Number(fields.quantity ?? 1)))
+                              : Number(fields.price ?? 0);
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
