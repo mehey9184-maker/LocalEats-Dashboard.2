@@ -50,8 +50,10 @@ export function pickupItemLineTotal(item: unknown): number | null {
  if(!item || typeof item!=="object" || Array.isArray(item))return null;
  const fields=item as Record<string,unknown>;
  const value=fields.line_total;
- if((typeof value==="number" || (typeof value==="string" && value.trim()!=="")) &&
-   Number.isFinite(Number(value)) && Number(value)>=0 && Number.isSafeInteger(Math.round(Number(value)*100)))return Number(value);
+ if(value!==undefined && value!==null){
+  return (typeof value==="number" || (typeof value==="string" && value.trim()!=="")) &&
+   Number.isFinite(Number(value)) && Number(value)>=0 && Number.isSafeInteger(Math.round(Number(value)*100)) ? Number(value) : null;
+ }
  const unit=fields.unit_price, quantity=fields.quantity;
  if(!((typeof unit==="number") || (typeof unit==="string" && unit.trim()!=="")) ||
    !Number.isFinite(Number(unit)) || Number(unit)<0 ||
