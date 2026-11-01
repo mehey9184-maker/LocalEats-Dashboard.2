@@ -359,9 +359,11 @@ function App() {
     setMerchantShopGate({ status: "approval-required", shop });
   }, []);
 
-  const resolveMerchantShop = useCallback(async (firebaseUid: string): Promise<Shop | null> => {
-    setOrders([]);
-    setMerchantShopGate({ status: "checking" });
+  const resolveMerchantShop = useCallback(async (firebaseUid: string, options?: { background?: boolean }): Promise<Shop | null> => {
+    if (!options?.background) {
+      setOrders([]);
+      setMerchantShopGate({ status: "checking" });
+    }
     try {
       const verifiedShop = await MerchantApi.getMerchantShop();
       if (!verifiedShop || verifiedShop.id === null || verifiedShop.id === undefined) {
@@ -415,7 +417,7 @@ function App() {
       });
       return;
     }
-    await resolveMerchantShop(firebaseUid);
+    await resolveMerchantShop(firebaseUid, { background: true });
   }, [resolveMerchantShop]);
 
   // Centralized Shop Location & Sync State Engine

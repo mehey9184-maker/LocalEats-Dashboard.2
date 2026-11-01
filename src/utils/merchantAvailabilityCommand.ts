@@ -62,15 +62,23 @@ export function isSavedAvailabilityRevisionCurrent(expectedRevision: number, sav
 }
 
 export function logAvailabilityDiagnostic(entry: AvailabilityDiagnostic): void {
-  diagnostics.push(entry);
+  const safeEntry: AvailabilityDiagnostic = {
+    outcome: String(entry.outcome).slice(0, 40),
+    shopId: String(entry.shopId).slice(0, 80),
+    requestedOpen: typeof entry.requestedOpen === "boolean" ? entry.requestedOpen : undefined,
+    expectedRevision: Number.isSafeInteger(entry.expectedRevision) ? entry.expectedRevision : null,
+    savedRevision: Number.isSafeInteger(entry.savedRevision) ? entry.savedRevision : null,
+    code: typeof entry.code === "string" && /^[A-Z0-9_]{1,64}$/.test(entry.code) ? entry.code : undefined,
+  };
+  diagnostics.push(safeEntry);
   if (diagnostics.length > 20) diagnostics.shift();
   console.info("[availability]", {
-    outcome: entry.outcome,
-    shopId: entry.shopId,
-    requestedOpen: entry.requestedOpen,
-    expectedRevision: entry.expectedRevision ?? null,
-    savedRevision: entry.savedRevision ?? null,
-    code: entry.code,
+    outcome: safeEntry.outcome,
+    shopId: safeEntry.shopId,
+    requestedOpen: safeEntry.requestedOpen,
+    expectedRevision: safeEntry.expectedRevision ?? null,
+    savedRevision: safeEntry.savedRevision ?? null,
+    code: safeEntry.code,
   });
 }
 

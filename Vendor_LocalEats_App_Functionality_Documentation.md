@@ -1,3 +1,7 @@
+
+## Availability branch reconciliation — 2026-11-01
+Fetched `origin/fix/availability-stale-guard` at `37161690339886bc4a6824eb53365380f3bb450d`; its common ancestor with local `951dc35` is `952f7555919e3e8cf3933c1d4ed294bfc885c8a7`. The remote tip refactors the local command helper into a per-shop coordinator and prevents a successful background shop refresh from clearing the dashboard while it is in flight. Local `951dc35` retains stricter API/client checks that a confirmed saved availability revision is strictly newer than the requested revision, plus a single shared command lock across all shops. The current merchant contract maps one owned shop, so the global lock is stricter without blocking a supported multi-shop workflow. Remote API/client changes remove the monotonic saved-revision check; they were not adopted.
+Integration branch `integration/pickup-payment-availability` carries forward only background-refresh preservation, keeps the `951dc35` stale-snapshot, revision, lock and failure protections, and copies diagnostics into an allowlisted record before retaining/logging it. Existing fail-closed behavior on a failed ownership refresh is unchanged. The remote branch's 12-test source was inspected; the local suite now passes 11 focused tests. No merge or cherry-pick of the divergent remote implementation was performed.
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
 **Application Name**: LocalEats Vendor (Merchant Dashboard & Operations Platform)  

@@ -72,3 +72,10 @@ test('two-tab simulation keeps the newest confirmed revision',()=>{
   assert.equal(displayed.is_active,false);
   assert.equal(displayed.availability_revision,5);
 });
+test('availability diagnostics retain only allowlisted sanitized fields',()=>{
+  const c=loadCommand();
+  c.logAvailabilityDiagnostic({outcome:'saved',shopId:'shop',requestedOpen:true,expectedRevision:4,savedRevision:5,code:'SAVED',token:'secret-token',uid:'private-uid',message:'private message'});
+  const stored=JSON.parse(JSON.stringify(c.readAvailabilityDiagnostics()[0]));
+  assert.deepEqual(Object.keys(stored).sort(),['code','expectedRevision','outcome','requestedOpen','savedRevision','shopId'].sort());
+  assert.doesNotMatch(JSON.stringify(stored),/secret-token|private-uid|private message/);
+});
