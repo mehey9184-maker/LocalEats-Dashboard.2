@@ -79,3 +79,17 @@ test('availability diagnostics retain only allowlisted sanitized fields',()=>{
   assert.deepEqual(Object.keys(stored).sort(),['code','expectedRevision','outcome','requestedOpen','savedRevision','shopId'].sort());
   assert.doesNotMatch(JSON.stringify(stored),/secret-token|private-uid|private message/);
 });
+test('availability writes carry expected revisions and require a newer persisted revision',()=>{
+  const api=fs.readFileSync('src/services/MerchantApi.ts','utf8');
+  const route=fs.readFileSync('localeats-api/src/routes/merchant.ts','utf8');
+  assert.match(api,/const revision=expectedRevision\s*\?\?\s*Number\(shop\.availability_revision\)/);
+  assert.match(api,/expected_revision:revision/);
+  assert.match(api,/savedRevision<=revision/);
+  assert.match(route,/Number\(data\.availability_revision\)<=body\.expected_revision/);
+});
+test('background authoritative refresh does not blank the active dashboard before its response',()=>{
+  const app=fs.readFileSync('src/App.tsx','utf8');
+  const resolver=app.slice(app.indexOf('const resolveMerchantShop ='),app.indexOf('const handleCreatedMerchantShop'));
+  assert.match(resolver,/if \(!options\?\.background\)\s*\{\s*setOrders\(\[\]\);\s*setMerchantShopGate\(\{ status: "checking" \}\);/);
+  assert.match(app,/await resolveMerchantShop\(firebaseUid,\s*\{ background: true \}\)/);
+});
