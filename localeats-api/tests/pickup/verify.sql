@@ -1,5 +1,6 @@
 
 \set ON_ERROR_STOP on
+-- DISPOSABLE TEST DATABASE ONLY: modifies fixture shops/orders; never run on live LocalEats.
 create function pg_temp.assert_ok(ok boolean,label text) returns void language plpgsql as $$
 begin if ok is distinct from true then raise exception 'ASSERTION FAILED: %',label; end if; end $$;
 create function pg_temp.expect_error(statement text,expected text) returns void language plpgsql as $$
@@ -8,6 +9,11 @@ begin
   begin execute statement; exception when others then get stacked diagnostics caught=message_text; end;
   if caught is null or position(expected in caught)=0 then raise exception 'Expected %, got %',expected,coalesce(caught,'SUCCESS'); end if;
 end $$;
+create function pg_temp.record(key text default '550e8400-e29b-41d4-a716-000000000001') returns jsonb language sql as $$
+ select jsonb_build_object('shop_id','shop','idempotency_key',key,'items',jsonb_build_array(jsonb_build_object('menu_item_id','item','name','Fixture meal','unit_price',25,'quantity',1,'line_total',25)),
+   'product_name','Fixture meal','price',25,'service_fee',0,'total_price',25,'payment_method','cash','customer_name','Fixture customer','phone','+27712345678','email','','address','','city','','launch_location',jsonb_build_object('lat',-26.0,'lng',28.0));
+$$;
+
 select pg_temp.assert_ok((select count(*)=4 from public.orders where create_intent_hash is null and payment_status is null and delivery_type is null and revision is null),'history remains unknown');
 update public.shops set pickup_payment_methods=array['cash','card_machine']::text[] where id='shop';
 set role service_role;
@@ -31,10 +37,6 @@ set role service_role;
 update public.orders set delivery_status='picked_up' where id='550e8400-e29b-41d4-a716-000000000093';
 reset role;
 select pg_temp.assert_ok((select delivery_status='picked_up' and create_intent_hash is null from public.orders where id='550e8400-e29b-41d4-a716-000000000093'),'delivery drain retained');
-create function pg_temp.record(key text default '550e8400-e29b-41d4-a716-000000000001') returns jsonb language sql as $$
- select jsonb_build_object('shop_id','shop','idempotency_key',key,'items',jsonb_build_array(jsonb_build_object('menu_item_id','item','name','Fixture meal','unit_price',25,'quantity',1,'line_total',25)),
-   'product_name','Fixture meal','price',25,'service_fee',0,'total_price',25,'payment_method','cash','customer_name','Fixture customer','phone','+27712345678','email','','address','','city','','launch_location',jsonb_build_object('lat',-26.0,'lng',28.0));
-$$;
 set role service_role;
 select public.pickup_create_order('customer',repeat('a',64),pg_temp.record()) as result \gset created_
 reset role;
