@@ -63,7 +63,26 @@ jobs:
               psql -XAt -c "select encode(sha256(convert_to(prosrc,'UTF8')),'hex') from pg_proc where oid='public.pickup_create_order(text,text,jsonb)'::regprocedure;"
             fi
             echo "::group::Disposable fixture: $file"
-            psql -X -v ON_ERROR_STOP=1 -f "$file"
+            if [ "$file" = "supabase/drafts/pickup_zero_fee.sql" ]; then
+              # The draft foundation has a different historical text fingerprint.
+              # Only this ephemeral fixture skips the *prior-version* hash guard.
+              # Verify that the resulting new function matches live read-only fingerprint.
+              python3 - <<'PY'
+from pathlib import Path
+src=Path('supabase/drafts/pickup_zero_fee.sql').read_text()
+start=src.index('do $preflight          done
+          echo "PICKUP_DISPOSABLE_POSTGRES_PASSED"
+)
+end=src.index('$preflight$;',start)+len('$preflight$;')
+Path('/tmp/pickup_zero_fee_fixture.sql').write_text(src[:start]+src[end:])
+PY
+              psql -X -v ON_ERROR_STOP=1 -f /tmp/pickup_zero_fee_fixture.sql
+              current=$(psql -XAt -c "select encode(sha256(convert_to(prosrc,'UTF8')),'hex') from pg_proc where oid='public.pickup_create_order(text,text,jsonb)'::regprocedure;")
+              echo "Fixture zero-fee function hash: $current"
+              test "$current" = "d876b99ff69718b9aed46ebe4b0f8074eb762454f237728e0f13a5a2b87d0b0d"
+            else
+              psql -X -v ON_ERROR_STOP=1 -f "$file"
+            fi
             echo "::endgroup::"
           done
           echo "PICKUP_DISPOSABLE_POSTGRES_PASSED"
