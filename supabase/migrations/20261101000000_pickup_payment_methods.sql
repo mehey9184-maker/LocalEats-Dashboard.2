@@ -23,6 +23,9 @@ alter table public.shops add column pickup_payment_methods text[];
 alter table public.shops add constraint shops_pickup_payment_methods_valid check (
   pickup_payment_methods is null or (
     cardinality(pickup_payment_methods) between 1 and 2
+    and array_ndims(pickup_payment_methods)=1
+    and array_lower(pickup_payment_methods,1)=1
+    and array_position(pickup_payment_methods,null::text) is null
     and pickup_payment_methods <@ array['cash','card_machine']::text[]
     and (cardinality(pickup_payment_methods)=1 or pickup_payment_methods[1]<>pickup_payment_methods[2])
   )
@@ -51,9 +54,13 @@ begin
   if current_user not in ('service_role','postgres') then raise exception 'PICKUP_SERVER_AUTHORITY_REQUIRED'; end if;
   if p_uid is null or btrim(p_uid)='' or p_shop_id is null or btrim(p_shop_id)=''
     or p_payment_methods is null or cardinality(p_payment_methods) not between 1 and 2
+    or array_ndims(p_payment_methods)<>1 or array_lower(p_payment_methods,1)<>1
+    or array_position(p_payment_methods,null::text) is not null
     or not (p_payment_methods <@ array['cash','card_machine']::text[])
     or (cardinality(p_payment_methods)=2 and p_payment_methods[1]=p_payment_methods[2])
     or (p_expected_methods is not null and (cardinality(p_expected_methods) not between 1 and 2
+      or array_ndims(p_expected_methods)<>1 or array_lower(p_expected_methods,1)<>1
+      or array_position(p_expected_methods,null::text) is not null
       or not (p_expected_methods <@ array['cash','card_machine']::text[])
       or (cardinality(p_expected_methods)=2 and p_expected_methods[1]=p_expected_methods[2]))) then
     raise exception 'INVALID_PAYMENT_METHODS';

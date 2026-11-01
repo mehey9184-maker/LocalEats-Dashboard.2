@@ -17,6 +17,8 @@ select pg_temp.assert_ok((select pickup_payment_methods=array['cash']::text[] fr
 select pg_temp.expect_error($q$select public.pickup_create_order('customer',repeat('e',64),jsonb_set(pg_temp.record('550e8400-e29b-41d4-a716-000000000008'),'{payment_method}','"card_machine"'))$q$,'UNSUPPORTED_PAYMENT_METHOD');
 select pg_temp.expect_error($q$select public.merchant_set_pickup_payment_methods('merchant','shop',array['card_machine']::text[],array['cash','card_machine']::text[])$q$,'PAYMENT_METHODS_CHANGED');
 select pg_temp.expect_error($q$select public.merchant_set_pickup_payment_methods('other','shop',array['cash']::text[],array['cash']::text[])$q$,'FORBIDDEN');
+select pg_temp.expect_error($q$select public.merchant_set_pickup_payment_methods('merchant','shop',array[null]::text[],null)$q$,'INVALID_PAYMENT_METHODS');
+select pg_temp.expect_error($q$select public.merchant_set_pickup_payment_methods('merchant','shop',array['cash','cash']::text[],null)$q$,'INVALID_PAYMENT_METHODS');
 set role authenticated;
 select pg_temp.expect_error($q$insert into public.orders(shop_id) values('shop')$q$,'PICKUP_SERVER_AUTHORITY_REQUIRED');
 select pg_temp.expect_error($q$update public.orders set status='pending' where id='550e8400-e29b-41d4-a716-000000000091'$q$,'PICKUP_SERVER_AUTHORITY_REQUIRED');
