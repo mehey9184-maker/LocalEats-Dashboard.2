@@ -9,6 +9,14 @@ begin
   if caught is null or position(expected in caught)=0 then raise exception 'Expected %, got %',expected,coalesce(caught,'SUCCESS'); end if;
 end $$;
 select pg_temp.assert_ok((select count(*)=4 from public.orders where create_intent_hash is null and payment_status is null and delivery_type is null and revision is null),'history remains unknown');
+update public.shops set pickup_payment_methods=array['cash','card_machine']::text[] where id='shop';
+set role service_role;
+select public.merchant_set_pickup_payment_methods('merchant','shop',array['cash']::text[],array['cash','card_machine']::text[]);
+reset role;
+select pg_temp.assert_ok((select pickup_payment_methods=array['cash']::text[] from public.shops where id='shop'),'merchant cash-only setting saved');
+select pg_temp.expect_error($q$select public.pickup_create_order('customer',repeat('e',64),jsonb_set(pg_temp.record('550e8400-e29b-41d4-a716-000000000008'),'{payment_method}','"card_machine"'))$q$,'UNSUPPORTED_PAYMENT_METHOD');
+select pg_temp.expect_error($q$select public.merchant_set_pickup_payment_methods('merchant','shop',array['card_machine']::text[],array['cash','card_machine']::text[])$q$,'PAYMENT_METHODS_CHANGED');
+select pg_temp.expect_error($q$select public.merchant_set_pickup_payment_methods('other','shop',array['cash']::text[],array['cash']::text[])$q$,'FORBIDDEN');
 set role authenticated;
 select pg_temp.expect_error($q$insert into public.orders(shop_id) values('shop')$q$,'PICKUP_SERVER_AUTHORITY_REQUIRED');
 select pg_temp.expect_error($q$update public.orders set status='pending' where id='550e8400-e29b-41d4-a716-000000000091'$q$,'PICKUP_SERVER_AUTHORITY_REQUIRED');
@@ -31,6 +39,12 @@ reset role;
 select (:'created_result'::jsonb->'order'->>'id') as oid \gset
 select pg_temp.assert_ok((select count(*)=1 from public.pickup_order_events where order_id=:'oid'),'creation fact committed');
 select pg_temp.assert_ok((select price=25 and total_price=25 and service_fee=0 and delivery_fee=0 and discount_amount=0 and payment_status='unpaid' from public.orders where id=:'oid'),'zero-fee persisted pickup amount');
+set role service_role;
+select public.merchant_set_pickup_payment_methods('merchant','shop',array['card_machine']::text[],array['cash']::text[]);
+select public.pickup_create_order('customer',repeat('f',64),jsonb_set(pg_temp.record('550e8400-e29b-41d4-a716-000000000009'),'{payment_method}','"card_machine"')) as result \gset card_only_
+reset role;
+select pg_temp.assert_ok((select payment_method='card_machine' and total_price=25 and service_fee=0 from public.orders where id=(:'card_only_result'::jsonb->'order'->>'id')::uuid),'card-only pickup accepted at unchanged zero fee');
+update public.shops set pickup_payment_methods=array['cash','card_machine']::text[] where id='shop';
 select pg_temp.expect_error($q$select public.pickup_create_order('customer',repeat('f',64),jsonb_set(pg_temp.record('550e8400-e29b-41d4-a716-000000000099'),'{service_fee}','2.5'))$q$,'PRICE_CHANGED');
 -- Immutable create replay survives catalog closure and never transfers customer ownership.
 update public.shops set is_active=false;
