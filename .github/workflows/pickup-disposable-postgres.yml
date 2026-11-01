@@ -56,7 +56,7 @@ jobs:
             supabase/drafts/pickup_zero_fee.sql \
             supabase/drafts/merchant_availability.sql \
             localeats-api/tests/pickup/availability.sql \
-            supabase/migrations/20261101000000_pickup_payment_methods.sql \
+            supabase/migrations/20261101160331_pickup_payment_methods.sql \
             localeats-api/tests/pickup/verify.sql; do
             if [ "$file" = "supabase/drafts/pickup_zero_fee.sql" ]; then
               echo "Synthetic foundation function SHA256:"
