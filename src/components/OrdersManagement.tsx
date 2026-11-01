@@ -412,7 +412,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   };
 
   const renderRiderStatusBadge = (order: Order) => {
-    if (isPickupOrder(order)) return <PickupOrderActions order={order}/>;
+    if (isPickupOrder(order)) return <PickupOrderActions order={order} mode={order.status === "pending" ? "summary" : "full"}/>;
     if (!isOrderDelivery(order)) {
       return (
         <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 text-[8px] font-extrabold uppercase">
@@ -3545,8 +3545,11 @@ Notes: "${order.notes || "None"}"
                               {isLimitReached && (
                                 <span className="text-[8px] font-bold text-error leading-none mb-0.5">LIMIT REACHED</span>
                               )}
+                              {isPickupOrder(order) ? (
+                                <PickupOrderActions order={order} mode="actions" disabled={isLimitReached} />
+                              ) : (
                               <button
-                                disabled={isPickupOrder(order) || (isLimitReached)}
+                                disabled={isLimitReached}
                                 onClick={async (e) => {
                                   e.stopPropagation();
                                   if (isOrderDelivery(order) && !order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
@@ -3559,6 +3562,7 @@ Notes: "${order.notes || "None"}"
                               >
                                 Accept
                               </button>
+                              )}
                             </div>
                           </div>
                         )}
