@@ -27,7 +27,9 @@ test('independent payment and real handover required; no Collected-to-paid infer
  assert.equal(pickupCommand(ready,'confirm_payment',{payment_method:'card_machine'}).path,'payment-confirmation');
  assert.throws(()=>pickupCommand({...ready,payment_status:'paid'},'collect'));
  assert.equal(pickupCommand({...ready,payment_status:'paid'},'collect',{handover_confirmed:true}).path,'collect');
- assert.equal(pickupPaymentLabel({...ready,payment_method:'card_machine'}),'Unpaid · pay at shop');
+ assert.equal(pickupPaymentLabel({...ready,payment_method:'card_machine'}),'Payment expected: Card at shop (physical card machine)');
+ assert.equal(pickupPaymentLabel({...ready,payment_method:'cash'}),'Payment expected: Cash at shop');
+ assert.match(pickupPaymentLabel({...ready,payment_status:'paid',payment_method:'cash'}),/^Payment received: Cash at shop$/);
  assert.equal(pickupPaymentLabel({...ready,payment_status:null}),'Payment status unavailable');
 });
 test('all pickup writes stop before transport and original entry is retained',()=>{
@@ -69,7 +71,7 @@ test('pickup payable display uses server total and fee without deriving tax or p
  assert.equal(pickupAmountLabel(mapApiOrder(persisted)),'Pay at shop: R 25.00 · Pickup service fee: R 0.00');
  assert.equal(pickupAmountLabel({...persisted,total_price:50}),'Pay at shop: R 50.00 · Pickup service fee: R 0.00');
  assert.equal(pickupAmountLabel({...persisted,total_price:27.5,service_fee:2.5}),'Pay at shop: R 27.50 · Pickup service fee: R 2.50');
- assert.equal(pickupPaymentLabel(persisted),'Unpaid · pay at shop');
+ assert.equal(pickupPaymentLabel(persisted),'Payment expected: Card at shop (physical card machine)');
  assert.match(pickupAmountLabel({...persisted,service_fee:undefined}),/unavailable/);
  assert.throws(()=>pickupAmountLabel({...persisted,total_price:NaN}));
 });

@@ -52,6 +52,7 @@ export interface ShopForOrder {
   longitude: number | null;
   lat: number | null;
   lng: number | null;
+  pickup_payment_methods?: string[] | null;
 }
 
 export interface MenuItemForOrder {

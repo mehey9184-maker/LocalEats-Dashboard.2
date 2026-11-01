@@ -33,13 +33,15 @@ export function pickupCommand(order:any,action:PickupAction,extra:Record<string,
   body:{command_id:crypto.randomUUID(),expected_revision:order.revision,...extra}};
 }
 export function pickupOrderingEnabled():boolean { return import.meta.env?.VITE_PICKUP_ORDERING_ENABLED === "true"; }
+export function pickupPaymentSettingsEnabled():boolean { return import.meta.env?.VITE_PICKUP_PAYMENT_SETTINGS_ENABLED === "true"; }
 export function pickupMutationsDisabled():void {
  if(pickupOrderingEnabled())return;
  throw new Error("Pickup actions are not enabled until database migration and activation are separately approved. No order, payment or collection change was saved.");
 }
 export function pickupPaymentLabel(order:any):string {
  if(!isPickupOrder(order))return order.payment_status==="paid" ? "Paid" : order.payment_status==="unpaid" ? "Unpaid" : "Payment status unavailable";
- return order.payment_status==="paid" ? "Paid at shop" : order.payment_status==="unpaid" ? "Unpaid · pay at shop" : "Payment status unavailable";
+ const method=order.payment_method==="cash" ? "Cash at shop" : order.payment_method==="card_machine" ? "Card at shop (physical card machine)" : "Payment method unavailable";
+ return order.payment_status==="paid" ? `Payment received: ${method}` : order.payment_status==="unpaid" ? `Payment expected: ${method}` : "Payment status unavailable";
 }
 
 export function pickupAmountLabel(order:any):string {

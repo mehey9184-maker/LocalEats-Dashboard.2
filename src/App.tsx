@@ -1,4 +1,4 @@
-﻿import {pickupOrderingEnabled} from "./services/merchantPickupPolicy";
+﻿import {pickupOrderingEnabled,pickupPaymentSettingsEnabled} from "./services/merchantPickupPolicy";
 import {isPickupOrder} from "./services/merchantPickupPolicy";
 import { checkPrinterConnectivity, printViaBluetooth, printViaUSB } from "./utils/escPosEngine";
 import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
@@ -486,6 +486,27 @@ function App() {
   }, [currentShop]);
 
   const [settingsCategory, setSettingsCategory] = useState<string>("account");
+  const [pickupPaymentChoice, setPickupPaymentChoice] = useState<"cash" | "card_machine" | "both">("cash");
+  const [savingPickupPayments, setSavingPickupPayments] = useState(false);
+  const [pickupPaymentError, setPickupPaymentError] = useState("");
+  const pickupPaymentMethodsKey=currentShop?.pickup_payment_methods?.join(",") ?? "";
+  useEffect(() => {
+    const methods=pickupPaymentMethodsKey.split(",").filter(Boolean);
+    setPickupPaymentChoice(methods.length===2 ? "both" : methods[0]==="card_machine" ? "card_machine" : "cash");
+  }, [currentShop?.id,pickupPaymentMethodsKey]);
+
+  const savePickupPaymentSettings=async()=>{
+    if(!currentShop || savingPickupPayments || !pickupPaymentSettingsEnabled())return;
+    const methods=pickupPaymentChoice==="both" ? ["cash","card_machine"] as const : [pickupPaymentChoice] as const;
+    setSavingPickupPayments(true);setPickupPaymentError("");
+    try{
+      const saved=await MerchantApi.setPickupPaymentMethods(currentShop.id,[...methods]);
+      setShops(previous=>previous.map(shop=>String(shop.id)===String(saved.id)?{...shop,...saved}:shop));
+      toast.success("Pickup payment methods saved.");
+    }catch(error){
+      setPickupPaymentError(error instanceof Error?error.message:"Pickup settings were not confirmed. Refresh and retry.");
+    }finally{setSavingPickupPayments(false);}
+  };
   const [storeStatus, setStoreStatus] = useState<"open" | "busy" | "closed">("open");
   const [prepTime, setPrepTime] = useState<number>(20);
   const [operatingHours, setOperatingHours] = useState<Array<{ day: string; open: string; close: string; active: boolean }>>([
@@ -2430,6 +2451,7 @@ function App() {
                      {[
                        { id: "account", label: "Account & Staff", icon: UserIcon },
                        { id: "storefront", label: "Storefront", icon: Store },
+                       { id: "pickup-payments", label: "Pickup payments", icon: CreditCard },
                        { id: "operations", label: "Operations", icon: Sliders },
                        { id: "delivery", label: "Delivery", icon: Truck },
                        { id: "hardware", label: "Printing & Hardware", icon: Printer },
@@ -2457,6 +2479,34 @@ function App() {
 
                   {/* Settings Content Panels */}
                   <div className="flex-1 w-full space-y-4 max-w-3xl pb-16">
+                    {settingsCategory === "pickup-payments" && currentShop && (
+                      <section className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div>
+                          <h3 className="font-headline font-bold text-lg">Pickup payment methods</h3>
+                          <p className="text-sm text-on-surface-variant mt-1">Customers can choose only methods your shop accepts. Payment is confirmed separately when received at collection.</p>
+                        </div>
+                        {!currentShop.pickup_payment_methods?.length && <p role="status" className="text-xs text-amber-700">Payment methods are not configured yet.</p>}
+                        <fieldset className="space-y-2">
+                          <legend className="sr-only">Accepted pickup payment methods</legend>
+                          {([
+                            ["cash", "Cash only"],
+                            ["card_machine", "Card only"],
+                            ["both", "Cash and card"],
+                          ] as const).map(([value,label])=>(
+                            <label key={value} className="flex items-center gap-3 p-3 border border-outline-variant/30 rounded-xl cursor-pointer">
+                              <input type="radio" name="pickup-payment-settings" value={value} checked={pickupPaymentChoice===value} onChange={()=>setPickupPaymentChoice(value)} />
+                              <span className="text-sm font-bold text-on-surface">{label}</span>
+                            </label>
+                          ))}
+                        </fieldset>
+                        {currentShop.pickup_payment_methods?.length ? <p className="text-xs text-on-surface-variant">Saved: {currentShop.pickup_payment_methods.includes("cash") && currentShop.pickup_payment_methods.includes("card_machine") ? "Cash and card" : currentShop.pickup_payment_methods[0]==="cash" ? "Cash only" : "Card only"}</p> : null}
+                        {pickupPaymentError && <p role="alert" className="text-xs text-error">{pickupPaymentError}</p>}
+                        <button type="button" disabled={savingPickupPayments || !pickupPaymentSettingsEnabled()} onClick={()=>void savePickupPaymentSettings()} className="px-4 py-3 bg-primary text-on-primary rounded-xl font-bold text-sm disabled:opacity-50">
+                          {savingPickupPayments ? "Saving..." : "Save accepted methods"}
+                        </button>
+                        {!pickupPaymentSettingsEnabled() && <p className="text-xs text-on-surface-variant">Payment settings remain locked until separately enabled; pickup order creation can stay disabled.</p>}
+                      </section>
+                    )}
                     {settingsCategory === "diagnostics" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">Firestore Diagnostics</h3>

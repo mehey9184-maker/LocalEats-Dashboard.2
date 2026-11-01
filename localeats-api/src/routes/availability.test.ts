@@ -42,3 +42,38 @@ test("all read paths trust the database calculation and fail closed on incomplet
  assert.throws(()=>effectiveShop({is_active:true}),/SCHEMA_UNAVAILABLE/);
  assert.throws(()=>effectiveShop({is_active:true,effective_is_active:true,availability_revision:null}),/SCHEMA_UNAVAILABLE/);
 });
+
+test("pickup payment settings require owner authentication, the write gate, and confirmed atomic persistence",async()=>{
+ const authMock=authAdmin as unknown as {verifyIdToken:(token:string)=>Promise<{uid:string}>};
+ const supabaseMock=supabaseAdmin as unknown as {rpc:(name:string,args:Record<string,unknown>)=>Promise<{data:unknown,error:{message:string}|null}>};
+ const verify=authMock.verifyIdToken,rpc=supabaseMock.rpc,old=process.env.PICKUP_PAYMENT_SETTINGS_WRITES_ENABLED,oldOrderGate=process.env.PICKUP_WRITES_ENABLED;
+ let calls=0,mode="ok";
+ authMock.verifyIdToken=async(token:string)=>({uid:token});
+ supabaseMock.rpc=async(name,args)=>{
+  calls++;assert.equal(name,"merchant_set_pickup_payment_methods");
+  if(args.p_uid!=="merchant")return {data:null,error:{message:"FORBIDDEN"}};
+    if(mode==="conflict")return {data:null,error:{message:"PAYMENT_METHODS_CHANGED"}};
+    if(mode==="failure")return {data:null,error:{message:"offline"}};
+  return {data:{id:"owned",owner_id:"merchant",pickup_payment_methods:args.p_payment_methods},error:null};
+ };
+ const app=express();app.use(express.json());app.use("/merchant",merchant);
+ const server=app.listen(0,"127.0.0.1");await once(server,"listening");
+ const address=server.address();if(!address || typeof address==="string")throw Error("Server did not bind a TCP port.");
+ const base=`http://127.0.0.1:${address.port}/merchant/shop/pickup-payment-methods`;
+ const call=async(uid:string|undefined,body:unknown)=>{const response=await fetch(base,{method:"PATCH",headers:{"content-type":"application/json",...(uid?{authorization:`Bearer fb-${uid}`}:{})},body:JSON.stringify(body)});return {status:response.status,body:await response.json()};};
+ try{
+  const body={shop_id:"owned",pickup_payment_methods:["cash"],expected_payment_methods:null};
+  process.env.PICKUP_WRITES_ENABLED="false";process.env.PICKUP_PAYMENT_SETTINGS_WRITES_ENABLED="false";
+  assert.equal((await call(undefined,body)).status,401);
+  assert.equal((await call("merchant",body)).body.code,"PICKUP_PAYMENT_SETTINGS_DISABLED");assert.equal(calls,0);
+  process.env.PICKUP_PAYMENT_SETTINGS_WRITES_ENABLED="true";
+  assert.equal((await call("merchant",{...body,pickup_payment_methods:["online"]})).status,400);assert.equal(calls,0);
+  assert.equal((await call("other",body)).status,403);
+  mode="conflict";assert.equal((await call("merchant",body)).status,409);
+  mode="failure";assert.equal((await call("merchant",body)).status,503);
+  mode="ok";
+  for(const methods of [["cash"],["card_machine"],["cash","card_machine"]]){
+   const saved=await call("merchant",{...body,pickup_payment_methods:methods});assert.equal(saved.status,200);assert.deepEqual(saved.body.shop.pickup_payment_methods,methods);
+  }
+ }finally{authMock.verifyIdToken=verify;supabaseMock.rpc=rpc;if(old===undefined)delete process.env.PICKUP_PAYMENT_SETTINGS_WRITES_ENABLED;else process.env.PICKUP_PAYMENT_SETTINGS_WRITES_ENABLED=old;if(oldOrderGate===undefined)delete process.env.PICKUP_WRITES_ENABLED;else process.env.PICKUP_WRITES_ENABLED=oldOrderGate;server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});

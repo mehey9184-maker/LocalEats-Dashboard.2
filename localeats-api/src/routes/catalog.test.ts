@@ -17,8 +17,9 @@ class FakeSupabase {
       mockShopData: this.mockShopData,
       mockMenuData: this.mockMenuData,
       mockError: this.mockError,
-      select(fields: string) { this.calls.push({ method: 'select', args: [fields] }); return this; },
+      select(fields: string) { this.calls.push({ method: 'select', table: this.table, args: [fields] }); return this; },
       eq(col: string, val: any) { this.calls.push({ method: 'eq', args: [col, val] }); return this; },
+      in(col: string, val: any) { this.calls.push({ method: 'in', args: [col, val] }); return this; },
       is(col: string, val: any) { this.calls.push({ method: 'is', args: [col, val] }); return this; },
       maybeSingle() { this.calls.push({ method: 'maybeSingle', args: [] }); return this; },
       then(resolve: any, reject: any) {
@@ -146,7 +147,7 @@ test("Catalog Router - GET shop menu (behaviors 10, 11, 12, 13, 14, 18)", async 
     // 18. menu selection uses explicit allowlist, not "*"
     const selectCalls = fakeDb.calls.filter(c => c.method === 'select');
     // the second select call should be for menu_items
-    const menuSelectFields = selectCalls[1].args[0] as string;
+    const menuSelectFields = selectCalls.find(c => c.table === 'menu_items')!.args[0] as string;
     assert.ok(menuSelectFields !== "*", "Menu query must not use *");
     assert.ok(menuSelectFields.includes("popularity_score"), "Includes explicit field");
 

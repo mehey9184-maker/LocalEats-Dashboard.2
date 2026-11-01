@@ -25,6 +25,7 @@ export interface Shop {
   facebook?: string;
   whatsapp?: string;
   rating?: number;
+  pickup_payment_methods?: ("cash" | "card_machine")[] | null;
   cash_trust_enabled?: boolean;
   allow_external_riders?: boolean;
   auto_look_for_rider?: boolean;

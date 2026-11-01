@@ -52,6 +52,11 @@ export async function pickupPricing(repository: OrderRepository, uid: string, re
   const shop = await repository.findShop(request.input.shop_id);
   if (!shop) return fail(404,"SHOP_NOT_FOUND");
   assertShopCanAcceptOrder(shop,request.input);
+  const methods=shop.pickup_payment_methods;
+  if (!Array.isArray(methods) || methods.length<1 || methods.length>2 ||
+    methods.some(method=>!(["cash","card_machine"] as string[]).includes(method)) || new Set(methods).size!==methods.length)
+    return fail(503,"PAYMENT_METHOD_CONFIGURATION_UNAVAILABLE");
+  if (!methods.includes(request.input.payment_method)) return fail(409,"UNSUPPORTED_PAYMENT_METHOD");
   if (!isPickupPilotShop(shop.location)) return fail(422,"OUTSIDE_PICKUP_PILOT");
   const lat=shop.lat ?? shop.latitude, lng=shop.lng ?? shop.longitude;
   if (typeof lat!=="number" || !Number.isFinite(lat) || Math.abs(lat)>90 || typeof lng!=="number" || !Number.isFinite(lng) || Math.abs(lng)>180)
@@ -67,7 +72,7 @@ export function pickupQuote(pricing: AuthoritativePrice) {
   return {...snapshot,pricing_fingerprint:draftHash(snapshot)};
 }
 const conflicts = new Set(["IDEMPOTENCY_CONFLICT","ORDER_STATE_CHANGED","INVALID_ORDER_TRANSITION","INVALID_PAYMENT_TRANSITION",
-  "PICKUP_CONTRACT_REQUIRED","PRICE_CHANGED","SHOP_UNAVAILABLE","MENU_ITEM_UNAVAILABLE","PICKUP_INITIAL_STATE_INVALID","SHOP_LOCATION_UNAVAILABLE"]);
+  "PICKUP_CONTRACT_REQUIRED","PRICE_CHANGED","SHOP_UNAVAILABLE","MENU_ITEM_UNAVAILABLE","PICKUP_INITIAL_STATE_INVALID","SHOP_LOCATION_UNAVAILABLE","UNSUPPORTED_PAYMENT_METHOD"]);
 export async function pickupRpc(client: RpcClient, name: string, args: Record<string, unknown>): Promise<unknown> {
   const {data,error}=await client.rpc(name,args);
   if (error) {

@@ -312,7 +312,15 @@ export class SupabaseOrderRepository implements OrderRepository {
       .eq("id", shopId)
       .maybeSingle();
     if (error) throwDatabaseError("shop lookup", error);
-    return data ? effectiveShop(data as any) as ShopForOrder : null;
+    if (!data) return null;
+    const { data: settings, error: settingsError } = await this.client
+      .from("shops")
+      .select("pickup_payment_methods")
+      .eq("id", shopId)
+      .maybeSingle();
+    const missingSettingsColumn = settingsError && ["42703", "PGRST204"].includes(settingsError.code ?? "");
+    if (settingsError && !missingSettingsColumn) throwDatabaseError("pickup payment settings lookup", settingsError);
+    return effectiveShop({ ...data, pickup_payment_methods: settings?.pickup_payment_methods ?? null }) as ShopForOrder;
   }
 
   async findMenuItems(shopId: string, itemIds: string[]): Promise<MenuItemForOrder[]> {

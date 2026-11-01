@@ -19,6 +19,30 @@ router.patch("/shop/availability", authenticateFirebase, async (req:Authenticate
  }catch{res.status(503).json({success:false,code:"AVAILABILITY_PERSISTENCE_UNCONFIRMED",error:"Availability was not confirmed. Refresh before retrying."});}
 });
 
+const normalizePickupMethods=(value:unknown):string[]|null=>{
+ if(!Array.isArray(value) || value.length<1 || value.length>2 || value.some(method=>method!=="cash" && method!=="card_machine") || new Set(value).size!==value.length)return null;
+ return ["cash","card_machine"].filter(method=>value.includes(method));
+};
+
+router.patch("/shop/pickup-payment-methods",authenticateFirebase,async(req:AuthenticatedRequest,res:Response):Promise<void>=>{
+ if(process.env.PICKUP_PAYMENT_SETTINGS_WRITES_ENABLED!=="true") {res.status(503).json({success:false,code:"PICKUP_PAYMENT_SETTINGS_DISABLED",error:"Pickup payment settings are not activated yet."});return;}
+ const body=req.body;
+ if(!body || typeof body!=="object" || Array.isArray(body) || Object.keys(body).some(key=>!["shop_id","pickup_payment_methods","expected_payment_methods"].includes(key)) ||
+  typeof body.shop_id!=="string" || !body.shop_id.trim()) {res.status(400).json({success:false,code:"INVALID_REQUEST",error:"Invalid pickup payment settings."});return;}
+ const methods=normalizePickupMethods(body.pickup_payment_methods);
+ const expected=body.expected_payment_methods===null ? null : normalizePickupMethods(body.expected_payment_methods);
+ if(!methods || (body.expected_payment_methods!==null && !expected)) {res.status(400).json({success:false,code:"INVALID_PAYMENT_METHODS",error:"Choose cash, card, or both accepted methods."});return;}
+ try {
+  const {data,error}=await supabaseAdmin.rpc("merchant_set_pickup_payment_methods",{p_uid:req.authUser!.uid,p_shop_id:body.shop_id.trim(),p_payment_methods:methods,p_expected_methods:expected});
+  if(error){const code=error.message;const status=code==="FORBIDDEN"?403:code==="PAYMENT_METHODS_CHANGED"?409:code==="INVALID_PAYMENT_METHODS"?400:503;
+   res.status(status).json({success:false,code:status===503?"PICKUP_SETTINGS_UNAVAILABLE":code,error:status===503?"Pickup settings could not be saved.":code});return;}
+  const saved=data && typeof data==="object" && !Array.isArray(data) ? data as Record<string,unknown> : null;
+  const savedMethods=normalizePickupMethods(saved?.pickup_payment_methods);
+  if(!saved || String(saved.id)!==body.shop_id.trim() || saved.owner_id!==req.authUser!.uid || !savedMethods || savedMethods.join(",")!==methods.join(","))throw Error("Unconfirmed settings");
+  res.json({success:true,shop:{id:String(saved.id),owner_id:saved.owner_id,pickup_payment_methods:savedMethods}});
+ }catch{res.status(503).json({success:false,code:"PICKUP_SETTINGS_UNCONFIRMED",error:"Pickup settings were not confirmed. Refresh before retrying."});}
+});
+
 const ALLOWED_CREATE_FIELDS = new Set([
   "name",
   "category",
@@ -77,9 +101,12 @@ router.get("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res:
       return;
     }
 
+    const {data:settings,error:settingsError}=await supabaseAdmin.from("shops").select("pickup_payment_methods").eq("id",shops[0].id).maybeSingle();
+    const missingSettingsColumn=settingsError && ["42703","PGRST204"].includes(settingsError.code ?? "");
+    if(settingsError && !missingSettingsColumn){res.status(503).json({success:false,code:"PICKUP_SETTINGS_UNAVAILABLE",error:"Shop payment settings could not be loaded."});return;}
     res.status(200).json({
       success: true,
-      shop: effectiveShop(shops[0]),
+      shop: effectiveShop({...shops[0],pickup_payment_methods:settings?.pickup_payment_methods ?? null}),
     });
   } catch (err) {
     console.error("Error fetching merchant shop:", err);

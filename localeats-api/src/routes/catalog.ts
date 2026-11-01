@@ -6,6 +6,7 @@ import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 
 const PUBLIC_SHOP_FIELDS = "effective_is_active,availability_revision,availability_override_until,id,name,description,location,category,logo_url,rating,opening_time,closing_time,is_active,latitude,longitude,lat,lng,story";
 const PUBLIC_MENU_FIELDS = "id,shop_id,name,price,description,image_url,category,is_available,popularity_score,customizations,created_at";
+type ShopCatalogRow={id:string|number;[key:string]:unknown};
 
 export interface CatalogRepository {
   getApprovedShops(): Promise<any[]>;
@@ -25,7 +26,9 @@ export class SupabaseCatalogRepository implements CatalogRepository {
       .eq("approval_status", "approved")
       .is("archived_at", null);
     if (error) throw error;
-    return (data || []).map(effectiveShop);
+    const shops=(data || []) as ShopCatalogRow[];
+    const methods=await this.getPaymentMethods(shops.map(shop=>String(shop.id)));
+    return shops.map(shop=>({...effectiveShop(shop),pickup_payment_methods:methods.get(String(shop.id)) ?? null}));
   }
   async getApprovedShopById(shopId: string): Promise<any | null> {
     const { data, error } = await this.supabase
@@ -36,7 +39,24 @@ export class SupabaseCatalogRepository implements CatalogRepository {
       .is("archived_at", null)
       .maybeSingle();
     if (error) throw error;
-    return data ? effectiveShop(data) : null;
+    if (!data) return null;
+    const methods=await this.getPaymentMethods([String(data.id)]);
+    return {...effectiveShop(data),pickup_payment_methods:methods.get(String(data.id)) ?? null};
+  }
+
+  private async getPaymentMethods(shopIds:string[]):Promise<Map<string,string[]|null>> {
+    const methods=new Map<string,string[]|null>();
+    if (!shopIds.length) return methods;
+    const {data,error}=await this.supabase.from("shops").select("id,pickup_payment_methods").in("id",shopIds);
+    if (error) {
+      if (["42703","PGRST204"].includes(String(error.code))) {
+        shopIds.forEach(id=>methods.set(id,null));
+        return methods;
+      }
+      throw error;
+    }
+    for (const shop of data || []) methods.set(String(shop.id),Array.isArray(shop.pickup_payment_methods) ? shop.pickup_payment_methods : null);
+    return methods;
   }
   async getMenuByShopId(shopId: string): Promise<any[]> {
     const { data, error } = await this.supabase
