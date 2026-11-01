@@ -76,7 +76,7 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
         <>
           <div className={mode === "actions" ? "flex flex-col gap-2" : "flex flex-wrap gap-2"}>
             {actions.map(label => {
-              const primary = label.startsWith("Accept");
+              const primary = label.startsWith("Accept") || label === "Mark Ready" || label.startsWith("Food");
               return <button
                 key={label}
                 type="button"
@@ -84,9 +84,9 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
                 onClick={event => { event.stopPropagation(); void act(label); }}
                 title={pickupOrderingEnabled() ? "Update the pickup order through the LocalEats API" : "Requires separately approved pickup activation"}
                 className={mode === "actions" && primary
-                  ? "w-full py-5 bg-emerald-600 hover:bg-emerald-500 text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                  : "px-3 py-2 rounded-full bg-primary text-white text-xs font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"}
-              >{mode === "actions" && primary ? "Accept → Preparing" : label}</button>;
+                  ? `w-full py-5 ${label === "Mark Ready" ? "bg-teal-500 hover:bg-teal-400" : label.startsWith("Food") ? "bg-blue-600 hover:bg-blue-500" : "bg-emerald-600 hover:bg-emerald-500"} text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed`
+                  : mode === "actions" ? "w-full px-3 py-3 rounded-xl bg-primary text-white text-sm font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed" : "px-3 py-2 rounded-full bg-primary text-white text-xs font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"}
+              >{busy ? "Saving..." : label}</button>;
             })}
           </div>
           {pickupOrderingEnabled() && MerchantApi.hasPendingPickupCommand(order) && (

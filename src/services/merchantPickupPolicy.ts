@@ -44,6 +44,24 @@ export function pickupPaymentLabel(order:any):string {
  return order.payment_status==="paid" ? `Payment received: ${method}` : order.payment_status==="unpaid" ? `Payment expected: ${method}` : "Payment status unavailable";
 }
 
+// Pickup items use the price snapshot saved by the authoritative API, never today's menu price.
+// Missing or invalid line amounts are unavailable, not a fabricated R0.00.
+export function pickupItemLineTotal(item: unknown): number | null {
+ if(!item || typeof item!=="object" || Array.isArray(item))return null;
+ const fields=item as Record<string,unknown>;
+ const value=fields.line_total;
+ if(value!==undefined && value!==null){
+  return (typeof value==="number" || (typeof value==="string" && value.trim()!=="")) &&
+   Number.isFinite(Number(value)) && Number(value)>=0 && Number.isSafeInteger(Math.round(Number(value)*100)) ? Number(value) : null;
+ }
+ const unit=fields.unit_price, quantity=fields.quantity;
+ if(!((typeof unit==="number") || (typeof unit==="string" && unit.trim()!=="")) ||
+   !Number.isFinite(Number(unit)) || Number(unit)<0 ||
+   !Number.isSafeInteger(Number(quantity)) || Number(quantity)<1)return null;
+ const cents=Math.round(Number(unit)*100)*Number(quantity);
+ return Number.isSafeInteger(cents) && cents>=0 ? cents/100 : null;
+}
+
 export function pickupAmountLabel(order:any):string {
  if(!isPickupOrder(order) || typeof order.total_price!=="number" || !Number.isFinite(order.total_price) || order.total_price<0)
   throw new Error("Pickup payable amount is unavailable.");
