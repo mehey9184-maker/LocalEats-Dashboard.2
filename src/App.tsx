@@ -287,6 +287,14 @@ function App() {
   const shopsRef = useRef<Shop[]>([]);
   const prevPendingCount = useRef<number>(0);
   const activeSoundRef = useRef<{ pause: () => void } | null>(null);
+  // Viewing Orders acknowledges the arrival alert. Do not keep the short
+  // notification melody running after the merchant has opened the queue.
+  useEffect(() => {
+    if (activeTab !== "orders") return;
+    const active = activeSoundRef.current;
+    activeSoundRef.current = null;
+    active?.pause();
+  }, [activeTab]);
 
   useEffect(() => {
     if (dataSaverMode) return;
@@ -317,7 +325,7 @@ function App() {
   const {
     isAudioEnabled,
     enableAudio,
-  } = useKitchenAlerter(orders);
+  } = useKitchenAlerter(orders, activeTab === "orders");
   const [shops, setShops] = useState<Shop[]>([]);
   shopsRef.current = shops;
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
@@ -1065,7 +1073,7 @@ function App() {
     ).length;
 
     // Only trigger if count increased and sound is enabled
-    if (soundAlerts && currentPendingCount > prevPendingCount.current) {
+    if (soundAlerts && activeTab !== "orders" && currentPendingCount > prevPendingCount.current) {
       const audio = playNotificationSound(true); // Enable repeating for new orders
 
       const stopSound = () => {
@@ -1094,7 +1102,7 @@ function App() {
     }
 
     prevPendingCount.current = currentPendingCount;
-  }, [orders, soundAlerts, user, playNotificationSound, setActiveTab]);
+  }, [orders, soundAlerts, user, activeTab, playNotificationSound, setActiveTab]);
 
   const processAndSetOrders = useCallback((firestoreOrdersList: Order[], supabaseOrdersList: Order[] = []) => {
     // Merge Orders by unique string ID, prioritizing latest updated_at or created_at
