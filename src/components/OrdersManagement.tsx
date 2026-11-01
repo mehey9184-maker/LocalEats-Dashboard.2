@@ -1,5 +1,5 @@
 import {PickupOrderActions} from "./PickupOrderActions";
-import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled} from "../services/merchantPickupPolicy";
+import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled,pickupItemLineTotal} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
@@ -412,7 +412,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   };
 
   const renderRiderStatusBadge = (order: Order) => {
-    if (isPickupOrder(order)) return <PickupOrderActions order={order} mode={order.status === "pending" ? "summary" : "full"}/>;
+    if (isPickupOrder(order)) return <PickupOrderActions order={order} mode="summary"/>;
     if (!isOrderDelivery(order)) {
       return (
         <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 text-[8px] font-extrabold uppercase">
@@ -3473,13 +3473,11 @@ Notes: "${order.notes || "None"}"
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
                             const fields = isObj ? (item as Record<string, unknown>) : {};
-                            const price = isPickupOrder(order)
-                              ? Number(fields.line_total ?? (Number(fields.unit_price) * Number(fields.quantity ?? 1)))
-                              : Number(fields.price ?? 0);
+                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : Number(fields.price ?? 0);
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : `R ${Number(price || 0).toFixed(2)}`}</span>
                               </div>
                             );
                           })}
@@ -3688,11 +3686,12 @@ Notes: "${order.notes || "None"}"
                             const isObj = typeof item === "object" && item !== null;
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
-                            const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
+                            const fields = isObj ? (item as Record<string, unknown>) : {};
+                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : Number(fields.price ?? 0);
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : `R ${Number(price || 0).toFixed(2)}`}</span>
                               </div>
                             );
                           })}
@@ -3810,7 +3809,10 @@ Notes: "${order.notes || "None"}"
                           ) : (
                             <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
                               <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
-                              <button disabled={isPickupOrder(order)}
+                              {isPickupOrder(order) ? (
+                                <PickupOrderActions order={order} mode="actions" />
+                              ) : (
+                              <button
                                 onClick={(e) => {
                                   setReadyOrderId(order.id);
                                   const card = e.currentTarget.closest(".order-card");
@@ -3824,6 +3826,7 @@ Notes: "${order.notes || "None"}"
                               >
                                 Mark Ready
                               </button>
+                              )}
                             </div>
                           )
                         )}
@@ -3950,11 +3953,12 @@ Notes: "${order.notes || "None"}"
                             const isObj = typeof item === "object" && item !== null;
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
-                            const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
+                            const fields = isObj ? (item as Record<string, unknown>) : {};
+                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : Number(fields.price ?? 0);
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : `R ${Number(price || 0).toFixed(2)}`}</span>
                               </div>
                             );
                           })}
@@ -4002,12 +4006,16 @@ Notes: "${order.notes || "None"}"
                         {/* Action buttons */}
                         <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
                           <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
-                          <button disabled={isPickupOrder(order)}
+                          {isPickupOrder(order) ? (
+                            <PickupOrderActions order={order} mode="actions" />
+                          ) : (
+                          <button
                             onClick={() => onUpdateStatus(order.id, "completed")}
                             className="w-full mt-4 py-5 bg-blue-600 text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-blue-500 active:scale-95 transition-all cursor-pointer text-center block"
                           >
                             Complete
                           </button>
+                          )}
                         </div>
 
                         {/* Quick Tag Toggles */}
@@ -4117,11 +4125,12 @@ Notes: "${order.notes || "None"}"
                             const isObj = typeof item === "object" && item !== null;
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
-                            const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
+                            const fields = isObj ? (item as Record<string, unknown>) : {};
+                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : Number(fields.price ?? 0);
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : `R ${Number(price || 0).toFixed(2)}`}</span>
                               </div>
                             );
                           })}
