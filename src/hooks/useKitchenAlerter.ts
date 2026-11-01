@@ -17,7 +17,7 @@ interface CustomWindow extends Window {
   webkitAudioContext?: typeof AudioContext;
 }
 
-export const useKitchenAlerter = (orders: Order[]): KitchenAlerterResult => {
+export const useKitchenAlerter = (orders: Order[], ordersViewed = false): KitchenAlerterResult => {
   const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(true);
   const [isWakeLocked, setIsWakeLocked] = useState<boolean>(false);
   const [hasPendingAlarm, setHasPendingAlarm] = useState<boolean>(false);
@@ -28,6 +28,9 @@ export const useKitchenAlerter = (orders: Order[]): KitchenAlerterResult => {
   const mainGainRef = useRef<GainNode | null>(null);
   const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const wakeLockRef = useRef<unknown>(null);
+  // Pending order IDs acknowledged by viewing Orders or silencing the siren.
+  // Keep this in-memory so an acknowledged pending order cannot restart the siren on every poll.
+  const acknowledgedPendingIdsRef = useRef<Set<string>>(new Set());
 
   // --- 1. Web Audio Siren Orchestration ---
   const startSiren = () => {
@@ -239,19 +242,20 @@ export const useKitchenAlerter = (orders: Order[]): KitchenAlerterResult => {
     };
   }, [isAudioEnabled, requestWakeLock]);
 
-  // Evaluate orders live status triggers
+  // Only unacknowledged pending orders may sound the kitchen siren.
+  // Opening Orders acknowledges the visible queue and silences the alarm,
+  // without accepting/changing the order in the backend.
   useEffect(() => {
-    const hasPendingOrder = orders.some((o) => {
-      const s = (o.status || "").toLowerCase();
-      return s === "pending";
-    });
-
-    if (hasPendingOrder && isAudioEnabled) {
-      startSiren();
-    } else {
-      stopSiren();
+    const pendingIds = orders.filter(o => (o.status || "").toLowerCase() === "pending").map(o => String(o.id));
+    const pendingSet = new Set(pendingIds);
+    for (const id of acknowledgedPendingIdsRef.current) {
+      if (!pendingSet.has(id)) acknowledgedPendingIdsRef.current.delete(id);
     }
-  }, [orders, isAudioEnabled]);
+    if (ordersViewed) pendingIds.forEach(id => acknowledgedPendingIdsRef.current.add(id));
+    const needsAttention = pendingIds.some(id => !acknowledgedPendingIdsRef.current.has(id));
+    if (needsAttention && isAudioEnabled && !ordersViewed) startSiren();
+    else stopSiren();
+  }, [orders, isAudioEnabled, ordersViewed]);
 
   // Teardown
   useEffect(() => {
@@ -266,6 +270,9 @@ export const useKitchenAlerter = (orders: Order[]): KitchenAlerterResult => {
     enableAudio: enableAudioAndGoOnline,
     isWakeLocked,
     hasPendingAlarm,
-    stopAlarmManual: stopSiren,
+    stopAlarmManual: () => {
+      orders.filter(o => (o.status || "").toLowerCase() === "pending").forEach(o => acknowledgedPendingIdsRef.current.add(String(o.id)));
+      stopSiren();
+    },
   };
 };
