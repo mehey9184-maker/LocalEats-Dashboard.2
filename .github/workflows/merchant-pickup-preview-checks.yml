@@ -1,0 +1,33 @@
+name: Merchant pickup preview checks
+
+on:
+  push:
+    branches:
+      - integration/pickup-payment-availability
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  merchant:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out integration branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Merchant pickup policy tests
+        run: npm run test:merchant-pickup
+      - name: Availability regression tests
+        run: npm run test:merchant-availability
+      - name: Merchant frontend build
+        run: npm run build
