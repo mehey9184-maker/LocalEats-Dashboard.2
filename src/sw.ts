@@ -12,22 +12,30 @@ clientsClaim();
 
 // Handle Push Events
 self.addEventListener('push', (event) => {
-  const data = event.data?.json() ?? {
-    title: 'New Notification!',
-    body: 'You have a new update.',
-  };
-
-  const options = {
-    body: data.body,
-    icon: '/logo.png',
-    badge: '/logo.png',
-    vibrate: [200, 100, 200, 100, 200, 100, 200],
-    data: {
-      url: data.url || '/',
-    },
-  };
-
-  event.waitUntil(self.registration.showNotification(data.title, options));
+  let payload:unknown;
+  try {payload=event.data?.json() ?? null;}catch{return;}
+  if(!payload || typeof payload!=="object")return;
+  const packet=payload as {data?:{type?:string;order_id?:string};title?:string;body?:string;url?:string};
+  if(packet.data?.type==="merchant_new_order"){
+    // This is a wake-up only: open the API-verified Orders screen to confirm
+    // state and amounts. Never display customer PII from push data.
+    const orderId=typeof packet.data.order_id==="string" ? packet.data.order_id : "";
+    if(!/^[a-f0-9-]{36}$/i.test(orderId))return;
+    event.waitUntil(self.registration.showNotification("New LocalEats order",{
+      body:"A customer placed an order. Open the dashboard to confirm it.",
+      icon:"/logo.png",badge:"/logo.png",tag:"merchant-order-"+orderId,
+      data:{url:"/"},
+    }));
+    return;
+  }
+  // Preserve the pre-existing general notification channel (for Rider and
+  // other roles), but do not show raw, unrecognized FCM data payloads.
+  if(typeof packet.title!=="string" || typeof packet.body!=="string")return;
+  const url=typeof packet.url==="string" && packet.url.startsWith("/") && !packet.url.startsWith("//") ? packet.url : "/";
+  event.waitUntil(self.registration.showNotification(packet.title,{
+    body:packet.body,icon:"/logo.png",badge:"/logo.png",
+    data:{url},
+  }));
 });
 
 // Handle Notification Click
