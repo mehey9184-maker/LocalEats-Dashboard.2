@@ -5,7 +5,7 @@ import {drainPickupPush} from "./pickupPush.js";
 
 test("Ready action drains the actual customer's push outbox, never the merchant's",()=>{
  const orders=readFileSync(new URL("../routes/orders.js",import.meta.url),"utf8");
- assert.match(orders,/if \(action === "ready" && result\.order\.user_id\) await drainPickupPush\(supabaseAdmin,result\.order\.user_id\)/);
+ assert.match(orders,/if \(action === "ready" && result\.order\.user_id\)\s*await drainPickupPush\(supabaseAdmin,\s*result\.order\.user_id\)/);
  assert.doesNotMatch(orders,/drainPickupPush\(supabaseAdmin,uid\)/);
 });
 
