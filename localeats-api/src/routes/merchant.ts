@@ -16,7 +16,7 @@ router.put("/push-subscriptions/:installationId",authenticateFirebase,async(req:
  try{
   const body=object(req.body);onlyKeys(body,["fcm_token","permission_granted"]);
   const token=body.fcm_token;
-  if(body.permission_granted!==true || typeof token!=="string" || token.length<20 || token.length>4096 || /\\s/.test(token)) {
+  if(body.permission_granted!==true || typeof token!=="string" || token.length<20 || token.length>4096 || /\s/.test(token)) {
    res.status(400).json({success:false,code:"PUSH_PERMISSION_REQUIRED"});return;
   }
   const {data:shops,error:shopError}=await supabaseAdmin.from("shops").select("id").eq("owner_id",uid)
