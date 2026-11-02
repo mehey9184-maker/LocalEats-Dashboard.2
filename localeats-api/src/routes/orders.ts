@@ -264,7 +264,9 @@ const updateMerchantOrder = async (
     assertControlledPickup(order);
     assertPickupWritesDisabled({delivery_type:"collection"});
     const result=await commandPickup(supabaseAdmin,uid,orderId,action,body);
-    if (action === "ready") await drainPickupPush(supabaseAdmin,uid);
+    // This outbox belongs to the ORDER CUSTOMER, not the merchant running
+    // the Ready command. The merchant UID cannot claim customer push jobs.
+    if (action === "ready" && result.order.user_id) await drainPickupPush(supabaseAdmin,result.order.user_id);
     return result.order;
   }
   const current = lifecycleStateFromOrder(order);
