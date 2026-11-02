@@ -288,6 +288,7 @@ function App() {
   const shopsRef = useRef<Shop[]>([]);
   const confirmedOrderCursorRef = useRef<MerchantAlertCursor|null>(null);
   const orderRefreshBusyRef = useRef(false);
+  const activeOrderOwnerScopeRef = useRef("");
   const activeSoundRef = useRef<{ pause: () => void } | null>(null);
   // Viewing Orders acknowledges the arrival alert. Do not keep the short
   // notification melody running after the merchant has opened the queue.
@@ -342,6 +343,7 @@ function App() {
     () => shops.find((s) => isShopOwnedByUser(s, user)) || null,
     [shops, user],
   );
+  activeOrderOwnerScopeRef.current=user && currentShop ? String(user.id)+"::"+String(currentShop.id) : "";
 
   const acceptAuthoritativeMerchantShop = useCallback((firebaseUid: string, shop: Shop) => {
     registerVerifiedShopId(firebaseUid, shop.id);
@@ -1121,7 +1123,8 @@ function App() {
     try {
       const data = await MerchantApi.getOrders();
       // A response from an old account is never shown or announced.
-      if(firebaseAuth.currentUser?.uid!==ownerId)return;
+      if(firebaseAuth.currentUser?.uid!==ownerId ||
+          activeOrderOwnerScopeRef.current!==ownerId+"::"+shopId)return;
       const apiOrders = data.map((d: Record<string, unknown>) => ({
           ...d,
           id: String(d.id),
