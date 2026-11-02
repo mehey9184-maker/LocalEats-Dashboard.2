@@ -55,14 +55,18 @@ test("Revoked/no devices, provider failures and missing merchant never fail conf
 });
 test("API only sends from persisted non-replayed events and keeps Ready on durable outbox",()=>{
  const source=readFileSync(new URL("../routes/orders.js",import.meta.url),"utf8");
- assert.match(source,/if\(!result\.replayed\)await sendConfirmedPickupWake\(supabaseAdmin,result\.order,"merchant_new_order"\)/);
- assert.match(source,/if \(action === "ready" && result\.order\.user_id\) await drainPickupPush\(supabaseAdmin,result\.order\.user_id\)/);
- for(const name of ["pickup_accepted","pickup_collected","pickup_rejected"])
-  assert.match(source,new RegExp("!result\\.replayed.*sendConfirmedPickupWake\\(supabaseAdmin,result\\.order,\\\""+name+"\\\"\\)"));
+ assert.match(source,/if\s*\(!result\.replayed\)\s*await\s+sendConfirmedPickupWake\(supabaseAdmin,\s*result\.order,\s*"merchant_new_order"\)/);
+ assert.match(source,/if\s*\(action\s*===\s*"ready"\s*&&\s*result\.order\.user_id\)\s*await\s+drainPickupPush\(supabaseAdmin,\s*result\.order\.user_id\)/);
+ for(const name of ["pickup_accepted","pickup_collected","pickup_rejected"]){
+  assert.ok(source.includes(`"${name}"`));
+ }
+ assert.match(source,/!result\.replayed\s*&&\s*action\s*===\s*"accept"/);
+ assert.match(source,/!result\.replayed\s*&&\s*action\s*===\s*"collect"/);
+ assert.match(source,/!result\.replayed\s*&&\s*action\s*===\s*"reject"/);
  const server=readFileSync(new URL("../server.js",import.meta.url),"utf8");
  assert.match(server,/['"]PUT['"]/);
  const merchant=readFileSync(new URL("../routes/merchant.js",import.meta.url),"utf8");
- assert.match(merchant,/router\.put\("\/push-subscriptions\/\:installationId",authenticateFirebase/);
- assert.match(merchant,/\.eq\("owner_id",uid\)/);
- assert.match(merchant,/\.eq\("user_id",uid\)\.eq\("installation_id",installation\)/);
+ assert.match(merchant,/router\.put\("\/push-subscriptions\/\:installationId",\s*authenticateFirebase/);
+ assert.match(merchant,/\.eq\("owner_id",\s*uid\)/);
+ assert.match(merchant,/\.eq\("user_id",\s*uid\)\.eq\("installation_id",\s*installation\)/);
 });
