@@ -16,6 +16,7 @@ import {
 } from "../orders/orderService.js";
 import { commandPickup, createPickup, parsePickupInput, pickupPricing, pickupQuote } from "../orders/pickupService.js";
 import { drainPickupPush } from "../orders/pickupPush.js";
+import {sendConfirmedPickupWake} from "../orders/confirmedPickupWake.js";
 import { deriveDeliveryProof } from "../orders/deliveryProof.js";
 
 const router = Router();
@@ -89,6 +90,7 @@ router.post("/", authenticateFirebase, async (req: AuthenticatedRequest, res: Re
     const request=parsePickupInput(req.body,true);
     assertControlledPickup({shop_id:request.input.shop_id,user_id:userId});
     const result = await createPickup(supabaseAdmin, repository, userId, request);
+    if(!result.replayed)await sendConfirmedPickupWake(supabaseAdmin,result.order,"merchant_new_order");
     res.status(result.replayed ? 200 : 201).json({
       success: true,
       replayed: result.replayed,
@@ -267,6 +269,7 @@ const updateMerchantOrder = async (
     // This outbox belongs to the ORDER CUSTOMER, not the merchant running
     // the Ready command. The merchant UID cannot claim customer push jobs.
     if (action === "ready" && result.order.user_id) await drainPickupPush(supabaseAdmin,result.order.user_id);
+    if (!result.replayed && action==="accept")await sendConfirmedPickupWake(supabaseAdmin,result.order,"pickup_accepted");
     return result.order;
   }
   const current = lifecycleStateFromOrder(order);
@@ -340,6 +343,8 @@ for (const [path,action] of [["reject","reject"],["payment-confirmation","confir
       const order=await loadMerchantOrder(uid,routeParam(req.params.id));
       assertControlledPickup(order);
       const result=await commandPickup(supabaseAdmin,uid,routeParam(req.params.id),action,req.body);
+      if(!result.replayed && action==="collect")await sendConfirmedPickupWake(supabaseAdmin,result.order,"pickup_collected");
+      if(!result.replayed && action==="reject")await sendConfirmedPickupWake(supabaseAdmin,result.order,"pickup_rejected");
       res.status(200).json({success:true,replayed:result.replayed,order:withoutDeliveryProofState(result.order)});
     } catch(error) { sendOrderError(res,error); }
   });
