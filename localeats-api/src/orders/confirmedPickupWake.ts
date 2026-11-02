@@ -5,7 +5,7 @@ import {getMessaging} from "firebase-admin/messaging";
 // order remains in the authenticated API even when a device is offline.
 // Customer Ready uses the existing durable pickup_push_outbox instead.
 export type PickupPushPurpose="merchant_new_order"|"pickup_accepted"|"pickup_collected"|"pickup_rejected";
-export type StoredPickupPushOrder={id:string;shop_id:string;user_id:string;delivery_type?:string;create_intent_hash?:string|null};
+export type StoredPickupPushOrder={id:string;shop_id:string|number;user_id:string;delivery_type?:string;create_intent_hash?:string|null};
 export type TokenReader={from:(table:string)=>any};
 export type WakeSender=(tokens:string[],data:Record<string,string>)=>Promise<void>;
 const realSender:WakeSender=async(tokens,data)=>{
@@ -46,7 +46,7 @@ export async function sendConfirmedPickupWake(
    (token):token is string=>typeof token==="string" && token.length>=20 && token.length<=4096
   ))];
   if(!tokens.length)return false;
-  const data=purpose==="merchant_new_order"
+  const data:Record<string,string>=purpose==="merchant_new_order"
    ? {type:"merchant_new_order",order_id:order.id}
    : {type:"pickup_status",status:statusForPurpose[purpose],order_id:order.id};
   await (sender ?? realSender)(tokens,data);
