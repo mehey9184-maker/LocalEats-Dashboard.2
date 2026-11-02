@@ -35,5 +35,5 @@ test("merchant listens only for confirmed API arrivals, no cached or count-based
  assert.match(app,/window.addEventListener\("focus",refresh\)/);
  assert.doesNotMatch(app,/prevPendingCount/);
  assert.doesNotMatch(app,/usePushNotifications\(false\)/);
- assert.match(app,/Background browser push requires a verified server subscription/);
+ assert.match(app,/onClick=\{\(\)=>\{void enableMerchantPush\(\);\}\}/);
 });
