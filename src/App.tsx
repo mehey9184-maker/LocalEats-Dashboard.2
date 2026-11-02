@@ -73,6 +73,8 @@ import {
   sendPushNotification,
   updateFirestoreShop,
   getFirestoreMenuItems,
+  requestNotificationPermissionAndGetToken,
+  onForegroundMessage,
 } from "./lib/firebase";
 import { useKitchenAlerter } from "./hooks/useKitchenAlerter";
 import { useAuthGuard } from "./hooks/useAuthGuard";
@@ -82,6 +84,7 @@ import { useAppNavigation } from "./hooks/useAppNavigation";
 import { useAppInitializer } from "./hooks/useAppInitializer";
 
 import {merchantOrderArrivals,type MerchantAlertCursor} from "./services/merchantOrderAlertPolicy";
+import {merchantPushInstallation,existingMerchantPushInstallation} from "./services/merchantPushDevice";
 import {
   Order,
   Shop,
@@ -323,6 +326,7 @@ function App() {
   }, [dataSaverMode]);
 
   const [orders, setOrders] = useState<Order[]>([]);
+  const [merchantPushStatus,setMerchantPushStatus]=useState<"idle"|"loading"|"enabled"|"unavailable">("idle");
 
   // --- Live Kitchen Alerter & Screen Wake ---
   const {
@@ -835,8 +839,45 @@ function App() {
   }, [currentShop?.id]);
 
 
-  // Background FCM delivery awaits an authenticated merchant API contract.
-  // Do not claim success from the legacy direct-Supabase browser hook.
+  // FCM subscription is a direct merchant action, never a hidden browser
+  // prompt or a Firestore/direct-Supabase token write. Enabled means the
+  // authenticated API confirmed persistence for THIS Firebase merchant.
+  const enableMerchantPush=useCallback(async()=>{
+    const uid=firebaseAuth.currentUser?.uid;
+    if(!uid || String(user?.id)!==uid || merchantShopGate.status!=="ready" || !currentShop){
+      setMerchantPushStatus("unavailable");return;
+    }
+    setMerchantPushStatus("loading");
+    try {
+      if(!("Notification" in window) || Notification.permission==="denied")throw new Error("Notifications unavailable");
+      const permission=Notification.permission==="granted"?"granted":await Notification.requestPermission();
+      if(permission!=="granted")throw new Error("Notifications not permitted");
+      const token=await requestNotificationPermissionAndGetToken();
+      if(!token || firebaseAuth.currentUser?.uid!==uid)throw new Error("No confirmed FCM token");
+      const saved=await MerchantApi.subscribePush(merchantPushInstallation(uid),token);
+      if(!saved || firebaseAuth.currentUser?.uid!==uid)throw new Error("Subscription not confirmed");
+      setMerchantPushStatus("enabled");
+      toast.success("Merchant order push enabled for this device.");
+    }catch{
+      setMerchantPushStatus("unavailable");
+      toast.error("Background order alerts could not be enabled. Check permission and API connection.");
+    }
+  },[user?.id,merchantShopGate.status,currentShop?.id]);
+
+  useEffect(()=>{
+    setMerchantPushStatus("idle");
+  },[user?.id]);
+
+  // A foreground FCM packet only wakes a fresh authenticated API read; the
+  // packet itself can never create a new order alert.
+  useEffect(()=>{
+    let active=true;let unsubscribe:(()=>void)|void;
+    void onForegroundMessage(payload=>{
+      if(payload.data?.type==="merchant_new_order")window.dispatchEvent(new Event("localeats-merchant-push-wake"));
+    }).then(stop=>{if(active)unsubscribe=stop;else if(typeof stop==="function")stop();}).catch(()=>{});
+    return()=>{active=false;if(typeof unsubscribe==="function")unsubscribe();};
+  },[]);
+
 
   const playNotificationSound = useCallback((isRepeating = false, styleOverride?: "calm" | "friendly" | "sparkle") => {
     // Stop previous playing sound if active
@@ -1155,6 +1196,11 @@ function App() {
       orderRefreshBusyRef.current=false;
     }
   }, [user, processAndSetOrders, merchantShopGate.status, currentShop, soundAlerts, activeTab, playNotificationSound, setActiveTab]);
+
+  useEffect(()=>{const refresh=()=>{if(document.visibilityState==="visible")void fetchOrders();};
+    window.addEventListener("localeats-merchant-push-wake",refresh);
+    return()=>window.removeEventListener("localeats-merchant-push-wake",refresh);
+  },[fetchOrders]);
 
   const menuReadRequest = useRef(0);
   useEffect(()=>{const refresh=()=>{void fetchOrders();};window.addEventListener("merchant-pickup-order-confirmed",refresh);return()=>window.removeEventListener("merchant-pickup-order-confirmed",refresh);},[fetchOrders]);
@@ -1556,6 +1602,15 @@ function App() {
   };
 
   const handleSignOut = async () => {
+    const uid=firebaseAuth.currentUser?.uid;
+    const installation=uid?existingMerchantPushInstallation(uid):null;
+    if(installation){
+      await Promise.race([
+        MerchantApi.revokePush(installation).catch(()=>{}),
+        new Promise<void>(resolve=>window.setTimeout(resolve,2000)),
+      ]);
+    }
+    setMerchantPushStatus("idle");
     setOrders([]);
     await supabase.auth.signOut();
   };
@@ -3949,11 +4004,15 @@ function App() {
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Order notifications</p>
                         <p className="text-xs text-on-surface-variant">
-                          In-app order alerts are active while this dashboard is open.
-                          Background browser push requires a verified server subscription and is not active in Preview.
+                          In-app order alerts appear while the dashboard is open. Enable background notifications for this device; setup requires the authenticated API and browser permission.
                         </p>
                       </div>
                     </div>
+                    <button type="button" disabled={merchantPushStatus==="loading"}
+                      onClick={()=>{void enableMerchantPush();}}
+                      className="ml-3 shrink-0 min-h-10 px-3 py-2 rounded-xl bg-primary text-white text-xs font-bold disabled:opacity-50">
+                      {merchantPushStatus==="loading"?"Checking...":merchantPushStatus==="enabled"?"Enabled":"Enable"}
+                    </button>
                   </div>
 
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
