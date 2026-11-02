@@ -80,7 +80,7 @@ import { useOrderWorkflow } from "./hooks/useOrderWorkflow";
 import { useShopLocation } from "./hooks/useShopLocation";
 import { useAppNavigation } from "./hooks/useAppNavigation";
 import { useAppInitializer } from "./hooks/useAppInitializer";
-import { usePushNotifications } from "./hooks/usePushNotifications";
+
 import {merchantOrderArrivals,type MerchantAlertCursor} from "./services/merchantOrderAlertPolicy";
 import {
   Order,
@@ -835,8 +835,8 @@ function App() {
   }, [currentShop?.id]);
 
 
-  // VAPID Push configuration moved to custom hook usePushNotifications
-  const { pushEnabled, requestPushPermissions } = usePushNotifications(false);
+  // Background FCM delivery awaits an authenticated merchant API contract.
+  // Do not claim success from the legacy direct-Supabase browser hook.
 
   const playNotificationSound = useCallback((isRepeating = false, styleOverride?: "calm" | "friendly" | "sparkle") => {
     // Stop previous playing sound if active
@@ -3944,39 +3944,16 @@ function App() {
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-600">
-                        <ArrowRight size={20} />
+                        <Bell size={20} />
                       </div>
                       <div className="text-left">
-                        <p className="font-bold text-on-surface">
-                          Push Notifications
-                        </p>
+                        <p className="font-bold text-on-surface">Order notifications</p>
                         <p className="text-xs text-on-surface-variant">
-                          Get browser alerts even when the app is closed.
+                          In-app order alerts are active while this dashboard is open.
+                          Background browser push requires a verified server subscription and is not active in Preview.
                         </p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        if (!pushEnabled) {
-                          requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
-                        } else {
-                          toast.info(
-                            "To disable push notifications, please change your browser settings.",
-                          );
-                        }
-                      }}
-                      className={cn(
-                        "w-12 h-6 rounded-full transition-all relative",
-                        pushEnabled ? "bg-primary" : "bg-outline-variant",
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
-                          pushEnabled ? "left-7" : "left-1",
-                        )}
-                      />
-                    </button>
                   </div>
 
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
