@@ -913,12 +913,16 @@ export async function requestNotificationPermissionAndGetToken(vapidKey?: string
 
     const messaging = getMessaging(app);
     
-    let serviceWorkerRegistration: ServiceWorkerRegistration | undefined;
-    if ("serviceWorker" in navigator) {
-      serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js").catch(() => undefined);
-    }
+    if (!("serviceWorker" in navigator)) return null;
+    // Use the already-built PWA worker which handles data-only merchant FCM.
+    // The legacy firebase-messaging-sw.js file is not the active VitePWA worker.
+    const serviceWorkerRegistration = await navigator.serviceWorker.getRegistration("/")
+      .then(existing=>existing ?? navigator.serviceWorker.register("/sw.js",{scope:"/"}))
+      .catch(()=>null);
+    if (!serviceWorkerRegistration) return null;
 
     const activeVapidKey = vapidKey || import.meta.env.VITE_FIREBASE_VAPID_KEY;
+    if (!activeVapidKey) return null;
 
     const currentToken = await getToken(messaging, {
       vapidKey: activeVapidKey,
