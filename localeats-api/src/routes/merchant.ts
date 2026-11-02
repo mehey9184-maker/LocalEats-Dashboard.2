@@ -2,8 +2,46 @@ import {effectiveShop} from "../orders/shopAvailability.js";
 import { Router, Response } from "express";
 import { AuthenticatedRequest, authenticateFirebase } from "../middleware/authenticateFirebase.js";
 import { supabaseAdmin } from "../lib/supabaseAdmin.js";
+import {object,onlyKeys,UUID} from "../orders/pickupService.js";
 
 const router = Router();
+
+// Enrollment requires verified Firebase merchant ownership, never a shop
+// supplied by the browser. Subscription storage is backend-only.
+router.put("/push-subscriptions/:installationId",authenticateFirebase,async(req:AuthenticatedRequest,res:Response):Promise<void>=>{
+ const uid=req.authUser?.uid,installation=req.params.installationId;
+ if(!uid || typeof installation!=="string" || !UUID.test(installation)) {
+  res.status(400).json({success:false,code:"INVALID_SUBSCRIPTION"});return;
+ }
+ try{
+  const body=object(req.body);onlyKeys(body,["fcm_token","permission_granted"]);
+  const token=body.fcm_token;
+  if(body.permission_granted!==true || typeof token!=="string" || token.length<20 || token.length>4096 || /\\s/.test(token)) {
+   res.status(400).json({success:false,code:"PUSH_PERMISSION_REQUIRED"});return;
+  }
+  const {data:shops,error:shopError}=await supabaseAdmin.from("shops").select("id").eq("owner_id",uid)
+   .eq("approval_status","approved").is("archived_at",null).limit(1);
+  if(shopError){res.status(503).json({success:false,code:"SUBSCRIPTION_UNAVAILABLE"});return;}
+  if(!shops?.length){res.status(403).json({success:false,code:"MERCHANT_SHOP_REQUIRED"});return;}
+  const {error}=await supabaseAdmin.from("pickup_push_subscriptions").upsert({
+   user_id:uid,installation_id:installation,fcm_token:token,revoked_at:null,
+  },{onConflict:"user_id,installation_id"});
+  if(error){res.status(error.code==="23505"?409:503).json({success:false,code:"SUBSCRIPTION_NOT_SAVED"});return;}
+  res.json({success:true});
+ }catch{res.status(400).json({success:false,code:"INVALID_SUBSCRIPTION"});}
+});
+router.delete("/push-subscriptions/:installationId",authenticateFirebase,async(req:AuthenticatedRequest,res:Response):Promise<void>=>{
+ const uid=req.authUser?.uid,installation=req.params.installationId;
+ if(!uid || typeof installation!=="string" || !UUID.test(installation)) {
+  res.status(400).json({success:false,code:"INVALID_SUBSCRIPTION"});return;
+ }
+ const {error}=await supabaseAdmin.from("pickup_push_subscriptions")
+  .update({revoked_at:new Date().toISOString(),fcm_token:null})
+  .eq("user_id",uid).eq("installation_id",installation);
+ if(error){res.status(503).json({success:false,code:"SUBSCRIPTION_NOT_REVOKED"});return;}
+ res.json({success:true});
+});
+
 router.patch("/shop/availability", authenticateFirebase, async (req:AuthenticatedRequest,res:Response):Promise<void>=>{
  if(process.env.MERCHANT_AVAILABILITY_WRITES_ENABLED!=="true") {res.status(503).json({success:false,code:"AVAILABILITY_WRITES_DISABLED",error:"Availability updates are not activated yet."});return;}
  const body=req.body;
