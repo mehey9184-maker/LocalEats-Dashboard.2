@@ -1,0 +1,26 @@
+name: Merchant background FCM Preview
+on:
+  push:
+    branches: [repair/merchant-background-fcm-preview-01]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Verified merchant order and background push tests
+        run: node --experimental-strip-types --test tests/merchant-confirmed-order-alerts.test.mjs tests/merchant-background-fcm.test.mjs
+      - name: Existing pickup/merchant authority tests
+        run: npm run test:merchant-pickup
+      - name: Merchant build (also compiles push service worker)
+        run: npm run build

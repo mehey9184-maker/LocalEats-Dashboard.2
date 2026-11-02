@@ -72,6 +72,28 @@ const readJsonResponse = async (response: Response): Promise<MerchantApiResponse
 };
 
 export class MerchantApi {
+  static async subscribePush(installationId:string,token:string):Promise<boolean>{
+    const uid=auth.currentUser?.uid;
+    if(!uid)throw new MerchantApiError("Merchant authentication is required.");
+    const shop=await this.getMerchantShop();
+    if(!shop || shop.owner_id!==uid || shop.approval_status!=="approved")
+      throw new MerchantApiError("An approved merchant shop is required for order alerts.");
+    const response=await fetch(`${getApiUrl()}/api/v1/merchant/push-subscriptions/${encodeURIComponent(installationId)}`,{
+      method:"PUT",headers:await getApiAuthHeaders(),
+      body:JSON.stringify({fcm_token:token,permission_granted:true}),
+    });
+    const data=await readJsonResponse(response);
+    if(auth.currentUser?.uid!==uid)throw new MerchantApiError("Merchant session changed. Subscription not confirmed.");
+    if(!response.ok || data.success!==true)throw new MerchantApiError("Background alerts could not be enabled.",response.status);
+    return true;
+  }
+
+  static async revokePush(installationId:string):Promise<void>{
+    if(!auth.currentUser) return;
+    await fetch(`${getApiUrl()}/api/v1/merchant/push-subscriptions/${encodeURIComponent(installationId)}`,{
+      method:"DELETE",headers:await getApiAuthHeaders(),
+    });
+  }
   static async setPickupPaymentMethods(shopId:string|number,methods:("cash"|"card_machine")[]):Promise<VerifiedMerchantShop> {
     const uid=auth.currentUser?.uid;
     const shop=await this.getMerchantShop();
