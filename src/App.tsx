@@ -80,7 +80,8 @@ import { useOrderWorkflow } from "./hooks/useOrderWorkflow";
 import { useShopLocation } from "./hooks/useShopLocation";
 import { useAppNavigation } from "./hooks/useAppNavigation";
 import { useAppInitializer } from "./hooks/useAppInitializer";
-import { usePushNotifications } from "./hooks/usePushNotifications";
+
+import {merchantOrderArrivals,type MerchantAlertCursor} from "./services/merchantOrderAlertPolicy";
 import {
   Order,
   Shop,
@@ -285,7 +286,9 @@ function App() {
   const currentBuildVersion = useRef(19); // Moving to v5.4 tracker
   const topNavScrollRef = useRef<HTMLDivElement>(null);
   const shopsRef = useRef<Shop[]>([]);
-  const prevPendingCount = useRef<number>(0);
+  const confirmedOrderCursorRef = useRef<MerchantAlertCursor|null>(null);
+  const orderRefreshBusyRef = useRef(false);
+  const activeOrderOwnerScopeRef = useRef("");
   const activeSoundRef = useRef<{ pause: () => void } | null>(null);
   // Viewing Orders acknowledges the arrival alert. Do not keep the short
   // notification melody running after the merchant has opened the queue.
@@ -340,6 +343,7 @@ function App() {
     () => shops.find((s) => isShopOwnedByUser(s, user)) || null,
     [shops, user],
   );
+  activeOrderOwnerScopeRef.current=user && currentShop ? String(user.id)+"::"+String(currentShop.id) : "";
 
   const acceptAuthoritativeMerchantShop = useCallback((firebaseUid: string, shop: Shop) => {
     registerVerifiedShopId(firebaseUid, shop.id);
@@ -831,8 +835,8 @@ function App() {
   }, [currentShop?.id]);
 
 
-  // VAPID Push configuration moved to custom hook usePushNotifications
-  const { pushEnabled, requestPushPermissions } = usePushNotifications(false);
+  // Background FCM delivery awaits an authenticated merchant API contract.
+  // Do not claim success from the legacy direct-Supabase browser hook.
 
   const playNotificationSound = useCallback((isRepeating = false, styleOverride?: "calm" | "friendly" | "sparkle") => {
     // Stop previous playing sound if active
@@ -1065,45 +1069,8 @@ function App() {
     }
   }, [soundStyle, soundVolume]);
 
-  // Sound alert logic for new orders
-  useEffect(() => {
-    if (!user) return;
-    const currentPendingCount = orders.filter(
-      (o) => o.status === "pending",
-    ).length;
-
-    // Only trigger if count increased and sound is enabled
-    if (soundAlerts && activeTab !== "orders" && currentPendingCount > prevPendingCount.current) {
-      const audio = playNotificationSound(true); // Enable repeating for new orders
-
-      const stopSound = () => {
-        audio.pause();
-        if (activeSoundRef.current) {
-          activeSoundRef.current.pause();
-          activeSoundRef.current = null;
-        }
-      };
-
-      toast.success("NEW ORDER RECEIVED!", {
-        description: `CRITICAL: You have ${currentPendingCount} pending ${currentPendingCount === 1 ? "order" : "orders"}.`,
-        duration: 15000,
-        important: true,
-        icon: <Bell className="text-primary animate-bounce" />,
-        action: {
-          label: "DISMISS ALERT",
-          onClick: () => {
-            stopSound();
-            setActiveTab("orders");
-          },
-        },
-        onDismiss: () => stopSound(),
-        onAutoClose: () => stopSound(),
-      });
-    }
-
-    prevPendingCount.current = currentPendingCount;
-  }, [orders, soundAlerts, user, activeTab, playNotificationSound, setActiveTab]);
-
+  // A "new order" toast is emitted from a successful, authenticated API
+  // snapshot below, never a count comparison or a cached order list.
   const processAndSetOrders = useCallback((firestoreOrdersList: Order[], supabaseOrdersList: Order[] = []) => {
     // Merge Orders by unique string ID, prioritizing latest updated_at or created_at
     const orderMap = new Map<string, Order>();
@@ -1146,23 +1113,48 @@ function App() {
 
   const fetchOrders = useCallback(async () => {
     if (!user || merchantShopGate.status !== "ready" || !currentShop) {
+      confirmedOrderCursorRef.current=null;
       setOrders([]);
       return;
     }
-
+    if(orderRefreshBusyRef.current)return;
+    orderRefreshBusyRef.current=true;
+    const ownerId=String(user.id),shopId=String(currentShop.id);
     try {
       const data = await MerchantApi.getOrders();
+      // A response from an old account is never shown or announced.
+      if(firebaseAuth.currentUser?.uid!==ownerId ||
+          activeOrderOwnerScopeRef.current!==ownerId+"::"+shopId)return;
       const apiOrders = data.map((d: Record<string, unknown>) => ({
           ...d,
           id: String(d.id),
           total_price: Number(d.total_price ?? d.price ?? 0),
         })) as Order[];
+      const arrivals=merchantOrderArrivals(apiOrders,ownerId,shopId,confirmedOrderCursorRef.current);
+      confirmedOrderCursorRef.current=arrivals.cursor;
       processAndSetOrders([], apiOrders);
+      if(arrivals.newPendingIds.length){
+        // Authentication + shop ownership were established by MerchantApi.
+        // Never mark an order accepted or play a synthetic order event.
+        const amount=arrivals.newPendingIds.length;
+        toast.success(amount===1 ? "NEW ORDER RECEIVED!" : "NEW ORDERS RECEIVED!",{
+          description:amount===1 ? "A confirmed customer order needs your attention." : `${amount} confirmed customer orders need your attention.`,
+          duration:12000,
+          important:true,
+          action:{label:"OPEN ORDERS",onClick:()=>setActiveTab("orders")}
+        });
+        if(soundAlerts && activeTab!=="orders") {
+          const sound=playNotificationSound(false);
+          window.setTimeout(()=>sound.pause(),4000);
+        }
+      }
     } catch (apiError) {
       console.warn("[Orders Sync] Authoritative API unavailable:", apiError);
-      toast.error(apiError instanceof Error ? apiError.message : "Orders could not be refreshed. No cached order changes were applied.");
+      toast.error(apiError instanceof Error ? apiError.message : "Orders could not be refreshed. No cached order changes were applied.",{id:"merchant-authoritative-orders-error"});
+    } finally {
+      orderRefreshBusyRef.current=false;
     }
-  }, [user, shops, processAndSetOrders, merchantShopGate.status, currentShop]);
+  }, [user, processAndSetOrders, merchantShopGate.status, currentShop, soundAlerts, activeTab, playNotificationSound, setActiveTab]);
 
   const menuReadRequest = useRef(0);
   useEffect(()=>{const refresh=()=>{void fetchOrders();};window.addEventListener("merchant-pickup-order-confirmed",refresh);return()=>window.removeEventListener("merchant-pickup-order-confirmed",refresh);},[fetchOrders]);
@@ -1207,15 +1199,19 @@ function App() {
     operationalReady: merchantShopGate.status === "ready" && Boolean(currentShop),
   });
 
-  // Orders are read from the authoritative LocalEats API. Polling avoids treating
-  // either Firestore or a frontend Supabase adapter as a competing order source.
+  // Foreground-only checks provide timely alerts without pretending to be
+  // real-time server push; hidden tabs use no continuous API polling.
   useEffect(() => {
     if (merchantShopGate.status !== "ready" || !currentShop || !user || shops.length === 0) return;
-    void fetchOrders();
-    const pollingInterval = setInterval(() => void fetchOrders(), 15000);
-
-    return () => {
+    const refresh=()=>{if(document.visibilityState==="visible")void fetchOrders();};
+    refresh();
+    const pollingInterval=window.setInterval(refresh,8000);
+    window.addEventListener("focus",refresh);
+    document.addEventListener("visibilitychange",refresh);
+    return()=>{
       clearInterval(pollingInterval);
+      window.removeEventListener("focus",refresh);
+      document.removeEventListener("visibilitychange",refresh);
     };
   }, [user, shops, fetchOrders, merchantShopGate.status, currentShop]);
 
@@ -3948,39 +3944,16 @@ function App() {
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-600">
-                        <ArrowRight size={20} />
+                        <Bell size={20} />
                       </div>
                       <div className="text-left">
-                        <p className="font-bold text-on-surface">
-                          Push Notifications
-                        </p>
+                        <p className="font-bold text-on-surface">Order notifications</p>
                         <p className="text-xs text-on-surface-variant">
-                          Get browser alerts even when the app is closed.
+                          In-app order alerts are active while this dashboard is open.
+                          Background browser push requires a verified server subscription and is not active in Preview.
                         </p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        if (!pushEnabled) {
-                          requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
-                        } else {
-                          toast.info(
-                            "To disable push notifications, please change your browser settings.",
-                          );
-                        }
-                      }}
-                      className={cn(
-                        "w-12 h-6 rounded-full transition-all relative",
-                        pushEnabled ? "bg-primary" : "bg-outline-variant",
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
-                          pushEnabled ? "left-7" : "left-1",
-                        )}
-                      />
-                    </button>
                   </div>
 
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
