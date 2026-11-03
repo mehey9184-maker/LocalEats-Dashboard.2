@@ -42,7 +42,7 @@ test("recent orders are newest-first regardless of API response order and do not
  assert.match(overview,/latestKitchenOrders\.map\(/);
  assert.match(overview,/Number\.isFinite\(Date\.parse\(order\.created_at\)\)/);
  assert.match(overview,/Total unavailable/);
- assert.match(overview,/<motion\.button\s+initial=\{\{ opacity: 0, x: 20 \}\}/);
+ assert.match(overview,/<button\s+key=\{order\.id\}/);
 });
 
 test("low-stock alerts use only available finite nonnegative tracked quantities",()=>{
