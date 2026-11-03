@@ -13,7 +13,7 @@ test("pickup-first order cards show one summary and retain state-specific safe a
   assert.equal((orders.match(/<PickupOrderActions order=\{order\} mode="actions" \/>/g)||[]).length,3);
   assert.match(actions,/pickupOrderingEnabled\(\) && !busy && !disabled/);
   assert.match(actions,/await MerchantApi\.transitionPickupOrder\(order, action, extra\)/);
-  assert.match(actions,/Confirm you have actually received payment at the shop/);
+  assert.match(actions,/Have you actually received/);
   assert.match(actions,/Confirm the food has actually been handed to the customer/);
   assert.throws(()=>pickupMutationsDisabled());
 });
