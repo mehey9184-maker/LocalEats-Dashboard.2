@@ -797,13 +797,13 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
           const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
           return `
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-              <span>${q}x ${n}</span>
+              <span>${safeReceiptHtml(q)}x ${safeReceiptHtml(n)}</span>
               <span>R${Number(p * q).toFixed(2)}</span>
             </div>
           `;
         })
         .join("") ||
-        `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${order.product_name}</span><span>R${Number(order.total_price || 0).toFixed(2)}</span></div>`;
+        `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span></div>`;
 
       const widthOfText = formatOption === "58mm" ? "54mm" : "76mm";
       const printingPageSize = formatOption === "58mm" ? "58mm auto" : "80mm auto";
@@ -811,7 +811,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
       doc.write(`
         <html>
           <head>
-            <title>Receipt #LE-${order.id}</title>
+            <title>Receipt #LE-${safeReceiptHtml(order.id)}</title>
             <style>
               @page {
                 size: ${printingPageSize};
@@ -863,7 +863,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             <div class="header">
               <h3 style="margin: 0 0 4px 0; text-transform: uppercase; font-size: 16px; letter-spacing: 1px;">LOCALEATS</h3>
               <p style="margin: 2px 0; font-size: 11px;">EATS WITH LOCAL ROOTS</p>
-              <p style="margin: 4px 0 2px 0;">Order ID: #LE-${order.id}</p>
+              <p style="margin: 4px 0 2px 0;">Order ID: #LE-${safeReceiptHtml(order.id)}</p>
               <p style="margin: 2px 0;">${new Date(order.created_at).toLocaleString()}</p>
               <p style="margin: 2px 0; font-weight: bold; text-transform: uppercase;">Fulfillment: ${!isOrderDelivery(order) ? "COLLECTION" : "DELIVERY"}</p>
             </div>
@@ -873,14 +873,14 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             <div class="total">
               <div style="display: flex; justify-content: space-between;">
                 <span>GRAND TOTAL</span>
-                <span>R${Number(order.total_price || 0).toFixed(2)}</span>
+                <span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span>
               </div>
             </div>
             <div class="footer">
-              <p style="margin: 2px 0; font-weight: bold;">Customer: ${order.customer_name || "Guest"}</p>
-              ${order.phone ? `<p style="margin: 2px 0;">Phone: ${order.phone}</p>` : ""}
-              ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${order.address}, ${order.city}</p>` : ""}
-              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${order.notes}"</p>` : ""}
+              <p style="margin: 2px 0; font-weight: bold;">Customer: ${safeReceiptHtml(order.customer_name || "Guest")}</p>
+              ${order.phone ? `<p style="margin: 2px 0;">Phone: ${safeReceiptHtml(order.phone)}</p>` : ""}
+              ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${safeReceiptHtml(order.address)}, ${safeReceiptHtml(order.city)}</p>` : ""}
+              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${safeReceiptHtml(order.notes)}"</p>` : ""}
               <p style="margin: 12px 0 0 0; font-weight: bold; font-size: 12px;">THANK YOU FOR SUPPORTING LOCAL!</p>
             </div>
           </body>
@@ -933,20 +933,20 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
             return `
               <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <span>${q}x ${n}</span>
+                <span>${safeReceiptHtml(q)}x ${safeReceiptHtml(n)}</span>
                 <span>R${Number(p * q).toFixed(2)}</span>
               </div>
             `;
           })
           .join("") ||
-          `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${order.product_name}</span><span>R${Number(order.total_price || 0).toFixed(2)}</span></div>`;
+          `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span></div>`;
 
         return `
           <div class="receipt">
             <div class="header">
               <h3 style="margin: 0 0 4px 0; text-transform: uppercase; font-size: 16px; letter-spacing: 1px;">LOCALEATS</h3>
               <p style="margin: 2px 0; font-size: 11px;">EATS WITH LOCAL ROOTS</p>
-              <p style="margin: 4px 0 2px 0;">Order ID: #LE-${order.id}</p>
+              <p style="margin: 4px 0 2px 0;">Order ID: #LE-${safeReceiptHtml(order.id)}</p>
               <p style="margin: 2px 0;">${new Date(order.created_at).toLocaleString()}</p>
               <p style="margin: 2px 0; font-weight: bold; text-transform: uppercase;">Fulfillment: ${!isOrderDelivery(order) ? "COLLECTION" : "DELIVERY"}</p>
             </div>
@@ -958,15 +958,15 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             <div class="total">
               <div style="display: flex; justify-content: space-between;">
                 <span>GRAND TOTAL</span>
-                <span>R${Number(order.total_price || 0).toFixed(2)}</span>
+                <span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span>
               </div>
             </div>
 
             <div class="footer">
-              <p style="margin: 2px 0; font-weight: bold;">Customer: ${order.customer_name || "Guest"}</p>
-              ${order.phone ? `<p style="margin: 2px 0;">Phone: ${order.phone}</p>` : ""}
-              ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${order.address}, ${order.city}</p>` : ""}
-              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${order.notes}"</p>` : ""}
+              <p style="margin: 2px 0; font-weight: bold;">Customer: ${safeReceiptHtml(order.customer_name || "Guest")}</p>
+              ${order.phone ? `<p style="margin: 2px 0;">Phone: ${safeReceiptHtml(order.phone)}</p>` : ""}
+              ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${safeReceiptHtml(order.address)}, ${safeReceiptHtml(order.city)}</p>` : ""}
+              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${safeReceiptHtml(order.notes)}"</p>` : ""}
               <p style="margin: 12px 0 0 0; font-weight: bold; font-size: 12px;">THANK YOU FOR SUPPORTING LOCAL!</p>
             </div>
           </div>
