@@ -643,8 +643,8 @@ export const Marketing: React.FC<MarketingProps> = ({
                   <Users size={16} />
                 </div>
               </div>
-              <p className="text-2xl font-black text-on-surface">{dinerStats.totalUniqueDiners}</p>
-              <p className="text-[11px] text-on-surface-variant mt-1">Unique customer profiles</p>
+              <p className="text-2xl font-black text-on-surface">{dinerStats?.uniqueDiners ?? "—"}</p>
+              <p className="text-[11px] text-on-surface-variant mt-1">Unique verified customer IDs</p>
             </div>
 
             <div className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/15 shadow-xs">
@@ -657,25 +657,25 @@ export const Marketing: React.FC<MarketingProps> = ({
                 </div>
               </div>
               <div className="flex items-baseline gap-2">
-                <p className="text-2xl font-black text-on-surface">{dinerStats.repeatCount}</p>
+                <p className="text-2xl font-black text-on-surface">{dinerStats?.repeatDiners ?? "—"}</p>
                 <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
-                  {dinerStats.repeatRate}% loyalty
+                  {dinerStats?.repeatRate === null || !dinerStats ? "—" : `${dinerStats.repeatRate}%`} repeat
                 </span>
               </div>
-              <p className="text-[11px] text-on-surface-variant mt-1">Ordered 2+ times</p>
+              <p className="text-[11px] text-on-surface-variant mt-1">Customer IDs with 2+ orders</p>
             </div>
 
             <div className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/15 shadow-xs">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
-                  Avg Diner Spend
+                  Avg Order Value
                 </span>
                 <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
                   <Zap size={16} />
                 </div>
               </div>
-              <p className="text-2xl font-black text-on-surface">R{dinerStats.avgSpend || 0}</p>
-              <p className="text-[11px] text-on-surface-variant mt-1">Average basket value</p>
+              <p className="text-2xl font-black text-on-surface">{dinerStats?.averageOrderValue === null || !dinerStats ? "—" : `R${dinerStats.averageOrderValue.toFixed(2)}`}</p>
+              <p className="text-[11px] text-on-surface-variant mt-1">Per order, not confirmed revenue</p>
             </div>
 
             <div className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/15 shadow-xs">
@@ -687,8 +687,8 @@ export const Marketing: React.FC<MarketingProps> = ({
                   <Store size={16} />
                 </div>
               </div>
-              <p className="text-2xl font-black text-on-surface">{dinerStats.totalOrders}</p>
-              <p className="text-[11px] text-on-surface-variant mt-1">Direct from LocalEats</p>
+              <p className="text-2xl font-black text-on-surface">{dinerStats?.totalOrders ?? "—"}</p>
+              <p className="text-[11px] text-on-surface-variant mt-1">Confirmed API order records</p>
             </div>
           </div>
 
@@ -698,10 +698,10 @@ export const Marketing: React.FC<MarketingProps> = ({
               <div>
                 <h3 className="font-extrabold text-base text-on-surface flex items-center gap-2">
                   <Zap size={18} className="text-amber-500" />
-                  <span>1-Tap Quick Action Boosters</span>
+                  <span>Marketing Ideas — Not Yet Active</span>
                 </h3>
                 <p className="text-xs text-on-surface-variant">
-                  Instant marketing actions designed for busy restaurant and kota shop operators.
+                  These ideas are previews only. Discounts, customer messages and printed order links are not activated.
                 </p>
               </div>
             </div>
@@ -725,11 +725,11 @@ export const Marketing: React.FC<MarketingProps> = ({
                     Launch Flash Deal
                   </h4>
                   <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
-                    Trigger a 15% discount for 3 hours to capture lunch break hunger.
+                    Preview a future lunch promotion. No discount is active.
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-orange-500/15 flex items-center justify-between text-xs font-bold text-orange-600">
-                  <span>Start Deal</span>
+                  <span>Coming Later</span>
                   <span>→</span>
                 </div>
               </div>
@@ -752,11 +752,11 @@ export const Marketing: React.FC<MarketingProps> = ({
                     Win Back Inactive Diners
                   </h4>
                   <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
-                    Send 1-tap WhatsApp greetings with a discount to diners who haven't ordered in 14d.
+                    Customer outreach is not activated. No messages are sent.
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-blue-500/15 flex items-center justify-between text-xs font-bold text-blue-600">
-                  <span>View Diners</span>
+                  <span>Coming Later</span>
                   <span>→</span>
                 </div>
               </div>
@@ -779,11 +779,11 @@ export const Marketing: React.FC<MarketingProps> = ({
                     Print Table Cards (PDF)
                   </h4>
                   <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
-                    Batch generate QR tent cards for tables 1–20 for direct table ordering.
+                    QR table-ordering materials are not ready for customer use.
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-emerald-500/15 flex items-center justify-between text-xs font-bold text-emerald-600">
-                  <span>Generate PDF</span>
+                  <span>Coming Later</span>
                   <span>→</span>
                 </div>
               </div>
@@ -806,11 +806,11 @@ export const Marketing: React.FC<MarketingProps> = ({
                     Counter Stand Flyer
                   </h4>
                   <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
-                    Print high-res A4 counter stand flyers for takeaway bags and cash registers.
+                    Counter flyer publishing is not activated while ordering is closed.
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-purple-500/15 flex items-center justify-between text-xs font-bold text-purple-600">
-                  <span>View & Print</span>
+                  <span>Coming Later</span>
                   <span>→</span>
                 </div>
               </div>
@@ -824,14 +824,14 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div>
                   <h3 className="font-extrabold text-base text-on-surface flex items-center gap-2">
                     <Store size={18} className="text-primary" />
-                    <span>Your Live Online Storefront</span>
+                    <span>Storefront Link Preview</span>
                   </h3>
                   <p className="text-xs text-on-surface-variant">
-                    Share this verified store link with customers to let them order online via Cash on Arrival or Card.
+                    Customer ordering and payments at the shop are not active yet. Do not publish this link before owner approval.
                   </p>
                 </div>
                 <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full uppercase">
-                  ● Live & Accepting Orders
+                  ● Ordering Not Activated
                 </span>
               </div>
 
@@ -891,7 +891,7 @@ export const Marketing: React.FC<MarketingProps> = ({
               </div>
               <div>
                 <p className="text-xs font-extrabold text-on-surface">{activeShop?.name || "LocalEats Store"}</p>
-                <p className="text-[11px] text-on-surface-variant">Instant Scan to Order</p>
+                <p className="text-[11px] text-on-surface-variant">QR Preview Only — Not for Distribution</p>
               </div>
               <div className="w-full grid grid-cols-2 gap-2">
                 <a
