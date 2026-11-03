@@ -4310,6 +4310,7 @@ Notes: "${order.notes || "None"}"
 
         {/* SMS & WhatsApp Dispatch Studio Modal */}
         <DispatchAlertModal
+          key={dispatchAlertOrder?.id ? `${dispatchAlertOrder.id}-${dispatchAlertType}-${currentShop?.id ?? ""}` : "closed"}
           isOpen={!!dispatchAlertOrder}
           onClose={() => setDispatchAlertOrder(null)}
           order={dispatchAlertOrder}
