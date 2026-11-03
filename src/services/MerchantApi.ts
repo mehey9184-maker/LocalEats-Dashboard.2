@@ -127,7 +127,7 @@ export class MerchantApi {
     const headers = await getApiAuthHeaders();
     let response: Response;
     try {
-      response = await fetch(`${apiUrl}/api/v1/merchant/orders`, { method: "GET", headers });
+      response = await fetch(`${apiUrl}/api/v1/merchant/orders`, { method: "GET", headers, cache: "no-store" });
     } catch {
       throw new MerchantApiError("Unable to reach the LocalEats order service.");
     }

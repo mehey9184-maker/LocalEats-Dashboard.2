@@ -154,6 +154,7 @@ function cn(...inputs: ClassValue[]) {
 const clearMerchantShopOperationalCache = () => {
   [
     "localeats_cached_shops",
+    "localeats_cached_orders",
     "localeats_cached_menu_items",
     "localeats_my_shop_id",
     "localeats_vendor_shop_id",
@@ -328,6 +329,10 @@ function App() {
   }, [dataSaverMode]);
 
   const [orders, setOrders] = useState<Order[]>([]);
+  useEffect(() => {
+    // Clean up historical unscoped customer-order caches from previous previews.
+    try { localStorage.removeItem("localeats_cached_orders"); } catch { /* Storage blocked */ }
+  }, []);
   const [ordersReadState,setOrdersReadState]=useState<MerchantOrderReadState>("checking");
   const [ordersVerifiedAt,setOrdersVerifiedAt]=useState<number|null>(null);
   const orderReadScopeRef=useRef<string|null>(null);
@@ -1162,11 +1167,8 @@ function App() {
     if(lastOrderPayloadRef.current===serialized)return;
     lastOrderPayloadRef.current=serialized;
     setOrders(combinedOrders);
-    try {
-      localStorage.setItem("localeats_cached_orders",serialized);
-    } catch {
-      // Cache is optional and never used as order authority.
-    }
+    // Customer names, phone numbers, addresses and pickup/payment details
+    // remain in memory; do not persist all orders to a shared browser key.
   }, []);
 
   // Only one active read per authenticated shop scope. Ignore late responses
@@ -2349,6 +2351,8 @@ function App() {
               {activeTab === "orders" && (
                 <OrdersManagement
                   orders={orders}
+                  ordersReadState={ordersReadState}
+                  ordersVerifiedAt={ordersVerifiedAt}
                   onUpdateStatus={updateOrderStatus}
                   onDispatchToRider={dispatchOrderToRider}
                   onConvertOrderToPickup={convertOrderToPickup}

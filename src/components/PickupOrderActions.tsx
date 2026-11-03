@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { MerchantApi } from "../services/MerchantApi";
+import {merchantPickupReadCurrent,type MerchantOrderReadState} from "../services/merchantDashboardFreshness";
 import {
   pickupOrderingEnabled,
   pickupState,
@@ -10,10 +11,15 @@ import {
 
 type DisplayMode = "full" | "summary" | "actions";
 
-export function PickupOrderActions({ order, mode = "full", disabled = false }: {
+export function PickupOrderActions({
+  order, mode = "full", disabled = false,
+  readState = "checking", verifiedAt = null,
+}: {
   order: any;
   mode?: DisplayMode;
   disabled?: boolean;
+  readState?: MerchantOrderReadState;
+  verifiedAt?: number | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -36,14 +42,20 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
   const hasUnconfirmedCommand = pickupOrderingEnabled() && MerchantApi.hasPendingPickupCommand(order);
   const awaitingRefresh = confirmedPrevious !== null &&
     confirmedPrevious.orderId === String(order.id) && confirmedPrevious.revision === order.revision;
+  const readCurrent = merchantPickupReadCurrent(readState, verifiedAt);
   const canAct = pickupOrderingEnabled() && !busy && !disabled &&
-    !hasUnconfirmedCommand && !awaitingRefresh;
+    readCurrent && !hasUnconfirmedCommand && !awaitingRefresh;
   const markConfirmed = () => {
     setConfirmedPrevious({orderId: String(order.id), revision: order.revision});
     window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));
   };
 
   const act = async (label: string) => {
+    // Refresh timestamps can expire while the tab remains mounted; check at click time too.
+    if (!merchantPickupReadCurrent(readState, verifiedAt)) {
+      setError("The order list is no longer verified. Refresh Orders before changing payment or handover.");
+      return;
+    }
     if (!canAct) return;
     const action: PickupAction = label.startsWith("Accept") ? "accept"
       : label === "Reject" ? "reject" : label === "Mark Ready" ? "ready"
@@ -106,11 +118,15 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
               >{busy ? "Saving..." : label}</button>;
             })}
           </div>
-          {pickupOrderingEnabled() && hasUnconfirmedCommand && !awaitingRefresh && (
+          {pickupOrderingEnabled() && readCurrent && hasUnconfirmedCommand && !awaitingRefresh && (
             <button type="button" disabled={busy}
               className="text-xs font-bold underline"
               onClick={async event => {
                 event.stopPropagation();
+                if (!merchantPickupReadCurrent(readState, verifiedAt)) {
+                  setError("Refresh Orders before retrying an unresolved command.");
+                  return;
+                }
                 setBusy(true);
                 try {
                   await MerchantApi.retryPendingPickupOrder(order);
@@ -132,6 +148,11 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
             <p role="status" className="text-xs text-emerald-700">
               The API confirmed the action. Waiting for refreshed order details before
               allowing another step. Use Refresh if the order card stays unchanged.
+            </p>
+          )}
+          {!readCurrent && pickupOrderingEnabled() && !!actions.length && (
+            <p role="alert" className="text-xs text-amber-700">
+              Order data needs a fresh API verification before payment, collection or status changes. Use Refresh Orders.
             </p>
           )}
           {error && <p role="alert" className="text-xs text-error">{error}</p>}

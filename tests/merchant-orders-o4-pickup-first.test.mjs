@@ -10,7 +10,7 @@ const actions=readFileSync(new URL("../src/components/PickupOrderActions.tsx",im
 test("pickup-first order cards show one summary and retain state-specific safe actions",()=>{
   assert.match(orders,/\{isPickupOrder\(order\) && <PickupOrderActions order=\{order\} mode="summary" \/>/);
   assert.doesNotMatch(orders,/\{isPickupOrder\(order\) && <PickupOrderActions order=\{order\}\/>\}/);
-  assert.equal((orders.match(/<PickupOrderActions order=\{order\} mode="actions" \/>/g)||[]).length,3);
+  assert.equal((orders.match(/<PickupOrderActions order=\{order\} mode="actions"\s+readState=\{ordersReadState\} verifiedAt=\{ordersVerifiedAt\} \/>/g)||[]).length,3);
   assert.match(actions,/pickupOrderingEnabled\(\) && !busy && !disabled/);
   assert.match(actions,/await MerchantApi\.transitionPickupOrder\(order, action, extra\)/);
   assert.match(actions,/Have you actually received/);

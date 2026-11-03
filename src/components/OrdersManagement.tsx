@@ -1,6 +1,7 @@
 import {PickupOrderActions} from "./PickupOrderActions";
+import {merchantPickupReadCurrent,type MerchantOrderReadState} from "../services/merchantDashboardFreshness";
 import {merchantOrderMoney,merchantOrderTotal,merchantReceiptLineAmount,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
-import {summarizeKitchenQueue,merchantJohannesburgDayKey,merchantOrderHistoryInSastRange,merchantOrderCompletedOnSastDay} from "../services/merchantDashboardLayout";
+import {summarizeKitchenQueue,merchantJohannesburgDayKey,merchantOrderHistoryInSastRange,merchantOrderCompletedOnSastDay,merchantJohannesburgClock} from "../services/merchantDashboardLayout";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled,pickupItemLineTotal} from "../services/merchantPickupPolicy";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
@@ -94,6 +95,8 @@ function cn(...inputs: ClassValue[]) {
 
 export interface OrdersManagementProps {
   orders: Order[];
+  ordersReadState?: MerchantOrderReadState;
+  ordersVerifiedAt?: number | null;
   onUpdateStatus: (id: string, status: OrderStatus, message?: string) => Promise<void> | void;
   onDispatchToRider?: (id: string, riderId: string, riderName?: string, riderPhone?: string) => Promise<void> | void;
   onConvertOrderToPickup?: (id: string) => Promise<void> | void;
@@ -138,6 +141,8 @@ const ChatWindow = ({ orderId, onClose }: { orderId: string; onClose: () => void
 
 export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   orders,
+  ordersReadState = "checking",
+  ordersVerifiedAt = null,
   onUpdateStatus,
   loading,
   onRefresh,
@@ -193,6 +198,10 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
     onConfirmed?: () => void,
   ): Promise<boolean> => {
     if (inFlightStatusRef.current !== null) return false;
+    if (orders.some(order => String(order.id)===String(orderId) && isPickupOrder(order))) {
+      toast.error("Use the dedicated customer-collection actions for pickup orders.");
+      return false;
+    }
     inFlightStatusRef.current = orderId;
     setUpdatingOrderId(orderId);
     try {
@@ -1139,6 +1148,7 @@ Notes: "${order.notes || "None"}"
 
   const exportToCSV = () => {
     if(displayedOrders.length===0){toast.info("No orders match these filters to export.");return;}
+    if(!window.confirm("Export filtered order data including customer contact details? Keep the spreadsheet private.")) return;
     const csvContent=safeOrderExportCsv(displayedOrders);
     const blob=new Blob(["\uFEFF",csvContent],{type:"text/csv;charset=utf-8;"});
     const link=document.createElement("a");
@@ -1154,6 +1164,8 @@ Notes: "${order.notes || "None"}"
   };
 
   const exportToJSON = () => {
+    if (orders.length===0) { toast.info("No loaded orders to export."); return; }
+    if (!window.confirm("Export loaded order records including customer contact details? This is not a database backup. Keep the file private.")) return;
     const jsonContent = JSON.stringify(orders, null, 2);
     const blob = new Blob([jsonContent], { type: "application/json" });
     const link = document.createElement("a");
@@ -1161,13 +1173,14 @@ Notes: "${order.notes || "None"}"
     link.setAttribute("href", url);
     link.setAttribute(
       "download",
-      `orders_backup_${format(new Date(), "yyyyMMdd_HHmmss")}.json`,
+      `orders_export_${format(new Date(), "yyyyMMdd_HHmmss")}.json`,
     );
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("Orders backup file downloaded!");
+    URL.revokeObjectURL(url);
+    toast.info("Loaded order records exported as JSON. This is not a recoverable backup and may contain customer details.");
   };
 
   const orderStatuses: (OrderStatus | "All")[] = [
@@ -1315,9 +1328,13 @@ Notes: "${order.notes || "None"}"
                             )}
                             <span className={cn(
                               "text-[10px] font-extrabold px-2.5 py-1 rounded-xl flex items-center gap-1 border",
-                              (order.payment_method === "cod" || order.payment_method === "Cash" || order.payment_method === "cash_on_delivery")
-                                ? "bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 border-rose-200/50"
-                                : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200/50"
+                              isPickupOrder(order)
+                                ? order.payment_status === "paid"
+                                  ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200/50"
+                                  : "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border-amber-200/50"
+                                : (order.payment_method === "cod" || order.payment_method === "Cash" || order.payment_method === "cash_on_delivery")
+                                  ? "bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 border-rose-200/50"
+                                  : "bg-surface-container-high text-on-surface-variant border-outline-variant/20"
                             )}>
                               <CreditCard size={11} fill="currentColor" />
                               {pickupPaymentLabel(order)}
@@ -1421,7 +1438,7 @@ Notes: "${order.notes || "None"}"
                         <OrderStatusBadge status={order.status} />
                         <span className="text-[11px] font-semibold text-on-surface-variant mt-0 sm:mt-2 flex items-center gap-1">
                           <Clock size={14} />
-                          {format(new Date(order.created_at), "HH:mm")}
+                          {merchantJohannesburgClock(order.created_at)}
                         </span>
                       </div>
                     </div>
@@ -2218,6 +2235,13 @@ Notes: "${order.notes || "None"}"
   return (
     <div className="space-y-8">
       <p role="status" className="text-xs text-on-surface-variant mb-3">{pickupOrderingEnabled() ? "Pickup actions are API-authorized. Confirm actual payment before food handover and Collected. Historical delivery records remain available." : "Pickup order, payment and collection changes are disabled pending separately approved database activation. Existing management and historical delivery records remain available."}</p>
+      {!merchantPickupReadCurrent(ordersReadState, ordersVerifiedAt) && (
+        <div role="status" className="flex flex-wrap items-center gap-2 px-4 py-3 rounded-xl border border-amber-500/25 bg-amber-500/5 text-xs text-on-surface-variant">
+          <AlertTriangle size={15} className="text-amber-600" />
+          <span>Orders are not recently verified by the API. Refresh before confirming customer payment or handover.</span>
+          <button type="button" className="font-bold underline text-primary" onClick={onRefresh}>Refresh Orders</button>
+        </div>
+      )}
       <section className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
           <div className="max-w-2xl space-y-1">
@@ -2257,7 +2281,7 @@ Notes: "${order.notes || "None"}"
               className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
             >
               <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              Backup Data
+              Export JSON
             </button>
           </div>
         </div>
@@ -2419,7 +2443,7 @@ Notes: "${order.notes || "None"}"
                       className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
                     >
                       <FileDown size={14} />
-                      Backup Data
+                      Export JSON
                     </button>
                   </div>
 
@@ -2917,7 +2941,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
-                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {merchantJohannesburgClock(order.created_at)}
                           </span>
                         </div>
 
@@ -2976,7 +3000,8 @@ Notes: "${order.notes || "None"}"
                             <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                             <div className="flex flex-col items-stretch w-full gap-2">
                               {isPickupOrder(order) ? (
-                                <PickupOrderActions order={order} mode="actions" />
+                                <PickupOrderActions order={order} mode="actions"
+                                  readState={ordersReadState} verifiedAt={ordersVerifiedAt} />
                               ) : (
                               <button
                                                                 disabled={updatingOrderId !== null} onClick={(e) => {e.stopPropagation();void confirmOrderStatus(order.id,"preparing");}}
@@ -3100,7 +3125,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
-                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {merchantJohannesburgClock(order.created_at)}
                           </span>
                         </div>
 
@@ -3198,7 +3223,8 @@ Notes: "${order.notes || "None"}"
                             <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
                               <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                               {isPickupOrder(order) ? (
-                                <PickupOrderActions order={order} mode="actions" />
+                                <PickupOrderActions order={order} mode="actions"
+                                  readState={ordersReadState} verifiedAt={ordersVerifiedAt} />
                               ) : (
                               <button
                                 onClick={(e) => {
@@ -3331,7 +3357,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
-                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {merchantJohannesburgClock(order.created_at)}
                           </span>
                         </div>
 
@@ -3380,7 +3406,8 @@ Notes: "${order.notes || "None"}"
                         <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
                           <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                           {isPickupOrder(order) ? (
-                            <PickupOrderActions order={order} mode="actions" />
+                            <PickupOrderActions order={order} mode="actions"
+                                  readState={ordersReadState} verifiedAt={ordersVerifiedAt} />
                           ) : (
                             <p role="status" className="text-xs text-on-surface-variant">
                               Delivery completion is confirmed by the authorized rider workflow, not from this screen.
@@ -4242,6 +4269,8 @@ Notes: "${order.notes || "None"}"
                       Cancel
                     </button>
                     <button
+                      disabled={isPickupOrder(orderToAccept) || updatingOrderId!==null}
+                      title={isPickupOrder(orderToAccept) ? "Use the dedicated pickup acceptance button" : "Accept through the order API"}
                       onClick={() => {void confirmOrderStatus(orderToAccept.id,"preparing",()=>{if(orderNotes.trim())saveDeviceKitchenNote(orderToAccept.id,orderNotes);setAcceptingOrderId(null);setOrderNotes("");});}}
                       className="flex-1 py-3 bg-primary text-on-primary text-xs font-black uppercase tracking-wider rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all cursor-pointer text-center"
                     >

@@ -71,7 +71,7 @@ test("client-only order pause/capacity and unapproved bulk deletion cannot chang
  for(const token of ["setOrdersPaused(","setAlertsEnabled(","Order Limit","maxConcurrentOrders",
  "onDeleteAllOrders","Clear All","deleteAllOrders","OrderService.deleteAllOrdersForShops"])
   assert.equal((orders+app).includes(token),false,token);
- assert.match(orders,/<PickupOrderActions order=\{order\} mode="actions" \/>/);
+ assert.match(orders,/<PickupOrderActions order=\{order\} mode="actions"\s+readState=\{ordersReadState\} verifiedAt=\{ordersVerifiedAt\} \/>/);
  assert.doesNotMatch(orders,/PickupOrderActions.*disabled=\{isLimitReached\}/);
  const summary=summarizeKitchenQueue([
   {status:"ready",delivery_type:"delivery"},

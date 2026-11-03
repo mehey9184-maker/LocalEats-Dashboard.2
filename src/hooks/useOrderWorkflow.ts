@@ -50,11 +50,10 @@ export const useOrderWorkflow = ({
     try {
       const current=orders.find(order=>String(order.id)===String(id));
       if(!current)throw new MerchantApiError("Refresh the API orders before changing this order.",409);
-      if(isPickupOrder(current)){
-        const action=status==="preparing" ? "accept" : status==="ready" ? "ready" : status==="cancelled" ? "reject" : status==="completed" ? "collect" : null;
-        if(!action)throw new MerchantApiError("Unsupported pickup action.",409);
-        const order=await MerchantApi.transitionPickupOrder(current as unknown as Record<string,unknown>,action, action==="reject" ? {reason:_message || ""} : {});
-        replaceConfirmedOrder(order);await fetchOrders();return;
+      // Pickup uses a separate API command with revision + idempotency + payment/handover checks.
+      // Never let old generic status buttons bypass the dedicated collection component.
+      if (isPickupOrder(current)) {
+        throw new MerchantApiError("Use the dedicated customer-collection controls for pickup orders.",409);
       }
       if (status === "preparing") {
         const order = await MerchantApi.transitionOrder(id, "accept");

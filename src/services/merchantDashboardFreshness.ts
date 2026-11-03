@@ -27,3 +27,16 @@ export function newMerchantPendingOrders(
     row.id!==undefined && String(row.id).trim()!=="").map(row=>String(row.id)));
   return {current,newIds:previous===null?[]:[...current].filter(id=>!previous.has(id))};
 }
+
+/** A payment or handover action requires a recent, API-verified order list.
+ * A failed, missing, or older-than-90s read must never authorize a pickup action.
+ */
+export function merchantPickupReadCurrent(
+  state:MerchantOrderReadState,
+  verifiedAt:number|null|undefined,
+  now:number=Date.now()
+):boolean{
+  return state==="confirmed" && typeof verifiedAt==="number" &&
+    Number.isFinite(verifiedAt) && Number.isFinite(now) &&
+    verifiedAt<=now && now-verifiedAt<=90000;
+}
