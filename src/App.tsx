@@ -339,6 +339,7 @@ function App() {
   const lastConfirmedOrderScopeRef=useRef<string|null>(null);
   const warnedOrderScopeRef=useRef<string|null>(null);
   const orderReadSerialRef=useRef(0);
+  const lastOrderPayloadRef=useRef<string|null>(null);
   const orderReadInFlightRef=useRef<{scope:string;promise:Promise<void>}|null>(null);
 
   // --- Live Kitchen Alerter & Screen Wake ---
@@ -367,6 +368,7 @@ function App() {
     orderReadScopeRef.current=verifiedOrderScope;
     orderReadSerialRef.current++;
     lastConfirmedOrderScopeRef.current=null;
+    lastOrderPayloadRef.current=null;
     warnedOrderScopeRef.current=null;
     observedPendingIdsRef.current=null;
     activeSoundRef.current?.pause();
@@ -1158,9 +1160,14 @@ function App() {
       return timeB - timeA;
     });
 
+    // Identical 15-second API responses must not re-render all Dashboard cards,
+    // restart list animations or rewrite local storage unnecessarily.
+    const serialized=JSON.stringify(combinedOrders);
+    if(lastOrderPayloadRef.current===serialized)return;
+    lastOrderPayloadRef.current=serialized;
     setOrders(combinedOrders);
     try {
-      localStorage.setItem("localeats_cached_orders", JSON.stringify(combinedOrders));
+      localStorage.setItem("localeats_cached_orders",serialized);
     } catch {
       // Cache is optional and never used as order authority.
     }
