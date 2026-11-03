@@ -2,6 +2,7 @@ import React, { useState, useCallback } from "react";
 import { MessageCircle, Copy, Share2, Phone, X, Check, ShieldCheck, Sparkles, AlertCircle, QrCode, BookmarkPlus, ListOrdered, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Order, Shop } from "../types";
+import { merchantOrderMoney } from "../services/merchantOrdersTrust";
 
 export interface DispatchAlertModalProps {
   isOpen: boolean;
@@ -94,20 +95,14 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
   const generateTemplateText = useCallback(
     (
       currentRecipient: "rider" | "customer" | "custom",
-      tpl: string
+      _tpl: string
     ) => {
       const shopName = currentShop?.name || "LocalEats Merchant";
       const shopPhone = currentShop?.phone || currentShop?.whatsapp || "";
-      const orderId = order?.id ? String(order.id).slice(-6) : "1001";
+      const orderId = order?.id ? String(order.id).slice(-6) : "Unavailable";
       const customerName = order?.customer_name || "Valued Customer";
       const address = order?.address || "Address provided in app";
-      const amount = order?.total_price != null
-        ? (typeof order.total_price === "number"
-            ? order.total_price
-            : parseFloat(String(order.total_price).replace(/[^0-9.]/g, "")) || 0
-          ).toFixed(2)
-        : "0.00";
-      const paymentMethod = order?.payment_method?.toUpperCase() || "CASH";
+      const amount = order ? merchantOrderMoney(order.total_price) : "Total unavailable";
       const itemsSummary = Array.isArray(order?.items)
         ? order.items.map((i: Record<string, unknown> | string) => typeof i === "string" ? i : `${(i as { quantity?: number; name?: string })?.quantity || 1}x ${(i as { quantity?: number; name?: string })?.name || "Item"}`).join(", ")
         : "Standard Meal Order";
@@ -118,65 +113,16 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
       }
 
       if (type === "rider_pairing" || (currentRecipient === "rider" && connectionCode)) {
-        const code = connectionCode || "123456";
-        const pairingUrl = `${window.location.origin}/rider/pair?code=${code}&shop=${currentShop?.id || ""}`;
-        return (
-          `🚨 *LocalEats Rider Fleet Invitation*\n` +
-          `Shop: *${shopName}*\n` +
-          `Pairing Code: *${code}*\n\n` +
-          `Enter this 6-digit code in your LocalEats Rider app to accept dispatch missions!\n` +
-          `Direct Link: ${pairingUrl}`
-        );
+        if (!connectionCode) return "No verified pairing code is available. Open Rider pairing to obtain one.";
+        return `LocalEats rider pairing invitation\nShop: ${shopName}\nPairing code: ${connectionCode}\nUse this code only in the official Rider app. This message does not assign a delivery.`;
       }
-
       if (currentRecipient === "rider") {
-        const landmarkNotes = order?.notes ? `🏡 Landmark / Local Directions: *${order.notes}*\n` : "";
-        return (
-          `🛵 *NEW DELIVERY MISSION - ${shopName.toUpperCase()}*\n\n` +
-          `Order ID: *#${orderId}*\n` +
-          `Customer: *${customerName}* (${order?.phone || "No phone"})\n` +
-          `Delivery Address: *${address}*\n` +
-          landmarkNotes +
-          `Items: ${itemsSummary}\n` +
-          `Total to Collect: *R${amount}* (${paymentMethod})\n` +
-          (mapsUrl ? `📍 Navigation Pin: ${mapsUrl}\n\n` : "\n") +
-          `Please confirm acceptance in your Rider App when en route!`
-        );
-      } else if (currentRecipient === "customer") {
-        if (tpl === "ready_pickup") {
-          return (
-            `📦 *ORDER READY FOR PICKUP - ${shopName.toUpperCase()}*\n\n` +
-            `Hi ${customerName}! Your order *#${orderId}* is hot and ready for pickup.\n` +
-            `Items: ${itemsSummary}\n` +
-            `Shop Location: ${currentShop?.address || "Local Merchant Hub"}\n` +
-            `Phone: ${shopPhone}\n\n` +
-            `Thank you for supporting local business!`
-          );
-        } else if (tpl === "out_for_delivery") {
-          return (
-            `🛵 *ORDER OUT FOR DELIVERY - ${shopName.toUpperCase()}*\n\n` +
-            `Hi ${customerName}! Order *#${orderId}* is on its way with our driver *${riderName}*.\n` +
-            `Rider Phone: ${riderPhone || "Contact via app"}\n` +
-            `Delivery Address: ${address}\n` +
-            `Total: R${amount} (${paymentMethod})\n\n` +
-            `Please ensure someone is available at the door!`
-          );
-        } else {
-          return (
-            `🍳 *ORDER ACCEPTED & PREPARING - ${shopName.toUpperCase()}*\n\n` +
-            `Hi ${customerName}! Order *#${orderId}* has been accepted and is currently being prepared.\n` +
-            `Items: ${itemsSummary}\n` +
-            `Estimated ETA: ~${order?.estimated_delivery_time || "25-35"} mins\n\n` +
-            `Questions? Reply to this message or call ${shopPhone}.`
-          );
-        }
-      } else {
-        return (
-          `📢 *LocalEats Order Update - ${shopName}*\n` +
-          `Order #${orderId} status: ${order?.status || "Processing"}\n` +
-          `Total: R${amount}`
-        );
+        return `LocalEats delivery update from ${shopName}\nOrder reference: #${orderId}\nPlease check your authorized assignments in the Rider app. This message does not assign an order or disclose customer information.`;
       }
+      const recordedStatus = String(order?.status || "Unavailable").replaceAll("_", " ");
+      const recordedDelivery = order?.delivery_status ? `\nRecorded delivery status: ${String(order.delivery_status).replaceAll("_", " ")}` : "";
+      // User-editable messages must not invent payment status, rider movement or ETA.
+      return `LocalEats order update — ${shopName}\nOrder #${orderId}\nRecorded order status: ${recordedStatus}${recordedDelivery}\nItems: ${itemsSummary}\nRecorded order total: ${amount}\nPlease check the LocalEats app for the latest confirmed order information.`;
     },
     [currentShop, order, type, connectionCode, riderName, riderPhone]
   );
