@@ -18,3 +18,10 @@ export function completedDeliveryArea(
   const city=typeof order.city==="string" ? order.city.trim() : "";
   return city ? {city,value} : null;
 }
+
+/** Quotes CSV cells and neutralizes formulas from user-controlled order fields. */
+export function safeOrderCsvCell(value:unknown):string {
+  const raw=String(value ?? "");
+  const protectedValue=/^[\\s]*[=+@\\-]/.test(raw) ? "'"+raw : raw;
+  return '"' + protectedValue.replace(/"/g,'""') + '"';
+}
