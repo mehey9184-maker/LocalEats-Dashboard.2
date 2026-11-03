@@ -134,7 +134,7 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
               allowing another step. Use Refresh if the order card stays unchanged.
             </p>
           )}
-          {error && <p role="alert" className="text-xs text-error">{error}</p>
+          {error && <p role="alert" className="text-xs text-error">{error}</p>}
           {!!actions.length && !pickupOrderingEnabled() && (
             <p className="text-xs text-on-surface-variant">Pickup actions are disabled until the approved pilot is activated.</p>
           )}
