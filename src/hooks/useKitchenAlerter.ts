@@ -112,6 +112,8 @@ export const useKitchenAlerter = (orders: Order[], ordersViewed = false, shopSco
   };
 
   const stopSiren = () => {
+    // No audio nodes means no teardown timer is needed on routine API polls.
+    if(!sirenIntervalRef.current && !osc1Ref.current && !osc2Ref.current && !mainGainRef.current)return;
     if (sirenIntervalRef.current) {
       clearInterval(sirenIntervalRef.current);
       sirenIntervalRef.current = null;
