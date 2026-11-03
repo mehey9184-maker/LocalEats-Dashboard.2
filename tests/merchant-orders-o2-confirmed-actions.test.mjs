@@ -34,7 +34,7 @@ test("unsupported completion and local rider assignment controls are not clickab
   assert.match(orders, /Delivery completion is confirmed by the authorized rider workflow/);
   assert.match(orders, /Rider assignment is handled by the authorized rider workflow/);
   assert.doesNotMatch(orders, /Order accepted & dispatched to rider/);
-  assert.doesNotMatch(orders, /connectedRiders\.length === 0 && !currentShop\?\.linked_rider_id\) \{\s*setUnlinkedModalOrder\(order\)/);
+  assert.match(orders, /void confirmOrderStatus\(order\.id,"preparing"\)/);
 });
 
 test("browser-only kitchen notes are marked as local and partitioned per shop", () => {
@@ -43,7 +43,7 @@ test("browser-only kitchen notes are marked as local and partitioned per shop", 
   assert.doesNotMatch(orders, /localStorage\.getItem\("le_kitchen_notes"\)/);
   assert.doesNotMatch(orders, /localStorage\.setItem\("le_kitchen_notes"/);
   assert.match(orders, /scopedKitchenNotes\.shopId === kitchenNotesShopId/);
-  assert.match(orders, /if \(orderNotes\.trim\(\)\)saveDeviceKitchenNote|if \(orderNotes\.trim\(\)\) saveDeviceKitchenNote/);
+  assert.match(orders, /if\s*\(orderNotes\.trim\(\)\)\s*saveDeviceKitchenNote/);
 });
 
 test("missing prices in kitchen item cards are never presented as zero", () => {
