@@ -556,13 +556,6 @@ const OnboardingChecklist = ({
   onEditProfile: () => void;
   hasMenu: boolean;
 }) => {
-  const [showBankModal, setShowBankModal] = useState(false);
-  const [bankName, setBankName] = useState("");
-  const [accountNumber, setAccountNumber] = useState("");
-  const [accountType, setAccountType] = useState("Savings");
-  const [branchCode, setBranchCode] = useState("");
-  const [payoutLinked, setPayoutLinked] = useState(() => localStorage.getItem("localeats_payout_linked") === "true");
-
   const userOwnedShops = useMemo(() => shops.filter((s) => isShopOwnedByUser(s, user)), [shops, user]);
   const hasShop = userOwnedShops.length > 0;
   const hasOperatingHours =
@@ -572,28 +565,13 @@ const OnboardingChecklist = ({
     { key: "shop", completed: hasShop, label: "Create Shop Profile", desc: "Required to start selling", icon: Store },
     { key: "hours", completed: hasOperatingHours, label: "Set Hours", desc: "Automate kitchen schedule", icon: Clock },
     { key: "menu", completed: hasMenu, label: "Upload Menu", desc: "Upload your tasty dishes", icon: Pizza },
-    { key: "payout", completed: payoutLinked, label: "Link Payouts & Bank", desc: "Receive direct deposits", icon: Landmark },
   ];
 
   const completedCount = tasks.filter((t) => t.completed).length;
   const progressPercent = Math.round((completedCount / tasks.length) * 100);
 
-  const handleLinkBank = () => {
-    if (!bankName.trim() || !accountNumber.trim()) {
-      toast.error("Please fill in your Bank Name and Account Number.");
-      return;
-    }
-    localStorage.setItem("localeats_payout_linked", "true");
-    localStorage.setItem("localeats_bank_name", bankName);
-    localStorage.setItem("localeats_account_number", accountNumber);
-    localStorage.setItem("localeats_account_type", accountType);
-    setPayoutLinked(true);
-    setShowBankModal(false);
-    toast.success("Bank account verified & linked for weekly payouts!");
-  };
-
   // If everything is completely set up, we can still show a subtle completed badge, but let's hide the checklist once completely done so the dashboard is super clean!
-  if (hasShop && hasOperatingHours && hasMenu && payoutLinked) return null;
+  if (hasShop && hasOperatingHours && hasMenu) return null;
 
   return (
     <motion.div
@@ -615,7 +593,7 @@ const OnboardingChecklist = ({
               Ready to Launch?
             </h2>
             <p className="text-xs md:text-sm text-on-surface-variant font-semibold mt-0.5">
-              Complete these steps to activate your digital storefront and start pocketing revenue.
+              Complete your shop profile, hours and menu. Availability and order eligibility are confirmed separately.
             </p>
           </div>
         </div>
@@ -659,9 +637,7 @@ const OnboardingChecklist = ({
             <button
               key={task.key}
               onClick={() => {
-                if (task.key === "payout") {
-                  setShowBankModal(true);
-                } else if (task.key === "hours") {
+                if (task.key === "hours") {
                   onEditProfile();
                 } else {
                   onNavigate(task.key === "shop" ? "storefront" : "menu");
@@ -709,102 +685,7 @@ const OnboardingChecklist = ({
         </p>
       )}
 
-      {/* Interactive Bank Payout Linking Modal */}
-      <AnimatePresence>
-        {showBankModal && (
-          <div role="dialog" aria-modal="true" className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-              animate={{ backdropFilter: "blur(4px)", backgroundColor: "rgba(0,0,0,0.4)" }}
-              exit={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-              className="absolute inset-0"
-              onClick={() => setShowBankModal(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-surface relative z-10 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-outline-variant/20 flex flex-col"
-            >
-              <div className="p-6 md:p-8 space-y-6">
-                <div>
-                  <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-500 mb-4">
-                    <Landmark size={24} />
-                  </div>
-                  <h2 className="text-xl md:text-2xl font-headline font-black text-on-surface">Link Payout Account</h2>
-                  <p className="text-xs text-on-surface-variant font-semibold mt-1">Configure your bank account for weekly LocalEats payouts.</p>
-                </div>
 
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider">Bank Name</label>
-                    <input
-                      type="text"
-                      value={bankName}
-                      onChange={(e) => setBankName(e.target.value)}
-                      placeholder="e.g. Standard Bank, FNB, Nedbank"
-                      className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 transition-all"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider">Account Number</label>
-                    <input
-                      type="text"
-                      value={accountNumber}
-                      onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
-                      placeholder="e.g. 1014589632"
-                      className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 transition-all font-mono"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider">Account Type</label>
-                      <select
-                        value={accountType}
-                        onChange={(e) => setAccountType(e.target.value)}
-                        className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 transition-all"
-                      >
-                        <option value="Savings">Savings</option>
-                        <option value="Cheque">Cheque/Current</option>
-                        <option value="Transmission">Transmission</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider">Branch Code</label>
-                      <input
-                        type="text"
-                        value={branchCode}
-                        onChange={(e) => setBranchCode(e.target.value.replace(/\D/g, ""))}
-                        placeholder="e.g. 250655"
-                        className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 transition-all font-mono"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="p-6 md:p-8 bg-surface-container-lowest border-t border-outline-variant/10 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowBankModal(false)}
-                  className="flex-1 py-3.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-black rounded-2xl text-xs uppercase tracking-wider transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLinkBank}
-                  className="flex-1 py-3.5 bg-primary text-on-primary font-black rounded-2xl text-xs uppercase tracking-wider shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all"
-                >
-                  Verify & Save
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 };
