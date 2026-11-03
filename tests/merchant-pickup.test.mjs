@@ -91,7 +91,8 @@ test('kanban routes pickup Ready and Collected actions through the API component
  const source=readFileSync(new URL('../src/components/OrdersManagement.tsx',import.meta.url),'utf8');
  assert.match(source,/if \(isPickupOrder\(order\)\) return <PickupOrderActions order=\{order\} mode="summary"\/>/);
  assert.equal((source.match(/isPickupOrder\(order\) \? pickupItemLineTotal\(item\)/g) || []).length,4);
- assert.equal((source.match(/<PickupOrderActions order=\{order\} mode="actions" \/>/g) || []).length,2);
+ assert.equal((source.match(/<PickupOrderActions order=\{order\} mode="actions" \/>/g) || []).length,3);
+ assert.doesNotMatch(source, /<PickupOrderActions order=\{order\} mode="actions" disabled=\{isLimitReached\}/);
  const actions=readFileSync(new URL('../src/components/PickupOrderActions.tsx',import.meta.url),'utf8');
  assert.match(actions,/label === "Mark Ready" \? "ready"/);
  assert.match(actions,/await MerchantApi\.transitionPickupOrder\(order, action, extra\)/);
