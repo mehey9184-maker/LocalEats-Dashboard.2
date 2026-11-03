@@ -1,4 +1,5 @@
 ﻿import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
+import {completedOrderValue,completedOrderTotal,completedDeliveryArea} from "../services/merchantDashboardTrust";
 import { FoodPlaceholder } from "../components/MenuManagement";
 import { isPlaceholderImage } from "../constants";
 import { updateFirestoreShop } from "../lib/firebase";
@@ -700,13 +701,11 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
 
     // Delivery-area figures require a completed delivery, valid city and total.
     orders.forEach((o) => {
-      if(o.status!=="completed" || (o.order_type!=="delivery" && o.delivery_type!=="delivery"))return;
-      const suburb=typeof o.city==="string" ? o.city.trim() : "";
-      const price=typeof o.total_price==="number" ? o.total_price : Number(o.total_price);
-      if(!suburb || !Number.isFinite(price) || price<0)return;
-      if(!counts[suburb])counts[suburb]={count:0,revenue:0};
-      counts[suburb].count+=1;
-      counts[suburb].revenue+=price;
+      const area=completedDeliveryArea(o);
+      if(!area)return;
+      if(!counts[area.city])counts[area.city]={count:0,revenue:0};
+      counts[area.city].count+=1;
+      counts[area.city].revenue+=area.value;
     });
 
     const totalRev = Object.values(counts).reduce((acc, c) => acc + c.revenue, 0) || 1;
@@ -763,7 +762,7 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
                 : "text-on-surface-variant hover:text-on-surface"
             )}
           >
-            Dispatches
+            Completed Orders
           </button>
           <button
             onClick={() => setSuburbMetric("avgTicket")}
@@ -856,7 +855,7 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
                   </div>
                   <div className="flex items-baseline justify-between pt-1">
                     <div>
-                      <span className="text-[9px] font-black uppercase text-on-surface-variant/50 block">Revenue</span>
+                      <span className="text-[9px] font-black uppercase text-on-surface-variant/50 block">Order Value</span>
                       <span className="text-sm font-black text-on-surface">R {item.revenue.toLocaleString()}</span>
                     </div>
                     <div className="text-right">
@@ -923,20 +922,20 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       return;
     }
     setIsSyncing(true);
-    toast.loading("Refreshing authoritative shop verification...", { id: "sync-verify" });
+    toast.loading("Refreshing shop information...", { id: "sync-verify" });
 
     try {
       await Promise.resolve(onRefresh());
       if (currentShop) {
-        toast.success(`Authoritative shop verification refreshed for "${currentShop.name}" (#${currentShop.id}).`, {
+        toast.success(`Shop data refreshed for "${currentShop.name}".`, {
           id: "sync-verify",
         });
       } else {
-        toast.success("Authoritative shop verification refresh completed.", { id: "sync-verify" });
+        toast.success("Shop data refresh completed.", { id: "sync-verify" });
       }
     } catch (err) {
       console.error("Sync & Verify failed:", err);
-      toast.error("Could not refresh authoritative shop verification.", { id: "sync-verify" });
+      toast.error("Could not refresh shop information.", { id: "sync-verify" });
     } finally {
       setIsSyncing(false);
     }
@@ -954,25 +953,12 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
   const startOfWeek = getStartOfWeek();
   const weeklyOrders = orders.filter(o=>o.created_at && new Date(o.created_at) >= startOfWeek);
-  const completedWeeklyOrders = weeklyOrders.filter(o=>o.status==="completed");
-  const completedOrders = orders.filter(o=>o.status==="completed");
+  const completedWeeklyOrders = weeklyOrders.filter(o=>completedOrderValue(o)!==null);
+  const completedOrders = orders.filter(o=>completedOrderValue(o)!==null);
 
-  // Robust total sales calculation (Weekly)
-  const weeklySales = completedWeeklyOrders.reduce((acc, curr) => {
-    const price =
-      typeof curr.total_price === "string"
-        ? parseFloat((curr.total_price as unknown as string).replace(/[^0-9.]/g, ""))
-        : Number(curr.total_price);
-    return acc + (isNaN(price) ? 0 : price);
-  }, 0);
-
-  const totalSales = completedOrders.reduce((acc, curr) => {
-    const price =
-      typeof curr.total_price === "string"
-        ? parseFloat((curr.total_price as unknown as string).replace(/[^0-9.]/g, ""))
-        : Number(curr.total_price);
-    return acc + (isNaN(price) ? 0 : price);
-  }, 0);
+  // Completed order value is NOT proof of payment or a payout balance.
+  const weeklySales=completedOrderTotal(completedWeeklyOrders);
+  const totalSales=completedOrderTotal(completedOrders);
 
   const orderCount = weeklyOrders.length;
   const hasMenu = menuItems.length > 0;
@@ -1240,12 +1226,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         const day = lastDays.find((d) => d.date === orderDate);
         if (day) {
           day.count++;
-          const price = typeof order.total_price === "string"
-            ? parseFloat((order.total_price as unknown as string).replace(/[^0-9.]/g, ""))
-            : Number(order.total_price || 0);
-          if (order.status==="completed" && Number.isFinite(price) && price>=0) {
-            day.revenue += price;
-          }
+          const price=completedOrderValue(order);
+          if(price!==null)day.revenue+=price;
         }
       } catch (e) {
         console.error("Error parsing order date:", e);
@@ -1389,7 +1371,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">
-                Sync & Verify Store Ownership
+                Refresh Shop Data
               </h3>
               {currentShop && (
                 <span className="text-[10px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 rounded-full">
@@ -1398,7 +1380,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               )}
             </div>
             <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
-              Refreshes the API-verified shop already linked to your authenticated merchant account.
+              Refreshes the linked shop, menu and order information from the API.
             </p>
           </div>
         </div>
@@ -1409,7 +1391,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           className="px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shrink-0 w-full sm:w-auto"
         >
           <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
-          <span>{isSyncing ? "Verifying..." : "Sync & Verify"}</span>
+          <span>{isSyncing ? "Refreshing..." : "Refresh Data"}</span>
         </button>
       </div>
 
@@ -1745,7 +1727,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               {currentShop.updated_at ? (
                 <p className="text-[10px] font-mono font-black text-emerald-500 flex items-center gap-1.5 pt-1 uppercase tracking-widest">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Store Status: Synced & Saved ({new Date(currentShop.updated_at).toLocaleDateString()} {new Date(currentShop.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
+                  Shop record last updated ({new Date(currentShop.updated_at).toLocaleDateString()} {new Date(currentShop.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
                 </p>
               ) : (
                 <p className="text-[10px] font-mono font-black text-amber-500 flex items-center gap-1.5 pt-1 uppercase tracking-widest">
@@ -1871,8 +1853,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           >
             <StatCard
               title="Subscription"
-              value={trialInfo ? (trialInfo.isExpired ? "Expired" : `${trialInfo.daysRemaining} Days`) : "Active Plan"}
-              change={trialInfo ? (trialInfo.isExpired ? "Action Needed" : "Free Trial") : "Professional"}
+              value={trialInfo ? (trialInfo.isExpired ? "Expired" : `${trialInfo.daysRemaining} Days`) : "Not confirmed"}
+              change={trialInfo ? (trialInfo.isExpired ? "Action Needed" : "Free Trial") : "No plan status"}
               icon={Zap}
               colorClass={trialInfo?.isExpired ? "bg-red-500/10 text-red-600 dark:text-red-400" : "bg-primary/10 text-primary"}
             />
