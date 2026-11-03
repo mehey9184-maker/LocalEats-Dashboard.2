@@ -741,7 +741,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             <RotateCw size={14} className="animate-spin text-emerald-600" />
             <span>Syncing latest menu data in background...</span>
           </div>
-          <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full uppercase">SWR Active</span>
+          <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full uppercase">Refreshing</span>
         </div>
       )}
 
@@ -750,10 +750,10 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         <div>
           <h2 className="text-xl font-extrabold text-on-surface flex items-center gap-2">
             <UtensilsCrossed size={22} className="text-primary" />
-            <span>Menu & Inventory Management</span>
+            <span>Menu Management</span>
           </h2>
           <p className="text-xs text-on-surface-variant mt-1">
-            Manage your food items, instant stock, prices, and dietary flags.
+            View your verified menu items, availability and prices. Editing is not activated.
           </p>
         </div>
 
@@ -787,24 +787,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             <Store size={14} className="text-primary" />
             <span>Store Filter:</span>
           </div>
-          <button
-            onClick={() => {
-              setSelectedShopId("all");
-              try {
-                localStorage.setItem("localeats_selected_menu_shop_id", "all");
-              } catch {
-                // ignore
-              }
-            }}
-            className={cn(
-              "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer",
-              selectedShopId === "all"
-                ? "bg-primary text-on-primary shadow-xs"
-                : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-            )}
-          >
-            All My Stores ({items.length})
-          </button>
+          {/* No combined inventory: the API verifies one merchant shop per menu read. */}
           {userOwnedShops.map((shop) => (
             <button
               key={shop.id}
@@ -841,12 +824,12 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Instant Fuse.js Search by item name, ingredient, tag or category..."
+                placeholder="Search menu items by name, description or category..."
                 className="w-full pl-10 pr-4 py-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 text-xs font-medium text-on-surface outline-none focus:ring-2 focus:ring-primary/40"
               />
               {searchTerm && (
                 <span className="absolute right-3.5 top-3.5 text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                  Fuse Indexed
+                  Search active
                 </span>
               )}
             </div>
@@ -914,19 +897,6 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
               </p>
               {userOwnedShops.length > 1 && selectedShopId !== "all" && (
                 <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
-                  <button
-                    onClick={() => {
-                      setSelectedShopId("all");
-                      try {
-                        localStorage.setItem("localeats_selected_menu_shop_id", "all");
-                      } catch {
-                        // ignore
-                      }
-                    }}
-                    className="px-3.5 py-2 rounded-xl bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-all cursor-pointer"
-                  >
-                    View All Stores
-                  </button>
                   {userOwnedShops
                     .filter((s) => String(s.id) !== String(selectedShopId))
                     .map((s) => (
