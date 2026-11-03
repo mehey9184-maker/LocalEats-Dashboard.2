@@ -624,7 +624,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
           `;
         })
         .join("") ||
-        `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span></div>`;
+        `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>Amount unavailable</span></div>`;
 
       const widthOfText = formatOption === "58mm" ? "54mm" : "76mm";
       const printingPageSize = formatOption === "58mm" ? "58mm auto" : "80mm auto";
@@ -760,7 +760,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             `;
           })
           .join("") ||
-          `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span></div>`;
+          `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>Amount unavailable</span></div>`;
 
         return `
           <div class="receipt">
@@ -4138,20 +4138,20 @@ Notes: "${order.notes || "None"}"
                         (printingOrder.items || []).map((item: unknown, idx: number) => {
                           const isObj = typeof item === "object" && item !== null;
                           const typedItem = item as Record<string, unknown>;
-                          const p = isObj && "price" in typedItem ? Number(typedItem.price) || 0 : (Number(printingOrder.total_price) || 0);
-                          const q = isObj && "quantity" in typedItem ? Number(typedItem.quantity) || 1 : 1;
+                          const p = isObj && "price" in typedItem ? typedItem.price : null;
+                          const q = isObj && "quantity" in typedItem ? typedItem.quantity : 1;
                           const n = isObj && "name" in typedItem ? String(typedItem.name) : String(item);
                           return (
                             <div key={idx} className="flex justify-between items-start gap-2">
-                              <span>{q}x {n}</span>
-                              <span className="shrink-0">R{(p * q).toFixed(2)}</span>
+                              <span>{String(q)}x {n}</span>
+                              <span className="shrink-0">{merchantReceiptLineAmount(p, q)}</span>
                             </div>
                           );
                         })
                       ) : (
                         <div className="flex justify-between items-start">
                           <span>1x {printingOrder.product_name}</span>
-                          <span className="shrink-0">R{Number(printingOrder.total_price || 0).toFixed(2)}</span>
+                          <span className="shrink-0">Amount unavailable</span>
                         </div>
                       )}
                     </div>
@@ -4159,7 +4159,7 @@ Notes: "${order.notes || "None"}"
                     <div className="border-t border-dashed border-stone-400 pt-2 my-2 mt-4 font-bold">
                       <div className="flex justify-between text-sm">
                         <span>GRAND TOTAL</span>
-                        <span>R{Number(printingOrder.total_price || 0).toFixed(2)}</span>
+                        <span>{merchantOrderMoney(printingOrder.total_price)}</span>
                       </div>
                     </div>
 
@@ -4243,14 +4243,14 @@ Notes: "${order.notes || "None"}"
                         {items.map((item, idx) => {
                           const name = typeof item === "string" ? item : item.name;
                           const quantity = typeof item === "string" ? 1 : item.quantity;
-                          const price = typeof item === "string" ? 0 : item.price;
+                          const price = typeof item === "string" ? null : item.price;
                           return (
                             <div key={idx} className="flex justify-between items-center p-3 bg-surface-container-high/40 rounded-xl border border-outline-variant/5">
                               <div className="flex items-center gap-2">
                                 <span className="w-5 h-5 bg-primary/10 text-primary text-[10px] font-black rounded-full flex items-center justify-center">x{quantity}</span>
                                 <span className="text-xs font-bold text-on-surface">{name}</span>
                               </div>
-                              <span className="text-xs font-black text-on-surface-variant">R {(price * quantity).toFixed(2)}</span>
+                              <span className="text-xs font-black text-on-surface-variant">{merchantReceiptLineAmount(price, quantity)}</span>
                             </div>
                           );
                         })}
