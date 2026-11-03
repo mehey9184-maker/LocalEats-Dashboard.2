@@ -2259,8 +2259,6 @@ Notes: "${order.notes || "None"}"
                                     Rider rating is unavailable until the authorized API supports saving it.
                                   </p>
                                 )}
-                                  </div>
-                                )}
                               </div>
                            </div>
                        </div>
