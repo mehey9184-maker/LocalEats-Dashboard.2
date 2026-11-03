@@ -4,6 +4,7 @@ import {readFileSync} from "node:fs";
 import {merchantOrderReadScope,shouldPollMerchantOrders,merchantDisplayOrderAmount,newMerchantPendingOrders} from "../src/services/merchantDashboardFreshness.ts";
 const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
 const dash=readFileSync(new URL("../src/components/DashboardOverview.tsx",import.meta.url),"utf8");
+const kitchenAlerter=readFileSync(new URL("../src/hooks/useKitchenAlerter.ts",import.meta.url),"utf8");
 const merchantApi=readFileSync(new URL("../src/services/MerchantApi.ts",import.meta.url),"utf8");
 const block=(a,b)=>app.slice(app.indexOf(a),app.indexOf(b,app.indexOf(a)));
 
@@ -68,6 +69,12 @@ test("new-order alerts ignore initial hydration and changes not involving new pe
  assert.match(app,/newIds\.length===0 \|\| !soundAlerts/);
  assert.match(app,/label:"OPEN ORDERS"/);
  assert.doesNotMatch(app,/currentPendingCount > prevPendingCount\.current/);
+ assert.match(kitchenAlerter,/if\(!shopScope\)/);
+ assert.match(kitchenAlerter,/if\(!ordersConfirmed \|\| !soundsEnabled\)/);
+ assert.match(kitchenAlerter,/if\(previous===null\)/);
+ assert.match(kitchenAlerter,/pendingIds\.forEach\(id=>acknowledgedPendingIdsRef\.current\.add\(id\)\)/);
+ assert.match(kitchenAlerter,/document\.visibilityState==="visible"/);
+ assert.match(app,/orders,activeTab==="orders",verifiedOrderScope,ordersReadState==="confirmed",soundAlerts/);
 });
 
 test("Dashboard shows pending/failed API status rather than false zero and doesn't animate every order",()=>{
