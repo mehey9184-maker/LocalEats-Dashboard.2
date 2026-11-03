@@ -342,11 +342,6 @@ function App() {
   const lastOrderPayloadRef=useRef<string|null>(null);
   const orderReadInFlightRef=useRef<{scope:string;promise:Promise<void>}|null>(null);
 
-  // --- Live Kitchen Alerter & Screen Wake ---
-  const {
-    isAudioEnabled,
-    enableAudio,
-  } = useKitchenAlerter(orders, activeTab === "orders");
   const [shops, setShops] = useState<Shop[]>([]);
   shopsRef.current = shops;
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
@@ -363,6 +358,12 @@ function App() {
   );
 
   const verifiedOrderScope=merchantOrderReadScope(user?.id,currentShop?.id,merchantShopGate.status);
+  // Siren is scoped to the API-verified current shop and never starts on the
+  // first historical order list or when alerts are turned off.
+  const {isAudioEnabled,enableAudio}=useKitchenAlerter(
+    orders,activeTab==="orders",verifiedOrderScope,ordersReadState==="confirmed",soundAlerts,
+  );
+
   useEffect(()=>{
     if(orderReadScopeRef.current===verifiedOrderScope)return;
     orderReadScopeRef.current=verifiedOrderScope;
