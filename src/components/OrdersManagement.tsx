@@ -46,7 +46,6 @@ import {
   Star,
   MessageCircle,
   Timer,
-  Edit2,
   Settings,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
