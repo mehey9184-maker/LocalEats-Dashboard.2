@@ -1,5 +1,6 @@
 ﻿import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 import {completedOrderValue,completedOrderTotal,completedDeliveryArea,safeOrderCsvCell} from "../services/merchantDashboardTrust";
+import {summarizeKitchenQueue,recentKitchenOrders,lowStockMenuItems} from "../services/merchantDashboardLayout";
 import { FoodPlaceholder } from "../components/MenuManagement";
 import { isPlaceholderImage } from "../constants";
 import { updateFirestoreShop } from "../lib/firebase";
@@ -41,7 +42,6 @@ import {
   Users,
   CheckCircle2,
   AlertCircle,
-  Sparkles,
   Store,
   ChevronRight,
   Bike,
@@ -897,6 +897,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       ? `+${todayOrdersCount - yesterdayOrdersCount} vs yesterday`
       : `-${yesterdayOrdersCount - todayOrdersCount} vs yesterday`;
 
+  // H2: visible work comes from the same already-authorized merchant order records.
+  const kitchenQueue=useMemo(()=>summarizeKitchenQueue(orders),[orders]);
+  const latestKitchenOrders=useMemo(()=>recentKitchenOrders(orders,5),[orders]);
+  const lowStockItems=useMemo(()=>lowStockMenuItems(menuItems),[menuItems]);
+
   const activeMenuItemsCount = useMemo(() => {
     return menuItems.filter(item => item.is_available).length;
   }, [menuItems]);
@@ -947,221 +952,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
   return (
     <div className="space-y-8 md:space-y-12">
-      {/* Storefront Ownership Sync & Repair Card */}
-      <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-emerald-500/10 text-emerald-600 rounded-2xl shrink-0">
-            <ShieldCheck size={24} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">
-                Refresh Shop Data
-              </h3>
-              {currentShop && (
-                <span className="text-[10px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 rounded-full">
-                  Linked: {currentShop.name} (#{currentShop.id})
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
-              Refreshes the linked shop, menu and order information from the API.
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={handleSyncAndVerify}
-          disabled={isSyncing}
-          className="px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shrink-0 w-full sm:w-auto"
-        >
-          <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
-          <span>{isSyncing ? "Refreshing..." : "Refresh Data"}</span>
-        </button>
-      </div>
-
-      {/* Bulk Storefront Status Switch */}
-      {shops.length > 1 && (
-        <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-primary/10 text-primary rounded-full shrink-0">
-              <Activity size={24} className={shops.some(s => s.is_active) ? "animate-pulse" : ""} />
-            </div>
-            <div>
-              <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">Bulk Storefront Switch</h3>
-              <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
-                Request an availability change for each linked shop. The API must confirm every update.
-              </p>
-            </div>
-          </div>
-          <button
-            disabled={isStatusToggling}
-            onClick={async () => {
-              if (isStatusToggling) return;
-              const anyActive = shops.some(s => s.is_active);
-              const newStatus = !anyActive;
-
-              
-              toast.loading(`Setting all storefronts to ${newStatus ? "Online" : "Offline"}...`, { id: "bulk-status-toggle" });
-              
-              let error = null;
-              let confirmedOpen: boolean | null = null;
-              for (const s of shops) {
-                const res = await syncShopAvailability({
-                  shopId: s.id,
-                  isOpen: newStatus,
-                  supabase: supabase as any,
-                  updateFirestoreShop,
-                });
-                if (!res.success) error = res.error;
-                else confirmedOpen = res.freshShop?.is_active === true;
-              }
-
-              if (!error) {
-                toast.success(`Shop availability updates confirmed: ${confirmedOpen ? "available" : "unavailable"}. Pickup order eligibility is checked separately.`, { id: "bulk-status-toggle" });
-                onRefresh();
-              } else {
-                toast.error(typeof error === "string" ? error : "Failed to update all storefronts. Please check your connection.", { id: "bulk-status-toggle" });
-                try { await Promise.resolve(onRefresh()); } catch { /* best-effort */ }
-              }
-            }}
-            className={cn(
-              "px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all duration-300 w-full md:w-auto shrink-0 shadow-md flex items-center justify-center gap-2",
-              shops.some(s => s.is_active)
-                ? "bg-primary text-white hover:bg-primary/90 shadow-primary/20"
-                : "bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20"
-            )}
-          >
-            {shops.some(s => s.is_active) ? "Set All Offline" : "Set All Online"}
-          </button>
-        </div>
-      )}
-
-      {/* "At a Glance" Top Status Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        {/* Today's Orders Card */}
-        <motion.div
-          whileHover={{ y: -4 }}
-          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
-        >
-          <div className="flex justify-between items-start">
-            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Today's Orders</p>
-            <div className="p-2 bg-orange-500/10 rounded-xl text-orange-500">
-              <ReceiptText size={18} />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              {todayOrdersCount}
-            </span>
-            <span className={cn(
-              "text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1",
-              todayTrendIsPositive ? "bg-emerald-500/15 text-emerald-500" : "bg-rose-500/15 text-rose-500"
-            )}>
-              {todayTrendIsPositive ? "↑" : "↓"} {todayTrendText}
-            </span>
-          </div>
-          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-orange-500 to-rose-500 opacity-80" />
-        </motion.div>
-
-        {/* Completed Order Value Card — not a payout balance */}
-        <motion.div
-          whileHover={{ y: -4 }}
-          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
-        >
-          <div className="flex justify-between items-start">
-            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Completed Order Value</p>
-            <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
-              <ReceiptText size={18} />
-            </div>
-          </div>
-          <div className="mt-4">
-            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              R {weeklySales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-            <p className="text-[10px] text-on-surface/75 font-extrabold mt-1">
-              Completed orders this week · not a payout balance
-            </p>
-          </div>
-          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-80" />
-        </motion.div>
-
-        {/* Active Menu Items Card */}
-        <motion.div
-          whileHover={{ y: -4 }}
-          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
-        >
-          <div className="flex justify-between items-start">
-            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Active Menu Items</p>
-            <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500">
-              <Pizza size={18} />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              {activeMenuItemsCount}
-            </span>
-            <span className="text-[10px] text-on-surface/75 font-extrabold">
-              / {menuItems.length} listed
-            </span>
-          </div>
-          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-500 opacity-80" />
-        </motion.div>
-
-        {/* Driver Availability Card */}
-        <motion.div
-          whileHover={{ y: -4 }}
-          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
-        >
-          <div className="flex justify-between items-start">
-            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Rider Connections</p>
-            <div className="p-2 bg-primary/10 rounded-xl text-primary">
-              <Bike size={18} />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              {connectedRidersCount}
-            </span>
-            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-              Linked riders · availability not confirmed
-            </span>
-          </div>
-          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-primary to-orange-500" />
-        </motion.div>
-      </div>
-
-      {currentShop && (!currentShop.phone || !currentShop.whatsapp) && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-primary/5 border border-primary/20 rounded-[2rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden group mb-4"
-        >
-          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 group-hover:rotate-12 transition-transform duration-700">
-             <MessageCircle size={120} />
-          </div>
-          <div className="flex items-center gap-6 relative z-10">
-            <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center text-primary shrink-0 shadow-lg shadow-primary/20">
-              <Phone size={32} />
-            </div>
-            <div className="space-y-1">
-              <h3 className="text-xl font-headline font-bold text-on-surface">
-                Complete Your Store Profile
-              </h3>
-              <p className="text-sm text-on-surface-variant max-w-md font-medium leading-relaxed">
-                Add your WhatsApp and Phone number so customers can contact you directly for order inquiries and support.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => onNavigate("storefront")}
-            className="w-full md:w-auto px-8 py-4 bg-primary text-on-primary rounded-2xl font-headline font-black text-sm uppercase tracking-widest shadow-xl shadow-primary/30 hover:scale-105 active:scale-95 transition-all relative z-10"
-          >
-            Update Profile
-          </button>
-        </motion.div>
-      )}
-
       <motion.section
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1172,14 +962,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               <h1 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
                 {greeting}, Chef!
               </h1>
-              {menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length > 0 && (
+              {lowStockItems.length > 0 && (
                 <button
                   onClick={() => onNavigate("menu")}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-error/10 hover:bg-error/20 border border-error/20 text-error rounded-full font-bold text-[10px] uppercase tracking-wider transition-all animate-bounce active:scale-95 cursor-pointer shadow-xs shrink-0"
+                  className="min-h-10 flex items-center gap-1.5 px-3 py-2 bg-error/10 hover:bg-error/20 border border-error/20 text-error rounded-full font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 cursor-pointer shadow-xs shrink-0 focus-visible:outline-2 focus-visible:outline-error"
                   title="Click to manage low stock menu items"
                 >
-                  <AlertTriangle size={12} className="animate-pulse" />
-                  <span>{menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length} Items Low Stock</span>
+                  <AlertTriangle size={12} aria-hidden="true" />
+                  <span>{lowStockItems.length} Items Low Stock</span>
                 </button>
               )}
             </div>
@@ -1195,13 +985,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/10 shadow-xs justify-center sm:justify-start">
               <button
                 type="button"
+                aria-pressed={layoutMode==="compact"}
                 onClick={() => {
                   setLayoutMode("compact");
                   localStorage.setItem("localeats_dashboard_layout", "compact");
                   toast.success("Switched to clean Minimalist view");
                 }}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer",
+                  "min-h-11 px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-2 focus-visible:outline-primary",
                   layoutMode === "compact"
                     ? "bg-primary text-white shadow-sm"
                     : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
@@ -1211,13 +1002,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               </button>
               <button
                 type="button"
+                aria-pressed={layoutMode==="advanced"}
                 onClick={() => {
                   setLayoutMode("advanced");
                   localStorage.setItem("localeats_dashboard_layout", "advanced");
                   toast.success("Switched to Advanced Analytics view");
                 }}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer",
+                  "min-h-11 px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-2 focus-visible:outline-primary",
                   layoutMode === "advanced"
                     ? "bg-primary text-white shadow-sm"
                     : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
@@ -1230,19 +1022,20 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             <div className="flex gap-2 justify-end">
 
               <button
+                type="button"
                 onClick={exportWeeklyCSV}
-                className="p-3 bg-surface-container-low text-primary rounded-xl hover:bg-surface-container-high transition-colors shadow-sm flex items-center gap-2 text-xs font-bold"
+                aria-label="Download weekly orders CSV"
+                className="min-h-11 p-3 bg-surface-container-low text-primary rounded-xl hover:bg-surface-container-high transition-colors shadow-sm flex items-center gap-2 text-xs font-bold"
                 title="Download Weekly Report"
               >
                 <Download size={18} />
                 <span className="hidden sm:inline">Weekly Report</span>
               </button>
               <button
-                onClick={() => {
-                  onRefresh();
-                  console.log("Dashboard refreshed");
-                }}
-                className="p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm"
+                type="button"
+                onClick={() => {void Promise.resolve(onRefresh());}}
+                aria-label="Refresh dashboard data"
+                className="min-w-11 min-h-11 inline-flex items-center justify-center p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm"
                 title="Refresh Dashboard"
               >
                 <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
@@ -1380,6 +1173,373 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         </motion.div>
       )}
 
+      {/* Actionable kitchen summary — read-only counts from current order records */}
+      <section aria-label="Kitchen queue" className="bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] p-4 md:p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-lg md:text-xl font-headline font-black text-on-surface">Kitchen Queue</h2>
+            <p className="text-xs text-on-surface-variant mt-1">Order statuses from your current shop records. Open Orders for the latest confirmed actions.</p>
+          </div>
+          <button type="button" onClick={()=>onNavigate("orders")}
+            className="min-h-11 w-full sm:w-auto px-5 py-3 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-on-primary font-black text-xs uppercase tracking-wider rounded-xl focus-visible:outline-2 focus-visible:outline-primary">
+            <ReceiptText size={16} aria-hidden="true" />
+            Manage Orders
+          </button>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+          {[
+            {label:"New / Pending",count:kitchenQueue.pending,icon:ReceiptText,tone:"text-orange-600 bg-orange-500/10",urgent:true},
+            {label:"Preparing",count:kitchenQueue.preparing,icon:Clock,tone:"text-blue-600 bg-blue-500/10",urgent:false},
+            {label:"Ready for Pickup",count:kitchenQueue.readyForPickup,icon:CheckCircle2,tone:"text-emerald-600 bg-emerald-500/10",urgent:false},
+            {label:"Completed in list",count:kitchenQueue.completed,icon:Check,tone:"text-on-surface-variant bg-surface-container-high",urgent:false},
+          ].map(item=>(
+            <button key={item.label} type="button"
+              onClick={()=>onNavigate("orders")}
+              aria-label={`${item.count} ${item.label} orders. Open Orders.`}
+              className="text-left min-h-[104px] rounded-2xl border border-outline-variant/10 bg-surface-container-low p-4 flex flex-col justify-between gap-3 hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-primary transition-colors">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-black text-on-surface-variant leading-tight">{item.label}</span>
+                <span className={`p-1.5 rounded-lg shrink-0 ${item.tone}`}><item.icon size={16} aria-hidden="true" /></span>
+              </div>
+              <span className={`text-2xl md:text-3xl font-headline font-black ${item.urgent&&item.count>0?"text-orange-600":"text-on-surface"}`}>
+                {item.count}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* "At a Glance" Top Status Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {/* Today's Orders Card */}
+        <motion.div
+          whileHover={{ y: -4 }}
+          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
+        >
+          <div className="flex justify-between items-start">
+            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Today's Orders</p>
+            <div className="p-2 bg-orange-500/10 rounded-xl text-orange-500">
+              <ReceiptText size={18} />
+            </div>
+          </div>
+          <div className="mt-4 flex items-baseline gap-2">
+            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
+              {todayOrdersCount}
+            </span>
+            <span className={cn(
+              "text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1",
+              todayTrendIsPositive ? "bg-emerald-500/15 text-emerald-500" : "bg-rose-500/15 text-rose-500"
+            )}>
+              {todayTrendIsPositive ? "↑" : "↓"} {todayTrendText}
+            </span>
+          </div>
+          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-orange-500 to-rose-500 opacity-80" />
+        </motion.div>
+
+        {/* Completed Order Value Card — not a payout balance */}
+        <motion.div
+          whileHover={{ y: -4 }}
+          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
+        >
+          <div className="flex justify-between items-start">
+            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Completed Order Value</p>
+            <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
+              <ReceiptText size={18} />
+            </div>
+          </div>
+          <div className="mt-4">
+            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
+              R {weeklySales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+            <p className="text-[10px] text-on-surface/75 font-extrabold mt-1">
+              Completed orders this week · not a payout balance
+            </p>
+          </div>
+          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-80" />
+        </motion.div>
+
+        {/* Active Menu Items Card */}
+        <motion.div
+          whileHover={{ y: -4 }}
+          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
+        >
+          <div className="flex justify-between items-start">
+            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Active Menu Items</p>
+            <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500">
+              <Pizza size={18} />
+            </div>
+          </div>
+          <div className="mt-4 flex items-baseline gap-2">
+            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
+              {activeMenuItemsCount}
+            </span>
+            <span className="text-[10px] text-on-surface/75 font-extrabold">
+              / {menuItems.length} listed
+            </span>
+          </div>
+          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-500 opacity-80" />
+        </motion.div>
+
+        {/* Driver Availability Card */}
+        <motion.div
+          whileHover={{ y: -4 }}
+          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
+        >
+          <div className="flex justify-between items-start">
+            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Rider Connections</p>
+            <div className="p-2 bg-primary/10 rounded-xl text-primary">
+              <Bike size={18} />
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
+              {connectedRidersCount}
+            </span>
+            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+              Linked riders · availability not confirmed
+            </span>
+          </div>
+          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-primary to-orange-500" />
+        </motion.div>
+      </div>
+
+      {/* Low Stock Alerts Section */}
+      {lowStockItems.length > 0 && (
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-error/5 border border-error/20 rounded-[2rem] p-8"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-error/10 text-error rounded-2xl flex items-center justify-center">
+                <AlertCircle size={24} />
+              </div>
+              <div>
+                <h2 className="text-xl font-headline font-bold text-on-surface">
+                  Low Stock Alerts
+                </h2>
+                <p className="text-sm text-on-surface-variant">
+                  Available menu items with fewer than five units recorded. Check quantities in Menu.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => onNavigate("menu")}
+              className="px-6 py-2 bg-error text-white text-xs font-bold rounded-full hover:bg-error/90 transition-colors shadow-sm"
+            >
+              Review Menu
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {lowStockItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-4 group hover:border-error/30 transition-colors"
+                >
+                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-surface-container flex items-center justify-center">
+                    {!isPlaceholderImage(item.image_url) ? (
+                      <img
+                        src={item.image_url}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <FoodPlaceholder size={20} />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-sm text-on-surface truncate">
+                      {item.name}
+                    </h4>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex-1 h-1 bg-surface-container rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-error rounded-full"
+                          style={{
+                            width: `${(item.stock_quantity || 0) * 20}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-black text-error">
+                        {item.stock_quantity || 0} left
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </motion.section>
+      )}
+
+      {/* Recent Activity Feed */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="lg:col-span-8 bg-surface-container-lowest rounded-[2rem] p-8 border border-outline-variant/10 shadow-sm"
+        >
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-xl font-headline font-bold text-on-surface">
+              Recent Orders
+            </h2>
+            <button
+              onClick={() => onNavigate("orders")}
+              className="text-xs font-bold text-primary hover:underline"
+            >
+              View All Orders
+            </button>
+          </div>
+          <div className="space-y-6">
+            {latestKitchenOrders.map((order, i) => (
+              <motion.button
+                initial={{ opacity: 0, x: 20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                key={order.id}
+                type="button"
+                className="w-full text-left flex items-center justify-between gap-3 group p-3 hover:bg-surface-container-high rounded-2xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-primary"
+                onClick={() => onNavigate("orders")}
+              >
+                <div className="flex items-center gap-4">
+                  <div
+                    className={cn(
+                      "w-11 h-11 rounded-full flex items-center justify-center border-2 border-transparent group-hover:border-primary/10 transition-all shadow-sm",
+                      order.status === "completed"
+? "bg-emerald-100/50 text-emerald-600 shadow-emerald-500/5"
+                        : order.status === "pending"
+                          ? "bg-primary/10 text-primary"
+                          : "bg-blue-100/50 text-blue-600 shadow-blue-500/5",
+                    )}
+                  >
+                    {order.status === "completed" ? (
+                      <CheckCircle2 size={18} />
+                    ) : (
+                      <Clock size={18} />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-on-surface leading-snug">
+                      Order <span className="text-primary font-mono tracking-tighter">#{order.id.toString().slice(-4)}</span>{" "}
+                      {order.status === "completed" ? "Completed" : order.status === "cancelled" ? "Cancelled" : order.status === "preparing" ? "Preparing" : order.status === "pending" ? "Pending" : String(order.status)}
+                    </p>
+                    <p className="text-[10px] md:text-xs text-on-surface-variant/80 font-medium mt-0.5">
+                      {order.product_name} •{" "}
+                      {Number.isFinite(Date.parse(order.created_at)) ? format(new Date(order.created_at), "h:mm a") : "Time unavailable"}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-black text-on-surface">
+                    {typeof order.total_price==="number" && Number.isFinite(order.total_price) && order.total_price>=0 ? `R ${order.total_price.toFixed(2)}` : "Total unavailable"}
+                  </p>
+                  <OrderStatusBadge status={order.status} className="mt-1" />
+                </div>
+                </motion.button>
+              ))}
+            {latestKitchenOrders.length === 0 && (
+              <div className="py-20 text-center space-y-6">
+                <div className="relative w-24 h-24 mx-auto">
+                   <div className="absolute inset-0 bg-primary/5 rounded-full animate-pulse-slow font-mono" />
+                   <div className="absolute inset-0 flex items-center justify-center opacity-20">
+                     <ReceiptText size={48} />
+                   </div>
+                </div>
+                <div className="max-w-xs mx-auto">
+                  <h3 className="font-bold text-on-surface">Awaiting Your First Order</h3>
+                  <p className="text-xs text-on-surface-variant mt-2 opacity-70">
+                    Confirmed order records will appear here when the Orders API provides them.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </motion.section>
+
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+          className="lg:col-span-4 bg-surface-container-lowest rounded-[2rem] p-8 border border-outline-variant/10 shadow-sm"
+        >
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-xl font-headline font-bold text-on-surface">
+              Recent Followers
+            </h2>
+            <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
+              <Users size={16} />
+            </div>
+          </div>
+          <div className="space-y-6">
+            {recentFollowers.length > 0 ? (
+              recentFollowers.map((follower) => (
+                <div
+                  key={follower.id}
+                  className="flex items-center gap-4 group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xs">
+                    {follower.id.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-on-surface truncate">
+                      New Follower
+                    </p>
+                    <p className="text-[10px] text-on-surface-variant/60 font-medium">
+                      {format(new Date(follower.created_at), "MMM d, h:mm a")}
+                    </p>
+                  </div>
+                  <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                </div>
+              ))
+            ) : (
+              <div className="py-12 text-center space-y-4">
+                <div className="w-16 h-16 bg-surface-container rounded-full flex items-center justify-center mx-auto text-on-surface-variant/20">
+                  <Users size={32} />
+                </div>
+                <p className="text-on-surface-variant text-sm font-medium italic">
+                  No followers yet.
+                </p>
+                <p className="text-[10px] text-on-surface-variant/60 leading-tight">
+                  Share your shop link to get more followers!
+                </p>
+              </div>
+            )}
+          </div>
+        </motion.section>
+      </div>
+      {currentShop && (!currentShop.phone || !currentShop.whatsapp) && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-primary/5 border border-primary/20 rounded-[2rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden group mb-4"
+        >
+          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 group-hover:rotate-12 transition-transform duration-700">
+             <MessageCircle size={120} />
+          </div>
+          <div className="flex items-center gap-6 relative z-10">
+            <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center text-primary shrink-0 shadow-lg shadow-primary/20">
+              <Phone size={32} />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-xl font-headline font-bold text-on-surface">
+                Complete Your Store Profile
+              </h3>
+              <p className="text-sm text-on-surface-variant max-w-md font-medium leading-relaxed">
+                Add your WhatsApp and Phone number so customers can contact you directly for order inquiries and support.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigate("storefront")}
+            className="w-full md:w-auto px-8 py-4 bg-primary text-on-primary rounded-2xl font-headline font-black text-sm uppercase tracking-widest shadow-xl shadow-primary/30 hover:scale-105 active:scale-95 transition-all relative z-10"
+          >
+            Update Profile
+          </button>
+        </motion.div>
+      )}
+
       <OnboardingChecklist
         shops={shops}
         user={user}
@@ -1389,6 +1549,101 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       />
 
       
+
+      {layoutMode==="advanced" && (
+        <section aria-label="Advanced shop data tools" className="space-y-3">
+      {/* Storefront Ownership Sync & Repair Card */}
+      <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-emerald-500/10 text-emerald-600 rounded-2xl shrink-0">
+            <ShieldCheck size={24} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">
+                Refresh Shop Data
+              </h3>
+              {currentShop && (
+                <span className="text-[10px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 rounded-full">
+                  Linked: {currentShop.name} (#{currentShop.id})
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
+              Refreshes the linked shop, menu and order information from the API.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={handleSyncAndVerify}
+          disabled={isSyncing}
+          className="px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shrink-0 w-full sm:w-auto"
+        >
+          <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
+          <span>{isSyncing ? "Refreshing..." : "Refresh Data"}</span>
+        </button>
+      </div>
+
+        </section>
+      )}
+
+      {/* Bulk Storefront Status Switch */}
+      {shops.length > 1 && (
+        <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-primary/10 text-primary rounded-full shrink-0">
+              <Activity size={24} className={shops.some(s => s.is_active) ? "animate-pulse" : ""} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">Bulk Storefront Switch</h3>
+              <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
+                Request an availability change for each linked shop. The API must confirm every update.
+              </p>
+            </div>
+          </div>
+          <button
+            disabled={isStatusToggling}
+            onClick={async () => {
+              if (isStatusToggling) return;
+              const anyActive = shops.some(s => s.is_active);
+              const newStatus = !anyActive;
+
+              
+              toast.loading(`Setting all storefronts to ${newStatus ? "Online" : "Offline"}...`, { id: "bulk-status-toggle" });
+              
+              let error = null;
+              let confirmedOpen: boolean | null = null;
+              for (const s of shops) {
+                const res = await syncShopAvailability({
+                  shopId: s.id,
+                  isOpen: newStatus,
+                  supabase: supabase as any,
+                  updateFirestoreShop,
+                });
+                if (!res.success) error = res.error;
+                else confirmedOpen = res.freshShop?.is_active === true;
+              }
+
+              if (!error) {
+                toast.success(`Shop availability updates confirmed: ${confirmedOpen ? "available" : "unavailable"}. Pickup order eligibility is checked separately.`, { id: "bulk-status-toggle" });
+                onRefresh();
+              } else {
+                toast.error(typeof error === "string" ? error : "Failed to update all storefronts. Please check your connection.", { id: "bulk-status-toggle" });
+                try { await Promise.resolve(onRefresh()); } catch { /* best-effort */ }
+              }
+            }}
+            className={cn(
+              "px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all duration-300 w-full md:w-auto shrink-0 shadow-md flex items-center justify-center gap-2",
+              shops.some(s => s.is_active)
+                ? "bg-primary text-white hover:bg-primary/90 shadow-primary/20"
+                : "bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20"
+            )}
+          >
+            {shops.some(s => s.is_active) ? "Set All Offline" : "Set All Online"}
+          </button>
+        </div>
+      )}
 
       {layoutMode === "advanced" && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
@@ -1617,8 +1872,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           {[
             {
               id: "menu",
-              title: "Update Menu",
-              sub: "Modify items & pricing",
+              title: "View Menu",
+              sub: "Review current menu items",
               icon: UtensilsCrossed,
               color: "bg-primary-fixed text-primary",
             },
@@ -1638,8 +1893,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             },
             {
               id: "orders",
-              title: "Kitchen ",
-              sub: "System & app preferences",
+              title: "Orders & Kitchen",
+              sub: "Review incoming and active orders",
               icon: ReceiptText,
               color: "bg-zinc-100 text-zinc-600",
             },
@@ -1678,241 +1933,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       )}
 
       {/* Completed delivery order values grouped by recorded city */}
-      <DeliveryDispatchSuburbTrends orders={orders} darkMode={darkMode} />
+      {layoutMode === "advanced" && <DeliveryDispatchSuburbTrends orders={orders} darkMode={darkMode} />}
 
-      {/* Compact View Guidance Block */}
-      {layoutMode === "compact" && (
-        <div className="bg-surface-container-low border border-outline-variant/10 rounded-[2.5rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 mt-6 relative overflow-hidden">
-          <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
-            <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <Sparkles size={20} />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-on-surface">Compact View Active</h3>
-              <p className="text-xs text-on-surface-variant max-w-xl mt-0.5 leading-relaxed">
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => {
-              setLayoutMode("advanced");
-              localStorage.setItem("localeats_dashboard_layout", "advanced");
-              toast.success("Advanced layout mode unlocked with full telemetries.");
-            }}
-            className="w-full md:w-auto px-5 py-2.5 bg-primary text-white font-black text-xs uppercase tracking-wider rounded-xl hover:opacity-90 active:scale-95 transition-all shrink-0 cursor-pointer text-center shadow-md shadow-primary/20"
-          >
-            Unlock Full Analytics
-          </button>
-        </div>
-      )}
-
-      {/* Low Stock Alerts Section */}
-      {menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length > 0 && (
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-error/5 border border-error/20 rounded-[2rem] p-8"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-error/10 text-error rounded-2xl flex items-center justify-center">
-                <AlertCircle size={24} />
-              </div>
-              <div>
-                <h2 className="text-xl font-headline font-bold text-on-surface">
-                  Low Stock Alerts
-                </h2>
-                <p className="text-sm text-on-surface-variant">
-                  These items are running low and need restocking soon.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => onNavigate("menu")}
-              className="px-6 py-2 bg-error text-white text-xs font-bold rounded-full hover:bg-error/90 transition-colors shadow-sm"
-            >
-              Restock Now
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {menuItems
-              .filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5)
-              .map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-4 group hover:border-error/30 transition-colors"
-                >
-                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-surface-container flex items-center justify-center">
-                    {!isPlaceholderImage(item.image_url) ? (
-                      <img
-                        src={item.image_url}
-                        alt={item.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <FoodPlaceholder size={20} />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-sm text-on-surface truncate">
-                      {item.name}
-                    </h4>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex-1 h-1 bg-surface-container rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-error rounded-full"
-                          style={{
-                            width: `${(item.stock_quantity || 0) * 20}%`,
-                          }}
-                        />
-                      </div>
-                      <span className="text-[10px] font-black text-error">
-                        {item.stock_quantity || 0} left
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </motion.section>
-      )}
-
-      {/* Recent Activity Feed */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="lg:col-span-8 bg-surface-container-lowest rounded-[2rem] p-8 border border-outline-variant/10 shadow-sm"
-        >
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-xl font-headline font-bold text-on-surface">
-              Recent Activity
-            </h2>
-            <button
-              onClick={() => onNavigate("orders")}
-              className="text-xs font-bold text-primary hover:underline"
-            >
-              View All Activity
-            </button>
-          </div>
-          <div className="space-y-6">
-            {orders.slice(0, 5).map((order, i) => (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                key={order.id}
-                className="flex items-center justify-between group p-3 hover:bg-surface-container-high rounded-2xl transition-colors cursor-pointer"
-                onClick={() => onNavigate("orders")}
-              >
-                <div className="flex items-center gap-4">
-                  <div
-                    className={cn(
-                      "w-11 h-11 rounded-full flex items-center justify-center border-2 border-transparent group-hover:border-primary/10 transition-all shadow-sm",
-                      order.status === "completed"
-? "bg-emerald-100/50 text-emerald-600 shadow-emerald-500/5"
-                        : order.status === "pending"
-                          ? "bg-primary/10 text-primary"
-                          : "bg-blue-100/50 text-blue-600 shadow-blue-500/5",
-                    )}
-                  >
-                    {order.status === "completed" ? (
-                      <CheckCircle2 size={18} />
-                    ) : (
-                      <Clock size={18} />
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-on-surface leading-snug">
-                      Order <span className="text-primary font-mono tracking-tighter">#{order.id.toString().slice(-4)}</span>{" "}
-                      {order.status === "completed" ? "Completed" : order.status === "cancelled" ? "Cancelled" : order.status === "preparing" ? "Preparing" : order.status === "pending" ? "Pending" : String(order.status)}
-                    </p>
-                    <p className="text-[10px] md:text-xs text-on-surface-variant/80 font-medium mt-0.5">
-                      {order.product_name} •{" "}
-                      {format(new Date(order.created_at), "h:mm a")}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-black text-on-surface">
-                    R {Number(order.total_price || 0).toFixed(2)}
-                  </p>
-                  <OrderStatusBadge status={order.status} className="mt-1" />
-                </div>
-                </motion.div>
-              ))}
-            {orders.length === 0 && (
-              <div className="py-20 text-center space-y-6">
-                <div className="relative w-24 h-24 mx-auto">
-                   <div className="absolute inset-0 bg-primary/5 rounded-full animate-pulse-slow font-mono" />
-                   <div className="absolute inset-0 flex items-center justify-center opacity-20">
-                     <ReceiptText size={48} />
-                   </div>
-                </div>
-                <div className="max-w-xs mx-auto">
-                  <h3 className="font-bold text-on-surface">Awaiting Your First Order</h3>
-                  <p className="text-xs text-on-surface-variant mt-2 opacity-70">
-                    Your shop activity will appear here in real-time as customers place their orders.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </motion.section>
-
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          className="lg:col-span-4 bg-surface-container-lowest rounded-[2rem] p-8 border border-outline-variant/10 shadow-sm"
-        >
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-xl font-headline font-bold text-on-surface">
-              Recent Followers
-            </h2>
-            <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
-              <Users size={16} />
-            </div>
-          </div>
-          <div className="space-y-6">
-            {recentFollowers.length > 0 ? (
-              recentFollowers.map((follower) => (
-                <div
-                  key={follower.id}
-                  className="flex items-center gap-4 group"
-                >
-                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xs">
-                    {follower.id.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-on-surface truncate">
-                      New Follower
-                    </p>
-                    <p className="text-[10px] text-on-surface-variant/60 font-medium">
-                      {format(new Date(follower.created_at), "MMM d, h:mm a")}
-                    </p>
-                  </div>
-                  <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                </div>
-              ))
-            ) : (
-              <div className="py-12 text-center space-y-4">
-                <div className="w-16 h-16 bg-surface-container rounded-full flex items-center justify-center mx-auto text-on-surface-variant/20">
-                  <Users size={32} />
-                </div>
-                <p className="text-on-surface-variant text-sm font-medium italic">
-                  No followers yet.
-                </p>
-                <p className="text-[10px] text-on-surface-variant/60 leading-tight">
-                  Share your shop link to get more followers!
-                </p>
-              </div>
-            )}
-          </div>
-        </motion.section>
-      </div>
     </div>
   );
 });

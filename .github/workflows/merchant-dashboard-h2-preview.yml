@@ -1,0 +1,35 @@
+name: Merchant Dashboard H2 preview usability checks
+on:
+  push:
+    branches: [repair/merchant-dashboard-h2-layout-01]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-h2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Dashboard H2 queue, hierarchy, usability and H1 trust tests
+        run: node --experimental-strip-types --test tests/merchant-dashboard-h2-layout.test.mjs tests/merchant-dashboard-h1-trust.test.mjs
+      - name: Existing merchant activation and pickup security regressions
+        run: node --experimental-strip-types --test tests/merchant-activation.test.mjs tests/merchant-pickup.test.mjs
+      - name: Existing merchant availability regressions
+        run: npm run test:merchant-availability
+      - name: New Merchant H2 helper ESLint
+        run: npx eslint src/services/merchantDashboardTrust.ts src/services/merchantDashboardLayout.ts
+      - name: No added ESLint errors relative to tested H1 Preview
+        run: node tests/merchant-dashboard-h1-lint-baseline.mjs
+        env:
+          MERCHANT_DASHBOARD_LINT_BASE: "643fc1592079eb731ff4ccd9b9d0777e7e370b85"
+      - name: Complete Merchant Preview build
+        run: npm run build
