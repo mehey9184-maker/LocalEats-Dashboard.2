@@ -1000,7 +1000,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             <div>
               <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">Bulk Storefront Switch</h3>
               <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
-                Instantly toggle the online availability of all your registered storefronts with a single click.
+                Request an availability change for each linked shop. The API must confirm every update.
               </p>
             </div>
           </div>
@@ -1028,7 +1028,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               }
 
               if (!error) {
-                toast.success(`All storefronts are now ${confirmedOpen ? "Online & Live" : "Offline & Closed"}!`, { id: "bulk-status-toggle" });
+                toast.success(`Shop availability updates confirmed: ${confirmedOpen ? "available" : "unavailable"}. Pickup order eligibility is checked separately.`, { id: "bulk-status-toggle" });
                 onRefresh();
               } else {
                 toast.error(typeof error === "string" ? error : "Failed to update all storefronts. Please check your connection.", { id: "bulk-status-toggle" });
