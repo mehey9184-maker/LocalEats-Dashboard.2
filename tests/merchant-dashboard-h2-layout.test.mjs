@@ -80,7 +80,7 @@ test("Dashboard prioritizes original shop status and verified kitchen work above
  const positions=ordered.map(at);
  assert.ok(positions.every(p=>p>=0),JSON.stringify(ordered.map((x,i)=>[x,positions[i]])));
  assert.ok(positions.every((p,i)=>i===0 || p>positions[i-1]),JSON.stringify(positions));
- assert.match(overview,/layoutMode==="advanced" && <DeliveryDispatchSuburbTrends/);
+ assert.match(overview,/layoutMode\s*===\s*"advanced"\s*&&\s*<DeliveryDispatchSuburbTrends/);
  assert.doesNotMatch(overview,/Compact View Active|Unlock Full Analytics|full telemetries/);
  assert.match(overview,/layoutMode==="advanced" && \(\s*<section aria-label="Advanced shop data tools"/);
  assert.match(overview,/shops\.length > 1/);
