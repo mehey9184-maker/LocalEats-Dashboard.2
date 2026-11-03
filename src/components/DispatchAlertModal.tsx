@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback } from "react";
 import { MessageCircle, Copy, Share2, Phone, X, Check, ShieldCheck, Sparkles, AlertCircle, QrCode, BookmarkPlus, ListOrdered, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Order, Shop } from "../types";
@@ -99,26 +99,6 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
   );
 
   const [messageText, setMessageText] = useState<string>(() => generateTemplateText(recipientType));
-
-  // Reopening for another order must not reuse the prior customer's message draft.
-  const previousComposerScope = useRef<string | null>(null);
-  useEffect(() => {
-    if (!isOpen) {
-      previousComposerScope.current = null;
-      return;
-    }
-    const scope = `${currentShop?.id ?? "none"}:${order?.id ?? "none"}:${type}`;
-    if (previousComposerScope.current === scope) return;
-    previousComposerScope.current = scope;
-    const nextRecipient = type === "customer_status" ? "customer" : "rider";
-    setRecipientType(nextRecipient);
-    setMessageText(generateTemplateText(nextRecipient));
-    setActiveTab("composer");
-    setCustomPhone("");
-    setCopied(false);
-    setQueuedAlerts([]); // Never expose a previous order's unsent draft to another order/shop.
-  }, [isOpen, currentShop?.id, order?.id, type, generateTemplateText]);
-
 
   // Sync recipient type switch handler
   const handleSelectRecipient = (newType: "rider" | "customer" | "custom") => {
