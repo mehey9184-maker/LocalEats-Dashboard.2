@@ -1,5 +1,5 @@
 import {PickupOrderActions} from "./PickupOrderActions";
-import {merchantOrderMoney,merchantOrderTotal,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
+import {merchantOrderMoney,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
 import {summarizeKitchenQueue} from "../services/merchantDashboardLayout";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled,pickupItemLineTotal} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
@@ -20,7 +20,6 @@ import {
   TrendingUp,
   Store,
   Send,
-  Trash2,
   Bell,
   MapPin,
   Zap,
@@ -29,7 +28,6 @@ import {
   AlertTriangle,
   Inbox,
   Volume2,
-  PauseCircle,
   ChevronRight,
   Activity,
   Wifi,
