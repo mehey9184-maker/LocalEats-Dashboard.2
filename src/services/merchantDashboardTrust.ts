@@ -4,6 +4,7 @@ import type {Order} from "../types";
 // Use only completed orders with finite nonnegative catalog totals.
 export function completedOrderValue(order:Pick<Order,"status"|"total_price">):number|null{
   if(order.status!=="completed")return null;
+  if(order.total_price===null || order.total_price===undefined || (typeof order.total_price==="string" && !order.total_price.trim()))return null;
   const amount=Number(order.total_price);
   return Number.isFinite(amount) && amount>=0 ? amount : null;
 }
