@@ -1498,60 +1498,27 @@ Notes: "${order.notes || "None"}"
                                 </thead>
                                 <tbody className="divide-y divide-outline-variant/10">
                                   {safeGetOrderItems(order.items).length > 0 ? (
-                                    safeGetOrderItems(order.items).map((item, idx) => (
-                                      <tr
-                                        key={idx}
-                                        className="hover:bg-surface-container-highest/30 transition-colors"
-                                      >
-                                        <td className="px-4 py-3 font-medium text-on-surface">
-                                          {typeof item === "object" &&
-                                          item !== null &&
-                                          "name" in item
-                                            ? ((item as unknown) as Record<string, unknown>).name as string
-                                            : String(item)}
-                                        </td>
-                                        <td className="px-4 py-3 text-center text-on-surface-variant">
-                                          {typeof item === "object" &&
-                                          item !== null &&
-                                          "quantity" in item
-                                            ? ((item as unknown) as Record<string, unknown>).quantity as number
-                                            : 1}
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-on-surface-variant">
-                                          R{" "}
-                                          {Number(
-                                            typeof item === "object" &&
-                                              item !== null &&
-                                              "price" in item
-                                              ? ((item as unknown) as Record<string, unknown>).price as number
-                                              : isPickupOrder(order) && typeof item === "object" && item !== null && "unit_price" in item
-                                                ? ((item as unknown) as Record<string, unknown>).unit_price as number
-                                                : 0,
-                                          ).toFixed(2)}
-                                        </td>
-                                        <td className="px-4 py-3 text-right font-bold text-on-surface">
-                                          R{" "}
-                                          {(
-                                            Number(
-                                              typeof item === "object" &&
-                                                item !== null &&
-                                                "price" in item
-                                                ? ((item as unknown) as Record<string, unknown>).price as number
-                                                : isPickupOrder(order) && typeof item === "object" && item !== null && "unit_price" in item
-                                                  ? ((item as unknown) as Record<string, unknown>).unit_price as number
-                                                  : 0,
-                                            ) *
-                                            Number(
-                                              typeof item === "object" &&
-                                                item !== null &&
-                                                "quantity" in item
-                                                ? ((item as unknown) as Record<string, unknown>).quantity as number
-                                                : 1,
-                                            )
-                                          ).toFixed(2)}
-                                        </td>
-                                      </tr>
-                                    ))
+                                    safeGetOrderItems(order.items).map((item, idx) => {
+                                      const fields: Record<string, unknown> =
+                                        typeof item === "object" && item !== null ? item as Record<string, unknown> : {};
+                                      const quantity = fields.quantity === undefined ? 1 : Number(fields.quantity);
+                                      const count = Number.isSafeInteger(quantity) && quantity > 0 ? quantity : null;
+                                      const rawUnitPrice = isPickupOrder(order) ? fields.unit_price : fields.price;
+                                      const unitPrice = merchantOrderTotal(rawUnitPrice);
+                                      // Use the API's saved pickup line snapshot, not today's menu price.
+                                      const lineTotal = isPickupOrder(order)
+                                        ? pickupItemLineTotal(item)
+                                        : unitPrice !== null && count !== null
+                                          ? merchantOrderTotal(unitPrice * count) : null;
+                                      return (
+                                        <tr key={idx} className="hover:bg-surface-container-highest/30 transition-colors">
+                                          <td className="px-4 py-3 font-medium text-on-surface">{String(fields.name ?? item)}</td>
+                                          <td className="px-4 py-3 text-center text-on-surface-variant">{count ?? "Unavailable"}</td>
+                                          <td className="px-4 py-3 text-right text-on-surface-variant">{unitPrice === null ? "Price unavailable" : merchantOrderMoney(unitPrice)}</td>
+                                          <td className="px-4 py-3 text-right font-bold text-on-surface">{lineTotal === null ? "Amount unavailable" : merchantOrderMoney(lineTotal)}</td>
+                                        </tr>
+                                      );
+                                    })
                                   ) : (
                                     <tr>
                                       <td className="px-4 py-3 font-medium text-on-surface">
@@ -1561,16 +1528,10 @@ Notes: "${order.notes || "None"}"
                                         1
                                       </td>
                                       <td className="px-4 py-3 text-right text-on-surface-variant">
-                                        R{" "}
-                                        {Number(order.total_price || 0).toFixed(
-                                          2,
-                                        )}
+                                        Amount unavailable
                                       </td>
                                       <td className="px-4 py-3 text-right font-bold text-on-surface">
-                                        R{" "}
-                                        {Number(order.total_price || 0).toFixed(
-                                          2,
-                                        )}
+                                        Amount unavailable
                                       </td>
                                     </tr>
                                   )}
@@ -1584,10 +1545,7 @@ Notes: "${order.notes || "None"}"
                                       Grand Total
                                     </td>
                                     <td className="px-4 py-3 text-right font-bold text-primary text-lg">
-                                      R{" "}
-                                      {Number(order.total_price || 0).toFixed(
-                                        2,
-                                      )}
+                                      {merchantOrderMoney(order.total_price)}
                                     </td>
                                   </tr>
                                 </tfoot>
@@ -2511,6 +2469,22 @@ Notes: "${order.notes || "None"}"
           )}
         >
           <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap gap-2 items-center" role="group" aria-label="Order fulfillment filter">
+              <span className="text-xs font-bold text-on-surface-variant">Fulfillment:</span>
+              {([
+                ["All", "All orders"],
+                ["collection", "Customer collection"],
+                ["delivery", "Delivery (later phase)"],
+              ] as const).map(([value, label]) => (
+                <button key={value} type="button" aria-pressed={orderTypeFilter === value}
+                  onClick={() => setOrderTypeFilter(value)}
+                  className={cn("px-3 py-2 rounded-xl border text-xs font-bold transition-colors",
+                    orderTypeFilter === value ? "bg-primary/10 text-primary border-primary" :
+                      "bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:border-primary/30")}>
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="flex flex-wrap items-center gap-4 mb-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
