@@ -28,3 +28,5 @@ jobs:
         run: npm test
       - name: Customer Ready recipient and both-side wake tests
         run: node --test dist/orders/pickupPushRecipient.test.js dist/orders/confirmedPickupWake.test.js
+      - name: Live read-only P5 and P6 browser CORS verification
+        run: node test-p6-live-cors.mjs
