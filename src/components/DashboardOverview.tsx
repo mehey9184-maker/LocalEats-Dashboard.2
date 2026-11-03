@@ -1074,7 +1074,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-orange-500 to-rose-500 opacity-80" />
         </motion.div>
 
-        {/* Pending Payout Card */}
+        {/* Completed Order Value Card — not a payout balance */}
         <motion.div
           whileHover={{ y: -4 }}
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
@@ -1687,7 +1687,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       </div>
       )}
 
-      {/* Suburb Dispatch Trends & Zone Profitability Section */}
+      {/* Completed delivery order values grouped by recorded city */}
       <DeliveryDispatchSuburbTrends orders={orders} darkMode={darkMode} />
 
       {/* Compact View Guidance Block */}
