@@ -1,5 +1,5 @@
 import {MerchantApi} from "../services/MerchantApi";
-import {menuWritesUnavailable,merchantMenuStockLabel,merchantMenuLowStock,merchantMenuOutOfStock,merchantMenuCategoryName,merchantMenuCategories,merchantMenuMatchesCategory,merchantMenuFiltersActive} from "../services/merchantMenuPolicy";
+import {menuWritesUnavailable,merchantMenuStockLabel,merchantMenuLowStock,merchantMenuOutOfStock,merchantMenuCategoryName,merchantMenuCategories,merchantMenuMatchesCategory,merchantMenuFiltersActive,MERCHANT_MENU_PAGE_SIZE,merchantMenuNextVisibleCount} from "../services/merchantMenuPolicy";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Fuse from "fuse.js";
 import {
@@ -31,8 +31,6 @@ import { uploadImageToCloudinary, getOptimizedCloudinaryUrl } from "../lib/cloud
 import AIMenuScannerModal from "./AIMenuScannerModal";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
 
-
-const MENU_PAGE_SIZE = 24;
 
 export const DIETARY_TAGS = [
   "Halal",
@@ -226,8 +224,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState("All");
   const [selectedItems, setSelectedItems] = useState<(number | string)[]>([]);
-  const [visibleCount,setVisibleCount] = useState(MENU_PAGE_SIZE);
-  useEffect(() => { setVisibleCount(MENU_PAGE_SIZE); }, [selectedShopId,searchTerm,filterCategory]);
+  const [visibleCount,setVisibleCount] = useState(MERCHANT_MENU_PAGE_SIZE);
+  useEffect(() => { setVisibleCount(MERCHANT_MENU_PAGE_SIZE); }, [selectedShopId,searchTerm,filterCategory]);
 
   const [isAiScannerOpen, setIsAiScannerOpen] = useState(false);
   const [editingPriceId, setEditingPriceId] = useState<number | string | null>(null);
@@ -339,7 +337,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   const menuRequest = React.useRef(0);
   const fetchMenu = useCallback(async (_showLoadingSpinner = true) => {
     const request = ++menuRequest.current;
-    setVisibleCount(MENU_PAGE_SIZE);
+    setVisibleCount(MERCHANT_MENU_PAGE_SIZE);
     setItems([]);
     setMenuError(null);
     setIsMenuLoading(true);
@@ -927,7 +925,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
               {visibleCount < filteredItems.length && (
                 <div className="flex justify-center">
                   <button type="button"
-                    onClick={()=>setVisibleCount(count=>Math.min(count+MENU_PAGE_SIZE,filteredItems.length))}
+                    onClick={()=>setVisibleCount(count=>merchantMenuNextVisibleCount(count,filteredItems.length))}
                     className="px-4 py-2.5 rounded-xl bg-surface-container-high text-on-surface text-xs font-bold hover:bg-surface-container-highest border border-outline-variant/20">
                     Show more items ({filteredItems.length-Math.min(visibleCount,filteredItems.length)} remaining)
                   </button>
