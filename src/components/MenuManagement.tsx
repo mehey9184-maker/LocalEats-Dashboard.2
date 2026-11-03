@@ -596,9 +596,13 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         )}
       >
         <button
+          type="button"
+          disabled={menuWritesUnavailable()}
+          title="Bulk menu actions are unavailable in this Preview"
+          aria-label={`Select ${item.name} (unavailable)`}
           onClick={() => toggleSelectItem(item.id)}
           className={cn(
-            "absolute top-3 left-3 z-20 p-2 rounded-xl transition-all shadow-lg cursor-pointer",
+            "absolute top-3 left-3 z-20 p-2 rounded-xl transition-all shadow-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
             selectedItems.includes(item.id)
               ? "bg-primary text-on-primary scale-110"
               : "bg-surface-container-highest/60 text-on-surface-variant backdrop-blur-md border border-outline-variant/10"
@@ -644,10 +648,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                 autoFocus
               />
             ) : (
-              <span
-                onClick={() => setEditingPriceId(item.id)}
-                className="cursor-pointer font-bold hover:scale-105 transition-all"
-              >
+              <span className="font-bold" title="Prices are read-only in this Preview">
                 R {Number(item.price || 0).toFixed(2)}
               </span>
             )}
@@ -661,15 +662,18 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                 {item.category || "General"}
               </span>
               <button
+                type="button"
+                disabled={menuWritesUnavailable()}
+                title="Availability changes are unavailable until menu editing is activated"
                 onClick={() => toggleAvailability(item)}
                 className={cn(
-                  "text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider cursor-pointer transition-colors",
+                  "text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider cursor-pointer transition-colors disabled:cursor-not-allowed",
                   item.is_available
                     ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25"
                     : "bg-zinc-500/15 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-500/25"
                 )}
               >
-                {item.is_available ? "Available" : "Hidden"}
+                {item.is_available ? "Available" : "Unavailable"}
               </button>
             </div>
 
@@ -702,8 +706,11 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
           <div className="flex items-center justify-between pt-2 border-t border-outline-variant/10">
             <button
+              type="button"
+              disabled={menuWritesUnavailable()}
+              title="Menu editing is not activated in this Preview"
               onClick={() => handleEdit(item)}
-              className="text-xs font-bold text-primary hover:underline cursor-pointer"
+              className="text-xs font-bold text-primary hover:underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Edit Item
             </button>
@@ -752,15 +759,20 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
+            type="button"
+            disabled={menuWritesUnavailable()}
+            title="Adding menu items is unavailable in this Preview"
             onClick={handleAdd}
-            className="flex-1 sm:flex-none px-4 py-2.5 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer"
+            className="flex-1 sm:flex-none px-4 py-2.5 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus size={16} />
             <span>Add New Item</span>
           </button>
           <button
-            onClick={() => toast.error("Menu import is unavailable. No change was saved.")}
-            className="px-4 py-2.5 rounded-2xl bg-surface-container-high text-on-surface text-xs font-bold flex items-center gap-2 hover:bg-surface-container-highest transition-all cursor-pointer border border-outline-variant/20"
+            type="button"
+            disabled
+            title="Menu scanning and import are not yet available"
+            className="px-4 py-2.5 rounded-2xl bg-surface-container-high text-on-surface text-xs font-bold flex items-center gap-2 hover:bg-surface-container-highest transition-all cursor-pointer border border-outline-variant/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles size={16} className="text-amber-500" />
             <span className="hidden md:inline">Scan Menu PDF/Image</span>
@@ -865,8 +877,11 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             </span>
             {filteredItems.length > 0 && (
               <button
+                type="button"
+                disabled={menuWritesUnavailable()}
+                title="Bulk menu actions are unavailable in this Preview"
                 onClick={handleSelectAll}
-                className="text-xs font-bold text-primary hover:underline cursor-pointer"
+                className="text-xs font-bold text-primary hover:underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {selectedItems.length === filteredItems.length ? "Deselect All" : "Select All"}
               </button>
@@ -1142,7 +1157,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
              </button>
              <button
                 type="submit"
-                disabled={isSaving}
+                disabled={isSaving || menuWritesUnavailable()}
                 className="px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-xl hover:bg-primary/90 cursor-pointer disabled:opacity-70 flex items-center gap-2"
              >
                 {isSaving ? (
