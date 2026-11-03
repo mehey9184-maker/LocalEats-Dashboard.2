@@ -145,7 +145,7 @@ import {
   clearVerifiedShopOwnership,
 } from "./utils/shopOwnership";
 import { MerchantApi, MerchantApiError } from "./services/MerchantApi";
-import {merchantOrderReadScope,shouldPollMerchantOrders,merchantDisplayOrderAmount,type MerchantOrderReadState} from "./services/merchantDashboardFreshness";
+import {merchantOrderReadScope,shouldPollMerchantOrders,merchantDisplayOrderAmount,newMerchantPendingOrders,type MerchantOrderReadState} from "./services/merchantDashboardFreshness";
 import { fetchWithRetry } from "./utils/fetchWithRetry";
 
 function cn(...inputs: ClassValue[]) {
@@ -290,7 +290,7 @@ function App() {
   const currentBuildVersion = useRef(19); // Moving to v5.4 tracker
   const topNavScrollRef = useRef<HTMLDivElement>(null);
   const shopsRef = useRef<Shop[]>([]);
-  const prevPendingCount = useRef<number>(0);
+  const observedPendingIdsRef=useRef<{scope:string;ids:Set<string>}|null>(null);
   const activeSoundRef = useRef<{ pause: () => void } | null>(null);
   // Viewing Orders acknowledges the arrival alert. Do not keep the short
   // notification melody running after the merchant has opened the queue.
@@ -318,10 +318,18 @@ function App() {
       }
     };
 
-    // once on mount and then every 30s
-    checkVersion();
-    const interval = setInterval(checkVersion, 30000);
-    return () => clearInterval(interval);
+    // Avoid a 30-second background version poll. Refresh on foreground return
+    // and periodically while the merchant has the tab open.
+    const refreshIfVisible=()=>{if(document.visibilityState==="visible")void checkVersion();};
+    refreshIfVisible();
+    const interval=window.setInterval(refreshIfVisible,300000);
+    window.addEventListener("focus",refreshIfVisible);
+    document.addEventListener("visibilitychange",refreshIfVisible);
+    return ()=>{
+      window.clearInterval(interval);
+      window.removeEventListener("focus",refreshIfVisible);
+      document.removeEventListener("visibilitychange",refreshIfVisible);
+    };
   }, [dataSaverMode]);
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -360,6 +368,10 @@ function App() {
     orderReadSerialRef.current++;
     lastConfirmedOrderScopeRef.current=null;
     warnedOrderScopeRef.current=null;
+    observedPendingIdsRef.current=null;
+    activeSoundRef.current?.pause();
+    activeSoundRef.current=null;
+    setOrders([]);
     setOrdersReadState("checking");
     setOrdersVerifiedAt(null);
   },[verifiedOrderScope]);
@@ -1088,44 +1100,31 @@ function App() {
     }
   }, [soundStyle, soundVolume]);
 
-  // Sound alert logic for new orders
-  useEffect(() => {
-    if (!user) return;
-    const currentPendingCount = orders.filter(
-      (o) => o.status === "pending",
-    ).length;
-
-    // Only trigger if count increased and sound is enabled
-    if (soundAlerts && activeTab !== "orders" && currentPendingCount > prevPendingCount.current) {
-      const audio = playNotificationSound(true); // Enable repeating for new orders
-
-      const stopSound = () => {
-        audio.pause();
-        if (activeSoundRef.current) {
-          activeSoundRef.current.pause();
-          activeSoundRef.current = null;
-        }
-      };
-
-      toast.success("NEW ORDER RECEIVED!", {
-        description: `CRITICAL: You have ${currentPendingCount} pending ${currentPendingCount === 1 ? "order" : "orders"}.`,
-        duration: 15000,
-        important: true,
-        icon: <Bell className="text-primary animate-bounce" />,
-        action: {
-          label: "DISMISS ALERT",
-          onClick: () => {
-            stopSound();
-            setActiveTab("orders");
-          },
-        },
-        onDismiss: () => stopSound(),
-        onAutoClose: () => stopSound(),
-      });
-    }
-
-    prevPendingCount.current = currentPendingCount;
-  }, [orders, soundAlerts, user, activeTab, playNotificationSound, setActiveTab]);
+  // Only newly pending order IDs trigger a kitchen alert. First hydration
+  // establishes a baseline; status churn cannot create fake arrival alerts.
+  useEffect(()=>{
+    if(!user || !verifiedOrderScope || ordersReadState!=="confirmed")return;
+    const previous=observedPendingIdsRef.current?.scope===verifiedOrderScope
+      ? observedPendingIdsRef.current.ids : null;
+    const {current,newIds}=newMerchantPendingOrders(orders,previous);
+    observedPendingIdsRef.current={scope:verifiedOrderScope,ids:current};
+    if(newIds.length===0 || !soundAlerts || activeTab==="orders" ||
+       document.visibilityState!=="visible")return;
+    const audio=playNotificationSound(true);
+    const stopSound=()=>{
+      audio.pause();
+      activeSoundRef.current?.pause();
+      activeSoundRef.current=null;
+    };
+    toast.success(newIds.length===1?"New pending order":"New pending orders",{
+      description:`${newIds.length} newly pending ${newIds.length===1?"order requires":"orders require"} attention. Open Orders to verify details.`,
+      duration:15000,important:true,
+      icon:<Bell className="text-primary" />,
+      action:{label:"OPEN ORDERS",onClick:()=>{stopSound();setActiveTab("orders");}},
+      onDismiss:stopSound,
+      onAutoClose:stopSound,
+    });
+  },[orders,ordersReadState,soundAlerts,user?.id,verifiedOrderScope,activeTab,playNotificationSound,setActiveTab]);
 
   const processAndSetOrders = useCallback((firestoreOrdersList: Order[], supabaseOrdersList: Order[] = []) => {
     // Merge Orders by unique string ID, prioritizing latest updated_at or created_at
