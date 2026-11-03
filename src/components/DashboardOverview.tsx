@@ -1,6 +1,6 @@
 ﻿import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 import {completedOrderValue,completedOrderTotal,completedDeliveryArea,safeOrderCsvCell} from "../services/merchantDashboardTrust";
-import {summarizeKitchenQueue,recentKitchenOrders,lowStockMenuItems} from "../services/merchantDashboardLayout";
+import {summarizeKitchenQueue,recentKitchenOrders,lowStockMenuItems,merchantDailyOrderCounts} from "../services/merchantDashboardLayout";
 import { FoodPlaceholder } from "../components/MenuManagement";
 import { isPlaceholderImage } from "../constants";
 import { updateFirestoreShop } from "../lib/firebase";
@@ -880,28 +880,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     toast.success("Weekly report exported successfully!");
   };
 
-  const todayOrders = useMemo(() => {
-    const now = new Date();
-    return orders.filter((o) => {
-      if (!o.created_at) return false;
-      const d = new Date(o.created_at);
-      if (isNaN(d.getTime())) return false;
-      return (
-        d.getFullYear() === now.getFullYear() &&
-        d.getMonth() === now.getMonth() &&
-        d.getDate() === now.getDate()
-      );
-    });
-  }, [orders]);
-
-  const todayOrdersCount = todayOrders.length;
-
-  const yesterdayOrdersCount = useMemo(() => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split("T")[0];
-    return orders.filter(o => o.created_at && o.created_at.startsWith(yesterdayStr)).length;
-  }, [orders]);
+  // SAST day boundaries matter near midnight; refresh after each verified API poll.
+  const {today:todayOrdersCount,yesterday:yesterdayOrdersCount}=useMemo(
+    ()=>merchantDailyOrderCounts(orders),[orders,ordersVerifiedAt],
+  );
 
   const todayTrendIsPositive = todayOrdersCount >= yesterdayOrdersCount;
   const todayTrendText = yesterdayOrdersCount === 0
