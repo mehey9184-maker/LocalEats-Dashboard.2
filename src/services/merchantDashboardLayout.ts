@@ -40,3 +40,34 @@ export function lowStockMenuItems<T extends Pick<MenuItem,"is_available"|"stock_
     item.stock_quantity>=0 && item.stock_quantity<5
   );
 }
+
+
+/** South African merchant reporting uses one SAST calendar day, not UTC strings. */
+export function merchantJohannesburgDayKey(value:Date|string|number|null|undefined):string|null{
+  if(value===null || value===undefined || value==="")return null;
+  const date=value instanceof Date?value:new Date(value);
+  if(!Number.isFinite(date.getTime()))return null;
+  const parts=new Intl.DateTimeFormat("en-GB",{
+    timeZone:"Africa/Johannesburg",year:"numeric",month:"2-digit",day:"2-digit",
+  }).formatToParts(date);
+  const year=parts.find(part=>part.type==="year")?.value;
+  const month=parts.find(part=>part.type==="month")?.value;
+  const day=parts.find(part=>part.type==="day")?.value;
+  return year && month && day ? `${year}-${month}-${day}` : null;
+}
+
+export function merchantDailyOrderCounts(
+  orders:readonly Pick<Order,"created_at">[],now:Date=new Date(),
+):{today:number;yesterday:number}{
+  const todayKey=merchantJohannesburgDayKey(now);
+  const yesterdayKey=merchantJohannesburgDayKey(new Date(now.getTime()-86400000));
+  let today=0;
+  let yesterday=0;
+  for(const order of orders){
+    const key=merchantJohannesburgDayKey(order.created_at);
+    if(key===null)continue;
+    if(key===todayKey)today++;
+    else if(key===yesterdayKey)yesterday++;
+  }
+  return {today,yesterday};
+}
