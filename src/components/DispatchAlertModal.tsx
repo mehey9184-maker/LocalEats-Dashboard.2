@@ -44,24 +44,7 @@ function formatPhoneForMessaging(phoneStr?: string): { raw: string; cleanDigits:
   return { raw, cleanDigits: digits, isSA: digits.startsWith("27") };
 }
 
-// LocalStorage Helper for Dispatch Alert Offline Queue
-function getQueuedAlerts(): QueuedAlert[] {
-  try {
-    const raw = localStorage.getItem("localeats_queued_dispatch_alerts");
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveQueuedAlerts(alerts: QueuedAlert[]) {
-  try {
-    localStorage.setItem("localeats_queued_dispatch_alerts", JSON.stringify(alerts));
-  } catch (e) {
-    console.warn("Failed to persist dispatch queue:", e);
-  }
-}
-
+// Unsent drafts live only in this mounted tab. No automatic dispatch or persistent storage.
 export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
   isOpen,
   onClose,
@@ -79,7 +62,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
   const [customPhone, setCustomPhone] = useState<string>("");
   const [activeTemplate, setActiveTemplate] = useState<string>("default");
   const [copied, setCopied] = useState<boolean>(false);
-  const [queuedAlerts, setQueuedAlerts] = useState<QueuedAlert[]>(getQueuedAlerts);
+  const [queuedAlerts, setQueuedAlerts] = useState<QueuedAlert[]>([]);
 
   // Target phone determination
   const targetPhoneRaw =
@@ -178,7 +161,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
           title: `LocalEats Dispatch - Order #${order?.id ? String(order.id).slice(-6) : ""}`,
           text: messageText,
         });
-        toast.success("Message dispatched via Native Share!");
+        toast.info("Share sheet completed; delivery is not confirmed here.");
         onClose();
       } catch (err) {
         console.warn("Native share canceled/failed:", err);
@@ -188,11 +171,15 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
     }
   };
 
-  const handleCopyText = () => {
-    navigator.clipboard.writeText(messageText);
-    setCopied(true);
-    toast.success("Dispatch message copied to clipboard!");
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopyText = async () => {
+    try {
+      await navigator.clipboard.writeText(messageText);
+      setCopied(true);
+      toast.info("Message text copied. Nothing was sent.");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Clipboard unavailable. Copy the draft text manually.");
+    }
   };
 
   const handleSaveToOfflineQueue = () => {
@@ -207,21 +194,18 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
     };
     const updated = [newAlert, ...queuedAlerts];
     setQueuedAlerts(updated);
-    saveQueuedAlerts(updated);
-    toast.success("Saved to Dispatch Queue for later execution!");
+    toast.info("Draft saved in this tab only. Nothing has been sent.");
   };
 
   const handleRemoveQueued = (id: string) => {
     const updated = queuedAlerts.filter((q) => q.id !== id);
     setQueuedAlerts(updated);
-    saveQueuedAlerts(updated);
-    toast.info("Alert removed from queue.");
+    toast.info("Draft removed.");
   };
 
   const handleClearQueue = () => {
     setQueuedAlerts([]);
-    saveQueuedAlerts([]);
-    toast.info("Dispatch queue cleared.");
+    toast.info("Saved drafts cleared.");
   };
 
   return (
@@ -237,11 +221,11 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
               <h3 className="font-extrabold text-base sm:text-lg leading-tight flex items-center gap-2">
                 <span>SMS & WhatsApp Dispatch Studio</span>
                 <span className="bg-emerald-400/30 text-white text-[10px] uppercase font-black px-2 py-0.5 rounded-full border border-white/20">
-                  Zero Cost
+                  Manual share
                 </span>
               </h3>
               <p className="text-xs text-emerald-100/90 font-medium">
-                Direct native dispatch without paid API subscriptions
+                Opens a messaging app; review and send the message yourself.
               </p>
             </div>
           </div>
@@ -289,7 +273,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
             }`}
           >
             <ListOrdered size={14} />
-            <span>Queue</span>
+            <span>Drafts</span>
             {queuedAlerts.length > 0 && (
               <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full">
                 {queuedAlerts.length}
@@ -306,7 +290,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
               <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 flex items-start gap-2.5 text-xs">
                 <ShieldCheck size={18} className="text-emerald-600 shrink-0 mt-0.5" />
                 <p className="leading-snug font-medium">
-                  <strong className="font-bold">No API Key Required:</strong> Launches WhatsApp Web / App or native SMS directly on your phone or desktop. Always 100% free and instant.
+                  <strong className="font-bold">Manual messages:</strong> Launches WhatsApp Web / App or native SMS directly on your phone or desktop. Nothing is sent automatically. SMS charges may apply.
                 </p>
               </div>
 
@@ -501,7 +485,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="font-extrabold text-xs text-on-surface uppercase tracking-wider">
-                  Pending Offline Alerts Queue ({queuedAlerts.length})
+                  Saved Drafts (not sent) ({queuedAlerts.length})
                 </h4>
                 {queuedAlerts.length > 0 && (
                   <button
@@ -510,7 +494,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
                     className="text-[11px] font-bold text-rose-600 hover:underline flex items-center gap-1 cursor-pointer"
                   >
                     <Trash2 size={12} />
-                    <span>Clear Queue</span>
+                    <span>Clear Drafts</span>
                   </button>
                 )}
               </div>
@@ -518,9 +502,9 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
               {queuedAlerts.length === 0 ? (
                 <div className="p-8 text-center bg-surface-container-low rounded-2xl border border-outline-variant/15 text-xs text-on-surface-variant/70 space-y-2">
                   <BookmarkPlus size={28} className="mx-auto opacity-40 text-emerald-600" />
-                  <p className="font-bold text-on-surface">No queued alerts right now.</p>
+                  <p className="font-bold text-on-surface">No saved drafts in this tab.</p>
                   <p className="text-[11px]">
-                    Use the "Queue Alert" button in the composer to store dispatch alerts for offline processing or batch execution.
+                    Use "Save Draft" to keep a message while this tab is open. Drafts are never sent automatically.
                   </p>
                 </div>
               ) : (
@@ -555,11 +539,11 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
                               href={waUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              onClick={() => handleRemoveQueued(item.id)}
+                              onClick={() => toast.info("WhatsApp opened; delivery is not confirmed here.")}
                               className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] flex items-center gap-1 shadow-xs"
                             >
                               <MessageCircle size={12} className="fill-current" />
-                              <span>Dispatch WhatsApp Now</span>
+                              <span>Open WhatsApp Draft</span>
                             </a>
                           ) : (
                             <span className="text-[10px] text-amber-600 font-bold">No Phone</span>
@@ -591,10 +575,10 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
               type="button"
               onClick={handleSaveToOfflineQueue}
               className="px-3 py-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-xs font-bold flex items-center gap-1.5 cursor-pointer text-emerald-800 dark:text-emerald-300"
-              title="Queue alert for offline/later dispatching"
+              title="Save an unsent draft while this tab is open"
             >
               <BookmarkPlus size={14} />
-              <span>Queue Alert</span>
+              <span>Save Draft</span>
             </button>
           </div>
 
