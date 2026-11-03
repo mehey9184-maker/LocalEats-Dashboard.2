@@ -1,0 +1,35 @@
+name: Merchant Orders O1 Trust Preview
+on:
+  push:
+    branches: [repair/merchant-orders-o1-trust-01]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-orders-o1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Merchant Orders O1 and Dashboard H1 H2 H3 regressions
+        run: node --experimental-strip-types --test tests/merchant-orders-o1-trust.test.mjs tests/merchant-dashboard-h3-freshness.test.mjs tests/merchant-dashboard-h2-layout.test.mjs tests/merchant-dashboard-h1-trust.test.mjs
+      - name: Existing Merchant pickup and activation tests
+        run: node --experimental-strip-types --test tests/merchant-activation.test.mjs tests/merchant-pickup.test.mjs
+      - name: Merchant availability regressions
+        run: npm run test:merchant-availability
+      - name: New Orders trust helper ESLint
+        run: npx eslint src/services/merchantOrdersTrust.ts
+      - name: No new lint violations compared to H3 Preview
+        run: node tests/merchant-dashboard-h1-lint-baseline.mjs
+        env:
+          MERCHANT_DASHBOARD_LINT_BASE: "ff290afb302f139d91648f1e68d9c8a0240fb4f1"
+      - name: Complete Merchant Preview build
+        run: npm run build
