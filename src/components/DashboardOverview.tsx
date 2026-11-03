@@ -959,12 +959,12 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   };
 
   const startOfWeek = getStartOfWeek();
-  const weeklyOrders = orders.filter(
-    (o) => new Date(o.created_at) >= startOfWeek,
-  );
+  const weeklyOrders = orders.filter(o=>o.created_at && new Date(o.created_at) >= startOfWeek);
+  const completedWeeklyOrders = weeklyOrders.filter(o=>o.status==="completed");
+  const completedOrders = orders.filter(o=>o.status==="completed");
 
   // Robust total sales calculation (Weekly)
-  const weeklySales = weeklyOrders.reduce((acc, curr) => {
+  const weeklySales = completedWeeklyOrders.reduce((acc, curr) => {
     const price =
       typeof curr.total_price === "string"
         ? parseFloat((curr.total_price as unknown as string).replace(/[^0-9.]/g, ""))
@@ -972,7 +972,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     return acc + (isNaN(price) ? 0 : price);
   }, 0);
 
-  const totalSales = orders.reduce((acc, curr) => {
+  const totalSales = completedOrders.reduce((acc, curr) => {
     const price =
       typeof curr.total_price === "string"
         ? parseFloat((curr.total_price as unknown as string).replace(/[^0-9.]/g, ""))
@@ -985,14 +985,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   const [timeframe, setTimeframe] = useState<"weekly" | "monthly">("monthly");
 
   const avgOrderValue = useMemo(() => {
-    if (orders.length === 0) return 0;
-    return totalSales / orders.length;
-  }, [orders, totalSales]);
+    if (completedOrders.length === 0) return 0;
+    return totalSales / completedOrders.length;
+  }, [completedOrders, totalSales]);
 
   const weeklyAvgOrderValue = useMemo(() => {
-    if (orderCount === 0) return 0;
-    return weeklySales / orderCount;
-  }, [weeklySales, orderCount]);
+    if (completedWeeklyOrders.length === 0) return 0;
+    return weeklySales / completedWeeklyOrders.length;
+  }, [weeklySales, completedWeeklyOrders]);
 
   const statusDistribution = useMemo(() => {
     const counts = {
@@ -1022,12 +1022,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     })).filter(item => item.value > 0);
   }, [orders]);
 
-  const avgPrepTime = useMemo(() => {
-    const pendingCount = orders.filter(
-      (o) => o.status === "pending" || o.status === "preparing",
-    ).length;
-    return Number(Math.min(12 + pendingCount * 1.5, 45)).toFixed(1);
-  }, [orders]);
+  const preparingOrdersCount = orders.filter(o=>o.status==="preparing").length;
 
   const [connections, setConnections] = useState<RiderConnection[]>([]);
   const currentShopId = currentShop?.id;
@@ -1254,7 +1249,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           const price = typeof order.total_price === "string"
             ? parseFloat((order.total_price as unknown as string).replace(/[^0-9.]/g, ""))
             : Number(order.total_price || 0);
-          if (!isNaN(price)) {
+          if (order.status==="completed" && Number.isFinite(price) && price>=0) {
             day.revenue += price;
           }
         }
@@ -1336,7 +1331,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
   const todayTrendIsPositive = todayOrdersCount >= yesterdayOrdersCount;
   const todayTrendText = yesterdayOrdersCount === 0
-    ? "First orders today"
+    ? (todayOrdersCount>0?"First orders today":"No orders yet today")
     : todayOrdersCount >= yesterdayOrdersCount
       ? `+${todayOrdersCount - yesterdayOrdersCount} vs yesterday`
       : `-${yesterdayOrdersCount - todayOrdersCount} vs yesterday`;
@@ -1344,12 +1339,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   const activeMenuItemsCount = useMemo(() => {
     return menuItems.filter(item => item.is_available).length;
   }, [menuItems]);
-
-  const driverAvailability = useMemo(() => {
-    if (connectedRidersCount === 0) return { status: "Low", color: "text-amber-500 bg-amber-500/10 border-amber-500/20" };
-    if (connectedRidersCount <= 2) return { status: "Moderate", color: "text-blue-500 bg-blue-500/10 border-blue-500/20" };
-    return { status: "High", color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" };
-  }, [connectedRidersCount]);
 
   if (loading) {
     return (
@@ -1431,7 +1420,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       </div>
 
       {/* Bulk Storefront Status Switch */}
-      {shops.length > 0 && (
+      {shops.length > 1 && (
         <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-primary/10 text-primary rounded-full shrink-0">
@@ -1520,9 +1509,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
         >
           <div className="flex justify-between items-start">
-            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Pending Payout</p>
+            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Completed Order Value</p>
             <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
-              <Landmark size={18} />
+              <ReceiptText size={18} />
             </div>
           </div>
           <div className="mt-4">
@@ -1530,7 +1519,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               R {weeklySales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             <p className="text-[10px] text-on-surface/75 font-extrabold mt-1">
-              Next payout: Wednesday (Weekly)
+              Completed orders this week · not a payout balance
             </p>
           </div>
           <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-80" />
@@ -1564,17 +1553,17 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
         >
           <div className="flex justify-between items-start">
-            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Driver Availability</p>
+            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Rider Connections</p>
             <div className="p-2 bg-primary/10 rounded-xl text-primary">
               <Bike size={18} />
             </div>
           </div>
           <div className="mt-4 flex items-baseline gap-2">
             <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              {driverAvailability.status}
+              {connectedRidersCount}
             </span>
-            <span className={cn("text-[10px] font-extrabold px-2 py-0.5 rounded-full", driverAvailability.color)}>
-              {connectedRidersCount} riders online
+            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+              Linked riders · availability not confirmed
             </span>
           </div>
           <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-primary to-orange-500" />
@@ -1874,9 +1863,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             transition={{ delay: 0.2 }}
           >
             <StatCard
-              title="Avg. Prep"
-              value={`${avgPrepTime}m`}
-              change="Active flow"
+              title="Preparing Orders"
+              value={preparingOrdersCount}
+              change="Current kitchen queue"
               icon={Clock}
               colorClass="bg-zinc-500/10 text-zinc-600 dark:text-zinc-400"
             />
