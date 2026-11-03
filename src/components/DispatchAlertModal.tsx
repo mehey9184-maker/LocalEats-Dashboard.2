@@ -60,7 +60,6 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
     type === "customer_status" ? "customer" : type === "rider_pairing" ? "rider" : "rider"
   );
   const [customPhone, setCustomPhone] = useState<string>("");
-  const [activeTemplate, setActiveTemplate] = useState<string>("default");
   const [copied, setCopied] = useState<boolean>(false);
   const [queuedAlerts, setQueuedAlerts] = useState<QueuedAlert[]>([]);
 
@@ -76,24 +75,13 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
 
   // Helper to generate template message
   const generateTemplateText = useCallback(
-    (
-      currentRecipient: "rider" | "customer" | "custom",
-      _tpl: string
-    ) => {
+    (currentRecipient: "rider" | "customer" | "custom") => {
       const shopName = currentShop?.name || "LocalEats Merchant";
-      const shopPhone = currentShop?.phone || currentShop?.whatsapp || "";
       const orderId = order?.id ? String(order.id).slice(-6) : "Unavailable";
-      const customerName = order?.customer_name || "Valued Customer";
-      const address = order?.address || "Address provided in app";
       const amount = order ? merchantOrderMoney(order.total_price) : "Total unavailable";
       const itemsSummary = Array.isArray(order?.items)
         ? order.items.map((i: Record<string, unknown> | string) => typeof i === "string" ? i : `${(i as { quantity?: number; name?: string })?.quantity || 1}x ${(i as { quantity?: number; name?: string })?.name || "Item"}`).join(", ")
         : "Standard Meal Order";
-
-      let mapsUrl = "";
-      if (order?.lat && order?.lng) {
-        mapsUrl = `https://www.google.com/maps/search/?api=1&query=${order.lat},${order.lng}`;
-      }
 
       if (type === "rider_pairing" || (currentRecipient === "rider" && connectionCode)) {
         if (!connectionCode) return "No verified pairing code is available. Open Rider pairing to obtain one.";
@@ -107,28 +95,18 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
       // User-editable messages must not invent payment status, rider movement or ETA.
       return `LocalEats order update — ${shopName}\nOrder #${orderId}\nRecorded order status: ${recordedStatus}${recordedDelivery}\nItems: ${itemsSummary}\nRecorded order total: ${amount}\nPlease check the LocalEats app for the latest confirmed order information.`;
     },
-    [currentShop, order, type, connectionCode, riderName, riderPhone]
+    [currentShop, order, type, connectionCode]
   );
 
-  const [messageText, setMessageText] = useState<string>(() => generateTemplateText(recipientType, activeTemplate));
+  const [messageText, setMessageText] = useState<string>(() => generateTemplateText(recipientType));
 
   // Sync recipient type switch handler
   const handleSelectRecipient = (newType: "rider" | "customer" | "custom") => {
     setRecipientType(newType);
-    setMessageText(generateTemplateText(newType, activeTemplate));
-  };
-
-  // Sync template switch handler
-  const handleSelectTemplate = (tpl: string) => {
-    setActiveTemplate(tpl);
-    setMessageText(generateTemplateText(recipientType, tpl));
+    setMessageText(generateTemplateText(newType));
   };
 
   if (!isOpen) return null;
-
-  const directWhatsAppUrl = formattedTarget.cleanDigits
-    ? `https://wa.me/${formattedTarget.cleanDigits}?text=${encodeURIComponent(messageText)}`
-    : "";
 
   const handleOpenWhatsApp = () => {
     if (!formattedTarget.cleanDigits) {
@@ -375,49 +353,9 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
                 </div>
               )}
 
-              {/* Customer Preset Selector */}
-              {recipientType === "customer" && (
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-on-surface uppercase tracking-wider">
-                    Status Alert Preset:
-                  </label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTemplate("default")}
-                      className={`px-2.5 py-2 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
-                        activeTemplate === "default"
-                          ? "bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300"
-                          : "bg-surface-container/40 border-outline-variant/10 text-on-surface-variant"
-                      }`}
-                    >
-                      🍳 Preparing
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTemplate("out_for_delivery")}
-                      className={`px-2.5 py-2 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
-                        activeTemplate === "out_for_delivery"
-                          ? "bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300"
-                          : "bg-surface-container/40 border-outline-variant/10 text-on-surface-variant"
-                      }`}
-                    >
-                      🛵 En Route
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTemplate("ready_pickup")}
-                      className={`px-2.5 py-2 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
-                        activeTemplate === "ready_pickup"
-                          ? "bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300"
-                          : "bg-surface-container/40 border-outline-variant/10 text-on-surface-variant"
-                      }`}
-                    >
-                      📦 Ready Pickup
-                    </button>
-                  </div>
-                </div>
-              )}
+              <p className="text-[11px] text-on-surface-variant" role="note">
+                Template wording reflects recorded order status only. Review and edit it before sending.
+              </p>
 
               {/* Live Message Textarea */}
               <div className="space-y-1.5">
@@ -446,38 +384,9 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
           )}
 
           {activeTab === "qr" && (
-            <div className="flex flex-col items-center justify-center p-4 text-center space-y-4">
-              <div className="p-3 bg-white rounded-3xl border-2 border-emerald-500/30 shadow-xl">
-                {directWhatsAppUrl ? (
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-                      directWhatsAppUrl
-                    )}`}
-                    alt="Scan for Direct WhatsApp Dispatch"
-                    className="w-52 h-52 object-contain rounded-xl"
-                  />
-                ) : (
-                  <div className="w-52 h-52 flex items-center justify-center text-xs text-amber-600 font-bold p-4 bg-amber-50 rounded-xl">
-                    Please provide a valid recipient phone number in the Composer tab to generate QR.
-                  </div>
-                )}
-              </div>
-              <div className="space-y-1 max-w-xs">
-                <h4 className="font-extrabold text-sm text-on-surface">Scan & Dispatch via Camera</h4>
-                <p className="text-xs text-on-surface-variant leading-snug">
-                  Customer or driver present at counter? Scan this QR code with any smartphone camera to launch the WhatsApp chat instantly.
-                </p>
-              </div>
-              {directWhatsAppUrl && (
-                <button
-                  type="button"
-                  onClick={handleCopyText}
-                  className="px-4 py-2 rounded-xl bg-surface-container-high border border-outline-variant/20 text-xs font-bold text-on-surface hover:bg-surface-container-highest cursor-pointer flex items-center gap-1.5"
-                >
-                  <Copy size={14} />
-                  <span>Copy Direct WhatsApp Link</span>
-                </button>
-              )}
+            <div className="p-6 text-center space-y-2 bg-surface-container-low rounded-2xl" role="status">
+              <p className="text-sm font-bold text-on-surface">QR sharing unavailable in this Preview</p>
+              <p className="text-xs text-on-surface-variant">A third-party QR generator would receive the recipient number and message. Use the manual WhatsApp or SMS buttons instead.</p>
             </div>
           )}
 
