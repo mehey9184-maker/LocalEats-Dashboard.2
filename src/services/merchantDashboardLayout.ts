@@ -71,3 +71,22 @@ export function merchantDailyOrderCounts(
   }
   return {today,yesterday};
 }
+
+// Order History date filters describe when an order was PLACED, not when it was paid.
+// Use Johannesburg calendar keys even when the viewer's browser is in another timezone.
+export function merchantOrderHistoryInSastRange(
+  order: {created_at?: string|null},start:string,end:string
+):boolean {
+  const day=merchantJohannesburgDayKey(order.created_at);
+  if(!day)return start==="" && end==="";
+  return (!start || day>=start) && (!end || day<=end);
+}
+
+// A "completed today" label must rely on a recorded completion timestamp.
+// A cancelled order, or a completed order with no timestamp, must never be counted.
+export function merchantOrderCompletedOnSastDay(
+  order: {status:string;completed_at?:string|null},day:string
+):boolean {
+  return !!day && order.status==="completed" &&
+    merchantJohannesburgDayKey(order.completed_at)===day;
+}
