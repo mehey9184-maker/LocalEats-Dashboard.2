@@ -42,7 +42,6 @@ import {
   Users,
   CheckCircle2,
   AlertCircle,
-  Sparkles,
   Store,
   ChevronRight,
   Bike,
