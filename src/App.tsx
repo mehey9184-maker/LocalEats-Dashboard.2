@@ -1586,38 +1586,22 @@ function App() {
   }, [orders, autoAcceptOrders, updateOrderStatus, merchantShopGate.status, currentShop]);
 
 
-  const sendRiderNudge = async (riderId: string, message: string) => {
-    // 1. Record database nudge
-    const { error } = await supabase.rpc("nudge_rider", {
-      rider_id: riderId,
-      message,
-    });
-
-    // 2. Trigger silent push notification via send-alert edge function
-    try {
-      const sessionRes = await supabase.auth.getSession();
-      const token = sessionRes?.data?.session?.access_token;
+  const sendRiderNudge=async(riderId:string,message:string):Promise<void>=>{
+    // This legacy nudge is best-effort and never proof of device delivery.
+    const {error}=await supabase.rpc("nudge_rider",{rider_id:riderId,message});
+    if(error)throw new Error("The rider nudge could not be saved by the service.");
+    try{
+      const sessionRes=await supabase.auth.getSession();
+      const token=sessionRes?.data?.session?.access_token;
       await sendPushNotification({
-        userId: riderId,
-        title: "LocalEats Courier Nudge",
-        body: message || "Order update: Please check your active delivery mission!",
-        data: {
-          type: "nudge",
-          silent: true,
-          rider_id: riderId,
-          timestamp: Date.now(),
-        },
-        userJwt: token,
+        userId:riderId,title:"LocalEats Courier Nudge",
+        body:message || "Please check your active delivery mission.",
+        data:{type:"nudge",silent:true,rider_id:riderId,timestamp:Date.now()},
+        userJwt:token,
       });
-    } catch (pushErr) {
-      console.warn("Push notification edge function warning:", pushErr);
-    }
-
-    if (error) {
-      console.error("Nudge error:", error);
-      toast.success("Silent push nudge dispatched to courier device!");
-    } else {
-      toast.success("Silent push nudge sent to courier!");
+    }catch(pushErr){
+      // Request was saved, but push may not have reached the device.
+      console.warn("Rider push delivery not confirmed:",pushErr);
     }
   };
 
