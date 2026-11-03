@@ -103,7 +103,6 @@ export interface OrdersManagementProps {
   onUpdateStatus: (id: string, status: OrderStatus, message?: string, estimatedTime?: string) => Promise<void> | void;
   onDispatchToRider?: (id: string, riderId: string, riderName?: string, riderPhone?: string) => Promise<void> | void;
   onConvertOrderToPickup?: (id: string) => Promise<void> | void;
-  onDeleteAllOrders: () => void;
   loading: boolean;
   onRefresh: () => void;
   kitchenMode: boolean;
@@ -299,7 +298,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   onUpdateStatus,
   onDispatchToRider,
   onConvertOrderToPickup,
-  onDeleteAllOrders,
   loading,
   onRefresh,
   kitchenMode,
@@ -2636,16 +2634,7 @@ Notes: "${order.notes || "None"}"
           </div>
           
           <div className="hidden md:flex flex-wrap gap-3 justify-start md:justify-end shrink-0">
-            <button
-              onClick={() => {
-                console.log("Clearing all orders...");
-                onDeleteAllOrders();
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-error/10 text-error rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-error/20 transition-all cursor-pointer relative z-20"
-            >
-              <Trash2 size={16} className="md:w-[18px] md:h-[18px]" />
-              Clear All
-            </button>
+
             <button
               onClick={() => {
                 console.log("Refreshing orders...");
@@ -2835,17 +2824,7 @@ Notes: "${order.notes || "None"}"
                   </div>
 
                   {/* Danger zone clear all */}
-                  <button
-                    onClick={() => {
-                      console.log("Clearing all orders...");
-                      onDeleteAllOrders();
-                      setShowMobileActions(false);
-                    }}
-                    className="flex items-center justify-center gap-2 py-2.5 bg-error/10 text-error rounded-xl text-xs font-bold"
-                  >
-                    <Trash2 size={14} />
-                    Clear All Orders (Reset)
-                  </button>
+      
                 </motion.div>
               )}
             </AnimatePresence>
