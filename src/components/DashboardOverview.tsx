@@ -1311,70 +1311,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     toast.success("Weekly report exported successfully!");
   };
 
-  const [showTestCheckout, setShowTestCheckout] = useState(false);
-  const [testOrderPayMethod, setTestOrderPayMethod] = useState("Cash");
-  const [cardName, setCardName] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [specialInstructions, setSpecialInstructions] = useState("");
-
-  const generateTestOrder = async () => {
-    if (!currentShop) return;
-
-    if (testOrderPayMethod === "Card Machine") {
-      if (!cardName.trim() || !cardNumber.trim() || cardNumber.length < 15) {
-        toast.error("Please provide valid Cardholder Name and Card Number.");
-        return;
-      }
-    }
-
-    const posOrder = {
-      shop_id: currentShop.id,
-      user_id: user?.id || null,
-      customer_name: "Walk-in / Phone Customer",
-      phone: "+27 00 000 0000",
-      email: "pos@localeats.co.za",
-      address: currentShop.address || "In-Store Pick Up",
-      city: currentShop.location ? getSupportedCity(currentShop.location) : "Tembisa",
-      lat: currentShop.lat ? currentShop.lat : -25.9964,
-      lng: currentShop.lng ? currentShop.lng : 28.2268,
-      product_name: "Store POS Order",
-      restaurant_name: currentShop.name,
-      total_price: 55,
-      price: 55,
-      delivery_fee: 0,
-      service_fee: 0,
-      status: "pending",
-      order_type: "pickup",
-      items: [
-        {
-          name: "Store POS Order",
-          price: 55,
-          quantity: 1,
-        },
-      ],
-      payment_method: testOrderPayMethod,
-      terminal_masked_card: testOrderPayMethod === "Card Machine" ? `**** **** **** ${cardNumber.slice(-4)}` : null,
-      terminal_sync_status: testOrderPayMethod === "Card Machine" ? "synced" : null,
-      created_at: new Date().toISOString(),
-      notes: specialInstructions.trim() || null,
-    };
-
-    let error = null;
-    try {
-      await OrderService.createOrder(posOrder);
-    } catch (err) {
-      error = err;
-    }
-    if (error) {
-      toast.error("Could not record manual order right now. Please try again.");
-    } else {
-      toast.success("Manual POS order logged successfully! View in Orders.");
-      setSpecialInstructions("");
-      setShowTestCheckout(false);
-      onRefresh();
-    }
-  };
-
   const todayOrders = useMemo(() => {
     const now = new Date();
     return orders.filter((o) => {
@@ -1645,134 +1581,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         </motion.div>
       </div>
 
-      <AnimatePresence>
-        {showTestCheckout && (
-          <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-              animate={{ backdropFilter: "blur(4px)", backgroundColor: "rgba(0,0,0,0.4)" }}
-              exit={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-              className="absolute inset-0"
-              onClick={() => setShowTestCheckout(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-surface relative z-10 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-outline-variant/20 flex flex-col max-h-[90vh]"
-            >
-              <div className="p-6 md:p-8 space-y-6 flex-1 overflow-y-auto">
-                <div>
-                  <h2 className="text-2xl font-headline font-black text-on-surface">New Phone / Walk-in Order</h2>
-                  <p className="text-xs text-on-surface-variant font-medium mt-1">Record a phone or walk-in customer order for kitchen dispatch and POS tracking.</p>
-                </div>
-
-                <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 space-y-2">
-                  <div className="flex justify-between text-sm font-bold text-on-surface">
-                    <span>Store POS Order</span>
-                    <span>R 55.00</span>
-                  </div>
-                  <div className="flex justify-between text-lg font-black text-on-surface pt-4 border-t border-outline-variant/10">
-                    <span>Total</span>
-                    <span className="text-primary">R 55.00</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="checkout_special_instructions" className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70">Special Instructions (Dietary / Delivery Notes)</label>
-                  <textarea
-                    id="checkout_special_instructions"
-                    value={specialInstructions}
-                    onChange={(e) => setSpecialInstructions(e.target.value)}
-                    placeholder="E.g. No onions, extra spicy, gluten free, leave at security..."
-                    className="w-full bg-surface-container-low border border-outline-variant/20 rounded-2xl p-4 text-xs font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all min-h-[80px] resize-y"
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70">Payment Method</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={() => setTestOrderPayMethod("Cash")}
-                      className={cn(
-                        "p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2",
-                        testOrderPayMethod === "Cash" ? "border-primary bg-primary/10 text-primary" : "border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-low"
-                      )}
-                    >
-                      <span className="text-lg">💵</span>
-                      <span className="text-xs font-bold">Cash</span>
-                    </button>
-                    <button
-                      onClick={() => setTestOrderPayMethod("Card Machine")}
-                      className={cn(
-                        "p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2",
-                        testOrderPayMethod === "Card Machine" ? "border-primary bg-primary/10 text-primary" : "border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-low"
-                      )}
-                    >
-                      <CreditCard size={20} />
-                      <span className="text-xs font-bold">Card Machine</span>
-                    </button>
-                  </div>
-                </div>
-
-                <AnimatePresence>
-                  {testOrderPayMethod === "Card Machine" && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="p-5 rounded-2xl bg-surface-container-lowest border-2 border-emerald-500/20 shadow-sm space-y-4 mt-2">
-                        <div className="flex items-center gap-2 text-emerald-600 mb-2">
-                          <Lock size={14} />
-                          <span className="text-xs font-black uppercase tracking-wider">Secure Payment Synchronization</span>
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Cardholder Name</label>
-                          <input
-                            type="text"
-                            value={cardName}
-                            onChange={(e) => setCardName(e.target.value)}
-                            placeholder="John Doe"
-                            className="w-full bg-surface border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all font-mono"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Masked Card Number</label>
-                          <input
-                            type="text"
-                            value={cardNumber}
-                            onChange={(e) => {
-                               const val = e.target.value.replace(/\D/g, "");
-                               let formatted = "";
-                               for (let i = 0; i < val.length; i++) {
-                                 if (i > 0 && i % 4 === 0) formatted += " ";
-                                 formatted += val[i];
-                               }
-                               setCardNumber(formatted.slice(0, 19));
-                            }}
-                            placeholder="**** **** **** 1234"
-                            className="w-full bg-surface border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all font-mono"
-                          />
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-              <div className="p-6 md:p-8 bg-surface-container-lowest border-t border-outline-variant/10">
-                <button
-                  onClick={generateTestOrder}
-                  className="w-full px-6 py-4 bg-primary text-on-primary font-black rounded-2xl shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest"
-                >
-                  Confirm & Place Order
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
       {currentShop && (!currentShop.phone || !currentShop.whatsapp) && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
@@ -1833,12 +1641,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
             {/* View layout mode switcher to adjust visual complexity & cognitive load */}
             
-            <button
-              onClick={() => onNavigate("orders")}
-              className="bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest text-sm px-6 py-3 rounded-2xl shadow-md hover:shadow-lg transition-all border-none"
-            >
-              + NEW WALK-IN ORDER
-            </button>
+
             <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/10 shadow-xs justify-center sm:justify-start">
               <button
                 type="button"
@@ -1875,14 +1678,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             </div>
 
             <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setShowTestCheckout(true)}
-                className="p-3 bg-primary/5 text-primary rounded-xl hover:bg-primary/10 transition-colors border border-primary/10 flex items-center gap-2 text-xs font-bold"
-                title="Create Manual POS Order"
-              >
-                <Plus size={18} />
-                <span className="hidden sm:inline">New POS Order</span>
-              </button>
+
               <button
                 onClick={exportWeeklyCSV}
                 className="p-3 bg-surface-container-low text-primary rounded-xl hover:bg-surface-container-high transition-colors shadow-sm flex items-center gap-2 text-xs font-bold"
