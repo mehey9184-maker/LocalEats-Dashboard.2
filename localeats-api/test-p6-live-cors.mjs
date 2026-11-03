@@ -7,6 +7,7 @@ const origins=[
  "https://project-x7cvt-git-repair-custo-0a45c9-mehey9184-makers-projects.vercel.app",
  "https://project-x7cvt-git-repair-custo-49d47e-mehey9184-makers-projects.vercel.app",
  "https://project-x7cvt-7vqksai9s-mehey9184-makers-projects.vercel.app",
+ "https://project-x7cvt-git-repair-custo-b916f8-mehey9184-makers-projects.vercel.app",
 ];
 const path="/api/v1/catalog/shops";
 for(const origin of origins){
