@@ -741,33 +741,23 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   );
   const [estimatedTime, setEstimatedTime] = useState("20-30 mins");
 
-  const submitRiderRating = async (orderId: string, riderId: string, rating: number) => {
-    if(!rating) return;
-    try {
-      const existingOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
-      existingOverrides[orderId] = { ...existingOverrides[orderId], merchant_rating: rating, updated_at: new Date().toISOString() };
-      localStorage.setItem("localeats_order_overrides", JSON.stringify(existingOverrides));
-    } catch {
-      // ignore
+  const submitRiderRating = async (orderId:string,riderId:string,rating:number)=>{
+    if(!Number.isInteger(rating) || rating<1 || rating>5)return;
+    try{
+      const {data:ratingsData,error}=await supabase
+        .from("orders").select("merchant_rating").eq("rider_id",riderId).not("merchant_rating","is",null);
+      if(error)throw error;
+      const prior=((ratingsData as unknown as {merchant_rating:number}[])||[])
+        .map(x=>x.merchant_rating).filter(x=>Number.isFinite(x)&&x>=1&&x<=5);
+      const avgRating=([...prior,rating].reduce((a,b)=>a+b,0))/(prior.length+1);
+      await OrderService.rateRider(orderId,riderId,rating,avgRating);
+      toast.info("Rating request completed. Reload Orders to verify the recorded rating.");
+      setRatingOrderId(null);
+      setRatingValue(0);
+    }catch(error){
+      console.warn("Rating was not confirmed by the service:",error);
+      toast.error("Rider rating could not be verified. It was not saved locally.");
     }
-    try {
-      const { data: ratingsData } = await supabase
-        .from('orders')
-        .select('merchant_rating')
-        .eq('rider_id', riderId)
-        .not('merchant_rating', 'is', null);
-
-      const items = (ratingsData as unknown as { merchant_rating: number }[]) || [];
-      const currentRatings = items.map(i => i.merchant_rating || 0);
-      const newRatings = [...currentRatings, rating];
-      const avgRating = newRatings.reduce((a, b) => a + b, 0) / newRatings.length;
-
-      await OrderService.rateRider(orderId, riderId, rating, avgRating);
-    } catch (error) {
-      console.warn("Rating update warning (saved locally):", error);
-    }
-    setRatingOrderId(null);
-    setRatingValue(0);
   };
 
   const handleIframePrint = (order: Order, formatOption: "80mm" | "58mm", includeAddress: boolean) => {
