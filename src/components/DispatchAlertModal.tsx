@@ -116,6 +116,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
     setActiveTab("composer");
     setCustomPhone("");
     setCopied(false);
+    setQueuedAlerts([]); // Never expose a previous order's unsent draft to another order/shop.
   }, [isOpen, currentShop?.id, order?.id, type, generateTemplateText]);
 
 
