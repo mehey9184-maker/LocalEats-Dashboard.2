@@ -93,3 +93,21 @@ test("cancellation waits for workflow, rider nudge and ratings do not claim loca
  assert.doesNotMatch(orders,/merchant_rating: rating, updated_at: new Date\(\)\.toISOString\(\)/);
  assert.match(orders,/await OrderService\.rateRider\(orderId,riderId,rating,avgRating\)/);
 });
+
+
+test("unsupported merchant delivery controls cannot advertise server-rejected actions",()=>{
+ assert.doesNotMatch(orders,/REQUEST RIDER NOW|Mark as Completed|Invoke Rider Dispatch \\(R 5\\.00\\)/);
+ assert.doesNotMatch(orders,/onClick=\\{\\(\\) => \\{\\s*setCancellingOrder\\(order\\)/);
+ assert.match(orders,/<button disabled title="Rider assignment requires a server-authorized workflow"/);
+ assert.match(orders,/Rider reassignment unavailable/);
+});
+
+test("plain-text copied receipts do not invent zero totals",()=>{
+ const start=orders.indexOf("const copyReceiptToClipboard");
+ const stop=orders.indexOf("// Do not invent GPS tracking",start);
+ const clip=orders.slice(start,stop);
+ assert.ok(clip.length>500);
+ assert.match(clip,/TOTAL: \\$\\{merchantOrderMoney\\(order\\.total_price\\)\\}/);
+ assert.match(clip,/Amount unavailable/);
+ assert.doesNotMatch(clip,/Number\\(order\\.total_price \\|\\| 0\\)/);
+});
