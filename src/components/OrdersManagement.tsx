@@ -1,7 +1,7 @@
 import {PickupOrderActions} from "./PickupOrderActions";
 import {merchantPickupReadCurrent,type MerchantOrderReadState} from "../services/merchantDashboardFreshness";
 import {merchantOrderMoney,merchantOrderTotal,merchantReceiptLineAmount,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
-import {summarizeKitchenQueue,merchantJohannesburgDayKey,merchantOrderHistoryInSastRange,merchantOrderCompletedOnSastDay} from "../services/merchantDashboardLayout";
+import {summarizeKitchenQueue,merchantJohannesburgDayKey,merchantOrderHistoryInSastRange,merchantOrderCompletedOnSastDay,merchantJohannesburgClock} from "../services/merchantDashboardLayout";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled,pickupItemLineTotal} from "../services/merchantPickupPolicy";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
@@ -1148,6 +1148,7 @@ Notes: "${order.notes || "None"}"
 
   const exportToCSV = () => {
     if(displayedOrders.length===0){toast.info("No orders match these filters to export.");return;}
+    if(!window.confirm("Export filtered order data including customer contact details? Keep the spreadsheet private.")) return;
     const csvContent=safeOrderExportCsv(displayedOrders);
     const blob=new Blob(["\uFEFF",csvContent],{type:"text/csv;charset=utf-8;"});
     const link=document.createElement("a");
@@ -1327,9 +1328,13 @@ Notes: "${order.notes || "None"}"
                             )}
                             <span className={cn(
                               "text-[10px] font-extrabold px-2.5 py-1 rounded-xl flex items-center gap-1 border",
-                              (order.payment_method === "cod" || order.payment_method === "Cash" || order.payment_method === "cash_on_delivery")
-                                ? "bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 border-rose-200/50"
-                                : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200/50"
+                              isPickupOrder(order)
+                                ? order.payment_status === "paid"
+                                  ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200/50"
+                                  : "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border-amber-200/50"
+                                : (order.payment_method === "cod" || order.payment_method === "Cash" || order.payment_method === "cash_on_delivery")
+                                  ? "bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 border-rose-200/50"
+                                  : "bg-surface-container-high text-on-surface-variant border-outline-variant/20"
                             )}>
                               <CreditCard size={11} fill="currentColor" />
                               {pickupPaymentLabel(order)}
@@ -1433,7 +1438,7 @@ Notes: "${order.notes || "None"}"
                         <OrderStatusBadge status={order.status} />
                         <span className="text-[11px] font-semibold text-on-surface-variant mt-0 sm:mt-2 flex items-center gap-1">
                           <Clock size={14} />
-                          {format(new Date(order.created_at), "HH:mm")}
+                          {merchantJohannesburgClock(order.created_at)}
                         </span>
                       </div>
                     </div>
@@ -2936,7 +2941,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
-                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {merchantJohannesburgClock(order.created_at)}
                           </span>
                         </div>
 
@@ -3120,7 +3125,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
-                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {merchantJohannesburgClock(order.created_at)}
                           </span>
                         </div>
 
@@ -3352,7 +3357,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
-                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {merchantJohannesburgClock(order.created_at)}
                           </span>
                         </div>
 
