@@ -4,6 +4,7 @@ import {readFileSync} from "node:fs";
 import {merchantOrderReadScope,shouldPollMerchantOrders,merchantDisplayOrderAmount,newMerchantPendingOrders} from "../src/services/merchantDashboardFreshness.ts";
 const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
 const dash=readFileSync(new URL("../src/components/DashboardOverview.tsx",import.meta.url),"utf8");
+const merchantApi=readFileSync(new URL("../src/services/MerchantApi.ts",import.meta.url),"utf8");
 const block=(a,b)=>app.slice(app.indexOf(a),app.indexOf(b,app.indexOf(a)));
 
 test("verified order scope never comes from a cached or unauthenticated shop",()=>{
@@ -88,5 +89,5 @@ test("H1/H2 payment, rider and order authority guards remain",()=>{
  "not a payout balance","Linked riders · availability not confirmed",
  "Order eligibility is confirmed separately"])assert.ok(dash.includes(s),s);
  assert.doesNotMatch(dash,/Bank account verified|New POS Order|R 55\.00|OrderService\.createOrder/);
- assert.match(app,/pickupMutationsDisabled/);
+ assert.match(merchantApi,/pickupMutationsDisabled/);
 });
