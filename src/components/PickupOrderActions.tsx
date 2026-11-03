@@ -20,7 +20,7 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
   // After an API-confirmed write, block further actions until the authoritative
   // list shows a changed order revision. A stale card must not submit twice.
   const [confirmedPrevious, setConfirmedPrevious] = useState<{
-    orderId: string; revision: number; action: PickupAction;
+    orderId: string; revision: number;
   } | null>(null);
   let status: string;
   try {
@@ -38,8 +38,8 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
     confirmedPrevious.orderId === String(order.id) && confirmedPrevious.revision === order.revision;
   const canAct = pickupOrderingEnabled() && !busy && !disabled &&
     !hasUnconfirmedCommand && !awaitingRefresh;
-  const markConfirmed = (action: PickupAction) => {
-    setConfirmedPrevious({orderId: String(order.id), revision: order.revision, action});
+  const markConfirmed = () => {
+    setConfirmedPrevious({orderId: String(order.id), revision: order.revision});
     window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));
   };
 
@@ -70,7 +70,7 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
     setError("");
     try {
       await MerchantApi.transitionPickupOrder(order, action, extra);
-      markConfirmed(action);
+      markConfirmed();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No change was confirmed. Retry the same action.");
     } finally {
@@ -114,7 +114,7 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
                 setBusy(true);
                 try {
                   await MerchantApi.retryPendingPickupOrder(order);
-                  markConfirmed("accept"); // Only marks a confirmed response; the API supplies the true action.
+                  markConfirmed();
                   setError("");
                 } catch (e) {
                   setError(e instanceof Error ? e.message : "Outcome unconfirmed.");
