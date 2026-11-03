@@ -24,7 +24,7 @@ test("payment and handover are gated on recent API verification, including at cl
   assert.match(pickup,/readCurrent && !hasUnconfirmedCommand && !awaitingRefresh/);
   assert.match(pickup,/if \(!merchantPickupReadCurrent\(readState, verifiedAt\)\)/);
   assert.match(pickup,/Refresh Orders before changing payment or handover/);
-  assert.match(orders,/ordersReadState=\{ordersReadState\}/g);
+  assert.match(orders,/ordersReadState = "checking"/);
   assert.match(orders,/readState=\{ordersReadState\} verifiedAt=\{ordersVerifiedAt\}/);
   assert.equal((orders.match(/readState=\{ordersReadState\} verifiedAt=\{ordersVerifiedAt\}/g)||[]).length,3);
   assert.match(orders,/Orders are not recently verified by the API/);
