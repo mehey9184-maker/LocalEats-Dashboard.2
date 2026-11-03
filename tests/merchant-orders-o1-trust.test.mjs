@@ -91,7 +91,8 @@ test("cancellation waits for workflow, rider nudge and ratings do not claim loca
  assert.match(app,/if\(error\)throw new Error\("The rider nudge could not be saved/);
  assert.doesNotMatch(app,/Silent push nudge dispatched to courier device/);
  assert.doesNotMatch(orders,/merchant_rating: rating, updated_at: new Date\(\)\.toISOString\(\)/);
- assert.match(orders,/await OrderService\.rateRider\(orderId,riderId,rating,avgRating\)/);
+ assert.match(orders,/Rider rating is unavailable until the authorized API supports saving it/);
+ assert.doesNotMatch(orders,/OrderService\.rateRider\(/);
 });
 
 
