@@ -1,5 +1,5 @@
 import {MerchantApi} from "../services/MerchantApi";
-import {menuWritesUnavailable,merchantMenuStockLabel,merchantMenuLowStock,merchantMenuOutOfStock} from "../services/merchantMenuPolicy";
+import {menuWritesUnavailable,merchantMenuStockLabel,merchantMenuLowStock,merchantMenuOutOfStock,merchantMenuCategoryName,merchantMenuCategories,merchantMenuMatchesCategory,merchantMenuFiltersActive} from "../services/merchantMenuPolicy";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Fuse from "fuse.js";
 import { List } from "react-window";
@@ -290,30 +290,33 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     }
 
     return source.filter((item) => {
-      const matchesCategory = filterCategory === "All" || item.category === filterCategory;
+      const matchesCategory = merchantMenuMatchesCategory(item.category,filterCategory);
       return matchesCategory;
     });
   }, [items, searchTerm, fuseIndex, filterCategory]);
 
-  const categories = useMemo(() => {
-    const defaultCats = [
-      "All",
-      "Breakfast Menu",
-      "Eggs Menu",
-      "Toast Bread",
-      "Sandwiches",
-      "Main Course",
-      "Appetizers",
-      "Desserts",
-      "Beverages",
-    ];
-    items.forEach((item) => {
-      if (item.category && !defaultCats.includes(item.category)) {
-        defaultCats.push(item.category);
-      }
-    });
-    return defaultCats;
-  }, [items]);
+  const categories = useMemo(() => merchantMenuCategories(items), [items]);
+  const hasActiveFilters = merchantMenuFiltersActive(searchTerm, filterCategory);
+
+  // Category chips belong to the current shop only. A stale category from a
+  // prior shop or refresh must not leave the new menu looking empty.
+  useEffect(() => {
+    if (filterCategory !== "All" && !categories.includes(filterCategory)) setFilterCategory("All");
+  }, [categories, filterCategory]);
+
+  const selectMenuShop = useCallback((shopId:string|number) => {
+    const verified = userOwnedShops.find(shop => String(shop.id) === String(shopId));
+    if (!verified) return;
+    setSelectedShopId(verified.id);
+    setSearchTerm("");
+    setFilterCategory("All");
+    setSelectedItems([]);
+    try {
+      localStorage.setItem("localeats_selected_menu_shop_id", String(verified.id));
+    } catch {
+      // Storage is optional. The selected shop still changes in memory.
+    }
+  }, [userOwnedShops]);
 
   const menuRequest = React.useRef(0);
   const fetchMenu = useCallback(async (_showLoadingSpinner = true) => {
@@ -659,7 +662,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
           <div>
             <div className="flex items-center justify-between gap-2 mb-1">
               <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">
-                {item.category || "General"}
+                {merchantMenuCategoryName(item.category)}
               </span>
               <button
                 type="button"
@@ -791,14 +794,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
           {userOwnedShops.map((shop) => (
             <button
               key={shop.id}
-              onClick={() => {
-                setSelectedShopId(shop.id);
-                try {
-                  localStorage.setItem("localeats_selected_menu_shop_id", String(shop.id));
-                } catch {
-                  // ignore
-                }
-              }}
+              onClick={() => selectMenuShop(shop.id)}
               className={cn(
                 "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5",
                 String(selectedShopId) === String(shop.id)
@@ -824,6 +820,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                aria-label="Search this shop's menu"
                 placeholder="Search menu items by name, description or category..."
                 className="w-full pl-10 pr-4 py-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 text-xs font-medium text-on-surface outline-none focus:ring-2 focus:ring-primary/40"
               />
@@ -838,7 +835,9 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
               {categories.map((cat) => (
                 <button
+                  type="button"
                   key={cat}
+                  aria-pressed={filterCategory === cat}
                   onClick={() => setFilterCategory(cat)}
                   className={cn(
                     "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer",
@@ -888,12 +887,21 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             <div className="py-16 text-center space-y-3 bg-surface-container-lowest rounded-3xl border border-outline-variant/15 p-6">
               <UtensilsCrossed size={40} className="text-on-surface-variant/40 mx-auto" />
               <h3 className="font-extrabold text-base text-on-surface">
-                {searchTerm ? "No matching menu items" : "No menu items found for this shop"}
+                {items.length > 0 && hasActiveFilters ? "No matching menu items" : "No menu items found for this shop"}
               </h3>
               <p className="text-xs text-on-surface-variant max-w-sm mx-auto">
-                {searchTerm
-                  ? "No items match your search query."
+                {items.length > 0 && hasActiveFilters
+                  ? "No items match your current search or category. Clear filters to view this shop's menu."
                   : "No items were returned for this shop. Menu editing is not available in this Preview."}
+              </p>
+              {items.length > 0 && hasActiveFilters && (
+                <button type="button" onClick={() => { setSearchTerm(""); setFilterCategory("All"); }}
+                  className="px-3.5 py-2 rounded-xl bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20">
+                  Clear search and category
+                </button>
+              )}
+              <p className="sr-only">Menu filters only affect the current verified shop.</p>
+              {/* Empty-menu and no-results states must stay distinct. */}
               </p>
               {userOwnedShops.length > 1 && selectedShopId !== "all" && (
                 <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
@@ -902,14 +910,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                     .map((s) => (
                       <button
                         key={s.id}
-                        onClick={() => {
-                          setSelectedShopId(s.id);
-                          try {
-                            localStorage.setItem("localeats_selected_menu_shop_id", String(s.id));
-                          } catch {
-                            // ignore
-                          }
-                        }}
+                        onClick={() => selectMenuShop(s.id)}
                         className="px-3.5 py-2 rounded-xl bg-surface-container-high text-on-surface text-xs font-bold hover:bg-surface-container-highest transition-all cursor-pointer"
                       >
                         Switch to {s.name}
