@@ -22,6 +22,6 @@ export function completedDeliveryArea(
 /** Quotes CSV cells and neutralizes formulas from user-controlled order fields. */
 export function safeOrderCsvCell(value:unknown):string {
   const raw=String(value ?? "");
-  const protectedValue=/^[\\s]*[=+@\\-]/.test(raw) ? "'"+raw : raw;
+  const protectedValue=/^\s*[=+@-]/.test(raw) ? "'"+raw : raw;
   return '"' + protectedValue.replace(/"/g,'""') + '"';
 }
