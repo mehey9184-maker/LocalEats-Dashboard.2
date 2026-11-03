@@ -61,7 +61,7 @@ export const isAllowedOrigin = (
   // never allow wildcard host patterns or expose this override in Production.
   if (environment.VERCEL_ENV === "preview" && environment.CUSTOMER_PROFILE_STAGING_ORIGINS) {
     const candidates = environment.CUSTOMER_PROFILE_STAGING_ORIGINS.split(",").map(value=>value.trim());
-    if (candidates.length > 0 && candidates.length <= 3 &&
+    if (candidates.length > 0 && candidates.length <= 4 &&
         candidates.every(value=>value.length > 0)) {
       for (const candidate of candidates) {
         const approved = normalizeExactBrowserOrigin(candidate);
