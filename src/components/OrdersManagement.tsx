@@ -1,8 +1,7 @@
 import {PickupOrderActions} from "./PickupOrderActions";
-import {merchantOrderMoney,merchantOrderTotal,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
+import {merchantOrderMoney,merchantOrderTotal,merchantReceiptLineAmount,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
 import {summarizeKitchenQueue} from "../services/merchantDashboardLayout";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled,pickupItemLineTotal} from "../services/merchantPickupPolicy";
-import { OrderService } from '../services/OrderService';
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Clock,
@@ -61,13 +60,12 @@ import {
   type QueuedPrintJob,
 } from "../utils/escPosEngine";
 import { isRiderOnline } from "../utils/availabilityChecker";
-import { Order, Shop, OrderStatus, RiderProfile, Message, RiderConnection } from "../types";
+import { Order, Shop, OrderStatus, RiderProfile, RiderConnection } from "../types";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { Pagination } from "./Pagination";
 import { useAuthGuard } from "../hooks/useAuthGuard";
 import { AddressDisplay } from "./AddressDisplay";
 import { Skeleton } from "./ui/Skeleton";
-import { NoLinkedRiderModal } from "./NoLinkedRiderModal";
 import { DispatchAlertModal } from "./DispatchAlertModal";
 import { format } from "date-fns";
 
@@ -120,180 +118,27 @@ export interface OrdersManagementProps {
   clearPrintQueue?: () => void;
 }
 
-const ChatWindow = ({
-  orderId,
-  shopId,
-  userId,
-  onClose,
-}: {
-  orderId: string;
-  shopId: number;
-  userId: string;
-  onClose: () => void;
-}) => {
-  const { subscribeWithAuthGuard } = useAuthGuard();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState("");
-  const [loading, setLoading] = useState(true);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const fetchMessages = async () => {
-      const { data, error } = await supabase
-        .from("chat_messages")
-        .select("*")
-        .eq("order_id", orderId)
-        .order("created_at", { ascending: true });
-
-      if (!error && data) setMessages(data as Message[]);
-      setLoading(false);
-    };
-
-    fetchMessages();
-
-    // Real-time subscription
-    let activeChannel: RealtimeChannel | null = null;
-    let isMounted = true;
-    void subscribeWithAuthGuard(`chat:${orderId}`, (ch) => 
-      ch.on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_messages",
-          filter: `order_id=eq.${orderId}`,
-        },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message]);
-        },
-      )
-    ).then(ch => {
-      if (ch) {
-        if (isMounted) activeChannel = ch;
-        else void supabase.removeChannel(ch);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      if (activeChannel) void supabase.removeChannel(activeChannel);
-    };
-  }, [orderId, subscribeWithAuthGuard]);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
-
-  const sendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim()) return;
-
-    const message = {
-      order_id: orderId,
-      shop_id: shopId,
-      user_id: userId,
-      sender_id: shopId.toString(), // Shop is sender
-      sender_type: "shop",
-      content: newMessage.trim(),
-    };
-
-    await OrderService.sendChatMessage(message);
-    const error = null; // Polyfill for existing code below
-    if (error) toast.error("Failed to send message");
-    else setNewMessage("");
-  };
-
-  return (
-    <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl overflow-hidden flex flex-col h-[400px] shadow-xl mt-4">
-      <div className="p-4 bg-primary text-on-primary flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <MessageCircle size={18} />
-          <span className="font-bold text-sm">
-            Customer Chat - #LE-{orderId}
-          </span>
-        </div>
-        <button
-          onClick={onClose}
-          className="p-1 hover:bg-white/20 rounded-full transition-colors"
-        >
-          <X size={18} />
-        </button>
+// Chat requires a verified participant-scoped API, not direct browser table access.
+const ChatWindow = ({ orderId, onClose }: { orderId: string; onClose: () => void }) => (
+  <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl overflow-hidden flex flex-col h-[220px] shadow-xl mt-4">
+    <div className="p-4 bg-primary text-on-primary flex justify-between items-center">
+      <div className="flex items-center gap-2">
+        <MessageCircle size={18} />
+        <span className="font-bold text-sm">Customer Chat - #LE-{orderId}</span>
       </div>
-
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 space-y-4 bg-surface-container-lowest"
-      >
-        {loading ? (
-          <div className="flex justify-center p-4">
-            <RefreshCw className="animate-spin text-primary/40" size={24} />
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="text-center text-on-surface-variant/40 py-12">
-            <p className="text-xs italic">
-              No messages yet. Start the conversation!
-            </p>
-          </div>
-        ) : (
-          messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={cn(
-                "flex flex-col max-w-[80%]",
-                msg.sender_type === "shop"
-                  ? "ml-auto items-end"
-                  : "mr-auto items-start",
-              )}
-            >
-              <div
-                className={cn(
-                  "px-4 py-2 rounded-2xl text-sm shadow-sm",
-                  msg.sender_type === "shop"
-                    ? "bg-primary text-on-primary rounded-tr-none"
-                    : "bg-surface-container-high text-on-surface rounded-tl-none",
-                )}
-              >
-                {msg.content}
-              </div>
-              <span className="text-[9px] text-on-surface-variant/60 mt-1">
-                {format(new Date(msg.created_at), "HH:mm")}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-
-      <form
-        onSubmit={sendMessage}
-        className="p-3 bg-surface-container-low border-t border-outline-variant/10 flex gap-2"
-      >
-        <input
-          type="text"
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Type a message..."
-          className="flex-1 bg-surface-container-lowest border border-outline-variant/20 rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-        />
-        <button
-          type="submit"
-          className="p-2 bg-primary text-on-primary rounded-full hover:scale-105 transition-transform"
-        >
-          <Send size={18} />
-        </button>
-      </form>
+      <button type="button" onClick={onClose} aria-label="Close customer chat" className="p-1 hover:bg-white/20 rounded-full"><X size={18} /></button>
     </div>
-  );
-};
-
+    <div className="flex-1 p-5 flex flex-col justify-center space-y-2" role="status">
+      <p className="text-sm font-bold text-on-surface">In-app chat is unavailable in this Preview.</p>
+      <p className="text-xs text-on-surface-variant">Messages cannot yet be read or sent through a verified order-participant API. Use the order's Call or WhatsApp contact options for manual communication. External messages are not tracked here.</p>
+    </div>
+  </div>
+);
 
 
 export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   orders,
   onUpdateStatus,
-  onDispatchToRider,
-  onConvertOrderToPickup,
   loading,
   onRefresh,
   kitchenMode,
@@ -365,10 +210,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [chatOrderId, setChatOrderId] = useState<string | null>(null);
   const [showRiderPicker, setShowRiderPicker] = useState<string | null>(null);
   const [connectedRiders, setConnectedRiders] = useState<RiderConnection[]>([]);
-  const [ratingOrderId, setRatingOrderId] = useState<string | null>(null);
-  const [ratingValue, setRatingValue] = useState<number>(0);
   const [showMobileActions, setShowMobileActions] = useState(false);
-  const [unlinkedModalOrder, setUnlinkedModalOrder] = useState<Order | null>(null);
   const [dispatchAlertOrder, setDispatchAlertOrder] = useState<Order | null>(null);
   const [dispatchAlertType, setDispatchAlertType] = useState<"rider_dispatch" | "customer_status" | "rider_pairing">("customer_status");
 
@@ -463,16 +305,12 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
           <button disabled={isPickupOrder(order)}
             onClick={(e) => {
               e.stopPropagation();
-              if (connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
-                setUnlinkedModalOrder(order);
-              } else {
-                setShowRiderPicker(order.id);
-              }
+              onTabChange("riders");
             }}
             className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-white text-[8px] font-black uppercase rounded-lg transition-transform active:scale-95 flex items-center gap-0.5 cursor-pointer shrink-0 shadow-xs"
           >
             <Rocket size={10} />
-            <span>Pair</span>
+            <span>Riders</span>
           </button>
         </div>
       );
@@ -504,13 +342,13 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
           onClick={(e) => {
             e.stopPropagation();
             if (order.rider_id) {
-              void sendRiderNudge(order.rider_id, "Order update: Please check your active delivery mission!");
+              void handleRiderNudge(order.rider_id, "Order update: Please check your active delivery mission!");
             } else {
               toast.error("No rider assigned to nudge");
             }
           }}
           className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-[8px] font-black uppercase tracking-wider rounded-lg transition-transform flex items-center gap-0.5 cursor-pointer shrink-0 shadow-xs"
-          title="Trigger silent push notification alert to rider"
+          title="Request a rider nudge; device delivery is not guaranteed"
         >
           <Zap size={10} className="fill-current" />
           <span>Nudge</span>
@@ -755,25 +593,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
     }
   }, [currentShopId, currentShopPhone, subscribeWithAuthGuard]);
 
-  const submitRiderRating = async (orderId:string,riderId:string,rating:number)=>{
-    if(!Number.isInteger(rating) || rating<1 || rating>5)return;
-    try{
-      const {data:ratingsData,error}=await supabase
-        .from("orders").select("merchant_rating").eq("rider_id",riderId).not("merchant_rating","is",null);
-      if(error)throw error;
-      const prior=((ratingsData as unknown as {merchant_rating:number}[])||[])
-        .map(x=>x.merchant_rating).filter(x=>Number.isFinite(x)&&x>=1&&x<=5);
-      const avgRating=([...prior,rating].reduce((a,b)=>a+b,0))/(prior.length+1);
-      await OrderService.rateRider(orderId,riderId,rating,avgRating);
-      toast.info("Rating request completed. Reload Orders to verify the recorded rating.");
-      setRatingOrderId(null);
-      setRatingValue(0);
-    }catch(error){
-      console.warn("Rating was not confirmed by the service:",error);
-      toast.error("Rider rating could not be verified. It was not saved locally.");
-    }
-  };
-
   const handleIframePrint = (order: Order, formatOption: "80mm" | "58mm", includeAddress: boolean) => {
     toast.info("Receipt Printing Requested");
     try {
@@ -786,7 +605,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
       const doc = iframe.contentWindow?.document || iframe.contentDocument;
       if (!doc) {
-        toast.error("Interactive printing is not available in full sandbox. Copying receipt text instead!");
+        toast.error("Browser printing is unavailable. You can copy the receipt text instead.");
         copyReceiptToClipboard(order);
         return;
       }
@@ -794,18 +613,18 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
       const formattedItems = safeGetOrderItems(order.items)
         .map((i) => {
           const isObj = typeof i === "object" && i !== null;
-          const p = isObj && "price" in i ? (i as { price: number }).price : (Number(order.total_price) || 0);
-          const q = isObj && "quantity" in i ? (i as { quantity: number }).quantity : 1;
+          const p = isObj && "price" in i ? (i as { price?: unknown }).price : null;
+          const q = isObj && "quantity" in i ? (i as { quantity?: unknown }).quantity : 1;
           const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
           return `
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
               <span>${safeReceiptHtml(q)}x ${safeReceiptHtml(n)}</span>
-              <span>R${Number(p * q).toFixed(2)}</span>
+              <span>${safeReceiptHtml(merchantReceiptLineAmount(p, q))}</span>
             </div>
           `;
         })
         .join("") ||
-        `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span></div>`;
+        `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>Amount unavailable</span></div>`;
 
       const widthOfText = formatOption === "58mm" ? "54mm" : "76mm";
       const printingPageSize = formatOption === "58mm" ? "58mm auto" : "80mm auto";
@@ -919,7 +738,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
       const doc = iframe.contentWindow?.document || iframe.contentDocument;
       if (!doc) {
-        toast.error("Interactive printing is not available in full sandbox.");
+        toast.error("Browser printing is unavailable.");
         return;
       }
 
@@ -930,18 +749,18 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
         const formattedItems = safeGetOrderItems(order.items)
           .map((i) => {
             const isObj = typeof i === "object" && i !== null;
-            const p = isObj && "price" in i ? (i as { price: number }).price : (Number(order.total_price) || 0);
-            const q = isObj && "quantity" in i ? (i as { quantity: number }).quantity : 1;
+            const p = isObj && "price" in i ? (i as { price?: unknown }).price : null;
+            const q = isObj && "quantity" in i ? (i as { quantity?: unknown }).quantity : 1;
             const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
             return `
               <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                 <span>${safeReceiptHtml(q)}x ${safeReceiptHtml(n)}</span>
-                <span>R${Number(p * q).toFixed(2)}</span>
+                <span>${safeReceiptHtml(merchantReceiptLineAmount(p, q))}</span>
               </div>
             `;
           })
           .join("") ||
-          `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span></div>`;
+          `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>Amount unavailable</span></div>`;
 
         return `
           <div class="receipt">
@@ -1402,7 +1221,7 @@ Notes: "${order.notes || "None"}"
     }
 
     if (!rider.is_online) {
-      // Show "Wake to Tip" button UI or similar
+      // Show "Nudge Rider" button UI or similar
       // Handled in the UI loop
       return;
     }
@@ -1996,19 +1815,14 @@ Notes: "${order.notes || "None"}"
                                 </div>
                                 <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/5">
                                   <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/50 block mb-1">
-                                    Live Track
+                                    Delivery Status
                                   </span>
                                   <div className="flex items-center justify-between">
                                     <p className="text-xs font-bold text-on-surface-variant">
                                       {order.delivery_status
-                                        ? "Active Protocol"
-                                        : "No Signal"}
+                                        ? "Status Recorded"
+                                        : "Status Unavailable"}
                                     </p>
-                                    {order.delivery_pin && (
-                                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded font-black tracking-widest border border-primary/20">
-                                        PIN: {order.delivery_pin}
-                                      </span>
-                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -2143,15 +1957,15 @@ Notes: "${order.notes || "None"}"
                                                     <button
                                                       onClick={(e) => {
                                                         e.stopPropagation();
-                                                        sendRiderNudge(
+                                                        void handleRiderNudge(
                                                           rider.rider_id!,
-                                                          "Urgent order available - Tip boost active!",
+                                                          "Order update: Please check the Rider app.",
                                                         );
                                                       }}
                                                       className="flex items-center gap-1 px-2 py-1 bg-amber-500 text-white text-[9px] font-black rounded-lg uppercase hover:scale-105 transition-transform"
                                                     >
                                                       <Zap size={10} />
-                                                      Wake to Tip
+                                                      Nudge Rider
                                                     </button>
                                                   ) : (
                                                     <button disabled={isPickupOrder(order)}
@@ -2366,7 +2180,7 @@ Notes: "${order.notes || "None"}"
                             {order.rider_id && order.status !== "completed" && (
                               <button
                                 onClick={() => {
-                                  const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
+                                  const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order update: Please check your delivery mission!";
                                   void handleRiderNudge(order.rider_id!,nudgeMessage);
                                 }}
                                 className={cn(
@@ -2421,8 +2235,6 @@ Notes: "${order.notes || "None"}"
                             >
                               <ChatWindow
                                 orderId={order.id}
-                                shopId={order.shop_id}
-                                userId={order.user_id}
                                 onClose={() => setChatOrderId(null)}
                               />
                             </motion.div>
@@ -2443,43 +2255,9 @@ Notes: "${order.notes || "None"}"
                                       <span className="text-xs font-bold text-on-surface ml-2 pl-2 border-l border-outline-variant/20">{order.merchant_rating.toFixed(1)}</span>
                                   </div>
                                 ) : (
-                                  <div className="flex flex-col gap-2">
-                                     <button
-                                        onClick={() => {
-                                           if (ratingOrderId === order.id) {
-                                              setRatingOrderId(null);
-                                              setRatingValue(0);
-                                           } else {
-                                              setRatingOrderId(order.id);
-                                              setRatingValue(5);
-                                           }
-                                        }}
-                                        className="text-xs font-bold text-primary hover:text-primary-container decoration-dashed hover:underline transition-all"
-                                     >
-                                        Rate Rider Performance
-                                     </button>
-                                     {ratingOrderId === order.id && (
-                                        <div className="flex items-center gap-3 bg-surface-container-low p-2 rounded-xl w-fit border border-outline-variant/20">
-                                           <div className="flex items-center gap-1">
-                                             {[1, 2, 3, 4, 5].map((star) => (
-                                               <button
-                                                 key={star}
-                                                 onClick={() => setRatingValue(star)}
-                                                 className="p-1 hover:scale-110 transition-transform"
-                                               >
-                                                 <Star size={18} className={star <= ratingValue ? "fill-amber-500 text-amber-500" : "text-outline-variant"} />
-                                               </button>
-                                             ))}
-                                           </div>
-                                           <button
-                                              onClick={() => submitRiderRating(order.id, order.rider_id!, ratingValue)}
-                                              className="ml-2 text-[10px] bg-primary text-white font-bold px-3 py-1.5 rounded-lg hover:bg-primary-container"
-                                           >
-                                              Submit
-                                           </button>
-                                        </div>
-                                     )}
-                                  </div>
+                                  <p className="text-xs text-on-surface-variant" role="status">
+                                    Rider rating is unavailable until the authorized API supports saving it.
+                                  </p>
                                 )}
                               </div>
                            </div>
@@ -3639,7 +3417,7 @@ Notes: "${order.notes || "None"}"
                           <div className="mt-2">
                             <button
                               onClick={() => {
-                                const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
+                                const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order update: Please check your delivery mission!";
                                 void handleRiderNudge(order.rider_id!,nudgeMessage);
                               }}
                               className="w-full py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
@@ -4358,20 +4136,20 @@ Notes: "${order.notes || "None"}"
                         (printingOrder.items || []).map((item: unknown, idx: number) => {
                           const isObj = typeof item === "object" && item !== null;
                           const typedItem = item as Record<string, unknown>;
-                          const p = isObj && "price" in typedItem ? Number(typedItem.price) || 0 : (Number(printingOrder.total_price) || 0);
-                          const q = isObj && "quantity" in typedItem ? Number(typedItem.quantity) || 1 : 1;
+                          const p = isObj && "price" in typedItem ? typedItem.price : null;
+                          const q = isObj && "quantity" in typedItem ? typedItem.quantity : 1;
                           const n = isObj && "name" in typedItem ? String(typedItem.name) : String(item);
                           return (
                             <div key={idx} className="flex justify-between items-start gap-2">
-                              <span>{q}x {n}</span>
-                              <span className="shrink-0">R{(p * q).toFixed(2)}</span>
+                              <span>{String(q)}x {n}</span>
+                              <span className="shrink-0">{merchantReceiptLineAmount(p, q)}</span>
                             </div>
                           );
                         })
                       ) : (
                         <div className="flex justify-between items-start">
                           <span>1x {printingOrder.product_name}</span>
-                          <span className="shrink-0">R{Number(printingOrder.total_price || 0).toFixed(2)}</span>
+                          <span className="shrink-0">Amount unavailable</span>
                         </div>
                       )}
                     </div>
@@ -4379,7 +4157,7 @@ Notes: "${order.notes || "None"}"
                     <div className="border-t border-dashed border-stone-400 pt-2 my-2 mt-4 font-bold">
                       <div className="flex justify-between text-sm">
                         <span>GRAND TOTAL</span>
-                        <span>R{Number(printingOrder.total_price || 0).toFixed(2)}</span>
+                        <span>{merchantOrderMoney(printingOrder.total_price)}</span>
                       </div>
                     </div>
 
@@ -4463,14 +4241,14 @@ Notes: "${order.notes || "None"}"
                         {items.map((item, idx) => {
                           const name = typeof item === "string" ? item : item.name;
                           const quantity = typeof item === "string" ? 1 : item.quantity;
-                          const price = typeof item === "string" ? 0 : item.price;
+                          const price = typeof item === "string" ? null : item.price;
                           return (
                             <div key={idx} className="flex justify-between items-center p-3 bg-surface-container-high/40 rounded-xl border border-outline-variant/5">
                               <div className="flex items-center gap-2">
                                 <span className="w-5 h-5 bg-primary/10 text-primary text-[10px] font-black rounded-full flex items-center justify-center">x{quantity}</span>
                                 <span className="text-xs font-bold text-on-surface">{name}</span>
                               </div>
-                              <span className="text-xs font-black text-on-surface-variant">R {(price * quantity).toFixed(2)}</span>
+                              <span className="text-xs font-black text-on-surface-variant">{merchantReceiptLineAmount(price, quantity)}</span>
                             </div>
                           );
                         })}
@@ -4528,29 +4306,9 @@ Notes: "${order.notes || "None"}"
           })()}
         </AnimatePresence>
 
-        {/* Gated Dispatch - No Linked Rider Warning Modal */}
-        <NoLinkedRiderModal
-          isOpen={!!unlinkedModalOrder}
-          onClose={() => setUnlinkedModalOrder(null)}
-          order={unlinkedModalOrder}
-          connectedRiders={connectedRiders}
-          pairingCode={currentShop?.pairing_code || "LOCAL-EATS-PASS"}
-          onDispatchToRider={onDispatchToRider}
-          onAcceptOrder={async (orderId) => {
-            await onUpdateStatus(orderId, "preparing");
-          }}
-          onPromptCustomerForPickup={async (orderId) => {
-            if (onConvertOrderToPickup) {
-              await onConvertOrderToPickup(orderId);
-            }
-          }}
-          onOpenPairingCenter={() => {
-            onTabChange("riders");
-          }}
-        />
-
         {/* SMS & WhatsApp Dispatch Studio Modal */}
         <DispatchAlertModal
+          key={dispatchAlertOrder?.id ? `${dispatchAlertOrder.id}-${dispatchAlertType}-${currentShop?.id ?? ""}` : "closed"}
           isOpen={!!dispatchAlertOrder}
           onClose={() => setDispatchAlertOrder(null)}
           order={dispatchAlertOrder}
