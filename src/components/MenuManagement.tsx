@@ -1,5 +1,5 @@
 import {MerchantApi} from "../services/MerchantApi";
-import {menuWritesUnavailable} from "../services/merchantMenuPolicy";
+import {menuWritesUnavailable,merchantMenuStockLabel,merchantMenuLowStock,merchantMenuOutOfStock} from "../services/merchantMenuPolicy";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Fuse from "fuse.js";
 import { List } from "react-window";
@@ -184,15 +184,15 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     return found ? found.id : "all";
   });
 
-  // Ensure selectedShopId stays valid if shops change, but don't reset manual user selections
+  // API reads one verified shop at a time. Never treat a saved "all"
+  // selection as authoritative combined inventory.
   useEffect(() => {
-    if (selectedShopId !== "all") {
-      const exists = userOwnedShops.some((s) => String(s.id) === String(selectedShopId));
-      if (!exists && userOwnedShops.length > 0) {
-        setSelectedShopId(userOwnedShops[0].id);
-      } else if (!exists) {
-        setSelectedShopId("all");
-      }
+    const exists = selectedShopId !== "all" &&
+      userOwnedShops.some(shop => String(shop.id) === String(selectedShopId));
+    if (!exists && userOwnedShops.length > 0) {
+      setSelectedShopId(userOwnedShops[0].id);
+    } else if (!exists && selectedShopId !== "all") {
+      setSelectedShopId("all");
     }
   }, [selectedShopId, userOwnedShops]);
 
@@ -323,7 +323,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     setIsMenuLoading(true);
     try {
       const shop = selectedShopId === "all" ? userOwnedShops[0] : userOwnedShops.find(s => String(s.id) === String(selectedShopId));
-      const rows = shop ? await MerchantApi.getMenuItems(shop.id) : [];
+      if (!shop) throw new Error("No verified shop is available for this menu. Refresh your shop details.");
+      const rows = await MerchantApi.getMenuItems(shop.id);
       if (request === menuRequest.current) setItems(rows);
     } catch (error) {
       if (request === menuRequest.current) setMenuError(error instanceof Error ? error.message : "Unable to load menu.");
@@ -579,11 +580,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
   // Render Card Component for each item
   const renderItemCard = (item: MenuItem) => {
-    const isLowStock =
-      item.stock_quantity !== null &&
-      item.stock_quantity !== undefined &&
-      item.stock_quantity !== -1 &&
-      (item.stock_quantity || 0) < 5;
+    const isLowStock = merchantMenuLowStock(item.stock_quantity);
 
 
     return (
@@ -625,7 +622,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
           ) : (
             <FoodPlaceholder size={44} />
           )}
-          {(!item.is_available || item.stock_quantity === 0) && (
+          {(!item.is_available || merchantMenuOutOfStock(item.stock_quantity)) && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-xs">
               <span className="bg-error text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg">
                 {!item.is_available ? "Unavailable" : "Out of Stock"}
@@ -711,7 +708,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
               Edit Item
             </button>
             <span className="text-[10px] font-mono font-bold text-on-surface-variant">
-              Stock: {item.stock_quantity === null || item.stock_quantity === -1 ? "∞" : item.stock_quantity}
+              {merchantMenuStockLabel(item.stock_quantity)}
             </span>
           </div>
         </div>
@@ -728,8 +725,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
   return (
     <div className="w-full space-y-6">
-      <p className="text-xs text-on-surface-variant" role="status">Menu is read-only. Editing and import are unavailable until authoritative menu editing is supported. No changes will be saved.</p>
-      {menuError && <p role="alert" className="text-sm text-red-600">{menuError}</p>}
+      <p className="text-xs text-on-surface-variant" role="status">Menu is read-only in this Preview. You can view and search items, but adding, editing, stock updates and import are unavailable. No changes will be saved.</p>
+      {/* Failed reads have a dedicated retry state below, not an empty-menu claim. */}
       {/* Background Revalidating Indicator */}
       {isBackgroundSyncing && (
         <div className="flex items-center justify-between p-2.5 px-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs font-bold animate-pulse">
@@ -882,20 +879,23 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
               <RotateCw size={32} className="animate-spin text-primary mx-auto" />
               <p className="text-xs font-bold text-on-surface-variant">Loading menu inventory...</p>
             </div>
+          ) : menuError ? (
+            <div className="py-16 text-center space-y-3 bg-surface-container-lowest rounded-3xl border border-outline-variant/15 p-6" role="alert">
+              <UtensilsCrossed size={40} className="text-on-surface-variant/40 mx-auto" />
+              <h3 className="font-extrabold text-base text-on-surface">Menu could not be loaded</h3>
+              <p className="text-xs text-on-surface-variant max-w-sm mx-auto">{menuError}</p>
+              <button type="button" onClick={() => void fetchMenu()} className="px-4 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold hover:bg-primary/90">Retry loading menu</button>
+            </div>
           ) : filteredItems.length === 0 ? (
             <div className="py-16 text-center space-y-3 bg-surface-container-lowest rounded-3xl border border-outline-variant/15 p-6">
               <UtensilsCrossed size={40} className="text-on-surface-variant/40 mx-auto" />
               <h3 className="font-extrabold text-base text-on-surface">
-                {searchTerm
-                  ? "No matching menu items"
-                  : selectedShopId === "all"
-                  ? "No menu items found across your stores"
-                  : `No menu items found in "${shops.find((s) => String(s.id) === String(selectedShopId))?.name || `Store #${selectedShopId}`}"`}
+                {searchTerm ? "No matching menu items" : "No menu items found for this shop"}
               </h3>
               <p className="text-xs text-on-surface-variant max-w-sm mx-auto">
                 {searchTerm
                   ? "No items match your search query."
-                  : "Start adding items or switch stores to view other inventory."}
+                  : "No items were returned for this shop. Menu editing is not available in this Preview."}
               </p>
               {userOwnedShops.length > 1 && selectedShopId !== "all" && (
                 <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
