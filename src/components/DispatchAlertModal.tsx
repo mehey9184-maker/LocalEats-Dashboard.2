@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { MessageCircle, Copy, Share2, Phone, X, Check, ShieldCheck, Sparkles, AlertCircle, QrCode, BookmarkPlus, ListOrdered, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Order, Shop } from "../types";
@@ -100,6 +100,25 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
 
   const [messageText, setMessageText] = useState<string>(() => generateTemplateText(recipientType));
 
+  // Reopening for another order must not reuse the prior customer's message draft.
+  const previousComposerScope = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isOpen) {
+      previousComposerScope.current = null;
+      return;
+    }
+    const scope = `${currentShop?.id ?? "none"}:${order?.id ?? "none"}:${type}`;
+    if (previousComposerScope.current === scope) return;
+    previousComposerScope.current = scope;
+    const nextRecipient = type === "customer_status" ? "customer" : "rider";
+    setRecipientType(nextRecipient);
+    setMessageText(generateTemplateText(nextRecipient));
+    setActiveTab("composer");
+    setCustomPhone("");
+    setCopied(false);
+  }, [isOpen, currentShop?.id, order?.id, type, generateTemplateText]);
+
+
   // Sync recipient type switch handler
   const handleSelectRecipient = (newType: "rider" | "customer" | "custom") => {
     setRecipientType(newType);
@@ -109,7 +128,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
   if (!isOpen) return null;
 
   const handleOpenWhatsApp = () => {
-    if (!formattedTarget.cleanDigits) {
+    if (!/^\d{8,15}$/.test(formattedTarget.cleanDigits)) {
       toast.error("Please enter a valid target phone number first.");
       return;
     }
@@ -121,7 +140,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
   };
 
   const handleSendSMS = () => {
-    if (!formattedTarget.cleanDigits) {
+    if (!/^\d{8,15}$/.test(formattedTarget.cleanDigits)) {
       toast.error("Please enter a valid target phone number first.");
       return;
     }
@@ -420,7 +439,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
                 <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                   {queuedAlerts.map((item) => {
                     const clean = formatPhoneForMessaging(item.recipientPhone).cleanDigits;
-                    const waUrl = clean ? `https://wa.me/${clean}?text=${encodeURIComponent(item.messageText)}` : "";
+                    const waUrl = /^\d{8,15}$/.test(clean) ? `https://wa.me/${clean}?text=${encodeURIComponent(item.messageText)}` : "";
                     return (
                       <div
                         key={item.id}
