@@ -1,4 +1,5 @@
 import {PickupOrderActions} from "./PickupOrderActions";
+import {merchantOrderMoney,merchantOrderTotal,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled,pickupItemLineTotal} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
 import React, { useState, useEffect, useMemo, useRef } from "react";
@@ -734,14 +735,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   );
   const [estimatedTime, setEstimatedTime] = useState("20-30 mins");
 
-  const avgPrepTime = useMemo(() => {
-    const pendingCount = orders.filter(
-      (o) => o.status === "pending" || o.status === "preparing",
-    ).length;
-    // Base 12 mins + 1.5 mins per pending order, capped at 45
-    return Number(Math.min(12 + pendingCount * 1.5, 45)).toFixed(1);
-  }, [orders]);
-
   const submitRiderRating = async (orderId: string, riderId: string, rating: number) => {
     if(!rating) return;
     try {
@@ -1091,34 +1084,8 @@ Notes: "${order.notes || "None"}"
       .catch(() => toast.error("Failed to copy receipt to clipboard"));
   };
 
-  const calculateDynamicETA = (order: Order) => {
-    if (!order.rider_id || !order.lat || !order.lng || order.delivery_status === "delivered") {
-       return order.estimated_delivery_time || "20-30 mins";
-    }
-
-    const assignedRider = connectedRiders.find((r) => r.rider_id === order.rider_id) as RiderConnection & { current_latitude?: number, current_longitude?: number };
-    if (!assignedRider || !assignedRider.current_latitude || !assignedRider.current_longitude) {
-       return order.estimated_delivery_time || "20-30 mins";
-    }
-
-    const R = 6371;
-    const dLat = (order.lat - assignedRider.current_latitude) * Math.PI / 180;
-    const dLon = (order.lng - assignedRider.current_longitude) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(assignedRider.current_latitude * Math.PI / 180) * Math.cos(order.lat * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-    const d = R * c;
-
-    const timeMinutes = Math.max(5, Math.round(d * 4)); // 15km/h avg
-
-    if (order.delivery_status === "finding_rider" || order.delivery_status === "accepted") {
-        return `${Math.round(timeMinutes + Number(avgPrepTime))} mins`;
-    }
-
-    return `${timeMinutes} mins`;
-  };
+  // Do not invent GPS tracking or travel-time estimates from an assumed speed.
+  const calculateDynamicETA=(order:Order)=>recordedDeliveryETA(order.estimated_delivery_time);
 
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
@@ -1194,8 +1161,6 @@ Notes: "${order.notes || "None"}"
     {},
   );
 
-  const [alertsEnabled, setAlertsEnabled] = useState(true);
-  const [ordersPaused, setOrdersPaused] = useState(false);
   const [filterStatus, setFilterStatus] = useState<OrderStatus | "All">("All");
   const [orderTypeFilter, setOrderTypeFilter] = useState<"All" | "delivery" | "collection">("All");
   const [sortField, setSortField] = useState<
@@ -1352,43 +1317,19 @@ Notes: "${order.notes || "None"}"
   };
 
   const exportToCSV = () => {
-    const headers = [
-      "Order ID",
-      "Product Name",
-      "Total Price",
-      "Status",
-      "Date",
-      "Customer",
-      "Address",
-    ];
-    const csvContent = [
-      headers.join(","),
-      ...displayedOrders.map((o) =>
-        [
-          o.id,
-          `"${o.product_name.replace(/"/g, '""')}"`,
-          o.total_price,
-          o.status,
-          format(new Date(o.created_at), "yyyy-MM-dd HH:mm:ss"),
-          `"${o.customer_name.replace(/"/g, '""')}"`,
-          `"${o.address.replace(/"/g, '""')}, ${o.city.replace(/"/g, '""')}"`,
-        ].join(","),
-      ),
-    ].join("");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `accounting_orders_export_${format(new Date(), "yyyyMMdd_HHmmss")}.csv`,
-    );
-    link.style.visibility = "hidden";
+    if(displayedOrders.length===0){toast.info("No orders match these filters to export.");return;}
+    const csvContent=safeOrderExportCsv(displayedOrders);
+    const blob=new Blob(["\uFEFF",csvContent],{type:"text/csv;charset=utf-8;"});
+    const link=document.createElement("a");
+    const url=URL.createObjectURL(blob);
+    link.href=url;
+    link.download=`orders_export_${format(new Date(),"yyyyMMdd_HHmmss")}.csv`;
+    link.style.visibility="hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("Orders exported as Spreadsheet for Accounting!");
+    URL.revokeObjectURL(url);
+    toast.success("Filtered order records exported. Totals are not proof of payment.");
   };
 
   const exportToJSON = () => {
@@ -1627,7 +1568,7 @@ Notes: "${order.notes || "None"}"
                             )}
                           </div>
                           <div className="flex items-center gap-2 mt-1">
-                            {order.estimated_delivery_time || calculateDynamicETA(order) ? (
+                            {calculateDynamicETA(order) ? (
                               <div className="flex items-center gap-2 text-xs text-amber-600 font-bold bg-amber-50 px-2 py-1 rounded-lg">
                                 <Timer size={12} />
                                 <span>ETA: {calculateDynamicETA(order)}</span>
@@ -1635,7 +1576,7 @@ Notes: "${order.notes || "None"}"
                             ) : (
                               <div className="flex items-center gap-2 text-xs text-zinc-500 font-bold bg-zinc-50 px-2 py-1 rounded-lg">
                                 <Timer size={12} />
-                                <span>ETA: 20-30 mins</span>
+                                <span>ETA unavailable</span>
                               </div>
                             )}
                             {order.status !== 'completed' && order.status !== 'cancelled' && (
@@ -1690,7 +1631,7 @@ Notes: "${order.notes || "None"}"
                           {order.product_name}
                         </span>
                         <span className="text-on-surface font-semibold">
-                          R {Number(order.total_price || 0).toFixed(2)}
+                          {merchantOrderMoney(order.total_price)}
                         </span>
                       </div>
                     </div>
@@ -1910,7 +1851,7 @@ Notes: "${order.notes || "None"}"
                                 </p>
                               </div>
                             )}
-                            {(order.estimated_delivery_time || calculateDynamicETA(order)) && (
+                            {calculateDynamicETA(order) && (
                               <div className="space-y-1">
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
                                   Est. Delivery
@@ -3538,7 +3479,7 @@ Notes: "${order.notes || "None"}"
                           </div>
                         ) : (
                           <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
-                            <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
+                            <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                             <div className="flex flex-col items-stretch w-full gap-2">
                               {isLimitReached && (
                                 <span className="text-[8px] font-bold text-error leading-none mb-0.5">LIMIT REACHED</span>
@@ -3759,7 +3700,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           ) : (
                             <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
-                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
+                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                               <button
                                 onClick={(e) => {
                                   setPreparingOrderId(order.id);
@@ -3808,7 +3749,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           ) : (
                             <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
-                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
+                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                               {isPickupOrder(order) ? (
                                 <PickupOrderActions order={order} mode="actions" />
                               ) : (
@@ -4005,7 +3946,7 @@ Notes: "${order.notes || "None"}"
 
                         {/* Action buttons */}
                         <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
-                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
+                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                           {isPickupOrder(order) ? (
                             <PickupOrderActions order={order} mode="actions" />
                           ) : (
@@ -4137,7 +4078,7 @@ Notes: "${order.notes || "None"}"
                         </div>
 
                         <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between">
-                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
+                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                           <span className="text-[9px] font-bold text-zinc-500 font-mono uppercase">Done</span>
                         </div>
 
