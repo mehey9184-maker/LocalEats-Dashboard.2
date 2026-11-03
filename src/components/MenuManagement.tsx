@@ -2,7 +2,6 @@ import {MerchantApi} from "../services/MerchantApi";
 import {menuWritesUnavailable,merchantMenuStockLabel,merchantMenuLowStock,merchantMenuOutOfStock,merchantMenuCategoryName,merchantMenuCategories,merchantMenuMatchesCategory,merchantMenuFiltersActive} from "../services/merchantMenuPolicy";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Fuse from "fuse.js";
-import { List } from "react-window";
 import {
   Plus,
   Sparkles,
@@ -33,8 +32,7 @@ import AIMenuScannerModal from "./AIMenuScannerModal";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
 
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const VirtualizedList = List as any;
+const MENU_PAGE_SIZE = 24;
 
 export const DIETARY_TAGS = [
   "Halal",
@@ -59,6 +57,24 @@ const isPlaceholderImage = (url?: string) => {
     url.includes("placeholder.com") ||
     url.includes("via.placeholder") ||
     url.includes("food-placeholder")
+  );
+};
+
+const MenuItemPhoto: React.FC<{imageUrl?:string;name:string;available:boolean}> = ({imageUrl,name,available}) => {
+  const [failed,setFailed]=useState(false);
+  if(failed || isPlaceholderImage(imageUrl))return <FoodPlaceholder size={44} />;
+  return (
+    <img
+      className={cn(
+        "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500",
+        !available && "grayscale opacity-50"
+      )}
+      src={getOptimizedCloudinaryUrl(imageUrl)}
+      alt={name}
+      loading="lazy"
+      decoding="async"
+      onError={()=>setFailed(true)}
+    />
   );
 };
 
@@ -210,6 +226,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState("All");
   const [selectedItems, setSelectedItems] = useState<(number | string)[]>([]);
+  const [visibleCount,setVisibleCount] = useState(MENU_PAGE_SIZE);
+  useEffect(() => { setVisibleCount(MENU_PAGE_SIZE); }, [selectedShopId,searchTerm,filterCategory]);
 
   const [isAiScannerOpen, setIsAiScannerOpen] = useState(false);
   const [editingPriceId, setEditingPriceId] = useState<number | string | null>(null);
@@ -321,6 +339,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   const menuRequest = React.useRef(0);
   const fetchMenu = useCallback(async (_showLoadingSpinner = true) => {
     const request = ++menuRequest.current;
+    setVisibleCount(MENU_PAGE_SIZE);
     setItems([]);
     setMenuError(null);
     setIsMenuLoading(true);
@@ -615,20 +634,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         </button>
 
         <div className="relative h-36 bg-surface-container rounded-xl flex items-center justify-center overflow-hidden shrink-0">
-          {!isPlaceholderImage(item.image_url) ? (
-            <img
-              className={cn(
-                "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500",
-                !item.is_available && "grayscale opacity-50"
-              )}
-              src={getOptimizedCloudinaryUrl(item.image_url)}
-              alt={item.name}
-              loading="lazy"
-              decoding="async"
-            />
-          ) : (
-            <FoodPlaceholder size={44} />
-          )}
+          <MenuItemPhoto key={`${item.id}:${item.image_url ?? ""}`} imageUrl={item.image_url} name={item.name} available={item.is_available} />
           {(!item.is_available || merchantMenuOutOfStock(item.stock_quantity)) && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-xs">
               <span className="bg-error text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg">
@@ -724,13 +730,6 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         </div>
       </div>
     );
-  };
-
-  // 3. REACT-WINDOW VIRTUALIZED LIST ROW RENDERER
-  const VirtualRow = ({ index, style }: { index: number; style: React.CSSProperties }) => {
-    const item = filteredItems[index];
-    if (!item) return null;
-    return <div style={style}>{renderItemCard(item)}</div>;
   };
 
   return (
@@ -855,7 +854,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
           {/* Item Count and Bulk Actions Bar */}
           <div className="flex items-center justify-between px-2">
             <span className="text-xs font-bold text-on-surface-variant">
-              Showing {filteredItems.length} of {items.length} items
+              Showing {Math.min(visibleCount, filteredItems.length)} of {filteredItems.length} items{hasActiveFilters ? ` matching filters (${items.length} total)` : ""}
             </span>
             {filteredItems.length > 0 && (
               <button
@@ -918,22 +917,22 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                 </div>
               )}
             </div>
-          ) : filteredItems.length > 20 ? (
-            /* Virtualized Window for Large Inventory */
-            <div className="bg-surface-container-lowest p-2 rounded-3xl border border-outline-variant/15">
-              <VirtualizedList
-                height={600}
-                itemCount={filteredItems.length}
-                itemSize={220}
-                width="100%"
-              >
-                {VirtualRow}
-              </VirtualizedList>
-            </div>
           ) : (
-            /* Standard Grid for Standard Inventory Size */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredItems.map((item) => renderItemCard(item))}
+            <div className="space-y-4">
+              {/* The original responsive card grid works for every menu size.
+                  Render in batches instead of using the incompatible legacy List props. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredItems.slice(0,visibleCount).map((item) => renderItemCard(item))}
+              </div>
+              {visibleCount < filteredItems.length && (
+                <div className="flex justify-center">
+                  <button type="button"
+                    onClick={()=>setVisibleCount(count=>Math.min(count+MENU_PAGE_SIZE,filteredItems.length))}
+                    className="px-4 py-2.5 rounded-xl bg-surface-container-high text-on-surface text-xs font-bold hover:bg-surface-container-highest border border-outline-variant/20">
+                    Show more items ({filteredItems.length-Math.min(visibleCount,filteredItems.length)} remaining)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
