@@ -12,13 +12,14 @@ test("canonical production Customer and explicit Preview origins pass, lookalike
 test("Customer P5 exact isolated Preview origins do not broaden CORS or change existing integration access",()=>{
  const p5="https://project-x7cvt-qfmsq5x6d-mehey9184-makers-projects.vercel.app";
  const p5Alias="https://project-x7cvt-git-repair-custo-0a45c9-mehey9184-makers-projects.vercel.app";
+ const p6Clean="https://project-x7cvt-f05fzvhhu-mehey9184-makers-projects.vercel.app";
  const integration="https://project-x7cvt-git-integration-c17400-mehey9184-makers-projects.vercel.app";
  const env={
    VERCEL_ENV:"preview",
    CUSTOMER_APP_ORIGIN:integration,
-   CUSTOMER_PROFILE_STAGING_ORIGINS:p5+","+p5Alias,
+   CUSTOMER_PROFILE_STAGING_ORIGINS:p5+","+p5Alias+","+p6Clean,
  };
- for(const origin of [p5,p5Alias,integration])assert.equal(isAllowedOrigin(origin,env),true);
+ for(const origin of [p5,p5Alias,p6Clean,integration])assert.equal(isAllowedOrigin(origin,env),true);
  for(const origin of [
    "http://project-x7cvt-qfmsq5x6d-mehey9184-makers-projects.vercel.app",
    p5+"/",p5+"/api/v1/catalog/shops",p5+".evil.invalid",
@@ -28,9 +29,10 @@ test("Customer P5 exact isolated Preview origins do not broaden CORS or change e
    "null",
  ])assert.equal(isAllowedOrigin(origin,env),false,origin);
  assert.equal(isAllowedOrigin(p5,{...env,VERCEL_ENV:"production"}),false);
+ assert.equal(isAllowedOrigin(p6Clean,{...env,VERCEL_ENV:"production"}),false);
  assert.equal(isAllowedOrigin(integration,{...env,VERCEL_ENV:"production"}),true);
  assert.equal(isAllowedOrigin(p5,{...env,CUSTOMER_PROFILE_STAGING_ORIGINS:p5+"/"}),false);
  assert.equal(isAllowedOrigin(p5,{...env,CUSTOMER_PROFILE_STAGING_ORIGINS:"*"}),false);
- assert.equal(isAllowedOrigin(p5,{...env,CUSTOMER_PROFILE_STAGING_ORIGINS:p5+","+p5Alias+","+p5}),false);
+ assert.equal(isAllowedOrigin(p5,{...env,CUSTOMER_PROFILE_STAGING_ORIGINS:p5+","+p5Alias+","+p6Clean+","+p5}),false);
  assert.equal(isAllowedOrigin(p5,{...env,CUSTOMER_PROFILE_STAGING_ORIGINS:""}),false);
 });
