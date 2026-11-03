@@ -12,6 +12,15 @@ export function merchantOrderMoney(raw:unknown):string{
  const n=merchantOrderTotal(raw);
  return n===null?"Total unavailable":"R "+n.toFixed(2);
 }
+/** Line items are unavailable unless the unit price and quantity are valid. */
+export function merchantReceiptLineAmount(price: unknown, quantity: unknown): string {
+  const amount = merchantOrderTotal(price);
+  if (amount === null || typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity <= 0) {
+    return "Amount unavailable";
+  }
+  const total = amount * quantity;
+  return Number.isFinite(total) && total >= 0 ? "R " + total.toFixed(2) : "Amount unavailable";
+}
 export function safeReceiptHtml(value:unknown):string{
  return String(value??"").replace(/[&<>"']/g,char=>({
   "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;",
