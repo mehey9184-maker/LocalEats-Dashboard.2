@@ -17,3 +17,13 @@ export function merchantDisplayOrderAmount(raw:unknown):number{
  const number=Number(raw);
  return Number.isFinite(number) && number>=0 ? number : NaN;
 }
+
+/** First successful hydration is the baseline, not a new-order event. */
+export function newMerchantPendingOrders(
+  rows:readonly {id:string|number;status:string}[],
+  previous:ReadonlySet<string>|null,
+):{current:Set<string>;newIds:string[]}{
+  const current=new Set(rows.filter(row=>row.status==="pending" && row.id!==null &&
+    row.id!==undefined && String(row.id).trim()!=="").map(row=>String(row.id)));
+  return {current,newIds:previous===null?[]:[...current].filter(id=>!previous.has(id))};
+}
