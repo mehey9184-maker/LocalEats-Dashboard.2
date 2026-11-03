@@ -68,11 +68,13 @@ test('historical payment method and completion never prove payment',()=>{
 import {pickupAmountLabel,pickupItemLineTotal} from '../src/services/merchantPickupPolicy.ts';
 test('pickup payable display uses server total and fee without deriving tax or payment',()=>{
  const persisted={...order,total_price:25,service_fee:0,payment_method:'card_machine'};
- assert.equal(pickupAmountLabel(mapApiOrder(persisted)),'Pay at shop: R 25.00 · Pickup service fee: R 0.00');
- assert.equal(pickupAmountLabel({...persisted,total_price:50}),'Pay at shop: R 50.00 · Pickup service fee: R 0.00');
- assert.equal(pickupAmountLabel({...persisted,total_price:27.5,service_fee:2.5}),'Pay at shop: R 27.50 · Pickup service fee: R 2.50');
+ assert.equal(pickupAmountLabel(mapApiOrder(persisted)),'Total due at shop: R 25.00 · Service fee included: R 0.00');
+ assert.equal(pickupAmountLabel({...persisted,total_price:50}),'Total due at shop: R 50.00 · Service fee included: R 0.00');
+ assert.equal(pickupAmountLabel({...persisted,total_price:27.5,service_fee:2.5}),'Total due at shop: R 27.50 · Service fee included: R 2.50');
  assert.equal(pickupPaymentLabel(persisted),'Payment expected: Card at shop (physical card machine)');
  assert.match(pickupAmountLabel({...persisted,service_fee:undefined}),/unavailable/);
+ assert.equal(pickupAmountLabel({...persisted,payment_status:'paid'}),'Recorded paid total: R 25.00 · Service fee included: R 0.00');
+ assert.throws(()=>pickupAmountLabel({...persisted,payment_status:undefined}));
  assert.throws(()=>pickupAmountLabel({...persisted,total_price:NaN}));
 });
 
