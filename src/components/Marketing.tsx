@@ -29,6 +29,7 @@ import jsPDF from "jspdf";
 import QRCodeLib from "qrcode";
 import { Shop, MenuItem, Order } from "../types";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
+import {merchantMarketingPublishingEnabled,verifiedMarketingStats} from "../services/merchantMarketingTrust";
 import type { User } from "@supabase/supabase-js";
 import { CampaignBuilder } from "./CampaignBuilder";
 import { CustomerReEngagement } from "./marketing/CustomerReEngagement";
@@ -41,6 +42,7 @@ interface MarketingProps {
   shops?: Shop[];
   menuItems?: MenuItem[];
   orders?: Order[];
+  ordersReadState?: "checking"|"confirmed"|"unavailable";
   user?: User | null;
   onNavigateTab?: (tab: string) => void;
 }
@@ -65,6 +67,7 @@ export const Marketing: React.FC<MarketingProps> = ({
   shops = [],
   menuItems = [],
   orders = [],
+  ordersReadState = "checking",
   user = null,
   onNavigateTab,
 }) => {
@@ -103,56 +106,16 @@ export const Marketing: React.FC<MarketingProps> = ({
     return `https://www.localeatssa.co.za/?shopId=${activeShop.id}`;
   }, [activeShop]);
 
-  // High-Level Diner Analytics for Dashboard Summary
-  const shopOrders = useMemo(() => {
-    if (!activeShop) return orders;
-    return orders.filter(
-      (o) =>
-        String(o.shop_id) === String(activeShop.id) ||
-        (activeShop.name && o.shop_name?.toLowerCase() === activeShop.name.toLowerCase())
-    );
-  }, [orders, activeShop]);
-
-  const dinerStats = useMemo(() => {
-    const customerMap = new Map<string, { count: number; spend: number }>();
-    let totalRevenue = 0;
-
-    shopOrders.forEach((ord) => {
-      const phone = ord.customer_phone || ord.phone || "";
-      const name = ord.customer_name || ord.customer || "Diner";
-      const key = phone.trim() || name.trim();
-      const amount = typeof ord.total === "number" ? ord.total : parseFloat(String(ord.total || 0)) || 0;
-      totalRevenue += amount;
-
-      if (!customerMap.has(key)) {
-        customerMap.set(key, { count: 1, spend: amount });
-      } else {
-        const curr = customerMap.get(key)!;
-        curr.count += 1;
-        curr.spend += amount;
-      }
-    });
-
-    const totalUniqueDiners = customerMap.size || (shopOrders.length > 0 ? Math.ceil(shopOrders.length * 0.75) : 0);
-    let repeatCount = 0;
-    customerMap.forEach((val) => {
-      if (val.count > 1) repeatCount += 1;
-    });
-
-    const repeatRate = totalUniqueDiners > 0 ? Math.round((repeatCount / totalUniqueDiners) * 100) : 0;
-    const avgSpend = totalUniqueDiners > 0 ? Math.round(totalRevenue / totalUniqueDiners) : 0;
-
-    return {
-      totalUniqueDiners,
-      repeatCount,
-      repeatRate,
-      avgSpend,
-      totalOrders: shopOrders.length,
-    };
-  }, [shopOrders]);
+  // Never infer revenue, diners or retention from cached/unverified orders.
+  const publishingEnabled = merchantMarketingPublishingEnabled();
+  const dinerStats = useMemo(
+    () => verifiedMarketingStats(orders, activeShop?.id, ordersReadState),
+    [orders, activeShop?.id, ordersReadState]
+  );
 
   // Quick Action Switchers
   const handleLaunchQuickAction = (tool: ToolSubTab) => {
+    if(!publishingEnabled) return;
     setMainSegment("tool_library");
     setActiveTool(tool);
   };
@@ -206,6 +169,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // Copy Store Link Handler
   const copyStoreUrl = () => {
+    if(!publishingEnabled || !activeShop) return;
     navigator.clipboard.writeText(storeUrl);
     setCopiedLink(true);
     toast.success("Store online link copied to clipboard!");
@@ -248,6 +212,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // WhatsApp Action Handlers
   const handleOpenWhatsApp = () => {
+    if(!publishingEnabled) return;
     const encoded = encodeURIComponent(activeMessage);
     const waUrl = `https://api.whatsapp.com/send?text=${encoded}`;
     window.open(waUrl, "_blank");
@@ -255,6 +220,7 @@ export const Marketing: React.FC<MarketingProps> = ({
   };
 
   const handleCopyMessage = () => {
+    if(!publishingEnabled) return;
     navigator.clipboard.writeText(activeMessage);
     setCopiedMsg(true);
     toast.success("WhatsApp pitch copied to clipboard!");
@@ -445,6 +411,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // Download Social Graphic Image
   const handleDownloadSocialGraphic = () => {
+    if(!publishingEnabled) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     try {
@@ -462,6 +429,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // 5. PDF Flyer & Counter Stand Generator (A4 / Table Tent)
   const generatePdfFlyer = () => {
+    if(!publishingEnabled) return;
     try {
       const doc = new jsPDF({
         orientation: "portrait",
@@ -570,7 +538,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <span>Marketing & Customer Growth Studio</span>
               </h2>
               <p className="text-xs text-on-surface-variant">
-                Drive sales, reward loyal diners, and promote your LocalEats store with QR stands, WhatsApp promos & flash deals.
+                Review your shop's verified order activity. Campaigns, links and sharing remain unavailable before launch.
               </p>
             </div>
           </div>
@@ -603,6 +571,12 @@ export const Marketing: React.FC<MarketingProps> = ({
         )}
       </div>
 
+      {!publishingEnabled && (
+        <p role="status" className="text-xs text-on-surface-variant bg-surface-container-lowest rounded-2xl border border-outline-variant/15 px-4 py-3">
+          Marketing Preview only — customer ordering and promotional publishing are not activated. No vouchers, messages or customer-facing campaigns will be sent from this page.
+        </p>
+      )}
+
       {/* 2. PRIMARY 3-SEGMENT NAVIGATION */}
       <div className="bg-surface-container-lowest p-1.5 rounded-2xl border border-outline-variant/15 grid grid-cols-3 gap-2 shadow-xs">
         {/* Segment 1: Dashboard Summary */}
@@ -620,7 +594,10 @@ export const Marketing: React.FC<MarketingProps> = ({
 
         {/* Segment 2: Campaign Builder */}
         <button
-          onClick={() => setMainSegment("campaign_builder")}
+          type="button"
+          disabled={!publishingEnabled}
+          title="Campaign building is unavailable before launch"
+          onClick={() => { if(publishingEnabled) setMainSegment("campaign_builder"); }}
           className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
             mainSegment === "campaign_builder"
               ? "bg-primary text-on-primary shadow-sm"
@@ -633,7 +610,10 @@ export const Marketing: React.FC<MarketingProps> = ({
 
         {/* Segment 3: Tool Library */}
         <button
-          onClick={() => setMainSegment("tool_library")}
+          type="button"
+          disabled={!publishingEnabled}
+          title="Marketing tools are not activated in this Preview"
+          onClick={() => { if(publishingEnabled) setMainSegment("tool_library"); }}
           className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
             mainSegment === "tool_library"
               ? "bg-primary text-on-primary shadow-sm"
@@ -938,7 +918,7 @@ export const Marketing: React.FC<MarketingProps> = ({
       {/* ========================================================================= */}
       {/* SEGMENT 2: CAMPAIGN BUILDER (DEDICATED INTERACTIVE CAMPAIGN & VOUCHERS)   */}
       {/* ========================================================================= */}
-      {mainSegment === "campaign_builder" && (
+      {publishingEnabled && mainSegment === "campaign_builder" && (
         <CampaignBuilder
           activeShop={activeShop}
           storeMenuItems={storeMenuItems}
@@ -949,7 +929,7 @@ export const Marketing: React.FC<MarketingProps> = ({
       {/* ========================================================================= */}
       {/* SEGMENT 3: TOOL LIBRARY (CATEGORIZED TOOL SUITE)                          */}
       {/* ========================================================================= */}
-      {mainSegment === "tool_library" && (
+      {publishingEnabled && mainSegment === "tool_library" && (
         <div className="space-y-6">
           {/* Sub-Navigation for Tool Library */}
           <div className="flex items-center gap-1.5 p-1.5 bg-surface-container-lowest rounded-2xl border border-outline-variant/15 overflow-x-auto shadow-xs">
