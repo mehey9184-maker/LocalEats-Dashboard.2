@@ -272,12 +272,7 @@ export const useKitchenAlerter = (orders: Order[], ordersViewed = false, shopSco
       if(!pendingSet.has(id))acknowledgedPendingIdsRef.current.delete(id);
     }
     if(ordersViewed)pendingIds.forEach(id=>acknowledgedPendingIdsRef.current.add(id));
-    const newlyPending=pendingIds.some(id=>!previous.has(id));
     const needsAttention=pendingIds.some(id=>!acknowledgedPendingIdsRef.current.has(id));
-    if(newlyPending && !ordersViewed){
-      // Pending IDs are already tracked above; keep siren active until the
-      // queue is acknowledged rather than restart it on each API refresh.
-    }
     if(needsAttention && isAudioEnabled && !ordersViewed &&
        document.visibilityState==="visible")startSiren();
     else stopSiren();
