@@ -1,0 +1,37 @@
+name: Merchant Orders O2 Confirmed Actions Preview
+on:
+  push:
+    branches: [repair/merchant-orders-o2-verified-actions-01]
+  pull_request:
+    branches: [repair/merchant-orders-o1-trust-01]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-orders-o2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288ca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: O2/O1 orders and H4/H3/H2/H1 trust regressions
+        run: node --experimental-strip-types --test tests/merchant-orders-o2-confirmed-actions.test.mjs tests/merchant-orders-o1-trust.test.mjs tests/merchant-dashboard-h4-sast-dates.test.mjs tests/merchant-dashboard-h3-freshness.test.mjs tests/merchant-dashboard-h2-layout.test.mjs tests/merchant-dashboard-h1-trust.test.mjs
+      - name: Merchant activation, pickup and availability checks
+        run: |
+          node --experimental-strip-types --test tests/merchant-activation.test.mjs tests/merchant-pickup.test.mjs
+          npm run test:merchant-availability
+      - name: Pure helper ESLint
+        run: npx eslint src/services/merchantOrdersTrust.ts src/services/merchantDashboardLayout.ts
+      - name: No new lint errors compared with accepted Orders O1
+        run: node tests/merchant-dashboard-h1-lint-baseline.mjs
+        env:
+          MERCHANT_DASHBOARD_LINT_BASE: "71288898f0cd14acd4d314fb1f856aca1dd3a34c"
+      - name: Full Merchant Preview build
+        run: npm run build
