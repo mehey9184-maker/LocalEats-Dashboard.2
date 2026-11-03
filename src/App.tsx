@@ -2384,6 +2384,7 @@ function App() {
                   shops={shops}
                   menuItems={menuItems}
                   orders={orders}
+                  ordersReadState={ordersReadState}
                   user={user}
                   onNavigateTab={setActiveTab}
                 />
