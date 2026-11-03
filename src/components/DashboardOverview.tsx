@@ -1,5 +1,5 @@
 ﻿import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
-import {completedOrderValue,completedOrderTotal,completedDeliveryArea} from "../services/merchantDashboardTrust";
+import {completedOrderValue,completedOrderTotal,completedDeliveryArea,safeOrderCsvCell} from "../services/merchantDashboardTrust";
 import { FoodPlaceholder } from "../components/MenuManagement";
 import { isPlaceholderImage } from "../constants";
 import { updateFirestoreShop } from "../lib/firebase";
@@ -853,19 +853,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       return;
     }
 
-    const headers = ["Order ID", "Product", "Price", "Status", "Date"];
-    const csvContent = [
-      headers.join(","),
-      ...weeklyOrders.map((o) =>
-        [
-          o.id,
-          `"${o.product_name}"`,
-          o.total_price,
-          o.status,
-          new Date(o.created_at).toLocaleDateString(),
-        ].join(","),
-      ),
-    ].join("");
+    const headers = ["Order ID", "Product", "Order Total (R)", "Status", "Date"];
+    const csvContent=[
+      headers.map(safeOrderCsvCell).join(","),
+      ...weeklyOrders.map(o=>[
+        o.id,o.product_name,o.total_price,o.status,
+        new Date(o.created_at).toLocaleDateString(),
+      ].map(safeOrderCsvCell).join(",")),
+    ].join("\r\n");
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
