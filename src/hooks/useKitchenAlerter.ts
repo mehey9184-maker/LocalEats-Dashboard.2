@@ -264,6 +264,7 @@ export const useKitchenAlerter = (orders: Order[], ordersViewed = false, shopSco
       ? observedPendingIdsRef.current.ids : null;
     observedPendingIdsRef.current={scope:shopScope,ids:pendingSet};
     if(previous===null){
+      acknowledgedPendingIdsRef.current.clear();
       pendingIds.forEach(id=>acknowledgedPendingIdsRef.current.add(id));
       stopSiren();
       return;
