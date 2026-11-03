@@ -1,4 +1,6 @@
 import {PickupOrderActions} from "./PickupOrderActions";
+import {merchantOrderMoney,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
+import {summarizeKitchenQueue} from "../services/merchantDashboardLayout";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled,pickupItemLineTotal} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
 import React, { useState, useEffect, useMemo, useRef } from "react";
@@ -16,18 +18,14 @@ import {
   ShoppingBag,
   ArrowRight,
   TrendingUp,
-  Store,
   Send,
-  Trash2,
   Bell,
   MapPin,
   Zap,
   Calendar,
   Eye,
   AlertTriangle,
-  Inbox,
   Volume2,
-  PauseCircle,
   ChevronRight,
   Activity,
   Wifi,
@@ -102,7 +100,6 @@ export interface OrdersManagementProps {
   onUpdateStatus: (id: string, status: OrderStatus, message?: string, estimatedTime?: string) => Promise<void> | void;
   onDispatchToRider?: (id: string, riderId: string, riderName?: string, riderPhone?: string) => Promise<void> | void;
   onConvertOrderToPickup?: (id: string) => Promise<void> | void;
-  onDeleteAllOrders: () => void;
   loading: boolean;
   onRefresh: () => void;
   kitchenMode: boolean;
@@ -298,7 +295,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   onUpdateStatus,
   onDispatchToRider,
   onConvertOrderToPickup,
-  onDeleteAllOrders,
   loading,
   onRefresh,
   kitchenMode,
@@ -320,6 +316,14 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   clearPrintQueue,
 }) => {
   const { subscribeWithAuthGuard } = useAuthGuard();
+  const handleRiderNudge=async(riderId:string,message:string)=>{
+    try{
+      await sendRiderNudge(riderId,message);
+      toast.info("Rider nudge request saved. Device delivery is not confirmed.");
+    }catch{
+      toast.error("Rider nudge was not confirmed. Please retry from a connected session.");
+    }
+  };
   const [viewMode, setViewMode] = useState<"active" | "history">("active");
   
   const [printerDiagStatus, setPrinterDiagStatus] = useState<{
@@ -734,41 +738,23 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   );
   const [estimatedTime, setEstimatedTime] = useState("20-30 mins");
 
-  const avgPrepTime = useMemo(() => {
-    const pendingCount = orders.filter(
-      (o) => o.status === "pending" || o.status === "preparing",
-    ).length;
-    // Base 12 mins + 1.5 mins per pending order, capped at 45
-    return Number(Math.min(12 + pendingCount * 1.5, 45)).toFixed(1);
-  }, [orders]);
-
-  const submitRiderRating = async (orderId: string, riderId: string, rating: number) => {
-    if(!rating) return;
-    try {
-      const existingOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
-      existingOverrides[orderId] = { ...existingOverrides[orderId], merchant_rating: rating, updated_at: new Date().toISOString() };
-      localStorage.setItem("localeats_order_overrides", JSON.stringify(existingOverrides));
-    } catch {
-      // ignore
+  const submitRiderRating = async (orderId:string,riderId:string,rating:number)=>{
+    if(!Number.isInteger(rating) || rating<1 || rating>5)return;
+    try{
+      const {data:ratingsData,error}=await supabase
+        .from("orders").select("merchant_rating").eq("rider_id",riderId).not("merchant_rating","is",null);
+      if(error)throw error;
+      const prior=((ratingsData as unknown as {merchant_rating:number}[])||[])
+        .map(x=>x.merchant_rating).filter(x=>Number.isFinite(x)&&x>=1&&x<=5);
+      const avgRating=([...prior,rating].reduce((a,b)=>a+b,0))/(prior.length+1);
+      await OrderService.rateRider(orderId,riderId,rating,avgRating);
+      toast.info("Rating request completed. Reload Orders to verify the recorded rating.");
+      setRatingOrderId(null);
+      setRatingValue(0);
+    }catch(error){
+      console.warn("Rating was not confirmed by the service:",error);
+      toast.error("Rider rating could not be verified. It was not saved locally.");
     }
-    try {
-      const { data: ratingsData } = await supabase
-        .from('orders')
-        .select('merchant_rating')
-        .eq('rider_id', riderId)
-        .not('merchant_rating', 'is', null);
-
-      const items = (ratingsData as unknown as { merchant_rating: number }[]) || [];
-      const currentRatings = items.map(i => i.merchant_rating || 0);
-      const newRatings = [...currentRatings, rating];
-      const avgRating = newRatings.reduce((a, b) => a + b, 0) / newRatings.length;
-
-      await OrderService.rateRider(orderId, riderId, rating, avgRating);
-    } catch (error) {
-      console.warn("Rating update warning (saved locally):", error);
-    }
-    setRatingOrderId(null);
-    setRatingValue(0);
   };
 
   const handleIframePrint = (order: Order, formatOption: "80mm" | "58mm", includeAddress: boolean) => {
@@ -796,13 +782,13 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
           const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
           return `
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-              <span>${q}x ${n}</span>
+              <span>${safeReceiptHtml(q)}x ${safeReceiptHtml(n)}</span>
               <span>R${Number(p * q).toFixed(2)}</span>
             </div>
           `;
         })
         .join("") ||
-        `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${order.product_name}</span><span>R${Number(order.total_price || 0).toFixed(2)}</span></div>`;
+        `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span></div>`;
 
       const widthOfText = formatOption === "58mm" ? "54mm" : "76mm";
       const printingPageSize = formatOption === "58mm" ? "58mm auto" : "80mm auto";
@@ -810,7 +796,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
       doc.write(`
         <html>
           <head>
-            <title>Receipt #LE-${order.id}</title>
+            <title>Receipt #LE-${safeReceiptHtml(order.id)}</title>
             <style>
               @page {
                 size: ${printingPageSize};
@@ -862,7 +848,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             <div class="header">
               <h3 style="margin: 0 0 4px 0; text-transform: uppercase; font-size: 16px; letter-spacing: 1px;">LOCALEATS</h3>
               <p style="margin: 2px 0; font-size: 11px;">EATS WITH LOCAL ROOTS</p>
-              <p style="margin: 4px 0 2px 0;">Order ID: #LE-${order.id}</p>
+              <p style="margin: 4px 0 2px 0;">Order ID: #LE-${safeReceiptHtml(order.id)}</p>
               <p style="margin: 2px 0;">${new Date(order.created_at).toLocaleString()}</p>
               <p style="margin: 2px 0; font-weight: bold; text-transform: uppercase;">Fulfillment: ${!isOrderDelivery(order) ? "COLLECTION" : "DELIVERY"}</p>
             </div>
@@ -872,14 +858,14 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             <div class="total">
               <div style="display: flex; justify-content: space-between;">
                 <span>GRAND TOTAL</span>
-                <span>R${Number(order.total_price || 0).toFixed(2)}</span>
+                <span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span>
               </div>
             </div>
             <div class="footer">
-              <p style="margin: 2px 0; font-weight: bold;">Customer: ${order.customer_name || "Guest"}</p>
-              ${order.phone ? `<p style="margin: 2px 0;">Phone: ${order.phone}</p>` : ""}
-              ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${order.address}, ${order.city}</p>` : ""}
-              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${order.notes}"</p>` : ""}
+              <p style="margin: 2px 0; font-weight: bold;">Customer: ${safeReceiptHtml(order.customer_name || "Guest")}</p>
+              ${order.phone ? `<p style="margin: 2px 0;">Phone: ${safeReceiptHtml(order.phone)}</p>` : ""}
+              ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${safeReceiptHtml(order.address)}, ${safeReceiptHtml(order.city)}</p>` : ""}
+              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${safeReceiptHtml(order.notes)}"</p>` : ""}
               <p style="margin: 12px 0 0 0; font-weight: bold; font-size: 12px;">THANK YOU FOR SUPPORTING LOCAL!</p>
             </div>
           </body>
@@ -932,20 +918,20 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
             return `
               <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <span>${q}x ${n}</span>
+                <span>${safeReceiptHtml(q)}x ${safeReceiptHtml(n)}</span>
                 <span>R${Number(p * q).toFixed(2)}</span>
               </div>
             `;
           })
           .join("") ||
-          `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${order.product_name}</span><span>R${Number(order.total_price || 0).toFixed(2)}</span></div>`;
+          `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span></div>`;
 
         return `
           <div class="receipt">
             <div class="header">
               <h3 style="margin: 0 0 4px 0; text-transform: uppercase; font-size: 16px; letter-spacing: 1px;">LOCALEATS</h3>
               <p style="margin: 2px 0; font-size: 11px;">EATS WITH LOCAL ROOTS</p>
-              <p style="margin: 4px 0 2px 0;">Order ID: #LE-${order.id}</p>
+              <p style="margin: 4px 0 2px 0;">Order ID: #LE-${safeReceiptHtml(order.id)}</p>
               <p style="margin: 2px 0;">${new Date(order.created_at).toLocaleString()}</p>
               <p style="margin: 2px 0; font-weight: bold; text-transform: uppercase;">Fulfillment: ${!isOrderDelivery(order) ? "COLLECTION" : "DELIVERY"}</p>
             </div>
@@ -957,15 +943,15 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             <div class="total">
               <div style="display: flex; justify-content: space-between;">
                 <span>GRAND TOTAL</span>
-                <span>R${Number(order.total_price || 0).toFixed(2)}</span>
+                <span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span>
               </div>
             </div>
 
             <div class="footer">
-              <p style="margin: 2px 0; font-weight: bold;">Customer: ${order.customer_name || "Guest"}</p>
-              ${order.phone ? `<p style="margin: 2px 0;">Phone: ${order.phone}</p>` : ""}
-              ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${order.address}, ${order.city}</p>` : ""}
-              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${order.notes}"</p>` : ""}
+              <p style="margin: 2px 0; font-weight: bold;">Customer: ${safeReceiptHtml(order.customer_name || "Guest")}</p>
+              ${order.phone ? `<p style="margin: 2px 0;">Phone: ${safeReceiptHtml(order.phone)}</p>` : ""}
+              ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${safeReceiptHtml(order.address)}, ${safeReceiptHtml(order.city)}</p>` : ""}
+              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${safeReceiptHtml(order.notes)}"</p>` : ""}
               <p style="margin: 12px 0 0 0; font-weight: bold; font-size: 12px;">THANK YOU FOR SUPPORTING LOCAL!</p>
             </div>
           </div>
@@ -1059,14 +1045,20 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
   const copyReceiptToClipboard = (order: Order) => {
     const itemsText = safeGetOrderItems(order.items)
-      .map((i) => {
-        const isObj = typeof i === "object" && i !== null;
-        const p = isObj && "price" in i ? (i as { price: number }).price : (Number(order.total_price) || 0);
-        const q = isObj && "quantity" in i ? (i as { quantity: number }).quantity : 1;
-        const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
-        return `${q}x ${n.padEnd(22)} R${(p * q).toFixed(2)}`;
+      .map((item) => {
+        const entry = typeof item === "object" && item !== null
+          ? item as { name?: unknown; price?: unknown; quantity?: unknown }
+          : null;
+        const name = String(entry?.name ?? item);
+        const quantity = Number(entry?.quantity ?? 1);
+        const price = entry?.price == null ? NaN : Number(entry.price);
+        const validQuantity = Number.isFinite(quantity) && quantity > 0;
+        const lineTotal = validQuantity && Number.isFinite(price) && price >= 0
+          ? merchantOrderMoney(price * quantity)
+          : "Amount unavailable";
+        return `${validQuantity ? quantity : "?"}x ${name} ${lineTotal}`;
       })
-      .join("") || `1x ${order.product_name.padEnd(22)} R${(Number(order.total_price) || 0).toFixed(2)}`;
+      .join("\n") || `1x ${order.product_name} ${merchantOrderMoney(order.total_price)}`;
 
     const textReceipt = `
 ========================================
@@ -1077,7 +1069,7 @@ Type: ${!isOrderDelivery(order) ? "COLLECTION" : "DELIVERY"}
 ----------------------------------------
 ${itemsText}
 ----------------------------------------
-TOTAL: R${Number(order.total_price || 0).toFixed(2)}
+TOTAL: ${merchantOrderMoney(order.total_price)}
 ========================================
 Customer: ${order.customer_name || "Guest"}
 Phone: ${order.phone || "N/A"}
@@ -1087,38 +1079,12 @@ Notes: "${order.notes || "None"}"
     `.trim();
 
     navigator.clipboard.writeText(textReceipt)
-      .then(() => toast.success("Receipt copied as plain-text! Ready to send on WhatsApp."))
+      .then(() => toast.success("Receipt copied as plain text."))
       .catch(() => toast.error("Failed to copy receipt to clipboard"));
   };
 
-  const calculateDynamicETA = (order: Order) => {
-    if (!order.rider_id || !order.lat || !order.lng || order.delivery_status === "delivered") {
-       return order.estimated_delivery_time || "20-30 mins";
-    }
-
-    const assignedRider = connectedRiders.find((r) => r.rider_id === order.rider_id) as RiderConnection & { current_latitude?: number, current_longitude?: number };
-    if (!assignedRider || !assignedRider.current_latitude || !assignedRider.current_longitude) {
-       return order.estimated_delivery_time || "20-30 mins";
-    }
-
-    const R = 6371;
-    const dLat = (order.lat - assignedRider.current_latitude) * Math.PI / 180;
-    const dLon = (order.lng - assignedRider.current_longitude) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(assignedRider.current_latitude * Math.PI / 180) * Math.cos(order.lat * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-    const d = R * c;
-
-    const timeMinutes = Math.max(5, Math.round(d * 4)); // 15km/h avg
-
-    if (order.delivery_status === "finding_rider" || order.delivery_status === "accepted") {
-        return `${Math.round(timeMinutes + Number(avgPrepTime))} mins`;
-    }
-
-    return `${timeMinutes} mins`;
-  };
+  // Do not invent GPS tracking or travel-time estimates from an assumed speed.
+  const calculateDynamicETA=(order:Order)=>recordedDeliveryETA(order.estimated_delivery_time);
 
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
@@ -1146,10 +1112,6 @@ Notes: "${order.notes || "None"}"
     Record<string, boolean>
   >({});
   const prevOrdersRef = useRef<Order[]>([]);
-  const [maxConcurrentOrders, setMaxConcurrentOrders] = useState(() => {
-    return Number(localStorage.getItem("maxConcurrentOrders")) || 10;
-  });
-
   useEffect(() => {
     if (prevOrdersRef.current.length > 0) {
       const changes: Record<string, boolean> = {};
@@ -1176,15 +1138,6 @@ Notes: "${order.notes || "None"}"
     prevOrdersRef.current = orders;
   }, [orders]);
 
-  useEffect(() => {
-    localStorage.setItem("maxConcurrentOrders", maxConcurrentOrders.toString());
-  }, [maxConcurrentOrders]);
-
-  const activeCount = orders.filter(
-    (o) => o.status !== "completed" && o.status !== "cancelled",
-  ).length;
-  const isLimitReached = activeCount >= maxConcurrentOrders;
-
   // Calculate customer loyalty
   const customerOrderCounts = orders.reduce(
     (acc: Record<string, number>, order) => {
@@ -1194,8 +1147,6 @@ Notes: "${order.notes || "None"}"
     {},
   );
 
-  const [alertsEnabled, setAlertsEnabled] = useState(true);
-  const [ordersPaused, setOrdersPaused] = useState(false);
   const [filterStatus, setFilterStatus] = useState<OrderStatus | "All">("All");
   const [orderTypeFilter, setOrderTypeFilter] = useState<"All" | "delivery" | "collection">("All");
   const [sortField, setSortField] = useState<
@@ -1352,43 +1303,19 @@ Notes: "${order.notes || "None"}"
   };
 
   const exportToCSV = () => {
-    const headers = [
-      "Order ID",
-      "Product Name",
-      "Total Price",
-      "Status",
-      "Date",
-      "Customer",
-      "Address",
-    ];
-    const csvContent = [
-      headers.join(","),
-      ...displayedOrders.map((o) =>
-        [
-          o.id,
-          `"${o.product_name.replace(/"/g, '""')}"`,
-          o.total_price,
-          o.status,
-          format(new Date(o.created_at), "yyyy-MM-dd HH:mm:ss"),
-          `"${o.customer_name.replace(/"/g, '""')}"`,
-          `"${o.address.replace(/"/g, '""')}, ${o.city.replace(/"/g, '""')}"`,
-        ].join(","),
-      ),
-    ].join("");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `accounting_orders_export_${format(new Date(), "yyyyMMdd_HHmmss")}.csv`,
-    );
-    link.style.visibility = "hidden";
+    if(displayedOrders.length===0){toast.info("No orders match these filters to export.");return;}
+    const csvContent=safeOrderExportCsv(displayedOrders);
+    const blob=new Blob(["\uFEFF",csvContent],{type:"text/csv;charset=utf-8;"});
+    const link=document.createElement("a");
+    const url=URL.createObjectURL(blob);
+    link.href=url;
+    link.download=`orders_export_${format(new Date(),"yyyyMMdd_HHmmss")}.csv`;
+    link.style.visibility="hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("Orders exported as Spreadsheet for Accounting!");
+    URL.revokeObjectURL(url);
+    toast.success("Filtered order records exported. Totals are not proof of payment.");
   };
 
   const exportToJSON = () => {
@@ -1627,7 +1554,7 @@ Notes: "${order.notes || "None"}"
                             )}
                           </div>
                           <div className="flex items-center gap-2 mt-1">
-                            {order.estimated_delivery_time || calculateDynamicETA(order) ? (
+                            {calculateDynamicETA(order) ? (
                               <div className="flex items-center gap-2 text-xs text-amber-600 font-bold bg-amber-50 px-2 py-1 rounded-lg">
                                 <Timer size={12} />
                                 <span>ETA: {calculateDynamicETA(order)}</span>
@@ -1635,7 +1562,7 @@ Notes: "${order.notes || "None"}"
                             ) : (
                               <div className="flex items-center gap-2 text-xs text-zinc-500 font-bold bg-zinc-50 px-2 py-1 rounded-lg">
                                 <Timer size={12} />
-                                <span>ETA: 20-30 mins</span>
+                                <span>ETA unavailable</span>
                               </div>
                             )}
                             {order.status !== 'completed' && order.status !== 'cancelled' && (
@@ -1690,7 +1617,7 @@ Notes: "${order.notes || "None"}"
                           {order.product_name}
                         </span>
                         <span className="text-on-surface font-semibold">
-                          R {Number(order.total_price || 0).toFixed(2)}
+                          {merchantOrderMoney(order.total_price)}
                         </span>
                       </div>
                     </div>
@@ -1910,7 +1837,7 @@ Notes: "${order.notes || "None"}"
                                 </p>
                               </div>
                             )}
-                            {(order.estimated_delivery_time || calculateDynamicETA(order)) && (
+                            {calculateDynamicETA(order) && (
                               <div className="space-y-1">
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
                                   Est. Delivery
@@ -2026,7 +1953,7 @@ Notes: "${order.notes || "None"}"
                                     </p>
                                     {order.rider_id &&
                                       order.delivery_status !== "delivered" && (
-                                        <button disabled={isPickupOrder(order)}
+                                        <button disabled title="Rider reassignment requires server authorization"
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             onUnassignRider(order.id);
@@ -2035,7 +1962,7 @@ Notes: "${order.notes || "None"}"
                                             isRiderTimeout ? "bg-red-500 text-white shadow hover:bg-red-600" : "bg-red-100 text-red-600 hover:bg-red-200"
                                           )}
                                         >
-                                          {isRiderTimeout ? "Unassign & Re-broadcast" : "Remove Rider"}
+                                          Rider reassignment unavailable
                                         </button>
                                       )}
                                   </div>
@@ -2060,75 +1987,10 @@ Notes: "${order.notes || "None"}"
                               </div>
 
                               {order.delivery_status && (
-                                <div className="mt-4 space-y-2" onClick={(e) => e.stopPropagation()}>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                                      Update Delivery Status
-                                    </span>
-                                  </div>
-                                  <div className="flex gap-2 text-xs">
-                                    {["finding_rider", "picked_up", "delivered"].map(status => (
-                                      <button
-                                        key={status}
-                                        onClick={async (e) => {
-                                          e.stopPropagation();
-                                          try {
-                                            const existingOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
-                                            existingOverrides[order.id] = { ...existingOverrides[order.id], delivery_status: status, updated_at: new Date().toISOString() };
-                                            localStorage.setItem("localeats_order_overrides", JSON.stringify(existingOverrides));
-                                          } catch {
-                                            // ignore
-                                          }
-                                          try {
-      await OrderService.updateDeliveryStatus(order.id, status);
-    } catch (error) {
-      console.warn("Delivery status database sync warning (saved locally):", error);
-    }
-                                          toast.success(`Delivery status: ${status.replace("_", " ")}`);
-                                        }}
-                                        className={cn(
-                                          "px-3 py-1.5 rounded-lg font-bold border transition-colors flex-1 capitalize",
-                                          order.delivery_status === status ? "bg-primary text-white border-primary shadow-sm shadow-primary/20" : "bg-surface-container hover:bg-surface-container-high border-outline-variant/10 text-on-surface-variant"
-                                        )}
-                                      >
-                                        {status.replace("_", " ")}
-                                      </button>
-                                    ))}
-                                  </div>
-
-                                  {order.delivery_status === "picked_up" && (
-                                    <div className="w-full h-32 bg-stone-100 dark:bg-stone-900 rounded-xl overflow-hidden relative border border-outline-variant/10 mt-4 flex items-center justify-center">
-                                       <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] mix-blend-overlay"></div>
-
-                                       {/* Mock Map Route */}
-                                       <div className="absolute top-1/2 left-1/4 right-1/4 h-1 border-t-2 border-dashed border-primary/40 -translate-y-1/2"></div>
-
-                                       <div className="absolute left-1/4 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-full p-1 shadow-md z-10">
-                                         <Store size={14} className="text-secondary" />
-                                       </div>
-                                       <div className="absolute right-1/4 top-1/2 translate-x-1/2 -translate-y-1/2 bg-white rounded-full p-1 shadow-md z-10">
-                                          <MapPin size={14} className="text-primary" />
-                                       </div>
-
-                                       {/* Moving Rider */}
-                                       <motion.div 
-                                         animate={{ x: ["0%", "100%", "0%"] }}
-                                         transition={{ repeat: Infinity, duration: 15, ease: "linear" }}
-                                         className="absolute left-1/4 right-1/4 top-1/2 -translate-y-1/2 z-20 flex items-center justify-start pointer-events-none"
-                                       >
-                                         <div className="relative -ml-4 -mt-6">
-                                            <div className="bg-primary text-white rounded-full p-2 shadow-lg drop-shadow-md border-2 border-white">
-                                              <Bike size={16} />
-                                            </div>
-                                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                                               <span className="text-[9px] font-black uppercase text-primary tracking-widest bg-white/95 px-2 py-0.5 rounded shadow-sm border border-primary/10">
-                                                 Live ETA: 3 min
-                                               </span>
-                                            </div>
-                                         </div>
-                                       </motion.div>
-                                    </div>
-                                  )}
+                                <div className="mt-4 rounded-xl bg-surface-container p-3 border border-outline-variant/10" role="status">
+                                  <p className="text-[10px] font-extrabold uppercase text-on-surface-variant">Delivery status from order record</p>
+                                  <p className="mt-1 font-bold text-xs text-on-surface capitalize">{order.delivery_status.replaceAll("_"," ")}</p>
+                                  <p className="text-[10px] text-on-surface-variant mt-1">Changes must be confirmed through the authorized rider/order workflow. Live rider tracking is not available on this screen.</p>
                                 </div>
                               )}
 
@@ -2309,7 +2171,7 @@ Notes: "${order.notes || "None"}"
                                         </div>
                                       </div>
                                     ) : (
-                                      <button disabled={isPickupOrder(order)}
+                                      <button disabled title="Rider assignment requires a server-authorized workflow"
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           if (connectedRiders.length > 0) {
@@ -2324,9 +2186,7 @@ Notes: "${order.notes || "None"}"
                                           size={16}
                                           className="group-hover:animate-bounce"
                                         />
-                                        {connectedRiders.length > 0
-                                          ? `Tag Rider (${connectedRiders.length} Online)`
-                                          : "Invoke Rider Dispatch (R 5.00)"}
+                                        Rider assignment unavailable
                                       </button>
                                     )}
                                   </div>
@@ -2346,25 +2206,7 @@ Notes: "${order.notes || "None"}"
                         <div className="flex items-center gap-3">
                           {order.status === "pending" && (
                             <div className="flex-1 flex flex-col gap-2">
-                              {isOrderDelivery(order) &&
-                                !order.delivery_status && (
-                                  <button disabled={isPickupOrder(order)}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onRequestRider(order.id);
-                                    }}
-                                    className={cn(
-                                      "w-full bg-orange-600 text-white font-black rounded-full shadow-lg hover:bg-orange-700 transition-all mb-2 flex items-center justify-center gap-2 border-2 border-orange-400/30 py-4",
-                                      kitchenMode ? "text-xl" : "text-sm",
-                                    )}
-                                  >
-                                    <Rocket
-                                      size={20}
-                                      className="animate-pulse"
-                                    />
-                                    REQUEST RIDER NOW
-                                  </button>
-                                )}
+                              
                               {acceptingOrderId === order.id ? (
                                 <motion.div
                                   initial={{ opacity: 0, y: 10 }}
@@ -2418,18 +2260,11 @@ Notes: "${order.notes || "None"}"
                                 </motion.div>
                               ) : (
                                 <div className="space-y-2">
-                                  {isLimitReached && (
-                                    <div className="flex items-center gap-2 p-2 bg-error/10 text-error rounded-lg text-[10px] font-bold">
-                                      <AlertCircle size={12} />
-                                      ORDER LIMIT REACHED ({maxConcurrentOrders}
-                                      )
-                                    </div>
-                                  )}
                                   <button
                                     onClick={() =>
                                       setAcceptingOrderId(order.id)
                                     }
-                                    disabled={isPickupOrder(order) || (isLimitReached)}
+                                    disabled={isPickupOrder(order)}
                                     className={cn(
                                       "w-full bg-primary text-white font-bold rounded-full shadow-md hover:bg-primary-container transition-colors disabled:opacity-50 disabled:grayscale",
                                       kitchenMode
@@ -2446,25 +2281,7 @@ Notes: "${order.notes || "None"}"
                           {(order.status === "preparing" ||
                             order.status === "accepted") && (
                             <div className="flex-1 flex flex-col gap-2">
-                              {isOrderDelivery(order) &&
-                                !order.delivery_status && (
-                                  <button disabled={isPickupOrder(order)}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onRequestRider(order.id);
-                                    }}
-                                    className={cn(
-                                      "w-full bg-orange-600 text-white font-black rounded-full shadow-lg hover:bg-orange-700 transition-all mb-2 flex items-center justify-center gap-2 border-2 border-orange-400/30 py-4",
-                                      kitchenMode ? "text-xl" : "text-sm",
-                                    )}
-                                  >
-                                    <Rocket
-                                      size={20}
-                                      className="animate-pulse"
-                                    />
-                                    REQUEST RIDER NOW
-                                  </button>
-                                )}
+                              
                               {order.status === "accepted" && (
                                 preparingOrderId === order.id ? (
                                   <motion.div
@@ -2582,29 +2399,13 @@ Notes: "${order.notes || "None"}"
                               )}
                             </div>
                           )}
-                          {order.status === "ready" && (
-                            <button disabled={isPickupOrder(order)}
-                              onClick={() =>
-                                onUpdateStatus(order.id, "completed")
-                              }
-                              className={cn(
-                                "flex-1 bg-tertiary text-white font-bold rounded-full hover:bg-tertiary-container transition-colors shadow-md",
-                                kitchenMode ? "py-5 text-lg" : "py-3 text-sm",
-                              )}
-                            >
-                              Mark as Completed
-                            </button>
-                          )}
+                          
                           <div className="flex gap-2">
                             {order.rider_id && order.status !== "completed" && (
                               <button
                                 onClick={() => {
                                   const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
-                                  sendRiderNudge(
-                                    order.rider_id!,
-                                    nudgeMessage
-                                  );
-                                  toast.success("Rider nudged successfully!");
+                                  void handleRiderNudge(order.rider_id!,nudgeMessage);
                                 }}
                                 className={cn(
                                   "bg-amber-100 text-amber-700 rounded-full hover:bg-amber-200 transition-all font-bold flex flex-1 items-center justify-center gap-2",
@@ -2644,22 +2445,7 @@ Notes: "${order.notes || "None"}"
                             >
                               <Printer size={kitchenMode ? 24 : 18} />
                             </button>
-                            {order.status !== "completed" &&
-                              order.status !== "cancelled" && (
-                                <button disabled={isPickupOrder(order)}
-                                  onClick={() => {
-                                    setCancellingOrder(order);
-                                    setCancelReasonPreset("Out of ingredients / Items unavailable");
-                                    setCustomCancelExplanation("Kitchen is temporarily out of key ingredients.");
-                                  }}
-                                  className={cn(
-                                    "ml-auto bg-error/10 text-error rounded-full hover:bg-error/20 transition-all font-bold tracking-widest uppercase text-[10px]",
-                                    kitchenMode ? "px-6 py-2" : "px-4 py-2",
-                                  )}
-                                >
-                                  Cancel Order
-                                </button>
-                              )}
+                            
                           </div>
                         </div>
 
@@ -2776,16 +2562,7 @@ Notes: "${order.notes || "None"}"
           </div>
           
           <div className="hidden md:flex flex-wrap gap-3 justify-start md:justify-end shrink-0">
-            <button
-              onClick={() => {
-                console.log("Clearing all orders...");
-                onDeleteAllOrders();
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-error/10 text-error rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-error/20 transition-all cursor-pointer relative z-20"
-            >
-              <Trash2 size={16} className="md:w-[18px] md:h-[18px]" />
-              Clear All
-            </button>
+
             <button
               onClick={() => {
                 console.log("Refreshing orders...");
@@ -2975,17 +2752,7 @@ Notes: "${order.notes || "None"}"
                   </div>
 
                   {/* Danger zone clear all */}
-                  <button
-                    onClick={() => {
-                      console.log("Clearing all orders...");
-                      onDeleteAllOrders();
-                      setShowMobileActions(false);
-                    }}
-                    className="flex items-center justify-center gap-2 py-2.5 bg-error/10 text-error rounded-xl text-xs font-bold"
-                  >
-                    <Trash2 size={14} />
-                    Clear All Orders (Reset)
-                  </button>
+      
                 </motion.div>
               )}
             </AnimatePresence>
@@ -3538,17 +3305,13 @@ Notes: "${order.notes || "None"}"
                           </div>
                         ) : (
                           <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
-                            <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
+                            <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                             <div className="flex flex-col items-stretch w-full gap-2">
-                              {isLimitReached && (
-                                <span className="text-[8px] font-bold text-error leading-none mb-0.5">LIMIT REACHED</span>
-                              )}
                               {isPickupOrder(order) ? (
-                                <PickupOrderActions order={order} mode="actions" disabled={isLimitReached} />
+                                <PickupOrderActions order={order} mode="actions" />
                               ) : (
                               <button
-                                disabled={isLimitReached}
-                                onClick={async (e) => {
+                                                                onClick={async (e) => {
                                   e.stopPropagation();
                                   if (isOrderDelivery(order) && !order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
                                     setUnlinkedModalOrder(order);
@@ -3759,7 +3522,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           ) : (
                             <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
-                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
+                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                               <button
                                 onClick={(e) => {
                                   setPreparingOrderId(order.id);
@@ -3808,7 +3571,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           ) : (
                             <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
-                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
+                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                               {isPickupOrder(order) ? (
                                 <PickupOrderActions order={order} mode="actions" />
                               ) : (
@@ -3992,8 +3755,7 @@ Notes: "${order.notes || "None"}"
                             <button
                               onClick={() => {
                                 const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
-                                sendRiderNudge(order.rider_id!, nudgeMessage);
-                                toast.success("Rider nudged successfully!");
+                                void handleRiderNudge(order.rider_id!,nudgeMessage);
                               }}
                               className="w-full py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                             >
@@ -4005,7 +3767,7 @@ Notes: "${order.notes || "None"}"
 
                         {/* Action buttons */}
                         <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
-                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
+                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                           {isPickupOrder(order) ? (
                             <PickupOrderActions order={order} mode="actions" />
                           ) : (
@@ -4137,7 +3899,7 @@ Notes: "${order.notes || "None"}"
                         </div>
 
                         <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between">
-                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
+                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                           <span className="text-[9px] font-bold text-zinc-500 font-mono uppercase">Done</span>
                         </div>
 
@@ -4237,14 +3999,7 @@ Notes: "${order.notes || "None"}"
                         Play sound for new orders
                       </span>
                     </div>
-                                  <button
-                onClick={() => toast.info("Notification Center coming soon.")}
-                className="p-2 text-on-surface-variant hover:text-primary transition-colors relative"
-                title="Notification Center"
-              >
-                <Inbox size={18} className="md:w-5 md:h-5" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full border border-white"></span>
-              </button>
+
               <button
                 onClick={() => setSoundAlerts(!soundAlerts)}
                       className={cn(
@@ -4295,29 +4050,6 @@ Notes: "${order.notes || "None"}"
                   )}
                 </div>
 
-                <div className="p-4 bg-surface-container-low rounded-2xl space-y-3">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold">Order Limit</span>
-                    <span className="text-[10px] text-on-surface-variant">
-                      Max concurrent active orders
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="range"
-                      min="1"
-                      max="50"
-                      value={maxConcurrentOrders}
-                      onChange={(e) =>
-                        setMaxConcurrentOrders(Number(e.target.value))
-                      }
-                      className="flex-1 accent-primary"
-                    />
-                    <span className="bg-primary/10 text-primary px-3 py-1 rounded-lg text-sm font-bold min-w-[3rem] text-center">
-                      {maxConcurrentOrders}
-                    </span>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -4342,7 +4074,7 @@ Notes: "${order.notes || "None"}"
                     },
                     {
                       label: "Ready for Pickup",
-                      count: orders.filter((o) => o.status === "ready").length,
+                      count: summarizeKitchenQueue(orders).readyForPickup,
                       color: "bg-tertiary",
                     },
                     {
@@ -4375,13 +4107,13 @@ Notes: "${order.notes || "None"}"
                 </div>
                 <div className="mt-8 pt-8 border-t border-on-surface/5">
                   <div className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">
-                    Avg. Prep Time
+                    Preparing Orders
                   </div>
                   <div className="text-3xl font-headline font-extrabold text-primary">
-                    {avgPrepTime} min
+                    {orders.filter(o=>o.status==="preparing").length}
                   </div>
                   <div className="text-xs text-on-surface-variant mt-1">
-                    Based on current load
+                    Orders currently marked preparing
                   </div>
                 </div>
               </div>
@@ -4393,82 +4125,9 @@ Notes: "${order.notes || "None"}"
                 Kitchen Hub
               </h4>
               <div className="space-y-3">
-                <button
-                  onClick={() => {
-                    setAlertsEnabled(!alertsEnabled);
-                    toast.success(
-                      `Order alerts ${!alertsEnabled ? "enabled" : "disabled"}`,
-                    );
-                  }}
-                  className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors group"
-                >
-                  <div className="flex items-center gap-3">
-                    <Bell
-                      size={20}
-                      className={
-                        alertsEnabled
-                          ? "text-primary"
-                          : "text-on-surface-variant/40"
-                      }
-                    />
-                    <span className="text-sm font-bold">New Order Alerts</span>
-                  </div>
-                  <div
-                    className={cn(
-                      "w-10 h-6 rounded-full relative transition-colors",
-                      alertsEnabled
-                        ? "bg-primary"
-                        : "bg-surface-container-highest",
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
-                        alertsEnabled ? "right-1" : "left-1",
-                      )}
-                    ></div>
-                  </div>
-                </button>
-                <button
-                  onClick={() => {
-                    setOrdersPaused(!ordersPaused);
-                    toast.warning(
-                      `Kitchen is now ${!ordersPaused ? "PAUSED" : "ACTIVE"}`,
-                    );
-                  }}
-                  className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <PauseCircle
-                      size={20}
-                      className={
-                        ordersPaused ? "text-error" : "text-on-surface-variant"
-                      }
-                    />
-                    <span className="text-sm font-bold">
-                      {ordersPaused ? "Resume Orders" : "Pause New Orders"}
-                    </span>
-                  </div>
-                  <ChevronRight
-                    size={20}
-                    className={cn(
-                      "text-on-surface-variant transition-transform",
-                      ordersPaused && "rotate-90",
-                    )}
-                  />
-                </button>
-                <button
-                  onClick={() => console.log("Opening printer settings...")}
-                  className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <Printer size={20} className="text-on-surface-variant" />
-                    <span className="text-sm font-bold">Printer Settings</span>
-                  </div>
-                  <span className="text-xs font-bold text-tertiary">
-                    Online
-                  </span>
-                </button>
+
+
+                <p className="text-xs text-on-surface-variant px-2 py-2">Printer connection is not verified. Open an order and use its Print options to check supported devices.</p>
               </div>
             </div>
           </div>
@@ -4562,13 +4221,18 @@ Notes: "${order.notes || "None"}"
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       const finalReason = cancelReasonPreset === "Other (Write custom message below)"
                         ? (customCancelExplanation.trim() || "Order cancelled by kitchen supervisor.")
                         : customCancelExplanation;
-                      void onUpdateStatus(cancellingOrder.id, "cancelled", finalReason);
-                      setCancellingOrder(null);
-                      toast.success("Order status updated to Cancelled");
+                      try {
+                        await Promise.resolve(onUpdateStatus(cancellingOrder.id, "cancelled", finalReason));
+                        setCancellingOrder(null);
+                        // The parent workflow owns server-confirmed status feedback.
+                        // Do not create a second success toast based on a local button click.
+                      } catch {
+                        toast.error("Cancellation was not confirmed. Please refresh the order status.");
+                      }
                     }}
                     className="flex-1 py-3 bg-error text-white font-black rounded-full text-xs hover:bg-error-container hover:shadow-lg shadow-error/10 transition-all active:scale-[0.98]"
                   >
