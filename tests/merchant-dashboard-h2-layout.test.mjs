@@ -95,7 +95,7 @@ test("existing UI remains and page navigation is clear, operable and mobile-frie
  assert.match(overview,/aria-pressed=\{layoutMode==="compact"\}/);
  assert.match(overview,/aria-pressed=\{layoutMode==="advanced"\}/);
  assert.match(overview,/min-h-11/);
- assert.match(overview,/aria-label="Refresh dashboard data"/);
+ assert.match(overview,/aria-label=\{isManualRefreshing \? "Refreshing dashboard" : "Refresh dashboard data"\}/);
  assert.match(overview,/aria-label="Download weekly orders CSV"/);
  assert.match(overview,/onNavigate\("orders"\)/);
  assert.match(app,/MerchantApi\.getOrders\(\)/);
