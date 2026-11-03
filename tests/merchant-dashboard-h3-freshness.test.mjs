@@ -41,6 +41,9 @@ test("overlapping API reads deduplicate and cannot overwrite a different merchan
  "warnedOrderScopeRef.current!==scope"])assert.ok(p.includes(s),s);
  assert.doesNotMatch(p,/OrderService\.createOrder|\.from\("orders"\)|updateOrderStatus\(/);
  assert.match(app,/observedPendingIdsRef\.current=null/);
+ assert.match(app,/lastOrderPayloadRef\.current===serialized/);
+ assert.match(app,/lastOrderPayloadRef\.current=serialized/);
+ assert.match(app,/lastOrderPayloadRef\.current=null/);
  assert.match(app,/setOrders\(\[\]\);\s*setOrdersReadState\("checking"\)/);
 });
 
