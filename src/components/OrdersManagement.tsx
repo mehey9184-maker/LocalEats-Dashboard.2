@@ -321,6 +321,14 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   clearPrintQueue,
 }) => {
   const { subscribeWithAuthGuard } = useAuthGuard();
+  const handleRiderNudge=async(riderId:string,message:string)=>{
+    try{
+      await sendRiderNudge(riderId,message);
+      toast.info("Rider nudge request saved. Device delivery is not confirmed.");
+    }catch{
+      toast.error("Rider nudge was not confirmed. Please retry from a connected session.");
+    }
+  };
   const [viewMode, setViewMode] = useState<"active" | "history">("active");
   
   const [printerDiagStatus, setPrinterDiagStatus] = useState<{
@@ -2476,11 +2484,7 @@ Notes: "${order.notes || "None"}"
                               <button
                                 onClick={() => {
                                   const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
-                                  sendRiderNudge(
-                                    order.rider_id!,
-                                    nudgeMessage
-                                  );
-                                  toast.success("Rider nudged successfully!");
+                                  void handleRiderNudge(order.rider_id!,nudgeMessage);
                                 }}
                                 className={cn(
                                   "bg-amber-100 text-amber-700 rounded-full hover:bg-amber-200 transition-all font-bold flex flex-1 items-center justify-center gap-2",
@@ -3868,8 +3872,7 @@ Notes: "${order.notes || "None"}"
                             <button
                               onClick={() => {
                                 const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
-                                sendRiderNudge(order.rider_id!, nudgeMessage);
-                                toast.success("Rider nudged successfully!");
+                                void handleRiderNudge(order.rider_id!,nudgeMessage);
                               }}
                               className="w-full py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                             >
@@ -4358,13 +4361,18 @@ Notes: "${order.notes || "None"}"
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       const finalReason = cancelReasonPreset === "Other (Write custom message below)"
                         ? (customCancelExplanation.trim() || "Order cancelled by kitchen supervisor.")
                         : customCancelExplanation;
-                      void onUpdateStatus(cancellingOrder.id, "cancelled", finalReason);
-                      setCancellingOrder(null);
-                      toast.success("Order status updated to Cancelled");
+                      try {
+                        await Promise.resolve(onUpdateStatus(cancellingOrder.id, "cancelled", finalReason));
+                        setCancellingOrder(null);
+                        // The parent workflow owns server-confirmed status feedback.
+                        // Do not create a second success toast based on a local button click.
+                      } catch {
+                        toast.error("Cancellation was not confirmed. Please refresh the order status.");
+                      }
                     }}
                     className="flex-1 py-3 bg-error text-white font-black rounded-full text-xs hover:bg-error-container hover:shadow-lg shadow-error/10 transition-all active:scale-[0.98]"
                   >
