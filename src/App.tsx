@@ -145,6 +145,7 @@ import {
   clearVerifiedShopOwnership,
 } from "./utils/shopOwnership";
 import { MerchantApi, MerchantApiError } from "./services/MerchantApi";
+import {merchantOrderReadScope,shouldPollMerchantOrders,merchantDisplayOrderAmount,newMerchantPendingOrders,type MerchantOrderReadState} from "./services/merchantDashboardFreshness";
 import { fetchWithRetry } from "./utils/fetchWithRetry";
 
 function cn(...inputs: ClassValue[]) {
@@ -289,7 +290,7 @@ function App() {
   const currentBuildVersion = useRef(19); // Moving to v5.4 tracker
   const topNavScrollRef = useRef<HTMLDivElement>(null);
   const shopsRef = useRef<Shop[]>([]);
-  const prevPendingCount = useRef<number>(0);
+  const observedPendingIdsRef=useRef<{scope:string;ids:Set<string>}|null>(null);
   const activeSoundRef = useRef<{ pause: () => void } | null>(null);
   // Viewing Orders acknowledges the arrival alert. Do not keep the short
   // notification melody running after the merchant has opened the queue.
@@ -317,19 +318,30 @@ function App() {
       }
     };
 
-    // once on mount and then every 30s
-    checkVersion();
-    const interval = setInterval(checkVersion, 30000);
-    return () => clearInterval(interval);
+    // Avoid a 30-second background version poll. Refresh on foreground return
+    // and periodically while the merchant has the tab open.
+    const refreshIfVisible=()=>{if(document.visibilityState==="visible")void checkVersion();};
+    refreshIfVisible();
+    const interval=window.setInterval(refreshIfVisible,300000);
+    window.addEventListener("focus",refreshIfVisible);
+    document.addEventListener("visibilitychange",refreshIfVisible);
+    return ()=>{
+      window.clearInterval(interval);
+      window.removeEventListener("focus",refreshIfVisible);
+      document.removeEventListener("visibilitychange",refreshIfVisible);
+    };
   }, [dataSaverMode]);
 
   const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersReadState,setOrdersReadState]=useState<MerchantOrderReadState>("checking");
+  const [ordersVerifiedAt,setOrdersVerifiedAt]=useState<number|null>(null);
+  const orderReadScopeRef=useRef<string|null>(null);
+  const lastConfirmedOrderScopeRef=useRef<string|null>(null);
+  const warnedOrderScopeRef=useRef<string|null>(null);
+  const orderReadSerialRef=useRef(0);
+  const lastOrderPayloadRef=useRef<string|null>(null);
+  const orderReadInFlightRef=useRef<{scope:string;promise:Promise<void>}|null>(null);
 
-  // --- Live Kitchen Alerter & Screen Wake ---
-  const {
-    isAudioEnabled,
-    enableAudio,
-  } = useKitchenAlerter(orders, activeTab === "orders");
   const [shops, setShops] = useState<Shop[]>([]);
   shopsRef.current = shops;
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
@@ -344,6 +356,28 @@ function App() {
     () => shops.find((s) => isShopOwnedByUser(s, user)) || null,
     [shops, user],
   );
+
+  const verifiedOrderScope=merchantOrderReadScope(user?.id,currentShop?.id,merchantShopGate.status);
+  // Siren is scoped to the API-verified current shop and never starts on the
+  // first historical order list or when alerts are turned off.
+  const {isAudioEnabled,enableAudio}=useKitchenAlerter(
+    orders,activeTab==="orders",verifiedOrderScope,ordersReadState==="confirmed",soundAlerts,
+  );
+
+  useEffect(()=>{
+    if(orderReadScopeRef.current===verifiedOrderScope)return;
+    orderReadScopeRef.current=verifiedOrderScope;
+    orderReadSerialRef.current++;
+    lastConfirmedOrderScopeRef.current=null;
+    lastOrderPayloadRef.current=null;
+    warnedOrderScopeRef.current=null;
+    observedPendingIdsRef.current=null;
+    activeSoundRef.current?.pause();
+    activeSoundRef.current=null;
+    setOrders([]);
+    setOrdersReadState("checking");
+    setOrdersVerifiedAt(null);
+  },[verifiedOrderScope]);
 
   const acceptAuthoritativeMerchantShop = useCallback((firebaseUid: string, shop: Shop) => {
     registerVerifiedShopId(firebaseUid, shop.id);
@@ -1069,44 +1103,31 @@ function App() {
     }
   }, [soundStyle, soundVolume]);
 
-  // Sound alert logic for new orders
-  useEffect(() => {
-    if (!user) return;
-    const currentPendingCount = orders.filter(
-      (o) => o.status === "pending",
-    ).length;
-
-    // Only trigger if count increased and sound is enabled
-    if (soundAlerts && activeTab !== "orders" && currentPendingCount > prevPendingCount.current) {
-      const audio = playNotificationSound(true); // Enable repeating for new orders
-
-      const stopSound = () => {
-        audio.pause();
-        if (activeSoundRef.current) {
-          activeSoundRef.current.pause();
-          activeSoundRef.current = null;
-        }
-      };
-
-      toast.success("NEW ORDER RECEIVED!", {
-        description: `CRITICAL: You have ${currentPendingCount} pending ${currentPendingCount === 1 ? "order" : "orders"}.`,
-        duration: 15000,
-        important: true,
-        icon: <Bell className="text-primary animate-bounce" />,
-        action: {
-          label: "DISMISS ALERT",
-          onClick: () => {
-            stopSound();
-            setActiveTab("orders");
-          },
-        },
-        onDismiss: () => stopSound(),
-        onAutoClose: () => stopSound(),
-      });
-    }
-
-    prevPendingCount.current = currentPendingCount;
-  }, [orders, soundAlerts, user, activeTab, playNotificationSound, setActiveTab]);
+  // Only newly pending order IDs trigger a kitchen alert. First hydration
+  // establishes a baseline; status churn cannot create fake arrival alerts.
+  useEffect(()=>{
+    if(!user || !verifiedOrderScope || ordersReadState!=="confirmed")return;
+    const previous=observedPendingIdsRef.current?.scope===verifiedOrderScope
+      ? observedPendingIdsRef.current.ids : null;
+    const {current,newIds}=newMerchantPendingOrders(orders,previous);
+    observedPendingIdsRef.current={scope:verifiedOrderScope,ids:current};
+    if(newIds.length===0 || !soundAlerts || activeTab==="orders" ||
+       document.visibilityState!=="visible")return;
+    const audio=playNotificationSound(true);
+    const stopSound=()=>{
+      audio.pause();
+      activeSoundRef.current?.pause();
+      activeSoundRef.current=null;
+    };
+    toast.success(newIds.length===1?"New pending order":"New pending orders",{
+      description:`${newIds.length} newly pending ${newIds.length===1?"order requires":"orders require"} attention. Open Orders to verify details.`,
+      duration:15000,important:true,
+      icon:<Bell className="text-primary" />,
+      action:{label:"OPEN ORDERS",onClick:()=>{stopSound();setActiveTab("orders");}},
+      onDismiss:stopSound,
+      onAutoClose:stopSound,
+    });
+  },[orders,ordersReadState,soundAlerts,user?.id,verifiedOrderScope,activeTab,playNotificationSound,setActiveTab]);
 
   const processAndSetOrders = useCallback((firestoreOrdersList: Order[], supabaseOrdersList: Order[] = []) => {
     // Merge Orders by unique string ID, prioritizing latest updated_at or created_at
@@ -1140,33 +1161,64 @@ function App() {
       return timeB - timeA;
     });
 
+    // Identical 15-second API responses must not re-render all Dashboard cards,
+    // restart list animations or rewrite local storage unnecessarily.
+    const serialized=JSON.stringify(combinedOrders);
+    if(lastOrderPayloadRef.current===serialized)return;
+    lastOrderPayloadRef.current=serialized;
     setOrders(combinedOrders);
     try {
-      localStorage.setItem("localeats_cached_orders", JSON.stringify(combinedOrders));
+      localStorage.setItem("localeats_cached_orders",serialized);
     } catch {
       // Cache is optional and never used as order authority.
     }
   }, []);
 
-  const fetchOrders = useCallback(async () => {
-    if (!user || merchantShopGate.status !== "ready" || !currentShop) {
+  // Only one active read per authenticated shop scope. Ignore late responses
+  // from a previous login/shop; never let a failed request overwrite verified data.
+  const fetchOrders=useCallback(():Promise<void>=>{
+    const scope=merchantOrderReadScope(user?.id,currentShop?.id,merchantShopGate.status);
+    const uid=firebaseAuth.currentUser?.uid;
+    if(!scope || !uid || uid!==user?.id){
+      orderReadSerialRef.current++;
       setOrders([]);
-      return;
+      setOrdersReadState("checking");
+      return Promise.resolve();
     }
-
-    try {
-      const data = await MerchantApi.getOrders();
-      const apiOrders = data.map((d: Record<string, unknown>) => ({
-          ...d,
-          id: String(d.id),
-          total_price: Number(d.total_price ?? d.price ?? 0),
+    if(orderReadInFlightRef.current?.scope===scope)return orderReadInFlightRef.current.promise;
+    const requestSerial=++orderReadSerialRef.current;
+    if(lastConfirmedOrderScopeRef.current!==scope)setOrdersReadState("checking");
+    const request=(async()=>{
+      try{
+        const data=await MerchantApi.getOrders();
+        if(orderReadSerialRef.current!==requestSerial || orderReadScopeRef.current!==scope ||
+           firebaseAuth.currentUser?.uid!==uid)return;
+        const apiOrders=data.map((d:Record<string,unknown>)=>({
+          ...d,id:String(d.id),
+          total_price:merchantDisplayOrderAmount(d.total_price ?? d.price),
         })) as Order[];
-      processAndSetOrders([], apiOrders);
-    } catch (apiError) {
-      console.warn("[Orders Sync] Authoritative API unavailable:", apiError);
-      toast.error(apiError instanceof Error ? apiError.message : "Orders could not be refreshed. No cached order changes were applied.");
-    }
-  }, [user, shops, processAndSetOrders, merchantShopGate.status, currentShop]);
+        processAndSetOrders([],apiOrders);
+        lastConfirmedOrderScopeRef.current=scope;
+        warnedOrderScopeRef.current=null;
+        setOrdersVerifiedAt(Date.now());
+        setOrdersReadState("confirmed");
+      }catch(error){
+        if(orderReadSerialRef.current!==requestSerial || orderReadScopeRef.current!==scope ||
+           firebaseAuth.currentUser?.uid!==uid)return;
+        console.warn("[Orders Sync] Authenticated Orders API read failed:",error);
+        setOrdersReadState("unavailable");
+        if(warnedOrderScopeRef.current!==scope){
+          warnedOrderScopeRef.current=scope;
+          toast.error("Orders could not be verified. Existing counts may be outdated. Use Refresh to retry.");
+        }
+      }
+    })();
+    const promise=request.finally(()=>{
+      if(orderReadInFlightRef.current?.promise===promise)orderReadInFlightRef.current=null;
+    });
+    orderReadInFlightRef.current={scope,promise};
+    return promise;
+  },[user?.id,currentShop?.id,merchantShopGate.status,processAndSetOrders]);
 
   const menuReadRequest = useRef(0);
   useEffect(()=>{const refresh=()=>{void fetchOrders();};window.addEventListener("merchant-pickup-order-confirmed",refresh);return()=>window.removeEventListener("merchant-pickup-order-confirmed",refresh);},[fetchOrders]);
@@ -1211,17 +1263,23 @@ function App() {
     operationalReady: merchantShopGate.status === "ready" && Boolean(currentShop),
   });
 
-  // Orders are read from the authoritative LocalEats API. Polling avoids treating
-  // either Firestore or a frontend Supabase adapter as a competing order source.
-  useEffect(() => {
-    if (merchantShopGate.status !== "ready" || !currentShop || !user || shops.length === 0) return;
-    void fetchOrders();
-    const pollingInterval = setInterval(() => void fetchOrders(), 15000);
-
-    return () => {
-      clearInterval(pollingInterval);
+  // Poll while the Dashboard is visible; immediately wake on focus or tab return.
+  // Polling does not activate order writes and never treats local cache as authority.
+  useEffect(()=>{
+    if(!verifiedOrderScope)return;
+    const refresh=()=>{
+      if(shouldPollMerchantOrders(document.visibilityState,verifiedOrderScope))void fetchOrders();
     };
-  }, [user, shops, fetchOrders, merchantShopGate.status, currentShop]);
+    refresh();
+    const pollingInterval=window.setInterval(refresh,15000);
+    window.addEventListener("focus",refresh);
+    document.addEventListener("visibilitychange",refresh);
+    return ()=>{
+      window.clearInterval(pollingInterval);
+      window.removeEventListener("focus",refresh);
+      document.removeEventListener("visibilitychange",refresh);
+    };
+  },[verifiedOrderScope,fetchOrders]);
 
   const deleteAllOrders = async () => {
     if (!user) return;
@@ -2334,6 +2392,8 @@ function App() {
                 <DashboardOverview
                   orders={orders}
                   loading={loading}
+                  ordersReadState={ordersReadState}
+                  ordersVerifiedAt={ordersVerifiedAt}
                   shops={shops}
                   user={user}
                   onNavigate={setActiveTab}

@@ -42,7 +42,7 @@ test("recent orders are newest-first regardless of API response order and do not
  assert.match(overview,/latestKitchenOrders\.map\(/);
  assert.match(overview,/Number\.isFinite\(Date\.parse\(order\.created_at\)\)/);
  assert.match(overview,/Total unavailable/);
- assert.match(overview,/<motion\.button\s+initial=\{\{ opacity: 0, x: 20 \}\}/);
+ assert.match(overview,/<button\s+key=\{order\.id\}/);
 });
 
 test("low-stock alerts use only available finite nonnegative tracked quantities",()=>{
@@ -95,7 +95,7 @@ test("existing UI remains and page navigation is clear, operable and mobile-frie
  assert.match(overview,/aria-pressed=\{layoutMode==="compact"\}/);
  assert.match(overview,/aria-pressed=\{layoutMode==="advanced"\}/);
  assert.match(overview,/min-h-11/);
- assert.match(overview,/aria-label="Refresh dashboard data"/);
+ assert.match(overview,/aria-label=\{isManualRefreshing \? "Refreshing dashboard" : "Refresh dashboard data"\}/);
  assert.match(overview,/aria-label="Download weekly orders CSV"/);
  assert.match(overview,/onNavigate\("orders"\)/);
  assert.match(app,/MerchantApi\.getOrders\(\)/);

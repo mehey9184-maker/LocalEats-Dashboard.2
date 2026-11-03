@@ -17,7 +17,7 @@ interface CustomWindow extends Window {
   webkitAudioContext?: typeof AudioContext;
 }
 
-export const useKitchenAlerter = (orders: Order[], ordersViewed = false): KitchenAlerterResult => {
+export const useKitchenAlerter = (orders: Order[], ordersViewed = false, shopScope:string|null=null, ordersConfirmed=false, soundsEnabled=true): KitchenAlerterResult => {
   const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(true);
   const [isWakeLocked, setIsWakeLocked] = useState<boolean>(false);
   const [hasPendingAlarm, setHasPendingAlarm] = useState<boolean>(false);
@@ -31,6 +31,7 @@ export const useKitchenAlerter = (orders: Order[], ordersViewed = false): Kitche
   // Pending order IDs acknowledged by viewing Orders or silencing the siren.
   // Keep this in-memory so an acknowledged pending order cannot restart the siren on every poll.
   const acknowledgedPendingIdsRef = useRef<Set<string>>(new Set());
+  const observedPendingIdsRef=useRef<{scope:string;ids:Set<string>}|null>(null);
 
   // --- 1. Web Audio Siren Orchestration ---
   const startSiren = () => {
@@ -111,6 +112,8 @@ export const useKitchenAlerter = (orders: Order[], ordersViewed = false): Kitche
   };
 
   const stopSiren = () => {
+    // No audio nodes means no teardown timer is needed on routine API polls.
+    if(!sirenIntervalRef.current && !osc1Ref.current && !osc2Ref.current && !mainGainRef.current)return;
     if (sirenIntervalRef.current) {
       clearInterval(sirenIntervalRef.current);
       sirenIntervalRef.current = null;
@@ -242,20 +245,41 @@ export const useKitchenAlerter = (orders: Order[], ordersViewed = false): Kitche
     };
   }, [isAudioEnabled, requestWakeLock]);
 
-  // Only unacknowledged pending orders may sound the kitchen siren.
-  // Opening Orders acknowledges the visible queue and silences the alarm,
-  // without accepting/changing the order in the backend.
+  // The first confirmed read is history, not a newly arrived order. Never
+  // sound for it. Only authoritative, unacknowledged later pending IDs may
+  // start the siren, scoped to the currently signed-in merchant/shop.
   useEffect(() => {
-    const pendingIds = orders.filter(o => (o.status || "").toLowerCase() === "pending").map(o => String(o.id));
-    const pendingSet = new Set(pendingIds);
-    for (const id of acknowledgedPendingIdsRef.current) {
-      if (!pendingSet.has(id)) acknowledgedPendingIdsRef.current.delete(id);
+    if(!shopScope){
+      observedPendingIdsRef.current=null;
+      acknowledgedPendingIdsRef.current.clear();
+      stopSiren();
+      return;
     }
-    if (ordersViewed) pendingIds.forEach(id => acknowledgedPendingIdsRef.current.add(id));
-    const needsAttention = pendingIds.some(id => !acknowledgedPendingIdsRef.current.has(id));
-    if (needsAttention && isAudioEnabled && !ordersViewed) startSiren();
+    if(!ordersConfirmed || !soundsEnabled){
+      stopSiren();
+      return;
+    }
+    const pendingIds=orders.filter(o=>(o.status||"").toLowerCase()==="pending")
+      .map(o=>String(o.id));
+    const pendingSet=new Set(pendingIds);
+    const previous=observedPendingIdsRef.current?.scope===shopScope
+      ? observedPendingIdsRef.current.ids : null;
+    observedPendingIdsRef.current={scope:shopScope,ids:pendingSet};
+    if(previous===null){
+      acknowledgedPendingIdsRef.current.clear();
+      pendingIds.forEach(id=>acknowledgedPendingIdsRef.current.add(id));
+      stopSiren();
+      return;
+    }
+    for(const id of acknowledgedPendingIdsRef.current){
+      if(!pendingSet.has(id))acknowledgedPendingIdsRef.current.delete(id);
+    }
+    if(ordersViewed)pendingIds.forEach(id=>acknowledgedPendingIdsRef.current.add(id));
+    const needsAttention=pendingIds.some(id=>!acknowledgedPendingIdsRef.current.has(id));
+    if(needsAttention && isAudioEnabled && !ordersViewed &&
+       document.visibilityState==="visible")startSiren();
     else stopSiren();
-  }, [orders, isAudioEnabled, ordersViewed]);
+  }, [orders,isAudioEnabled,ordersViewed,shopScope,ordersConfirmed,soundsEnabled]);
 
   // Teardown
   useEffect(() => {

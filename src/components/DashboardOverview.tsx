@@ -59,6 +59,7 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { supabase } from "../lib/supabase";
 import { Order, Shop, User, MenuItem } from "../types";
+import type {MerchantOrderReadState} from "../services/merchantDashboardFreshness";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { useAuthGuard } from "../hooks/useAuthGuard";
 
@@ -69,6 +70,8 @@ function cn(...inputs: ClassValue[]) {
 export interface DashboardOverviewProps {
   orders: Order[];
   loading: boolean;
+  ordersReadState: MerchantOrderReadState;
+  ordersVerifiedAt: number|null;
   shops: Shop[];
   user: User | null;
   onRefresh: () => void | Promise<void>;
@@ -467,6 +470,8 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
 export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   orders,
   loading,
+  ordersReadState,
+  ordersVerifiedAt,
   shops,
   user,
   onRefresh,
@@ -479,6 +484,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 }: {
   orders: Order[];
   loading: boolean;
+  ordersReadState: MerchantOrderReadState;
+  ordersVerifiedAt: number|null;
   shops: Shop[];
   user: User | null;
   onRefresh: () => void | Promise<void>;
@@ -502,6 +509,18 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     return subscribeAvailabilityCommand(syncBusy);
   }, [currentShop?.id]);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isManualRefreshing,setIsManualRefreshing]=useState(false);
+  const hasVerifiedOrders=ordersVerifiedAt!==null;
+  const ordersStatusText=ordersReadState==="checking" ? "Checking current orders…" :
+    ordersReadState==="unavailable" ? (hasVerifiedOrders ? "Orders API unavailable · showing last confirmed list" : "Orders API unavailable · counts not verified") :
+    ordersVerifiedAt!==null ? `Orders checked at ${new Date(ordersVerifiedAt).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit"})}` : "Checking current orders…";
+  const refreshDashboard=async()=>{
+    if(isManualRefreshing)return;
+    setIsManualRefreshing(true);
+    try{await Promise.resolve(onRefresh());}
+    catch{toast.error("Dashboard refresh could not be completed. Check your connection.");}
+    finally{setIsManualRefreshing(false);}
+  };
   const [layoutMode, setLayoutMode] = useState<"compact" | "advanced">(() => {
     return (localStorage.getItem("localeats_dashboard_layout") as "compact" | "advanced") || "compact";
   });
@@ -517,13 +536,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
     try {
       await Promise.resolve(onRefresh());
-      if (currentShop) {
-        toast.success(`Shop data refreshed for "${currentShop.name}".`, {
-          id: "sync-verify",
-        });
-      } else {
-        toast.success("Shop data refresh completed.", { id: "sync-verify" });
-      }
+      toast.info("Refresh finished. Check the order verification status before taking action.", { id: "sync-verify" });
     } catch (err) {
       console.error("Sync & Verify failed:", err);
       toast.error("Could not refresh shop information.", { id: "sync-verify" });
@@ -1033,12 +1046,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               </button>
               <button
                 type="button"
-                onClick={() => {void Promise.resolve(onRefresh());}}
-                aria-label="Refresh dashboard data"
+                onClick={()=>{void refreshDashboard();}}
+                disabled={isManualRefreshing}
+                aria-busy={isManualRefreshing}
+                aria-label={isManualRefreshing ? "Refreshing dashboard" : "Refresh dashboard data"}
                 className="min-w-11 min-h-11 inline-flex items-center justify-center p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm"
                 title="Refresh Dashboard"
               >
-                <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
+                <RefreshCw size={20} className={isManualRefreshing ? "animate-spin" : ""} />
               </button>
             </div>
           </div>
@@ -1178,7 +1193,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
             <h2 className="text-lg md:text-xl font-headline font-black text-on-surface">Kitchen Queue</h2>
-            <p className="text-xs text-on-surface-variant mt-1">Order statuses from your current shop records. Open Orders for the latest confirmed actions.</p>
+            <p className="text-xs text-on-surface-variant mt-1">Order statuses from your current shop records. Open Orders for authoritative actions.</p>
+            <p role="status" aria-live="polite" className={`text-xs font-bold mt-2 ${ordersReadState==="unavailable"?"text-amber-600 dark:text-amber-400":"text-on-surface-variant"}`}>{ordersStatusText}</p>
           </div>
           <button type="button" onClick={()=>onNavigate("orders")}
             className="min-h-11 w-full sm:w-auto px-5 py-3 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-on-primary font-black text-xs uppercase tracking-wider rounded-xl focus-visible:outline-2 focus-visible:outline-primary">
@@ -1195,14 +1211,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           ].map(item=>(
             <button key={item.label} type="button"
               onClick={()=>onNavigate("orders")}
-              aria-label={`${item.count} ${item.label} orders. Open Orders.`}
+              aria-label={hasVerifiedOrders ? `${item.count} ${item.label} orders. Open Orders.` : `${item.label} count not verified. Open Orders.`}
               className="text-left min-h-[104px] rounded-2xl border border-outline-variant/10 bg-surface-container-low p-4 flex flex-col justify-between gap-3 hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-primary transition-colors">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] font-black text-on-surface-variant leading-tight">{item.label}</span>
                 <span className={`p-1.5 rounded-lg shrink-0 ${item.tone}`}><item.icon size={16} aria-hidden="true" /></span>
               </div>
               <span className={`text-2xl md:text-3xl font-headline font-black ${item.urgent&&item.count>0?"text-orange-600":"text-on-surface"}`}>
-                {item.count}
+                {hasVerifiedOrders?item.count:"—"}
               </span>
             </button>
           ))}
@@ -1213,7 +1229,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {/* Today's Orders Card */}
         <motion.div
-          whileHover={{ y: -4 }}
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
         >
           <div className="flex justify-between items-start">
@@ -1224,13 +1239,13 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           </div>
           <div className="mt-4 flex items-baseline gap-2">
             <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              {todayOrdersCount}
+              {hasVerifiedOrders?todayOrdersCount:"—"}
             </span>
             <span className={cn(
               "text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1",
               todayTrendIsPositive ? "bg-emerald-500/15 text-emerald-500" : "bg-rose-500/15 text-rose-500"
             )}>
-              {todayTrendIsPositive ? "↑" : "↓"} {todayTrendText}
+              {hasVerifiedOrders ? `${todayTrendIsPositive?"↑":"↓"} ${todayTrendText}` : "Not verified"}
             </span>
           </div>
           <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-orange-500 to-rose-500 opacity-80" />
@@ -1238,7 +1253,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
         {/* Completed Order Value Card — not a payout balance */}
         <motion.div
-          whileHover={{ y: -4 }}
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
         >
           <div className="flex justify-between items-start">
@@ -1249,7 +1263,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           </div>
           <div className="mt-4">
             <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              R {weeklySales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {hasVerifiedOrders ? `R ${weeklySales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
             </span>
             <p className="text-[10px] text-on-surface/75 font-extrabold mt-1">
               Completed orders this week · not a payout balance
@@ -1260,7 +1274,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
         {/* Active Menu Items Card */}
         <motion.div
-          whileHover={{ y: -4 }}
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
         >
           <div className="flex justify-between items-start">
@@ -1282,7 +1295,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
         {/* Driver Availability Card */}
         <motion.div
-          whileHover={{ y: -4 }}
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
         >
           <div className="flex justify-between items-start">
@@ -1392,12 +1404,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             </button>
           </div>
           <div className="space-y-6">
-            {latestKitchenOrders.map((order, i) => (
-              <motion.button
-                initial={{ opacity: 0, x: 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
+            {latestKitchenOrders.map((order) => (
+              <button
                 key={order.id}
                 type="button"
                 className="w-full text-left flex items-center justify-between gap-3 group p-3 hover:bg-surface-container-high rounded-2xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-primary"
@@ -1437,9 +1445,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   </p>
                   <OrderStatusBadge status={order.status} className="mt-1" />
                 </div>
-                </motion.button>
+                </button>
               ))}
-            {latestKitchenOrders.length === 0 && (
+            {latestKitchenOrders.length===0 && (
               <div className="py-20 text-center space-y-6">
                 <div className="relative w-24 h-24 mx-auto">
                    <div className="absolute inset-0 bg-primary/5 rounded-full animate-pulse-slow font-mono" />
@@ -1448,9 +1456,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                    </div>
                 </div>
                 <div className="max-w-xs mx-auto">
-                  <h3 className="font-bold text-on-surface">Awaiting Your First Order</h3>
+                  <h3 className="font-bold text-on-surface">{hasVerifiedOrders ? "No Orders in Current List" : "Waiting for Confirmed Orders"}</h3>
                   <p className="text-xs text-on-surface-variant mt-2 opacity-70">
-                    Confirmed order records will appear here when the Orders API provides them.
+                    {hasVerifiedOrders ? "No confirmed order records were returned for this shop." : "Orders are not yet verified. Check your connection or refresh the Dashboard."}
                   </p>
                 </div>
               </div>
