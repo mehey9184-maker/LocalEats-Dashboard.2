@@ -12,7 +12,7 @@ test("canonical production Customer and explicit Preview origins pass, lookalike
 test("Customer P5 exact isolated Preview origins do not broaden CORS or change existing integration access",()=>{
  const p5="https://project-x7cvt-qfmsq5x6d-mehey9184-makers-projects.vercel.app";
  const p5Alias="https://project-x7cvt-git-repair-custo-0a45c9-mehey9184-makers-projects.vercel.app";
- const p6Clean="https://project-x7cvt-f05fzvhhu-mehey9184-makers-projects.vercel.app";
+ const p6Clean="https://project-x7cvt-d341fimk3-mehey9184-makers-projects.vercel.app";
  const integration="https://project-x7cvt-git-integration-c17400-mehey9184-makers-projects.vercel.app";
  const env={
    VERCEL_ENV:"preview",
