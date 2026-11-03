@@ -4,7 +4,7 @@
 import {readFileSync,writeFileSync} from "node:fs";
 import {execFileSync,spawnSync} from "node:child_process";
 
-const BASE="13c91f26da86404cc1ac5c67d1e1b7f7cb9bdb34";
+const BASE=process.env.MERCHANT_DASHBOARD_LINT_BASE || "13c91f26da86404cc1ac5c67d1e1b7f7cb9bdb34";
 const files=["src/App.tsx","src/components/DashboardOverview.tsx"];
 const originals=new Map(files.map(f=>[f,readFileSync(f,"utf8")]));
 
