@@ -138,7 +138,6 @@ import {
   deleteFailedPrint,
 } from "./utils/escPosEngine";
 import {
-  isValidUUID,
   isShopOwnedByUser,
   getOwnedShopIds,
   registerVerifiedShopId,
@@ -219,10 +218,6 @@ function App() {
     message: "",
     onConfirm: () => {},
   });
-
-  const confirmAction = (title: string, message: string, onConfirm: () => void, confirmText = "Delete") => {
-    setConfirmDialog({ isOpen: true, title, message, onConfirm, confirmText });
-  };
 
   const { activeTab, setActiveTab } = useAppNavigation("dashboard");
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
@@ -1280,62 +1275,6 @@ function App() {
       document.removeEventListener("visibilitychange",refresh);
     };
   },[verifiedOrderScope,fetchOrders]);
-
-  const deleteAllOrders = async () => {
-    if (!user) return;
-
-    confirmAction(
-      "Confirm Delete All",
-      "Are you sure you want to delete ALL orders? This action cannot be undone.",
-      async () => {
-        setConfirmDialog(p => ({...p, isOpen: false}));
-
-        if (!isValidUUID(user.id)) {
-          if (!isSupabaseMocked()) {
-            console.warn("Skipping confirmDeleteAll - user ID is not a valid UUID:", user.id);
-          }
-          toast.info("No orders to delete.");
-          return;
-        }
-
-        // First, get the shops owned by this user
-        const { data: ownedShops, error: shopsError } = await supabase
-          .from("shops")
-          .select("id")
-          .eq("owner_id", user.id);
-
-        if (shopsError) {
-          if (!isSupabaseMocked()) {
-            console.warn("Notice fetching owned shops for deletion:", shopsError.message || shopsError);
-          }
-          return;
-        }
-
-        const ownedShopIds = ownedShops?.map((s) => s.id) || [];
-
-        if (ownedShopIds.length === 0) {
-          toast.info("No orders to delete.");
-          return;
-        }
-
-        // Delete only orders belonging to these shops
-        let error = null;
-        try {
-          await OrderService.deleteAllOrdersForShops(ownedShopIds);
-        } catch (err) {
-          error = err;
-        }
-
-        if (error) {
-          console.error("Delete All Orders Error:", error);
-          toast.error("We couldn't delete these orders right now. Please try again.");
-        } else {
-
-          fetchOrders();
-        }
-      }
-    );
-  };
 
   const { updateOrderStatus, requestRider, dispatchOrderToRider, convertOrderToPickup, unassignRider } = useOrderWorkflow({
     orders,
@@ -2413,7 +2352,6 @@ function App() {
                   onUpdateStatus={updateOrderStatus}
                   onDispatchToRider={dispatchOrderToRider}
                   onConvertOrderToPickup={convertOrderToPickup}
-                  onDeleteAllOrders={deleteAllOrders}
                   loading={loading}
                   onRefresh={fetchOrders}
                   kitchenMode={kitchenMode}
