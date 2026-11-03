@@ -902,7 +902,6 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
               )}
               <p className="sr-only">Menu filters only affect the current verified shop.</p>
               {/* Empty-menu and no-results states must stay distinct. */}
-              </p>
               {userOwnedShops.length > 1 && selectedShopId !== "all" && (
                 <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
                   {userOwnedShops
