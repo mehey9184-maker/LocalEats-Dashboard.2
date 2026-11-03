@@ -2001,75 +2001,10 @@ Notes: "${order.notes || "None"}"
                               </div>
 
                               {order.delivery_status && (
-                                <div className="mt-4 space-y-2" onClick={(e) => e.stopPropagation()}>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                                      Update Delivery Status
-                                    </span>
-                                  </div>
-                                  <div className="flex gap-2 text-xs">
-                                    {["finding_rider", "picked_up", "delivered"].map(status => (
-                                      <button
-                                        key={status}
-                                        onClick={async (e) => {
-                                          e.stopPropagation();
-                                          try {
-                                            const existingOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
-                                            existingOverrides[order.id] = { ...existingOverrides[order.id], delivery_status: status, updated_at: new Date().toISOString() };
-                                            localStorage.setItem("localeats_order_overrides", JSON.stringify(existingOverrides));
-                                          } catch {
-                                            // ignore
-                                          }
-                                          try {
-      await OrderService.updateDeliveryStatus(order.id, status);
-    } catch (error) {
-      console.warn("Delivery status database sync warning (saved locally):", error);
-    }
-                                          toast.success(`Delivery status: ${status.replace("_", " ")}`);
-                                        }}
-                                        className={cn(
-                                          "px-3 py-1.5 rounded-lg font-bold border transition-colors flex-1 capitalize",
-                                          order.delivery_status === status ? "bg-primary text-white border-primary shadow-sm shadow-primary/20" : "bg-surface-container hover:bg-surface-container-high border-outline-variant/10 text-on-surface-variant"
-                                        )}
-                                      >
-                                        {status.replace("_", " ")}
-                                      </button>
-                                    ))}
-                                  </div>
-
-                                  {order.delivery_status === "picked_up" && (
-                                    <div className="w-full h-32 bg-stone-100 dark:bg-stone-900 rounded-xl overflow-hidden relative border border-outline-variant/10 mt-4 flex items-center justify-center">
-                                       <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] mix-blend-overlay"></div>
-
-                                       {/* Mock Map Route */}
-                                       <div className="absolute top-1/2 left-1/4 right-1/4 h-1 border-t-2 border-dashed border-primary/40 -translate-y-1/2"></div>
-
-                                       <div className="absolute left-1/4 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-full p-1 shadow-md z-10">
-                                         <Store size={14} className="text-secondary" />
-                                       </div>
-                                       <div className="absolute right-1/4 top-1/2 translate-x-1/2 -translate-y-1/2 bg-white rounded-full p-1 shadow-md z-10">
-                                          <MapPin size={14} className="text-primary" />
-                                       </div>
-
-                                       {/* Moving Rider */}
-                                       <motion.div 
-                                         animate={{ x: ["0%", "100%", "0%"] }}
-                                         transition={{ repeat: Infinity, duration: 15, ease: "linear" }}
-                                         className="absolute left-1/4 right-1/4 top-1/2 -translate-y-1/2 z-20 flex items-center justify-start pointer-events-none"
-                                       >
-                                         <div className="relative -ml-4 -mt-6">
-                                            <div className="bg-primary text-white rounded-full p-2 shadow-lg drop-shadow-md border-2 border-white">
-                                              <Bike size={16} />
-                                            </div>
-                                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                                               <span className="text-[9px] font-black uppercase text-primary tracking-widest bg-white/95 px-2 py-0.5 rounded shadow-sm border border-primary/10">
-                                                 Live ETA: 3 min
-                                               </span>
-                                            </div>
-                                         </div>
-                                       </motion.div>
-                                    </div>
-                                  )}
+                                <div className="mt-4 rounded-xl bg-surface-container p-3 border border-outline-variant/10" role="status">
+                                  <p className="text-[10px] font-extrabold uppercase text-on-surface-variant">Delivery status from order record</p>
+                                  <p className="mt-1 font-bold text-xs text-on-surface capitalize">{order.delivery_status.replaceAll("_"," ")}</p>
+                                  <p className="text-[10px] text-on-surface-variant mt-1">Changes must be confirmed through the authorized rider/order workflow. Live rider tracking is not available on this screen.</p>
                                 </div>
                               )}
 
@@ -4178,14 +4113,7 @@ Notes: "${order.notes || "None"}"
                         Play sound for new orders
                       </span>
                     </div>
-                                  <button
-                onClick={() => toast.info("Notification Center coming soon.")}
-                className="p-2 text-on-surface-variant hover:text-primary transition-colors relative"
-                title="Notification Center"
-              >
-                <Inbox size={18} className="md:w-5 md:h-5" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full border border-white"></span>
-              </button>
+
               <button
                 onClick={() => setSoundAlerts(!soundAlerts)}
                       className={cn(
@@ -4334,82 +4262,9 @@ Notes: "${order.notes || "None"}"
                 Kitchen Hub
               </h4>
               <div className="space-y-3">
-                <button
-                  onClick={() => {
-                    setAlertsEnabled(!alertsEnabled);
-                    toast.success(
-                      `Order alerts ${!alertsEnabled ? "enabled" : "disabled"}`,
-                    );
-                  }}
-                  className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors group"
-                >
-                  <div className="flex items-center gap-3">
-                    <Bell
-                      size={20}
-                      className={
-                        alertsEnabled
-                          ? "text-primary"
-                          : "text-on-surface-variant/40"
-                      }
-                    />
-                    <span className="text-sm font-bold">New Order Alerts</span>
-                  </div>
-                  <div
-                    className={cn(
-                      "w-10 h-6 rounded-full relative transition-colors",
-                      alertsEnabled
-                        ? "bg-primary"
-                        : "bg-surface-container-highest",
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
-                        alertsEnabled ? "right-1" : "left-1",
-                      )}
-                    ></div>
-                  </div>
-                </button>
-                <button
-                  onClick={() => {
-                    setOrdersPaused(!ordersPaused);
-                    toast.warning(
-                      `Kitchen is now ${!ordersPaused ? "PAUSED" : "ACTIVE"}`,
-                    );
-                  }}
-                  className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <PauseCircle
-                      size={20}
-                      className={
-                        ordersPaused ? "text-error" : "text-on-surface-variant"
-                      }
-                    />
-                    <span className="text-sm font-bold">
-                      {ordersPaused ? "Resume Orders" : "Pause New Orders"}
-                    </span>
-                  </div>
-                  <ChevronRight
-                    size={20}
-                    className={cn(
-                      "text-on-surface-variant transition-transform",
-                      ordersPaused && "rotate-90",
-                    )}
-                  />
-                </button>
-                <button
-                  onClick={() => console.log("Opening printer settings...")}
-                  className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <Printer size={20} className="text-on-surface-variant" />
-                    <span className="text-sm font-bold">Printer Settings</span>
-                  </div>
-                  <span className="text-xs font-bold text-tertiary">
-                    Online
-                  </span>
-                </button>
+
+
+                <p className="text-xs text-on-surface-variant px-2 py-2">Printer connection is not verified. Open an order and use its Print options to check supported devices.</p>
               </div>
             </div>
           </div>
