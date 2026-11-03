@@ -14,7 +14,7 @@ test("pickup-first order cards show one summary and retain state-specific safe a
   assert.match(actions,/pickupOrderingEnabled\(\) && !busy && !disabled/);
   assert.match(actions,/await MerchantApi\.transitionPickupOrder\(order, action, extra\)/);
   assert.match(actions,/Have you actually received/);
-  assert.match(actions,/Confirm the food has actually been handed to the customer/);
+  assert.match(actions,/Mark Collected only after physical handover/);
   assert.throws(()=>pickupMutationsDisabled());
 });
 
