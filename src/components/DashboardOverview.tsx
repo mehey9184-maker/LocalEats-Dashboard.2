@@ -1759,7 +1759,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   if (success && shouldAcceptAvailabilityShop(currentShop, freshShop)) {
                     await Promise.resolve(onRefresh());
                     toast.success(
-                      `Storefront is now ${freshShop?.is_active ? "Open & Live" : "Closed & Offline"}!`
+                      `Shop marked ${freshShop?.is_active ? "available" : "unavailable"}. Order eligibility is confirmed separately.`
                     );
                   } else {
                     toast.error(typeof error === "string" ? error : "Failed to update storefront status");
@@ -1781,12 +1781,12 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 ) : currentShop.is_active ? (
                   <>
                     <X size={14} />
-                    <span>Go Offline</span>
+                    <span>Mark Unavailable</span>
                   </>
                 ) : (
                   <>
                     <Check size={14} />
-                    <span>Go Live Now</span>
+                    <span>Mark Available</span>
                   </>
                 )}
               </button>
@@ -2242,7 +2242,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   <div>
                     <p className="text-sm font-bold text-on-surface leading-snug">
                       Order <span className="text-primary font-mono tracking-tighter">#{order.id.toString().slice(-4)}</span>{" "}
-                      {order.status === "completed" ? "Completed" : order.status === "cancelled" ? "Cancelled" : "Received"}
+                      {order.status === "completed" ? "Completed" : order.status === "cancelled" ? "Cancelled" : order.status === "preparing" ? "Preparing" : order.status === "pending" ? "Pending" : String(order.status)}
                     </p>
                     <p className="text-[10px] md:text-xs text-on-surface-variant/80 font-medium mt-0.5">
                       {order.product_name} •{" "}
