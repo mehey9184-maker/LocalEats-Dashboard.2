@@ -70,7 +70,7 @@ test("confirmed pickup writes disable stale cards and unresolved writes permit o
   assert.match(api,/pickupMutationsDisabled\(\);/);
   assert.match(api,/sessionStorage\.setItem\(key,JSON\.stringify\(command\)\)/);
   assert.match(api,/if\(sessionStorage\.getItem\(key\)\)throw new MerchantApiError/);
-  assert.doesNotMatch(actions,/window\.dispatchEvent\(new Event\("merchant-pickup-order-confirmed"\)\)/g);
+  assert.equal((actions.match(/window\.dispatchEvent\(new Event\("merchant-pickup-order-confirmed"\)\)/g)||[]).length,1);
   // Dispatch is in the single verified helper, never on an unconfirmed error.
   assert.match(actions,/const markConfirmed = \(\) =>/);
 });
