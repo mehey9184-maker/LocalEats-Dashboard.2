@@ -1,6 +1,6 @@
 import {PickupOrderActions} from "./PickupOrderActions";
 import {merchantOrderMoney,merchantOrderTotal,merchantReceiptLineAmount,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
-import {summarizeKitchenQueue,merchantJohannesburgDayKey} from "../services/merchantDashboardLayout";
+import {summarizeKitchenQueue,merchantJohannesburgDayKey,merchantOrderHistoryInSastRange,merchantOrderCompletedOnSastDay} from "../services/merchantDashboardLayout";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled,pickupItemLineTotal} from "../services/merchantPickupPolicy";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
@@ -1044,24 +1044,10 @@ Notes: "${order.notes || "None"}"
       const matchesFilter = filterStatus === "All" || o.status === filterStatus;
       const matchesOrderType = orderTypeFilter === "All" || (orderTypeFilter === "collection" ? isPickupOrder(o) : isOrderDelivery(o));
 
-      let matchesDate = true;
-      // Active orders in the operational kitchen queue should not be hidden by historical date filters
-      if (viewMode === "history") {
-        const dateToCheck = o.completed_at || o.created_at;
-        if (dateToCheck) {
-          const d = new Date(dateToCheck);
-          if (!isNaN(d.getTime())) {
-            if (startDate) {
-              const s = new Date(startDate + "T00:00:00");
-              if (!isNaN(s.getTime()) && d < s) matchesDate = false;
-            }
-            if (endDate) {
-              const e = new Date(endDate + "T23:59:59.999");
-              if (!isNaN(e.getTime()) && d > e) matchesDate = false;
-            }
-          }
-        }
-      }
+      // History is filtered by the recorded order PLACED date in SAST, never by
+      // the viewer's timezone or a guessed paid/collected timestamp.
+      const matchesDate = viewMode !== "history" ||
+        merchantOrderHistoryInSastRange(o,startDate,endDate);
 
       return (
         matchesSearch &&
@@ -1120,31 +1106,20 @@ Notes: "${order.notes || "None"}"
   }, [displayedOrders, pendingOrderPriorityIds]);
 
   const fulfilledOrdersToday = useMemo(() => {
-    const now = new Date();
+    const today=merchantJohannesburgDayKey(new Date()) ?? "";
     return orders.filter((o) => {
-      const isFulfilled = o.status === "completed" || o.status === "cancelled";
-      let isToday = false;
-      if (o.created_at) {
-        const d = new Date(o.created_at);
-        if (!isNaN(d.getTime())) {
-          isToday =
-            d.getFullYear() === now.getFullYear() &&
-            d.getMonth() === now.getMonth() &&
-            d.getDate() === now.getDate();
-        }
-      }
-
+      const completedToday = merchantOrderCompletedOnSastDay(o,today);
       const matchesSearch =
         (o.product_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         o.id.toString().includes(searchTerm);
-      const matchesCustomer =
-        !customerSearch ||
+      const matchesCustomer = !customerSearch ||
         o.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
       const matchesPhone = !phoneSearch || o.phone?.includes(phoneSearch);
-
-      return isFulfilled && isToday && matchesSearch && matchesCustomer && matchesPhone;
+      const matchesFulfillment=orderTypeFilter === "All" ||
+        (orderTypeFilter === "collection" ? isPickupOrder(o) : isOrderDelivery(o));
+      return completedToday && matchesSearch && matchesCustomer && matchesPhone && matchesFulfillment;
     });
-  }, [orders, searchTerm, customerSearch, phoneSearch]);
+  }, [orders,searchTerm,customerSearch,phoneSearch,orderTypeFilter]);
 
   const startOrderIdx = (ordersPage - 1) * ordersPerPage;
   const paginatedOrders = useMemo(() => {
@@ -2253,8 +2228,8 @@ Notes: "${order.notes || "None"}"
               Orders Management
             </h2>
             <p className="text-sm text-on-surface-variant font-medium">
-              Streamline your kitchen workflow and monitor real-time fulfillment
-              across all delivery channels.
+              Prepare customer collections and review the latest verified order
+              status. Delivery workflows are reserved for a later phase.
             </p>
           </div>
           
@@ -2559,8 +2534,8 @@ Notes: "${order.notes || "None"}"
                 <div className="flex items-center gap-2 text-on-surface">
                   <Calendar size={18} className="text-primary shrink-0" />
                   <div>
-                    <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Filter by Date Range</h4>
-                    <p className="text-[10px] text-on-surface-variant font-semibold">Analyze and filter historic orders</p>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Filter by Order Placed Date</h4>
+                    <p className="text-[10px] text-on-surface-variant font-semibold">Dates use South African time · Not a payment or completion date</p>
                   </div>
                 </div>
 
@@ -2754,7 +2729,7 @@ Notes: "${order.notes || "None"}"
                 <p className="text-on-surface-variant max-w-xs mx-auto">
                   {viewMode === "active"
                     ? "Your kitchen is currently clear. New orders will appear here as they arrive."
-                    : "Completed orders will appear here once they are fulfilled."}
+                    : "Completed and cancelled orders appear here. The date filter uses when each order was placed."}
                 </p>
               </div>
               {viewMode === "active" && (
@@ -3460,7 +3435,7 @@ Notes: "${order.notes || "None"}"
                 <div className="flex items-center justify-between px-2 pb-2 border-b border-outline-variant/10">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
-                    <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">Fulfilled</h3>
+                    <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">Completed Today</h3>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full bg-zinc-500/10 text-zinc-600 font-bold text-[10px]">
                     {fulfilledOrdersToday.length}
@@ -3510,7 +3485,7 @@ Notes: "${order.notes || "None"}"
                             "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md",
                             order.status === "completed" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
                           )}>
-                            {order.status}
+                            {isPickupOrder(order) && order.status === "completed" ? "Collected" : order.status}
                           </span>
                         </div>
 
@@ -3533,7 +3508,7 @@ Notes: "${order.notes || "None"}"
 
                         <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between">
                           <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
-                          <span className="text-[9px] font-bold text-zinc-500 font-mono uppercase">Done</span>
+                          <span className="text-[9px] font-bold text-zinc-500 font-mono uppercase">{isPickupOrder(order) ? pickupPaymentLabel(order) : "Completed (payment unverified here)"}</span>
                         </div>
 
                         {/* Quick Tag Toggles */}
@@ -3572,7 +3547,7 @@ Notes: "${order.notes || "None"}"
                     );
                   })}
                   {fulfilledOrdersToday.length === 0 && (
-                    <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None fulfilled today</div>
+                    <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">No time-confirmed completions today</div>
                   )}
                   </AnimatePresence>
                 </div>

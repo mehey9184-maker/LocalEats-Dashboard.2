@@ -17,6 +17,11 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // After an API-confirmed write, block further actions until the authoritative
+  // list shows a changed order revision. A stale card must not submit twice.
+  const [confirmedPrevious, setConfirmedPrevious] = useState<{
+    orderId: string; revision: number;
+  } | null>(null);
   let status: string;
   try {
     status = pickupState(order);
@@ -28,7 +33,15 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
     : status === "ready_for_pickup"
       ? order.payment_status === "paid" ? ["Food handed over → Collected"] : ["Confirm cash received", "Confirm card-machine payment"]
       : [];
-  const canAct = pickupOrderingEnabled() && !busy && !disabled;
+  const hasUnconfirmedCommand = pickupOrderingEnabled() && MerchantApi.hasPendingPickupCommand(order);
+  const awaitingRefresh = confirmedPrevious !== null &&
+    confirmedPrevious.orderId === String(order.id) && confirmedPrevious.revision === order.revision;
+  const canAct = pickupOrderingEnabled() && !busy && !disabled &&
+    !hasUnconfirmedCommand && !awaitingRefresh;
+  const markConfirmed = () => {
+    setConfirmedPrevious({orderId: String(order.id), revision: order.revision});
+    window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));
+  };
 
   const act = async (label: string) => {
     if (!canAct) return;
@@ -42,18 +55,22 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
       extra.reason = reason;
     }
     if (action === "confirm_payment") {
-      if (!window.confirm("Confirm you have actually received payment at the shop?")) return;
-      extra.payment_method = label.includes("cash") ? "cash" : "card_machine";
+      const method=label.includes("cash") ? "cash" : "card_machine";
+      const methodLabel=method==="cash" ? "cash" : "physical card-machine";
+      if (!window.confirm(
+        `Have you actually received ${methodLabel} payment of R ${order.total_price.toFixed(2)} at the shop? This records PAYMENT only, not food collection.`
+      )) return;
+      extra.payment_method = method;
     }
     if (action === "collect") {
-      if (!window.confirm("Confirm the food has actually been handed to the customer?")) return;
+      if (!window.confirm("Has the customer actually received the food? Mark Collected only after physical handover; payment alone does not complete an order.")) return;
       extra.handover_confirmed = true;
     }
     setBusy(true);
     setError("");
     try {
       await MerchantApi.transitionPickupOrder(order, action, extra);
-      window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));
+      markConfirmed();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No change was confirmed. Retry the same action.");
     } finally {
@@ -89,7 +106,7 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
               >{busy ? "Saving..." : label}</button>;
             })}
           </div>
-          {pickupOrderingEnabled() && MerchantApi.hasPendingPickupCommand(order) && (
+          {pickupOrderingEnabled() && hasUnconfirmedCommand && !awaitingRefresh && (
             <button type="button" disabled={busy}
               className="text-xs font-bold underline"
               onClick={async event => {
@@ -97,13 +114,25 @@ export function PickupOrderActions({ order, mode = "full", disabled = false }: {
                 setBusy(true);
                 try {
                   await MerchantApi.retryPendingPickupOrder(order);
-                  window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));
+                  markConfirmed();
                   setError("");
                 } catch (e) {
                   setError(e instanceof Error ? e.message : "Outcome unconfirmed.");
                 } finally { setBusy(false); }
               }}
-            >Retry previous action</button>
+            >Retry unresolved command</button>
+          )}
+          {hasUnconfirmedCommand && !awaitingRefresh && (
+            <p role="alert" className="text-xs text-amber-700">
+              The previous command outcome is unconfirmed. Retry that same command;
+              do not start another payment or handover action.
+            </p>
+          )}
+          {awaitingRefresh && (
+            <p role="status" className="text-xs text-emerald-700">
+              The API confirmed the action. Waiting for refreshed order details before
+              allowing another step. Use Refresh if the order card stays unchanged.
+            </p>
           )}
           {error && <p role="alert" className="text-xs text-error">{error}</p>}
           {!!actions.length && !pickupOrderingEnabled() && (
