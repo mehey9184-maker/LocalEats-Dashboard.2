@@ -12,7 +12,8 @@ export function summarizeKitchenQueue(orders:readonly QueueOrder[]):KitchenQueue
     // "Ready" for delivery must never be advertised as "Ready for Pickup".
     const isPickup=order.delivery_type==="collection" ||
       order.order_type==="collection" || order.order_type==="pickup";
-    if(isPickup && (order.pickup_status==="ready_for_pickup" || order.status==="ready"))summary.readyForPickup+=1;
+    if(isPickup && order.status!=="completed" && order.status!=="cancelled" &&
+      (order.pickup_status==="ready_for_pickup" || order.status==="ready"))summary.readyForPickup+=1;
   }
   return summary;
 }
