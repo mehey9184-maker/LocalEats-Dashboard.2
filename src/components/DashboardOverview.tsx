@@ -698,21 +698,15 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
   const suburbData = useMemo(() => {
     const counts: Record<string, { count: number; revenue: number }> = {};
 
+    // Delivery-area figures require a completed delivery, valid city and total.
     orders.forEach((o) => {
-      let suburb = "Local Zone";
-      if (o.city && o.city.trim().length > 1) {
-        suburb = o.city.trim();
-      } else if (o.address) {
-        const parts = o.address.split(",").map((p) => p.trim()).filter(Boolean);
-        if (parts.length > 0) suburb = parts[parts.length - 1];
-      }
-
-      const price = typeof o.total_price === "number" ? o.total_price : parseFloat(String(o.total_price || 0)) || 0;
-      if (!counts[suburb]) {
-        counts[suburb] = { count: 0, revenue: 0 };
-      }
-      counts[suburb].count += 1;
-      counts[suburb].revenue += price;
+      if(o.status!=="completed" || (o.order_type!=="delivery" && o.delivery_type!=="delivery"))return;
+      const suburb=typeof o.city==="string" ? o.city.trim() : "";
+      const price=typeof o.total_price==="number" ? o.total_price : Number(o.total_price);
+      if(!suburb || !Number.isFinite(price) || price<0)return;
+      if(!counts[suburb])counts[suburb]={count:0,revenue:0};
+      counts[suburb].count+=1;
+      counts[suburb].revenue+=price;
     });
 
     const totalRev = Object.values(counts).reduce((acc, c) => acc + c.revenue, 0) || 1;
@@ -729,7 +723,7 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
       .slice(0, 6);
   }, [orders]);
 
-  const topSuburb = suburbData[0]?.suburb || "Tembisa East";
+  const topSuburb = suburbData[0]?.suburb || "";
 
   return (
     <div className="bg-surface-container-low rounded-[2rem] p-6 md:p-8 border border-outline-variant/5 space-y-6">
@@ -737,14 +731,14 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-headline font-bold text-on-surface">
-              Delivery Dispatch Trends by Area (Suburb)
+              Completed Delivery Orders by Area
             </h2>
             <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 px-2.5 py-0.5 rounded-full">
-              Zone Profitability
+              Completed Orders Only
             </span>
           </div>
           <p className="text-sm text-on-surface-variant font-medium mt-1">
-            Analyze profitable delivery zones, dispatch density, and average ticket size across suburbs.
+            Completed delivery order values by recorded city. This is not a profit or payout report.
           </p>
         </div>
 
@@ -758,7 +752,7 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
                 : "text-on-surface-variant hover:text-on-surface"
             )}
           >
-            Revenue (R)
+            Order Value (R)
           </button>
           <button
             onClick={() => setSuburbMetric("volume")}
@@ -788,9 +782,9 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
       {suburbData.length === 0 ? (
         <div className="py-12 px-4 text-center rounded-2xl bg-surface-container-high/30 border border-outline-variant/10">
           <MapPin size={32} className="mx-auto text-on-surface-variant/40 mb-3" />
-          <h3 className="font-bold text-sm text-on-surface">No Suburb Dispatches Recorded Yet</h3>
+          <h3 className="font-bold text-sm text-on-surface">No Completed Delivery Orders by Area</h3>
           <p className="text-xs text-on-surface-variant max-w-md mx-auto mt-1">
-            As your store receives and fulfills customer delivery orders across different suburbs, live zone profitability, order volume, and ticket metrics will automatically display here.
+            Only completed delivery orders with a recorded city and valid total appear here. Pickup orders are excluded.
           </p>
         </div>
       ) : (
@@ -818,8 +812,8 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
                       ? `R ${val.toLocaleString()}`
                       : suburbMetric === "avgTicket"
                       ? `R ${val.toLocaleString()} / order`
-                      : `${val} Dispatches`,
-                    suburbMetric === "revenue" ? "Total Revenue" : suburbMetric === "avgTicket" ? "Avg Order Value" : "Volume",
+                      : `${val} Completed Orders`,
+                    suburbMetric === "revenue" ? "Completed Order Value" : suburbMetric === "avgTicket" ? "Avg Completed Order Value" : "Completed Orders",
                   ]}
                 />
                 <Bar dataKey={suburbMetric === "revenue" ? "revenue" : suburbMetric === "volume" ? "orders" : "avgTicket"} radius={[10, 10, 0, 0]} isAnimationActive={false}>
@@ -852,7 +846,7 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
                     <span className="font-bold text-xs text-on-surface truncate">{item.suburb}</span>
                     {isTop ? (
                       <span className="text-[9px] font-black uppercase text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-md shrink-0">
-                        🏆 Top Zone
+                        Highest Order Value
                       </span>
                     ) : (
                       <span className="text-[9px] font-black text-on-surface-variant/50">
