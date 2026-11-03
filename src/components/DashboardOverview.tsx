@@ -536,13 +536,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
     try {
       await Promise.resolve(onRefresh());
-      if (currentShop) {
-        toast.success(`Shop data refreshed for "${currentShop.name}".`, {
-          id: "sync-verify",
-        });
-      } else {
-        toast.success("Shop data refresh completed.", { id: "sync-verify" });
-      }
+      toast.info("Refresh finished. Check the order verification status before taking action.", { id: "sync-verify" });
     } catch (err) {
       console.error("Sync & Verify failed:", err);
       toast.error("Could not refresh shop information.", { id: "sync-verify" });
@@ -1235,7 +1229,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {/* Today's Orders Card */}
         <motion.div
-          whileHover={{ y: -4 }}
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
         >
           <div className="flex justify-between items-start">
@@ -1260,7 +1253,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
         {/* Completed Order Value Card — not a payout balance */}
         <motion.div
-          whileHover={{ y: -4 }}
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
         >
           <div className="flex justify-between items-start">
@@ -1271,7 +1263,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           </div>
           <div className="mt-4">
             <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              R {weeklySales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {hasVerifiedOrders ? `R ${weeklySales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
             </span>
             <p className="text-[10px] text-on-surface/75 font-extrabold mt-1">
               Completed orders this week · not a payout balance
@@ -1282,7 +1274,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
         {/* Active Menu Items Card */}
         <motion.div
-          whileHover={{ y: -4 }}
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
         >
           <div className="flex justify-between items-start">
@@ -1304,7 +1295,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
         {/* Driver Availability Card */}
         <motion.div
-          whileHover={{ y: -4 }}
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
         >
           <div className="flex justify-between items-start">
@@ -1414,12 +1404,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             </button>
           </div>
           <div className="space-y-6">
-            {latestKitchenOrders.map((order, i) => (
-              <motion.button
-                initial={{ opacity: 0, x: 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
+            {latestKitchenOrders.map((order) => (
+              <button
                 key={order.id}
                 type="button"
                 className="w-full text-left flex items-center justify-between gap-3 group p-3 hover:bg-surface-container-high rounded-2xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-primary"
@@ -1459,7 +1445,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   </p>
                   <OrderStatusBadge status={order.status} className="mt-1" />
                 </div>
-                </motion.button>
+                </button>
               ))}
             {latestKitchenOrders.length===0 && (
               <div className="py-20 text-center space-y-6">
