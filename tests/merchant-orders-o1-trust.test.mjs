@@ -107,7 +107,7 @@ test("plain-text copied receipts do not invent zero totals",()=>{
  const stop=orders.indexOf("// Do not invent GPS tracking",start);
  const clip=orders.slice(start,stop);
  assert.ok(clip.length>500);
- assert.match(clip,/TOTAL: \\$\\{merchantOrderMoney\\(order\\.total_price\\)\\}/);
+ assert.ok(clip.includes("TOTAL: ${merchantOrderMoney(order.total_price)}"));
  assert.match(clip,/Amount unavailable/);
  assert.doesNotMatch(clip,/Number\\(order\\.total_price \\|\\| 0\\)/);
 });
