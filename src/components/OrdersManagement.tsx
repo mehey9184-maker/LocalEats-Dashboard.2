@@ -1121,10 +1121,6 @@ Notes: "${order.notes || "None"}"
     Record<string, boolean>
   >({});
   const prevOrdersRef = useRef<Order[]>([]);
-  const [maxConcurrentOrders, setMaxConcurrentOrders] = useState(() => {
-    return Number(localStorage.getItem("maxConcurrentOrders")) || 10;
-  });
-
   useEffect(() => {
     if (prevOrdersRef.current.length > 0) {
       const changes: Record<string, boolean> = {};
@@ -1150,15 +1146,6 @@ Notes: "${order.notes || "None"}"
     }
     prevOrdersRef.current = orders;
   }, [orders]);
-
-  useEffect(() => {
-    localStorage.setItem("maxConcurrentOrders", maxConcurrentOrders.toString());
-  }, [maxConcurrentOrders]);
-
-  const activeCount = orders.filter(
-    (o) => o.status !== "completed" && o.status !== "cancelled",
-  ).length;
-  const isLimitReached = activeCount >= maxConcurrentOrders;
 
   // Calculate customer loyalty
   const customerOrderCounts = orders.reduce(
@@ -2302,18 +2289,11 @@ Notes: "${order.notes || "None"}"
                                 </motion.div>
                               ) : (
                                 <div className="space-y-2">
-                                  {isLimitReached && (
-                                    <div className="flex items-center gap-2 p-2 bg-error/10 text-error rounded-lg text-[10px] font-bold">
-                                      <AlertCircle size={12} />
-                                      ORDER LIMIT REACHED ({maxConcurrentOrders}
-                                      )
-                                    </div>
-                                  )}
                                   <button
                                     onClick={() =>
                                       setAcceptingOrderId(order.id)
                                     }
-                                    disabled={isPickupOrder(order) || (isLimitReached)}
+                                    disabled={isPickupOrder(order)}
                                     className={cn(
                                       "w-full bg-primary text-white font-bold rounded-full shadow-md hover:bg-primary-container transition-colors disabled:opacity-50 disabled:grayscale",
                                       kitchenMode
@@ -3420,15 +3400,11 @@ Notes: "${order.notes || "None"}"
                           <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
                             <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                             <div className="flex flex-col items-stretch w-full gap-2">
-                              {isLimitReached && (
-                                <span className="text-[8px] font-bold text-error leading-none mb-0.5">LIMIT REACHED</span>
-                              )}
                               {isPickupOrder(order) ? (
-                                <PickupOrderActions order={order} mode="actions" disabled={isLimitReached} />
+                                <PickupOrderActions order={order} mode="actions" />
                               ) : (
                               <button
-                                disabled={isLimitReached}
-                                onClick={async (e) => {
+                                                                onClick={async (e) => {
                                   e.stopPropagation();
                                   if (isOrderDelivery(order) && !order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
                                     setUnlinkedModalOrder(order);
@@ -4167,29 +4143,6 @@ Notes: "${order.notes || "None"}"
                   )}
                 </div>
 
-                <div className="p-4 bg-surface-container-low rounded-2xl space-y-3">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold">Order Limit</span>
-                    <span className="text-[10px] text-on-surface-variant">
-                      Max concurrent active orders
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="range"
-                      min="1"
-                      max="50"
-                      value={maxConcurrentOrders}
-                      onChange={(e) =>
-                        setMaxConcurrentOrders(Number(e.target.value))
-                      }
-                      className="flex-1 accent-primary"
-                    />
-                    <span className="bg-primary/10 text-primary px-3 py-1 rounded-lg text-sm font-bold min-w-[3rem] text-center">
-                      {maxConcurrentOrders}
-                    </span>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -4247,13 +4200,13 @@ Notes: "${order.notes || "None"}"
                 </div>
                 <div className="mt-8 pt-8 border-t border-on-surface/5">
                   <div className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">
-                    Avg. Prep Time
+                    Preparing Orders
                   </div>
                   <div className="text-3xl font-headline font-extrabold text-primary">
-                    {avgPrepTime} min
+                    {orders.filter(o=>o.status==="preparing").length}
                   </div>
                   <div className="text-xs text-on-surface-variant mt-1">
-                    Based on current load
+                    Orders currently marked preparing
                   </div>
                 </div>
               </div>
