@@ -2299,7 +2299,7 @@ function App() {
                   getFirestoreShopById,
                 });
                 if (success && freshShop?.is_active === true) {
-                  toast.success("Shop is now Open and accepting customer orders!");
+                  toast.success("Shop marked available. Pickup checkout eligibility is confirmed separately.");
                   try {
                     const verifiedShop = freshShop;
                     if (verifiedShop && shouldAcceptAvailabilityShop(currentShop, verifiedShop)) {
@@ -2317,7 +2317,7 @@ function App() {
              }}
              className="px-4 py-1 bg-white text-error rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-zinc-100 transition-colors ml-2 shadow-xs cursor-pointer active:scale-95 border border-white"
            >
-             Go Online Now
+             Mark Shop Available
            </button>
         </div>
       )}
