@@ -68,7 +68,7 @@ test("All Stores no longer shows a first-store-only inventory total",()=>{
   assert.doesNotMatch(menu,/View All Stores/);
   assert.match(menu,/setSelectedShopId\(userOwnedShops\[0\].id\)/);
   assert.match(menu,/selectedShopId === "all" \? userOwnedShops\[0\]/);
-  assert.match(menu,/getMerchantShop\(\)/);
+  assert.match(api,/getMerchantShop\(\)/);
 });
 
 test("menu is presented in merchant language, not internal developer/unsupported feature claims",()=>{
