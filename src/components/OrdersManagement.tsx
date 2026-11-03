@@ -66,7 +66,6 @@ import { Pagination } from "./Pagination";
 import { useAuthGuard } from "../hooks/useAuthGuard";
 import { AddressDisplay } from "./AddressDisplay";
 import { Skeleton } from "./ui/Skeleton";
-import { NoLinkedRiderModal } from "./NoLinkedRiderModal";
 import { DispatchAlertModal } from "./DispatchAlertModal";
 import { format } from "date-fns";
 
@@ -140,8 +139,6 @@ const ChatWindow = ({ orderId, onClose }: { orderId: string; onClose: () => void
 export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   orders,
   onUpdateStatus,
-  onDispatchToRider,
-  onConvertOrderToPickup,
   loading,
   onRefresh,
   kitchenMode,
@@ -214,7 +211,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [showRiderPicker, setShowRiderPicker] = useState<string | null>(null);
   const [connectedRiders, setConnectedRiders] = useState<RiderConnection[]>([]);
   const [showMobileActions, setShowMobileActions] = useState(false);
-  const [unlinkedModalOrder, setUnlinkedModalOrder] = useState<Order | null>(null);
   const [dispatchAlertOrder, setDispatchAlertOrder] = useState<Order | null>(null);
   const [dispatchAlertType, setDispatchAlertType] = useState<"rider_dispatch" | "customer_status" | "rider_pairing">("customer_status");
 
@@ -309,16 +305,12 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
           <button disabled={isPickupOrder(order)}
             onClick={(e) => {
               e.stopPropagation();
-              if (connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
-                setUnlinkedModalOrder(order);
-              } else {
-                setShowRiderPicker(order.id);
-              }
+              onTabChange("riders");
             }}
             className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-white text-[8px] font-black uppercase rounded-lg transition-transform active:scale-95 flex items-center gap-0.5 cursor-pointer shrink-0 shadow-xs"
           >
             <Rocket size={10} />
-            <span>Pair</span>
+            <span>Riders</span>
           </button>
         </div>
       );
@@ -350,13 +342,13 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
           onClick={(e) => {
             e.stopPropagation();
             if (order.rider_id) {
-              void sendRiderNudge(order.rider_id, "Order update: Please check your active delivery mission!");
+              void handleRiderNudge(order.rider_id, "Order update: Please check your active delivery mission!");
             } else {
               toast.error("No rider assigned to nudge");
             }
           }}
           className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-[8px] font-black uppercase tracking-wider rounded-lg transition-transform flex items-center gap-0.5 cursor-pointer shrink-0 shadow-xs"
-          title="Trigger silent push notification alert to rider"
+          title="Request a rider nudge; device delivery is not guaranteed"
         >
           <Zap size={10} className="fill-current" />
           <span>Nudge</span>
@@ -613,7 +605,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
       const doc = iframe.contentWindow?.document || iframe.contentDocument;
       if (!doc) {
-        toast.error("Interactive printing is not available in full sandbox. Copying receipt text instead!");
+        toast.error("Browser printing is unavailable. You can copy the receipt text instead.");
         copyReceiptToClipboard(order);
         return;
       }
@@ -621,13 +613,13 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
       const formattedItems = safeGetOrderItems(order.items)
         .map((i) => {
           const isObj = typeof i === "object" && i !== null;
-          const p = isObj && "price" in i ? (i as { price: number }).price : (Number(order.total_price) || 0);
-          const q = isObj && "quantity" in i ? (i as { quantity: number }).quantity : 1;
+          const p = isObj && "price" in i ? (i as { price?: unknown }).price : null;
+          const q = isObj && "quantity" in i ? (i as { quantity?: unknown }).quantity : 1;
           const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
           return `
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
               <span>${safeReceiptHtml(q)}x ${safeReceiptHtml(n)}</span>
-              <span>R${Number(p * q).toFixed(2)}</span>
+              <span>${safeReceiptHtml(merchantReceiptLineAmount(p, q))}</span>
             </div>
           `;
         })
@@ -746,7 +738,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
       const doc = iframe.contentWindow?.document || iframe.contentDocument;
       if (!doc) {
-        toast.error("Interactive printing is not available in full sandbox.");
+        toast.error("Browser printing is unavailable.");
         return;
       }
 
@@ -757,13 +749,13 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
         const formattedItems = safeGetOrderItems(order.items)
           .map((i) => {
             const isObj = typeof i === "object" && i !== null;
-            const p = isObj && "price" in i ? (i as { price: number }).price : (Number(order.total_price) || 0);
-            const q = isObj && "quantity" in i ? (i as { quantity: number }).quantity : 1;
+            const p = isObj && "price" in i ? (i as { price?: unknown }).price : null;
+            const q = isObj && "quantity" in i ? (i as { quantity?: unknown }).quantity : 1;
             const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
             return `
               <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                 <span>${safeReceiptHtml(q)}x ${safeReceiptHtml(n)}</span>
-                <span>R${Number(p * q).toFixed(2)}</span>
+                <span>${safeReceiptHtml(merchantReceiptLineAmount(p, q))}</span>
               </div>
             `;
           })
@@ -1229,7 +1221,7 @@ Notes: "${order.notes || "None"}"
     }
 
     if (!rider.is_online) {
-      // Show "Wake to Tip" button UI or similar
+      // Show "Nudge Rider" button UI or similar
       // Handled in the UI loop
       return;
     }
@@ -1823,19 +1815,14 @@ Notes: "${order.notes || "None"}"
                                 </div>
                                 <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/5">
                                   <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/50 block mb-1">
-                                    Live Track
+                                    Delivery Status
                                   </span>
                                   <div className="flex items-center justify-between">
                                     <p className="text-xs font-bold text-on-surface-variant">
                                       {order.delivery_status
-                                        ? "Active Protocol"
-                                        : "No Signal"}
+                                        ? "Status Recorded"
+                                        : "Status Unavailable"}
                                     </p>
-                                    {order.delivery_pin && (
-                                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded font-black tracking-widest border border-primary/20">
-                                        PIN: {order.delivery_pin}
-                                      </span>
-                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -1970,15 +1957,15 @@ Notes: "${order.notes || "None"}"
                                                     <button
                                                       onClick={(e) => {
                                                         e.stopPropagation();
-                                                        sendRiderNudge(
+                                                        void handleRiderNudge(
                                                           rider.rider_id!,
-                                                          "Urgent order available - Tip boost active!",
+                                                          "Order update: Please check the Rider app.",
                                                         );
                                                       }}
                                                       className="flex items-center gap-1 px-2 py-1 bg-amber-500 text-white text-[9px] font-black rounded-lg uppercase hover:scale-105 transition-transform"
                                                     >
                                                       <Zap size={10} />
-                                                      Wake to Tip
+                                                      Nudge Rider
                                                     </button>
                                                   ) : (
                                                     <button disabled={isPickupOrder(order)}
@@ -2193,7 +2180,7 @@ Notes: "${order.notes || "None"}"
                             {order.rider_id && order.status !== "completed" && (
                               <button
                                 onClick={() => {
-                                  const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
+                                  const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order update: Please check your delivery mission!";
                                   void handleRiderNudge(order.rider_id!,nudgeMessage);
                                 }}
                                 className={cn(
@@ -3432,7 +3419,7 @@ Notes: "${order.notes || "None"}"
                           <div className="mt-2">
                             <button
                               onClick={() => {
-                                const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
+                                const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order update: Please check your delivery mission!";
                                 void handleRiderNudge(order.rider_id!,nudgeMessage);
                               }}
                               className="w-full py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
@@ -4320,27 +4307,6 @@ Notes: "${order.notes || "None"}"
             );
           })()}
         </AnimatePresence>
-
-        {/* Gated Dispatch - No Linked Rider Warning Modal */}
-        <NoLinkedRiderModal
-          isOpen={!!unlinkedModalOrder}
-          onClose={() => setUnlinkedModalOrder(null)}
-          order={unlinkedModalOrder}
-          connectedRiders={connectedRiders}
-          pairingCode={currentShop?.pairing_code || "LOCAL-EATS-PASS"}
-          onDispatchToRider={onDispatchToRider}
-          onAcceptOrder={async (orderId) => {
-            await onUpdateStatus(orderId, "preparing");
-          }}
-          onPromptCustomerForPickup={async (orderId) => {
-            if (onConvertOrderToPickup) {
-              await onConvertOrderToPickup(orderId);
-            }
-          }}
-          onOpenPairingCenter={() => {
-            onTabChange("riders");
-          }}
-        />
 
         {/* SMS & WhatsApp Dispatch Studio Modal */}
         <DispatchAlertModal
