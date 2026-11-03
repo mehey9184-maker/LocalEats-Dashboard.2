@@ -963,14 +963,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               <h1 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
                 {greeting}, Chef!
               </h1>
-              {menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length > 0 && (
+              {lowStockItems.length > 0 && (
                 <button
                   onClick={() => onNavigate("menu")}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-error/10 hover:bg-error/20 border border-error/20 text-error rounded-full font-bold text-[10px] uppercase tracking-wider transition-all animate-bounce active:scale-95 cursor-pointer shadow-xs shrink-0"
+                  className="min-h-10 flex items-center gap-1.5 px-3 py-2 bg-error/10 hover:bg-error/20 border border-error/20 text-error rounded-full font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 cursor-pointer shadow-xs shrink-0 focus-visible:outline-2 focus-visible:outline-error"
                   title="Click to manage low stock menu items"
                 >
-                  <AlertTriangle size={12} className="animate-pulse" />
-                  <span>{menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length} Items Low Stock</span>
+                  <AlertTriangle size={12} aria-hidden="true" />
+                  <span>{lowStockItems.length} Items Low Stock</span>
                 </button>
               )}
             </div>
@@ -1302,7 +1302,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       </div>
 
       {/* Low Stock Alerts Section */}
-      {menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length > 0 && (
+      {lowStockItems.length > 0 && (
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1318,7 +1318,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   Low Stock Alerts
                 </h2>
                 <p className="text-sm text-on-surface-variant">
-                  These items are running low and need restocking soon.
+                  Available menu items with fewer than five units recorded. Check quantities in Menu.
                 </p>
               </div>
             </div>
@@ -1326,13 +1326,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               onClick={() => onNavigate("menu")}
               className="px-6 py-2 bg-error text-white text-xs font-bold rounded-full hover:bg-error/90 transition-colors shadow-sm"
             >
-              Restock Now
+              Review Menu
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {menuItems
-              .filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5)
-              .map((item) => (
+            {lowStockItems.map((item) => (
                 <div
                   key={item.id}
                   className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-4 group hover:border-error/30 transition-colors"
@@ -1382,24 +1380,25 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         >
           <div className="flex justify-between items-center mb-8">
             <h2 className="text-xl font-headline font-bold text-on-surface">
-              Recent Activity
+              Recent Orders
             </h2>
             <button
               onClick={() => onNavigate("orders")}
               className="text-xs font-bold text-primary hover:underline"
             >
-              View All Activity
+              View All Orders
             </button>
           </div>
           <div className="space-y-6">
-            {orders.slice(0, 5).map((order, i) => (
-              <motion.div
+            {latestKitchenOrders.map((order, i) => (
+              <motion.button
                 initial={{ opacity: 0, x: 20 }}
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.1 }}
                 key={order.id}
-                className="flex items-center justify-between group p-3 hover:bg-surface-container-high rounded-2xl transition-colors cursor-pointer"
+                type="button"
+                className="w-full text-left flex items-center justify-between gap-3 group p-3 hover:bg-surface-container-high rounded-2xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-primary"
                 onClick={() => onNavigate("orders")}
               >
                 <div className="flex items-center gap-4">
@@ -1426,19 +1425,19 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                     </p>
                     <p className="text-[10px] md:text-xs text-on-surface-variant/80 font-medium mt-0.5">
                       {order.product_name} •{" "}
-                      {format(new Date(order.created_at), "h:mm a")}
+                      {Number.isFinite(Date.parse(order.created_at)) ? format(new Date(order.created_at), "h:mm a") : "Time unavailable"}
                     </p>
                   </div>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-black text-on-surface">
-                    R {Number(order.total_price || 0).toFixed(2)}
+                    {typeof order.total_price==="number" && Number.isFinite(order.total_price) && order.total_price>=0 ? `R ${order.total_price.toFixed(2)}` : "Total unavailable"}
                   </p>
                   <OrderStatusBadge status={order.status} className="mt-1" />
                 </div>
-                </motion.div>
+                </motion.button>
               ))}
-            {orders.length === 0 && (
+            {latestKitchenOrders.length === 0 && (
               <div className="py-20 text-center space-y-6">
                 <div className="relative w-24 h-24 mx-auto">
                    <div className="absolute inset-0 bg-primary/5 rounded-full animate-pulse-slow font-mono" />
@@ -1449,7 +1448,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 <div className="max-w-xs mx-auto">
                   <h3 className="font-bold text-on-surface">Awaiting Your First Order</h3>
                   <p className="text-xs text-on-surface-variant mt-2 opacity-70">
-                    Your shop activity will appear here in real-time as customers place their orders.
+                    Confirmed order records will appear here when the Orders API provides them.
                   </p>
                 </div>
               </div>
@@ -1866,8 +1865,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           {[
             {
               id: "menu",
-              title: "Update Menu",
-              sub: "Modify items & pricing",
+              title: "View Menu",
+              sub: "Review current menu items",
               icon: UtensilsCrossed,
               color: "bg-primary-fixed text-primary",
             },
@@ -1887,8 +1886,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             },
             {
               id: "orders",
-              title: "Kitchen ",
-              sub: "System & app preferences",
+              title: "Orders & Kitchen",
+              sub: "Review incoming and active orders",
               icon: ReceiptText,
               color: "bg-zinc-100 text-zinc-600",
             },
