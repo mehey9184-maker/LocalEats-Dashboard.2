@@ -232,15 +232,19 @@ function App() {
   const [showOfflineInfoModal, setShowOfflineInfoModal] = useState<boolean>(false);
   const [testingConnection, setTestingConnection] = useState<boolean>(false);
 
+  // Check the authenticated API, not merely navigator.onLine or a timer.
+  // A successful read never proves payments, GPS, printing or push delivery.
   const handleTestConnection = async () => {
     setTestingConnection(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      if (navigator.onLine) {
-        toast.success("Connection to relay nodes is optimal.");
-      } else {
-        toast.error("Cannot reach dispatch edge servers.");
+      if (!navigator.onLine) {
+        toast.error("Device reports offline. API connection not verified.");
+        return;
       }
+      await MerchantApi.getOrders();
+      toast.success("Orders API responded. Payments, printing and notifications are not verified by this check.");
+    } catch {
+      toast.error("Orders API could not be verified. Do not rely on cached statuses for order actions.");
     } finally {
       setTestingConnection(false);
     }
@@ -1805,10 +1809,10 @@ function App() {
             </div>
             <div className="space-y-2">
               <h2 className="font-headline font-black text-2xl text-zinc-900 dark:text-zinc-50 tracking-tight">
-                LocalEatsSA Kitchen Dashboard
+                LocalEats Merchant Kitchen
               </h2>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Authorize high-reliability kitchen alarms, prevent screen auto-locking, and register ESC/POS direct thermal print handshakes.
+                Enable optional kitchen sound alerts. Screen wake and printer support depend on your device and permissions.
               </p>
             </div>
             
@@ -1816,19 +1820,19 @@ function App() {
               <div className="flex gap-3 text-xs">
                 <span className="text-[#FF5A36] font-bold">●</span>
                 <p className="text-zinc-600 dark:text-zinc-300">
-                  <strong>Acoustic Siren Alerter:</strong> Plays a high-volume, dual-tone alarm pattern that halts only on manual resolution of `PENDING` orders.
+                  <strong>Acoustic Siren Alerter:</strong> May play an arrival sound when the browser allows audio. Check the Orders list to confirm new orders.
                 </p>
               </div>
               <div className="flex gap-3 text-xs">
                 <span className="text-[#FF5A36] font-bold">●</span>
                 <p className="text-zinc-600 dark:text-zinc-300">
-                  <strong>Screen Wake :</strong> Safeguards continuous screen illumination during busy, high-noise kitchen shifts.
+                  <strong>Screen Wake :</strong> Screen wake requires device and browser support and may not be available.
                 </p>
               </div>
               <div className="flex gap-3 text-xs">
                 <span className="text-[#FF5A36] font-bold">●</span>
                 <p className="text-zinc-600 dark:text-zinc-300">
-                  <strong>Direct s Interface:</strong> Streams byte-aligned ESC/POS receipts directly over Web Bluetooth and Web USB with IndexedDB queueing.
+                  <strong>Direct s Interface:</strong> Receipt printing is optional and requires supported hardware and browser permission.
                 </p>
               </div>
             </div>
@@ -1837,7 +1841,7 @@ function App() {
               onClick={enableAudio}
               className="w-full py-4 bg-[#FF5A36] hover:bg-[#e04f2f] text-white font-bold rounded-2xl tracking-wider uppercase text-xs shadow-xl shadow-orange-500/10 transition-all duration-200 cursor-pointer active:scale-95"
             >
-              Go Online & Initialize Dashboard
+              Enable Alerts & Open Dashboard
             </button>
           </div>
         </div>
@@ -1859,7 +1863,7 @@ function App() {
               </p>
               <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed pt-1">
                 {isOffline
-                  ? "Your device is not connected to Wi-Fi or mobile data. We are actively attempting to reconnect."
+                  ? "Your device is not connected to Wi-Fi or mobile data. Try reconnecting; order actions require API confirmation."
                   : "Your Wi-Fi or mobile data is active, but the cloud backend is currently taking longer than expected to respond."}
               </p>
             </div>
@@ -1879,7 +1883,7 @@ function App() {
               </div>
               <div className="flex justify-between items-center text-xs">
                 <span className="text-zinc-500 font-bold">Local Data:</span>
-                <span className="font-mono text-emerald-500 font-bold uppercase text-[10px]">CACHE SAFE</span>
+                <span className="font-mono text-emerald-500 font-bold uppercase text-[10px]">MAY BE STALE</span>
               </div>
             </div>
 
@@ -1899,7 +1903,7 @@ function App() {
                 type="button"
                 onClick={() => {
                   setDismissedOfflineOverlay(true);
-                  toast.info("Operating in local cached mode");
+                  toast.info("Cached information may be stale. Order changes still require server confirmation.");
                 }}
                 className="w-full py-2.5 px-4 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-semibold text-xs rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all cursor-pointer"
               >
@@ -1936,7 +1940,7 @@ function App() {
           onComplete={() => {
             setOnboardingOpen(false);
             localStorage.setItem("localeats_onboard_v1", "true");
-            toast.success("🎉 Guided onboarding completed! You are fully configured.");
+            toast.success("🎉 Guided onboarding completed! Review your shop setup separately.");
           }}
         />
 
@@ -1978,7 +1982,7 @@ function App() {
 
                 {/* Subtitle */}
                 <p className="text-xs text-on-surface-variant/80 leading-relaxed mb-5">
-                  Your device has lost its active database connection. Don&apos;t worry—LocalEats is fully prepared and handles network pauses automatically without interruption.
+                  Your device has lost its active database connection. Don&apos;t worry—Previously loaded information may remain visible, but live order actions require a network connection.
                 </p>
 
                 {/* Status Grid */}
@@ -1991,7 +1995,7 @@ function App() {
                     <div>
                       <h4 className="text-xs font-black tracking-tight text-on-surface">State Protection Enabled</h4>
                       <p className="text-[10px] text-on-surface-variant/75 mt-0.5">
-                        All orders, menu additions, and promotional codes are stored in your secure browser cache immediately.
+                        Some previously loaded information may be cached on this device. The server remains authoritative.
                       </p>
                     </div>
                   </div>
@@ -2004,7 +2008,7 @@ function App() {
                     <div>
                       <h4 className="text-xs font-black tracking-tight text-on-surface">Automated Cloud Sync</h4>
                       <p className="text-[10px] text-on-surface-variant/75 mt-0.5">
-                        Your cached updates will transparently merge back to the cloud database the moment your connection is restored.
+                        Do not assume changes have been saved until the server confirms them.
                       </p>
                     </div>
                   </div>
@@ -2017,7 +2021,7 @@ function App() {
                     <div>
                       <h4 className="text-xs font-black tracking-tight text-on-surface">Instant Performance</h4>
                       <p className="text-[10px] text-on-surface-variant/75 mt-0.5">
-                        Reads are loaded directly from lightning-fast memory registers, keeping checkout and rider controls snappy.
+                        Cached screens can be viewed, but order updates, checkout and dispatch require a server response.
                       </p>
                     </div>
                   </div>
