@@ -63,7 +63,8 @@ test("shop switching resets filters and selection and still validates ownership"
 test("original menu cards and disabled writes remain intact",()=>{
   assert.equal(menuWritesUnavailable(),true);
   assert.match(component,/rounded-2xl md:rounded-\[2rem\]/);
-  assert.match(component,/getOptimizedCloudinaryUrl\(item.image_url\)/);
+  assert.match(component,/getOptimizedCloudinaryUrl\(imageUrl\)/);
+  assert.match(component,/MenuItemPhoto key=/);
   assert.match(component,/Menu is read-only in this Preview/);
   assert.match(component,/disabled=\{menuWritesUnavailable\(\)\}/);
   assert.match(component,/disabled=\{isSaving \|\| menuWritesUnavailable\(\)\}/);
