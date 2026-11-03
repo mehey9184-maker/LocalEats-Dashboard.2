@@ -1,5 +1,5 @@
 import {PickupOrderActions} from "./PickupOrderActions";
-import {merchantOrderMoney,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
+import {merchantOrderMoney,merchantOrderTotal,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
 import {summarizeKitchenQueue} from "../services/merchantDashboardLayout";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled,pickupItemLineTotal} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
@@ -341,6 +341,28 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [readyOrderId, setReadyOrderId] = useState<string | null>(null);
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+  const inFlightStatusRef = useRef<string | null>(null);
+  // The API confirms only the status action, not messages, ETAs, or rider dispatch.
+  const confirmOrderStatus = async (
+    orderId: string,
+    status: OrderStatus,
+    onConfirmed?: () => void,
+  ): Promise<boolean> => {
+    if (inFlightStatusRef.current !== null) return false;
+    inFlightStatusRef.current = orderId;
+    setUpdatingOrderId(orderId);
+    try {
+      await Promise.resolve(onUpdateStatus(orderId, status));
+      onConfirmed?.();
+      return true;
+    } catch {
+      // The parent workflow displays the actual error; retain the form for retry.
+      return false;
+    } finally {
+      inFlightStatusRef.current = null;
+      setUpdatingOrderId(null);
+    }
+  };
   const [chatOrderId, setChatOrderId] = useState<string | null>(null);
   const [showRiderPicker, setShowRiderPicker] = useState<string | null>(null);
   const [connectedRiders, setConnectedRiders] = useState<RiderConnection[]>([]);
@@ -733,10 +755,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
       };
     }
   }, [currentShopId, currentShopPhone, subscribeWithAuthGuard]);
-  const [customMessage, setCustomMessage] = useState(
-    "We have received your order and are starting to prepare it!",
-  );
-  const [estimatedTime, setEstimatedTime] = useState("20-30 mins");
 
   const submitRiderRating = async (orderId:string,riderId:string,rating:number)=>{
     if(!Number.isInteger(rating) || rating<1 || rating>5)return;
@@ -1089,18 +1107,43 @@ Notes: "${order.notes || "None"}"
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [expandedNotesOrderIds, setExpandedNotesOrderIds] = useState<Record<string, boolean>>({});
-  const [kitchenNotes, setKitchenNotes] = useState<Record<string, string>>(() => {
-    try {
-      const saved = localStorage.getItem("le_kitchen_notes");
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
-
+  // Device-only notes must never bleed between shops on a shared browser.
+  const kitchenNotesShopId = currentShop?.id == null ? "" : String(currentShop.id);
+  const [scopedKitchenNotes, setScopedKitchenNotes] = useState<{
+    shopId: string;
+    notes: Record<string, string>;
+  }>({shopId: "", notes: {}});
+  const kitchenNotes = scopedKitchenNotes.shopId === kitchenNotesShopId
+    ? scopedKitchenNotes.notes : {};
   useEffect(() => {
-    localStorage.setItem("le_kitchen_notes", JSON.stringify(kitchenNotes));
-  }, [kitchenNotes]);
+    if (!kitchenNotesShopId) {
+      setScopedKitchenNotes({shopId: "", notes: {}});
+      return;
+    }
+    let notes: Record<string, string> = {};
+    try {
+      const saved = localStorage.getItem(`le_kitchen_notes_shop_${kitchenNotesShopId}`);
+      const parsed: unknown = saved ? JSON.parse(saved) : {};
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        notes = Object.fromEntries(Object.entries(parsed).filter(([id, value]) =>
+          id.length > 0 && typeof value === "string"
+        )) as Record<string, string>;
+      }
+    } catch {
+      notes = {};
+    }
+    setScopedKitchenNotes({shopId: kitchenNotesShopId, notes});
+  }, [kitchenNotesShopId]);
+  const saveDeviceKitchenNote = (orderId: string, note: string) => {
+    if (!kitchenNotesShopId || !note.trim()) return;
+    const notes = {...kitchenNotes, [orderId]: note.trim()};
+    try {
+      localStorage.setItem(`le_kitchen_notes_shop_${kitchenNotesShopId}`, JSON.stringify(notes));
+      setScopedKitchenNotes({shopId: kitchenNotesShopId, notes});
+    } catch {
+      toast.error("The private kitchen note could not be saved on this device.");
+    }
+  };
 
   const getPastDateStr = (daysAgo: number) => {
     const d = new Date();
@@ -1565,21 +1608,6 @@ Notes: "${order.notes || "None"}"
                                 <span>ETA unavailable</span>
                               </div>
                             )}
-                            {order.status !== 'completed' && order.status !== 'cancelled' && (
-                              <button disabled={isPickupOrder(order)}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const newEta = prompt("Enter estimated delivery time (e.g. 20-30 mins):", order.estimated_delivery_time || "25 mins");
-                                  if (newEta !== null) {
-                                    onUpdateStatus(order.id, order.status, undefined, newEta);
-                                  }
-                                }}
-                                className="p-1 text-primary hover:bg-primary/5 rounded shadow-sm"
-                                title="Adjust ETA"
-                              >
-                                <Edit2 size={12} />
-                              </button>
-                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-1 mt-3 text-[10px] font-bold text-primary/60 uppercase tracking-wider">
@@ -1896,7 +1924,7 @@ Notes: "${order.notes || "None"}"
                               <div className="space-y-1 sm:col-span-2 bg-amber-500/[0.04] border border-amber-500/25 p-3.5 rounded-xl">
                                 <span className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                                   <UtensilsCrossed size={12} />
-                                  Internal Kitchen Instruction
+                                  Private note on this device
                                 </span>
                                 <p className="text-xs font-semibold text-on-surface mt-1 leading-relaxed">
                                   {kitchenNotes[order.id]}
@@ -3240,11 +3268,11 @@ Notes: "${order.notes || "None"}"
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
                             const fields = isObj ? (item as Record<string, unknown>) : {};
-                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : Number(fields.price ?? 0);
+                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : merchantOrderTotal(fields.price);
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : `R ${Number(price || 0).toFixed(2)}`}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : merchantOrderMoney(price)}</span>
                               </div>
                             );
                           })}
@@ -3450,11 +3478,11 @@ Notes: "${order.notes || "None"}"
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
                             const fields = isObj ? (item as Record<string, unknown>) : {};
-                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : Number(fields.price ?? 0);
+                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : merchantOrderTotal(fields.price);
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : `R ${Number(price || 0).toFixed(2)}`}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : merchantOrderMoney(price)}</span>
                               </div>
                             );
                           })}
@@ -3463,23 +3491,9 @@ Notes: "${order.notes || "None"}"
                         {/* Delivery Track Badge & Gated Dispatch Action */}
                         <div className="mt-2.5 space-y-1.5">
                           {isDelivery && order.status !== "dispatched" && (
-                            <button disabled={isPickupOrder(order)}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
-                                  setUnlinkedModalOrder(order);
-                                } else if (connectedRiders.length === 1 && onDispatchToRider) {
-                                  const r = connectedRiders[0];
-                                  void onDispatchToRider(order.id, r.rider_id || String(r.id), r.rider_name || undefined, r.rider_phone || undefined);
-                                } else {
-                                  setShowRiderPicker(order.id);
-                                }
-                              }}
-                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
-                            >
-                              <Rocket size={12} className="animate-pulse text-amber-200" />
-                              <span>Send Rider (Dispatch)</span>
-                            </button>
+                            <p role="status" className="w-full py-2 px-3 rounded-xl bg-surface-container border border-outline-variant/10 text-xs font-semibold text-on-surface-variant">
+                              Rider assignment is handled by the authorized rider workflow.
+                            </p>
                           )}
                           {isDelivery ? (
                             <div className="p-2 bg-surface-container-low rounded-xl border border-outline-variant/5 text-[9px] font-bold text-on-surface-variant flex items-center justify-between">
@@ -3717,11 +3731,11 @@ Notes: "${order.notes || "None"}"
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
                             const fields = isObj ? (item as Record<string, unknown>) : {};
-                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : Number(fields.price ?? 0);
+                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : merchantOrderTotal(fields.price);
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : `R ${Number(price || 0).toFixed(2)}`}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : merchantOrderMoney(price)}</span>
                               </div>
                             );
                           })}
@@ -3730,23 +3744,9 @@ Notes: "${order.notes || "None"}"
                         {/* Gated Dispatch Action & Rider details */}
                         {isOrderDelivery(order) && order.status !== "dispatched" && (
                           <div className="mt-2.5">
-                            <button disabled={isPickupOrder(order)}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
-                                  setUnlinkedModalOrder(order);
-                                } else if (connectedRiders.length === 1 && onDispatchToRider) {
-                                  const r = connectedRiders[0];
-                                  void onDispatchToRider(order.id, r.rider_id || String(r.id), r.rider_name || undefined, r.rider_phone || undefined);
-                                } else {
-                                  setShowRiderPicker(order.id);
-                                }
-                              }}
-                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
-                            >
-                              <Rocket size={12} className="animate-pulse text-amber-200" />
-                              <span>Send Rider (Dispatch)</span>
-                            </button>
+                            <p role="status" className="w-full py-2 px-3 rounded-xl bg-surface-container border border-outline-variant/10 text-xs font-semibold text-on-surface-variant">
+                              Rider assignment is handled by the authorized rider workflow.
+                            </p>
                           </div>
                         )}
 
@@ -3771,12 +3771,9 @@ Notes: "${order.notes || "None"}"
                           {isPickupOrder(order) ? (
                             <PickupOrderActions order={order} mode="actions" />
                           ) : (
-                          <button
-                            onClick={() => onUpdateStatus(order.id, "completed")}
-                            className="w-full mt-4 py-5 bg-blue-600 text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-blue-500 active:scale-95 transition-all cursor-pointer text-center block"
-                          >
-                            Complete
-                          </button>
+                            <p role="status" className="text-xs text-on-surface-variant">
+                              Delivery completion is confirmed by the authorized rider workflow, not from this screen.
+                            </p>
                           )}
                         </div>
 
@@ -3888,11 +3885,11 @@ Notes: "${order.notes || "None"}"
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
                             const fields = isObj ? (item as Record<string, unknown>) : {};
-                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : Number(fields.price ?? 0);
+                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : merchantOrderTotal(fields.price);
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : `R ${Number(price || 0).toFixed(2)}`}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : merchantOrderMoney(price)}</span>
                               </div>
                             );
                           })}
