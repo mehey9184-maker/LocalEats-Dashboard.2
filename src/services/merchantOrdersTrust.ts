@@ -1,5 +1,5 @@
 import type {Order} from "../types";
-import {safeOrderCsvCell} from "./merchantDashboardTrust";
+import {safeOrderCsvCell} from "./merchantDashboardTrust.ts";
 
 /** A missing total is never a free order; only finite nonnegative amounts can be displayed. */
 export function merchantOrderTotal(raw:unknown):number|null{
