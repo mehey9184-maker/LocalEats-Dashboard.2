@@ -1,6 +1,6 @@
 import {PickupOrderActions} from "./PickupOrderActions";
 import {merchantOrderMoney,merchantOrderTotal,merchantReceiptLineAmount,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
-import {summarizeKitchenQueue} from "../services/merchantDashboardLayout";
+import {summarizeKitchenQueue,merchantJohannesburgDayKey} from "../services/merchantDashboardLayout";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled,pickupItemLineTotal} from "../services/merchantPickupPolicy";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
@@ -426,9 +426,11 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
   const currentShopId = currentShop?.id;
   const currentShopPhone = currentShop?.phone;
+  // No rider profile/location reads for shops serving only customer collection.
+  const hasDeliveryOrders = orders.some((order) => isOrderDelivery(order));
 
   useEffect(() => {
-    if (currentShopId) {
+    if (currentShopId && hasDeliveryOrders) {
       const fetchRiders = async () => {
         const shopId = currentShopId;
         const numericShopId = typeof shopId === "number" ? shopId : (parseInt(String(shopId).replace(/\D/g, ""), 10) || shopId);
@@ -591,7 +593,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
         if (activeChannel) void supabase.removeChannel(activeChannel);
       };
     }
-  }, [currentShopId, currentShopPhone, subscribeWithAuthGuard]);
+  }, [currentShopId, currentShopPhone, hasDeliveryOrders, subscribeWithAuthGuard]);
 
   const handleIframePrint = (order: Order, formatOption: "80mm" | "58mm", includeAddress: boolean) => {
     toast.info("Receipt Printing Requested");
@@ -963,11 +965,8 @@ Notes: "${order.notes || "None"}"
     }
   };
 
-  const getPastDateStr = (daysAgo: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() - daysAgo);
-    return d.toISOString().split("T")[0];
-  };
+  const getPastDateStr = (daysAgo: number) =>
+    merchantJohannesburgDayKey(new Date(Date.now() - daysAgo * 86400000)) ?? "";
 
   const [recentlyChangedOrders, setRecentlyChangedOrders] = useState<
     Record<string, boolean>
@@ -1036,14 +1035,14 @@ Notes: "${order.notes || "None"}"
 
     const filtered = baseOrders.filter((o) => {
       const matchesSearch =
-        o.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (o.product_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         o.id.toString().includes(searchTerm);
       const matchesCustomer =
         !customerSearch ||
         o.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
       const matchesPhone = !phoneSearch || o.phone?.includes(phoneSearch);
       const matchesFilter = filterStatus === "All" || o.status === filterStatus;
-      const matchesOrderType = orderTypeFilter === "All" || o.order_type === orderTypeFilter;
+      const matchesOrderType = orderTypeFilter === "All" || (orderTypeFilter === "collection" ? isPickupOrder(o) : isOrderDelivery(o));
 
       let matchesDate = true;
       // Active orders in the operational kitchen queue should not be hidden by historical date filters
@@ -1136,7 +1135,7 @@ Notes: "${order.notes || "None"}"
       }
 
       const matchesSearch =
-        o.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (o.product_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         o.id.toString().includes(searchTerm);
       const matchesCustomer =
         !customerSearch ||
@@ -1286,7 +1285,7 @@ Notes: "${order.notes || "None"}"
                         )
                       }
                     >
-                    {isPickupOrder(order) && <PickupOrderActions order={order}/>}
+                    {isPickupOrder(order) && <PickupOrderActions order={order} mode="summary" />}
 
                       <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
                         <div className="relative flex items-start gap-3 w-full sm:w-auto">
@@ -1357,7 +1356,7 @@ Notes: "${order.notes || "None"}"
                           >
                             {order.customer_name ||
                               `Customer #${order.user_id.slice(0, 5)}`}
-                            {order.delivery_status === "picked_up" && (
+                            {isOrderDelivery(order) && order.delivery_status === "picked_up" && (
                                <motion.span 
                                  initial={{ opacity: 0 }}
                                  animate={{ opacity: 1 }}
@@ -1394,28 +1393,28 @@ Notes: "${order.notes || "None"}"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setDispatchAlertOrder(order);
-                                  setDispatchAlertType(order.rider_id ? "rider_dispatch" : "customer_status");
+                                  setDispatchAlertType(isPickupOrder(order) ? "customer_status" : (order.rider_id ? "rider_dispatch" : "customer_status"));
                                 }}
                                 className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300 font-extrabold bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-2 rounded-xl transition-colors border border-emerald-500/30 min-h-[40px] cursor-pointer"
                                 title="Open SMS & WhatsApp Dispatch Studio"
                               >
                                 <Send size={13} />
-                                <span>Dispatch Alert</span>
+                                <span>{isPickupOrder(order) ? "Message Customer" : "Dispatch Alert"}</span>
                               </button>
                             </div>
                           <div className="flex flex-col gap-1 text-xs text-on-surface-variant">
                             <div className="flex items-center gap-2">
                               <MapPin size={12} className="text-primary/60" />
-                              <AddressDisplay address={order.address} city={order.city} className="italic font-medium text-xs max-sm:text-xs" maxParts={2} />
+                              {isPickupOrder(order) ? <span>Customer collects at the shop</span> : <AddressDisplay address={order.address} city={order.city} className="italic font-medium text-xs max-sm:text-xs" maxParts={2} />}
                             </div>
-                            {order.lat && order.lng && (
+                            {isOrderDelivery(order) && order.lat && order.lng && (
                               <div className="ml-5 text-[9px] text-primary/60 font-mono">
                                 {order.lat.toFixed(5)}, {order.lng.toFixed(5)}
                               </div>
                             )}
                           </div>
                           <div className="flex items-center gap-2 mt-1">
-                            {calculateDynamicETA(order) ? (
+                            {isOrderDelivery(order) && calculateDynamicETA(order) ? (
                               <div className="flex items-center gap-2 text-xs text-amber-600 font-bold bg-amber-50 px-2 py-1 rounded-lg">
                                 <Timer size={12} />
                                 <span>ETA: {calculateDynamicETA(order)}</span>
@@ -1499,60 +1498,27 @@ Notes: "${order.notes || "None"}"
                                 </thead>
                                 <tbody className="divide-y divide-outline-variant/10">
                                   {safeGetOrderItems(order.items).length > 0 ? (
-                                    safeGetOrderItems(order.items).map((item, idx) => (
-                                      <tr
-                                        key={idx}
-                                        className="hover:bg-surface-container-highest/30 transition-colors"
-                                      >
-                                        <td className="px-4 py-3 font-medium text-on-surface">
-                                          {typeof item === "object" &&
-                                          item !== null &&
-                                          "name" in item
-                                            ? ((item as unknown) as Record<string, unknown>).name as string
-                                            : String(item)}
-                                        </td>
-                                        <td className="px-4 py-3 text-center text-on-surface-variant">
-                                          {typeof item === "object" &&
-                                          item !== null &&
-                                          "quantity" in item
-                                            ? ((item as unknown) as Record<string, unknown>).quantity as number
-                                            : 1}
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-on-surface-variant">
-                                          R{" "}
-                                          {Number(
-                                            typeof item === "object" &&
-                                              item !== null &&
-                                              "price" in item
-                                              ? ((item as unknown) as Record<string, unknown>).price as number
-                                              : isPickupOrder(order) && typeof item === "object" && item !== null && "unit_price" in item
-                                                ? ((item as unknown) as Record<string, unknown>).unit_price as number
-                                                : 0,
-                                          ).toFixed(2)}
-                                        </td>
-                                        <td className="px-4 py-3 text-right font-bold text-on-surface">
-                                          R{" "}
-                                          {(
-                                            Number(
-                                              typeof item === "object" &&
-                                                item !== null &&
-                                                "price" in item
-                                                ? ((item as unknown) as Record<string, unknown>).price as number
-                                                : isPickupOrder(order) && typeof item === "object" && item !== null && "unit_price" in item
-                                                  ? ((item as unknown) as Record<string, unknown>).unit_price as number
-                                                  : 0,
-                                            ) *
-                                            Number(
-                                              typeof item === "object" &&
-                                                item !== null &&
-                                                "quantity" in item
-                                                ? ((item as unknown) as Record<string, unknown>).quantity as number
-                                                : 1,
-                                            )
-                                          ).toFixed(2)}
-                                        </td>
-                                      </tr>
-                                    ))
+                                    safeGetOrderItems(order.items).map((item, idx) => {
+                                      const fields: Record<string, unknown> =
+                                        typeof item === "object" && item !== null ? item as Record<string, unknown> : {};
+                                      const quantity = fields.quantity === undefined ? 1 : Number(fields.quantity);
+                                      const count = Number.isSafeInteger(quantity) && quantity > 0 ? quantity : null;
+                                      const rawUnitPrice = isPickupOrder(order) ? fields.unit_price : fields.price;
+                                      const unitPrice = merchantOrderTotal(rawUnitPrice);
+                                      // Use the API's saved pickup line snapshot, not today's menu price.
+                                      const lineTotal = isPickupOrder(order)
+                                        ? pickupItemLineTotal(item)
+                                        : unitPrice !== null && count !== null
+                                          ? merchantOrderTotal(unitPrice * count) : null;
+                                      return (
+                                        <tr key={idx} className="hover:bg-surface-container-highest/30 transition-colors">
+                                          <td className="px-4 py-3 font-medium text-on-surface">{String(fields.name ?? item)}</td>
+                                          <td className="px-4 py-3 text-center text-on-surface-variant">{count ?? "Unavailable"}</td>
+                                          <td className="px-4 py-3 text-right text-on-surface-variant">{unitPrice === null ? "Price unavailable" : merchantOrderMoney(unitPrice)}</td>
+                                          <td className="px-4 py-3 text-right font-bold text-on-surface">{lineTotal === null ? "Amount unavailable" : merchantOrderMoney(lineTotal)}</td>
+                                        </tr>
+                                      );
+                                    })
                                   ) : (
                                     <tr>
                                       <td className="px-4 py-3 font-medium text-on-surface">
@@ -1562,16 +1528,10 @@ Notes: "${order.notes || "None"}"
                                         1
                                       </td>
                                       <td className="px-4 py-3 text-right text-on-surface-variant">
-                                        R{" "}
-                                        {Number(order.total_price || 0).toFixed(
-                                          2,
-                                        )}
+                                        Amount unavailable
                                       </td>
                                       <td className="px-4 py-3 text-right font-bold text-on-surface">
-                                        R{" "}
-                                        {Number(order.total_price || 0).toFixed(
-                                          2,
-                                        )}
+                                        Amount unavailable
                                       </td>
                                     </tr>
                                   )}
@@ -1585,10 +1545,7 @@ Notes: "${order.notes || "None"}"
                                       Grand Total
                                     </td>
                                     <td className="px-4 py-3 text-right font-bold text-primary text-lg">
-                                      R{" "}
-                                      {Number(order.total_price || 0).toFixed(
-                                        2,
-                                      )}
+                                      {merchantOrderMoney(order.total_price)}
                                     </td>
                                   </tr>
                                 </tfoot>
@@ -1629,7 +1586,7 @@ Notes: "${order.notes || "None"}"
                               </span>
                               <div className="flex flex-col gap-2">
                                 <p className="text-sm font-semibold text-primary">
-                                  {order.payment_method || "Cash on Delivery"}
+                                  {pickupPaymentLabel(order)}
                                 </p>
                                 {order.terminal_masked_card && (
                                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 text-emerald-600 rounded border border-emerald-500/20 max-w-max">
@@ -1650,9 +1607,9 @@ Notes: "${order.notes || "None"}"
                             <div className="space-y-1 sm:col-span-2">
                               <div className="flex items-center justify-between">
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                                  Delivery Address
+                                  {isPickupOrder(order) ? "Collection at shop" : "Delivery Address"}
                                 </span>
-                                {order.lat && order.lng && (
+                                {isOrderDelivery(order) && order.lat && order.lng && (
                                   <a
                                     href={`https://www.google.com/maps/search/?api=1&query=${order.lat},${order.lng}`}
                                     target="_blank"
@@ -1663,8 +1620,8 @@ Notes: "${order.notes || "None"}"
                                   </a>
                                 )}
                               </div>
-                              <AddressDisplay address={order.address} city={order.city} className="text-sm font-semibold text-on-surface max-sm:text-xs" maxParts={3} />
-                              {order.lat && order.lng && (
+                              {isPickupOrder(order) ? <p className="text-sm font-semibold text-on-surface">Customer collects at this shop. No delivery address required.</p> : <AddressDisplay address={order.address} city={order.city} className="text-sm font-semibold text-on-surface max-sm:text-xs" maxParts={3} />}
+                              {isOrderDelivery(order) && order.lat && order.lng && (
                                 <p className="text-[10px] font-mono text-primary/70 mt-1 select-all bg-primary/5 p-1 rounded inline-block">
                                   GPS: {order.lat.toFixed(6)}, {order.lng.toFixed(6)}
                                 </p>
@@ -2512,6 +2469,22 @@ Notes: "${order.notes || "None"}"
           )}
         >
           <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap gap-2 items-center" role="group" aria-label="Order fulfillment filter">
+              <span className="text-xs font-bold text-on-surface-variant">Fulfillment:</span>
+              {([
+                ["All", "All orders"],
+                ["collection", "Customer collection"],
+                ["delivery", "Delivery (later phase)"],
+              ] as const).map(([value, label]) => (
+                <button key={value} type="button" aria-pressed={orderTypeFilter === value}
+                  onClick={() => setOrderTypeFilter(value)}
+                  className={cn("px-3 py-2 rounded-xl border text-xs font-bold transition-colors",
+                    orderTypeFilter === value ? "bg-primary/10 text-primary border-primary" :
+                      "bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:border-primary/30")}>
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="flex flex-wrap items-center gap-4 mb-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
@@ -2594,10 +2567,10 @@ Notes: "${order.notes || "None"}"
                 <div className="flex flex-wrap items-center gap-1.5">
                   {[
                     { label: "All Time", start: "", end: "" },
-                    { label: "Today", start: new Date().toISOString().split("T")[0], end: new Date().toISOString().split("T")[0] },
+                    { label: "Today", start: (merchantJohannesburgDayKey(new Date()) ?? ""), end: (merchantJohannesburgDayKey(new Date()) ?? "") },
                     { label: "Yesterday", start: getPastDateStr(1), end: getPastDateStr(1) },
-                    { label: "7 Days", start: getPastDateStr(7), end: new Date().toISOString().split("T")[0] },
-                    { label: "30 Days", start: getPastDateStr(30), end: new Date().toISOString().split("T")[0] },
+                    { label: "7 Days", start: getPastDateStr(7), end: (merchantJohannesburgDayKey(new Date()) ?? "") },
+                    { label: "30 Days", start: getPastDateStr(30), end: (merchantJohannesburgDayKey(new Date()) ?? "") },
                   ].map((preset) => {
                     const isSelected = startDate === preset.start && endDate === preset.end;
                     return (
@@ -2998,7 +2971,7 @@ Notes: "${order.notes || "None"}"
                           )}>
                             {!isOrderDelivery(order) ? "collection" : "delivery"}
                           </span>
-                          <AddressDisplay address={order.address} city={order.city} className="text-[10px] max-sm:text-[9px] font-medium max-w-[170px]" maxParts={2} />
+                          {isPickupOrder(order) ? <span>Collect at shop</span> : <AddressDisplay address={order.address} city={order.city} className="text-[10px] max-sm:text-[9px] font-medium max-w-[170px]" maxParts={2} />}
                         </div>
 
                         {/* Action buttons with inline input forms */}
