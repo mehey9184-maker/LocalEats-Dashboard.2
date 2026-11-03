@@ -1,5 +1,6 @@
 import {PickupOrderActions} from "./PickupOrderActions";
 import {merchantOrderMoney,merchantOrderTotal,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
+import {summarizeKitchenQueue} from "../services/merchantDashboardLayout";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled,pickupItemLineTotal} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
 import React, { useState, useEffect, useMemo, useRef } from "react";
@@ -4136,7 +4137,7 @@ Notes: "${order.notes || "None"}"
                     },
                     {
                       label: "Ready for Pickup",
-                      count: orders.filter((o) => o.status === "ready").length,
+                      count: summarizeKitchenQueue(orders).readyForPickup,
                       color: "bg-tertiary",
                     },
                     {
