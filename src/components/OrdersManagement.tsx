@@ -97,7 +97,7 @@ function cn(...inputs: ClassValue[]) {
 
 export interface OrdersManagementProps {
   orders: Order[];
-  onUpdateStatus: (id: string, status: OrderStatus, message?: string, estimatedTime?: string) => Promise<void> | void;
+  onUpdateStatus: (id: string, status: OrderStatus, message?: string) => Promise<void> | void;
   onDispatchToRider?: (id: string, riderId: string, riderName?: string, riderPhone?: string) => Promise<void> | void;
   onConvertOrderToPickup?: (id: string) => Promise<void> | void;
   loading: boolean;
@@ -2241,39 +2241,13 @@ Notes: "${order.notes || "None"}"
                                   animate={{ opacity: 1, y: 0 }}
                                   className="space-y-2"
                                 >
-                                  <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Order Notes & Custom Message</label>
-                                  <input
-                                    type="text"
-                                    value={orderNotes}
-                                    onChange={(e) => setOrderNotes(e.target.value)}
-                                    className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
-                                    placeholder="Kitchen notes (e.g., no onions)..."
-                                    autoFocus
-                                  />
-                                  <input
-                                    type="text"
-                                    value={customMessage}
-                                    onChange={(e) =>
-                                      setCustomMessage(e.target.value)
-                                    }
-                                    className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
-                                    placeholder="Receipt message..."
-                                  />
+                                  <p className="text-xs text-on-surface-variant">This confirms order status only; no ETA or custom customer message is sent.</p>
                                   <div className="flex gap-2">
                                     <button disabled={isPickupOrder(order)}
-                                      onClick={() => {
-                                        const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
-                                        onUpdateStatus(
-                                          order.id,
-                                          "preparing",
-                                          finalMsg,
-                                        );
-                                        setAcceptingOrderId(null);
-                                        setOrderNotes("");
-                                      }}
+                                      onClick={() => { void confirmOrderStatus(order.id,"preparing",()=>{setAcceptingOrderId(null);setOrderNotes("");}); }}
                                       className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-full"
                                     >
-                                      Send & Accept
+                                      Confirm Accept
                                     </button>
                                     <button
                                       onClick={() => {
@@ -2317,28 +2291,13 @@ Notes: "${order.notes || "None"}"
                                     animate={{ opacity: 1, y: 0 }}
                                     className="space-y-2 mb-2 p-3 bg-primary/5 rounded-xl border border-primary/10"
                                   >
-                                    <div className="flex flex-col gap-1">
-                                      <label className="text-[10px] font-bold text-on-surface-variant uppercase ml-1">
-                                        Update Est. Delivery Time
-                                      </label>
-                                      <input
-                                        type="text"
-                                        value={estimatedTime}
-                                        onChange={(e) => setEstimatedTime(e.target.value)}
-                                        className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none"
-                                        placeholder="e.g. 25 mins"
-                                        autoFocus
-                                      />
-                                    </div>
+                                    <p className="text-xs text-on-surface-variant">Status only. Estimated delivery time is not changed by this button.</p>
                                     <div className="flex gap-2">
                                       <button disabled={isPickupOrder(order)}
-                                        onClick={() => {
-                                          onUpdateStatus(order.id, "preparing", undefined, estimatedTime);
-                                          setPreparingOrderId(null);
-                                        }}
+                                        onClick={() => { void confirmOrderStatus(order.id,"preparing",()=>setPreparingOrderId(null)); }}
                                         className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-lg"
                                       >
-                                        Set Time & Start
+                                        Start Preparing
                                       </button>
                                       <button
                                         onClick={() => setPreparingOrderId(null)}
@@ -2368,35 +2327,11 @@ Notes: "${order.notes || "None"}"
                                   animate={{ opacity: 1, y: 0 }}
                                   className="space-y-2"
                                 >
-                                  <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-bold text-on-surface-variant uppercase ml-1">
-                                      Est. Delivery Time
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={estimatedTime}
-                                      onChange={(e) =>
-                                        setEstimatedTime(e.target.value)
-                                      }
-                                      className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none"
-                                      placeholder="e.g. 20-30 mins"
-                                      autoFocus
-                                    />
-                                  </div>
+                                  <p className="text-xs text-on-surface-variant">Status only. Estimated delivery time is not changed by this button.</p>
                                   <div className="flex gap-2">
                                     <button
                                       disabled={isPickupOrder(order) || (updatingOrderId === order.id)}
-                                      onClick={async () => {
-                                        setUpdatingOrderId(order.id);
-                                        await onUpdateStatus(
-                                          order.id,
-                                          "ready",
-                                          undefined,
-                                          estimatedTime,
-                                        );
-                                        setUpdatingOrderId(null);
-                                        setReadyOrderId(null);
-                                      }}
+                                      onClick={() => { void confirmOrderStatus(order.id,"ready",()=>setReadyOrderId(null)); }}
                                       className="flex-1 py-2 bg-tertiary text-white text-xs font-bold rounded-full disabled:opacity-50"
                                     >
                                       {updatingOrderId === order.id ? "Updating..." : "Confirm & Ready"}
@@ -3292,33 +3227,13 @@ Notes: "${order.notes || "None"}"
                         {/* Action buttons with inline input forms */}
                         {acceptingOrderId === order.id ? (
                           <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
-                            <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Order Notes & Custom Message</label>
-                            <input
-                              type="text"
-                              value={orderNotes}
-                              onChange={(e) => setOrderNotes(e.target.value)}
-                              className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface mb-2"
-                              placeholder="Kitchen notes (e.g., no onions)..."
-                              autoFocus
-                            />
-                            <input
-                              type="text"
-                              value={customMessage}
-                              onChange={(e) => setCustomMessage(e.target.value)}
-                              className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
-                              placeholder="Receipt message..."
-                            />
+                            <p className="text-xs text-on-surface-variant">This confirms order status only; no ETA or custom customer message is sent.</p>
                             <div className="flex gap-2">
                               <button disabled={isPickupOrder(order)}
-                                onClick={() => {
-                                  const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
-                                  onUpdateStatus(order.id, "preparing", finalMsg);
-                                  setAcceptingOrderId(null);
-                                  setOrderNotes("");
-                                }}
+                                onClick={() => { void confirmOrderStatus(order.id,"preparing",()=>{setAcceptingOrderId(null);setOrderNotes("");}); }}
                                 className="flex-1 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer"
                               >
-                                Send & Accept
+                                Confirm Accept
                               </button>
                               <button
                                 onClick={() => {
@@ -3339,14 +3254,7 @@ Notes: "${order.notes || "None"}"
                                 <PickupOrderActions order={order} mode="actions" />
                               ) : (
                               <button
-                                                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  if (isOrderDelivery(order) && !order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
-                                    setUnlinkedModalOrder(order);
-                                    return;
-                                  }
-                                  await onUpdateStatus(order.id, "preparing", "Order accepted");
-                                }}
+                                                                disabled={updatingOrderId !== null} onClick={(e) => {e.stopPropagation();void confirmOrderStatus(order.id,"preparing");}}
                                 className="w-full mt-4 py-5 bg-emerald-600 text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none text-center block"
                               >
                                 Accept
@@ -3507,21 +3415,10 @@ Notes: "${order.notes || "None"}"
                         {order.status === "accepted" ? (
                           preparingOrderId === order.id ? (
                             <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
-                              <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Prep Time (mins)</label>
-                              <input
-                                type="text"
-                                value={estimatedTime}
-                                onChange={(e) => setEstimatedTime(e.target.value)}
-                                className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
-                                placeholder="e.g. 25 mins"
-                                autoFocus
-                              />
+                              <p className="text-xs text-on-surface-variant">Status only. No preparation or delivery time is saved by this button.</p>
                               <div className="flex gap-2">
                                 <button disabled={isPickupOrder(order)}
-                                  onClick={() => {
-                                    onUpdateStatus(order.id, "preparing", undefined, estimatedTime);
-                                    setPreparingOrderId(null);
-                                  }}
+                                  onClick={() => { void confirmOrderStatus(order.id,"preparing",()=>setPreparingOrderId(null)); }}
                                   className="flex-1 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer"
                                 >
                                   Start Prep
@@ -3556,21 +3453,10 @@ Notes: "${order.notes || "None"}"
                         ) : (
                           readyOrderId === order.id ? (
                             <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
-                              <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Est. Delivery Time</label>
-                              <input
-                                type="text"
-                                value={estimatedTime}
-                                onChange={(e) => setEstimatedTime(e.target.value)}
-                                className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
-                                placeholder="e.g. 15-20 mins"
-                                autoFocus
-                              />
+                              <p className="text-xs text-on-surface-variant">Status only. No preparation or delivery time is saved by this button.</p>
                               <div className="flex gap-2">
                                 <button disabled={isPickupOrder(order)}
-                                  onClick={() => {
-                                    onUpdateStatus(order.id, "ready", undefined, estimatedTime);
-                                    setReadyOrderId(null);
-                                  }}
+                                  onClick={() => { void confirmOrderStatus(order.id,"ready",()=>setReadyOrderId(null)); }}
                                   className="flex-1 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer"
                                 >
                                   Confirm Ready
@@ -4604,7 +4490,7 @@ Notes: "${order.notes || "None"}"
                     <div className="space-y-1.5 text-left">
                       <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70 flex items-center gap-1.5">
                         <UtensilsCrossed size={12} className="text-primary" />
-                        Internal Notes
+                        Private note (on this device only)
                       </span>
                       <textarea
                         value={orderNotes}
@@ -4616,17 +4502,7 @@ Notes: "${order.notes || "None"}"
                       />
                     </div>
 
-                    {/* Customer message */}
-                    <div className="space-y-1.5 text-left">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70">Customer Notification Receipt Message</span>
-                      <input
-                        type="text"
-                        value={customMessage}
-                        onChange={(e) => setCustomMessage(e.target.value)}
-                        className="w-full px-4 py-2.5 text-xs bg-surface-container-low border border-outline-variant/15 rounded-xl focus:ring-1 focus:ring-primary outline-none text-on-surface font-semibold placeholder:text-on-surface-variant/40"
-                        placeholder="Your order has been accepted and is being prepared with care!"
-                      />
-                    </div>
+                    <p className="text-xs text-on-surface-variant text-left" role="note">Accepting changes the order status only. No custom customer message or ETA is sent.</p>
                   </div>
 
                   {/* Modal Footer */}
@@ -4641,19 +4517,7 @@ Notes: "${order.notes || "None"}"
                       Cancel
                     </button>
                     <button
-                      onClick={() => {
-                        // Save kitchen notes locally
-                        if (orderNotes.trim()) {
-                          setKitchenNotes(prev => ({
-                            ...prev,
-                            [orderToAccept.id]: orderNotes.trim()
-                          }));
-                        }
-                        const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
-                        onUpdateStatus(orderToAccept.id, "preparing", finalMsg);
-                        setAcceptingOrderId(null);
-                        setOrderNotes("");
-                      }}
+                      onClick={() => {void confirmOrderStatus(orderToAccept.id,"preparing",()=>{if(orderNotes.trim())saveDeviceKitchenNote(orderToAccept.id,orderNotes);setAcceptingOrderId(null);setOrderNotes("");});}}
                       className="flex-1 py-3 bg-primary text-on-primary text-xs font-black uppercase tracking-wider rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all cursor-pointer text-center"
                     >
                       Accept & Start Preparing
@@ -4674,7 +4538,7 @@ Notes: "${order.notes || "None"}"
           pairingCode={currentShop?.pairing_code || "LOCAL-EATS-PASS"}
           onDispatchToRider={onDispatchToRider}
           onAcceptOrder={async (orderId) => {
-            await onUpdateStatus(orderId, "preparing", "Order accepted & dispatched to rider");
+            await onUpdateStatus(orderId, "preparing");
           }}
           onPromptCustomerForPickup={async (orderId) => {
             if (onConvertOrderToPickup) {
