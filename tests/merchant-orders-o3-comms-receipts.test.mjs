@@ -47,12 +47,14 @@ test("manual message composer cannot forge delivery or expose customer data thro
   assert.doesNotMatch(alerts,/Message dispatched via Native Share/);
 });
 
-test("a second order opens with fresh recipient, message and no stale customer text",()=>{
-  assert.match(alerts,/const previousComposerScope = useRef<string \| null>\(null\)/);
-  assert.match(alerts,/if \(previousComposerScope\.current === scope\) return/);
-  assert.match(alerts,/setRecipientType\(nextRecipient\)/);
-  assert.match(alerts,/setMessageText\(generateTemplateText\(nextRecipient\)\)/);
-  assert.match(alerts,/setCustomPhone\(""\)/);
-  assert.match(alerts,/^\s*const handleCopyText = async \(\) => \{/m);
+test("each order and shop gets a newly mounted composer with a separate draft",()=>{
+  assert.match(orders,/key=\{dispatchAlertOrder\?\.id \?/);
+  assert.match(orders,/dispatchAlertOrder\.id/);
+  assert.match(orders,/dispatchAlertType/);
+  assert.match(orders,/currentShop\?\.id/);
+  assert.match(alerts,/useState<QueuedAlert\[\]>\(\[\]\)/);
+  assert.match(alerts,/useState<string>\(\(\) => generateTemplateText\(recipientType\)\)/);
+  assert.doesNotMatch(alerts,/previousComposerScope|useEffect\(/);
+  assert.match(alerts,/const handleCopyText = async \(\) => \{/);
   assert.match(alerts,/await navigator\.clipboard\.writeText\(messageText\)/);
 });
