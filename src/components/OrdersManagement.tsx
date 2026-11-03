@@ -1045,14 +1045,20 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
   const copyReceiptToClipboard = (order: Order) => {
     const itemsText = safeGetOrderItems(order.items)
-      .map((i) => {
-        const isObj = typeof i === "object" && i !== null;
-        const p = isObj && "price" in i ? (i as { price: number }).price : (Number(order.total_price) || 0);
-        const q = isObj && "quantity" in i ? (i as { quantity: number }).quantity : 1;
-        const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
-        return `${q}x ${n.padEnd(22)} R${(p * q).toFixed(2)}`;
+      .map((item) => {
+        const entry = typeof item === "object" && item !== null
+          ? item as { name?: unknown; price?: unknown; quantity?: unknown }
+          : null;
+        const name = String(entry?.name ?? item);
+        const quantity = Number(entry?.quantity ?? 1);
+        const price = entry?.price == null ? NaN : Number(entry.price);
+        const validQuantity = Number.isFinite(quantity) && quantity > 0;
+        const lineTotal = validQuantity && Number.isFinite(price) && price >= 0
+          ? merchantOrderMoney(price * quantity)
+          : "Amount unavailable";
+        return `${validQuantity ? quantity : "?"}x ${name} ${lineTotal}`;
       })
-      .join("") || `1x ${order.product_name.padEnd(22)} R${(Number(order.total_price) || 0).toFixed(2)}`;
+      .join("\n") || `1x ${order.product_name} ${merchantOrderMoney(order.total_price)}`;
 
     const textReceipt = `
 ========================================
@@ -1063,7 +1069,7 @@ Type: ${!isOrderDelivery(order) ? "COLLECTION" : "DELIVERY"}
 ----------------------------------------
 ${itemsText}
 ----------------------------------------
-TOTAL: R${Number(order.total_price || 0).toFixed(2)}
+TOTAL: ${merchantOrderMoney(order.total_price)}
 ========================================
 Customer: ${order.customer_name || "Guest"}
 Phone: ${order.phone || "N/A"}
@@ -1073,7 +1079,7 @@ Notes: "${order.notes || "None"}"
     `.trim();
 
     navigator.clipboard.writeText(textReceipt)
-      .then(() => toast.success("Receipt copied as plain-text! Ready to send on WhatsApp."))
+      .then(() => toast.success("Receipt copied as plain text."))
       .catch(() => toast.error("Failed to copy receipt to clipboard"));
   };
 
@@ -1947,7 +1953,7 @@ Notes: "${order.notes || "None"}"
                                     </p>
                                     {order.rider_id &&
                                       order.delivery_status !== "delivered" && (
-                                        <button disabled={isPickupOrder(order)}
+                                        <button disabled title="Rider reassignment requires server authorization"
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             onUnassignRider(order.id);
@@ -1956,7 +1962,7 @@ Notes: "${order.notes || "None"}"
                                             isRiderTimeout ? "bg-red-500 text-white shadow hover:bg-red-600" : "bg-red-100 text-red-600 hover:bg-red-200"
                                           )}
                                         >
-                                          {isRiderTimeout ? "Unassign & Re-broadcast" : "Remove Rider"}
+                                          Rider reassignment unavailable
                                         </button>
                                       )}
                                   </div>
@@ -2165,7 +2171,7 @@ Notes: "${order.notes || "None"}"
                                         </div>
                                       </div>
                                     ) : (
-                                      <button disabled={isPickupOrder(order)}
+                                      <button disabled title="Rider assignment requires a server-authorized workflow"
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           if (connectedRiders.length > 0) {
@@ -2180,9 +2186,7 @@ Notes: "${order.notes || "None"}"
                                           size={16}
                                           className="group-hover:animate-bounce"
                                         />
-                                        {connectedRiders.length > 0
-                                          ? `Tag Rider (${connectedRiders.length} Online)`
-                                          : "Invoke Rider Dispatch (R 5.00)"}
+                                        Rider assignment unavailable
                                       </button>
                                     )}
                                   </div>
@@ -2202,25 +2206,7 @@ Notes: "${order.notes || "None"}"
                         <div className="flex items-center gap-3">
                           {order.status === "pending" && (
                             <div className="flex-1 flex flex-col gap-2">
-                              {isOrderDelivery(order) &&
-                                !order.delivery_status && (
-                                  <button disabled={isPickupOrder(order)}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onRequestRider(order.id);
-                                    }}
-                                    className={cn(
-                                      "w-full bg-orange-600 text-white font-black rounded-full shadow-lg hover:bg-orange-700 transition-all mb-2 flex items-center justify-center gap-2 border-2 border-orange-400/30 py-4",
-                                      kitchenMode ? "text-xl" : "text-sm",
-                                    )}
-                                  >
-                                    <Rocket
-                                      size={20}
-                                      className="animate-pulse"
-                                    />
-                                    REQUEST RIDER NOW
-                                  </button>
-                                )}
+                              
                               {acceptingOrderId === order.id ? (
                                 <motion.div
                                   initial={{ opacity: 0, y: 10 }}
@@ -2295,25 +2281,7 @@ Notes: "${order.notes || "None"}"
                           {(order.status === "preparing" ||
                             order.status === "accepted") && (
                             <div className="flex-1 flex flex-col gap-2">
-                              {isOrderDelivery(order) &&
-                                !order.delivery_status && (
-                                  <button disabled={isPickupOrder(order)}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onRequestRider(order.id);
-                                    }}
-                                    className={cn(
-                                      "w-full bg-orange-600 text-white font-black rounded-full shadow-lg hover:bg-orange-700 transition-all mb-2 flex items-center justify-center gap-2 border-2 border-orange-400/30 py-4",
-                                      kitchenMode ? "text-xl" : "text-sm",
-                                    )}
-                                  >
-                                    <Rocket
-                                      size={20}
-                                      className="animate-pulse"
-                                    />
-                                    REQUEST RIDER NOW
-                                  </button>
-                                )}
+                              
                               {order.status === "accepted" && (
                                 preparingOrderId === order.id ? (
                                   <motion.div
@@ -2431,19 +2399,7 @@ Notes: "${order.notes || "None"}"
                               )}
                             </div>
                           )}
-                          {order.status === "ready" && (
-                            <button disabled={isPickupOrder(order)}
-                              onClick={() =>
-                                onUpdateStatus(order.id, "completed")
-                              }
-                              className={cn(
-                                "flex-1 bg-tertiary text-white font-bold rounded-full hover:bg-tertiary-container transition-colors shadow-md",
-                                kitchenMode ? "py-5 text-lg" : "py-3 text-sm",
-                              )}
-                            >
-                              Mark as Completed
-                            </button>
-                          )}
+                          
                           <div className="flex gap-2">
                             {order.rider_id && order.status !== "completed" && (
                               <button
@@ -2489,22 +2445,7 @@ Notes: "${order.notes || "None"}"
                             >
                               <Printer size={kitchenMode ? 24 : 18} />
                             </button>
-                            {order.status !== "completed" &&
-                              order.status !== "cancelled" && (
-                                <button disabled={isPickupOrder(order)}
-                                  onClick={() => {
-                                    setCancellingOrder(order);
-                                    setCancelReasonPreset("Out of ingredients / Items unavailable");
-                                    setCustomCancelExplanation("Kitchen is temporarily out of key ingredients.");
-                                  }}
-                                  className={cn(
-                                    "ml-auto bg-error/10 text-error rounded-full hover:bg-error/20 transition-all font-bold tracking-widest uppercase text-[10px]",
-                                    kitchenMode ? "px-6 py-2" : "px-4 py-2",
-                                  )}
-                                >
-                                  Cancel Order
-                                </button>
-                              )}
+                            
                           </div>
                         </div>
 
