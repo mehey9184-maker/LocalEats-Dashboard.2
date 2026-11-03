@@ -52,7 +52,7 @@ test("a second order opens with fresh recipient, message and no stale customer t
   assert.match(alerts,/if \(previousComposerScope\.current === scope\) return/);
   assert.match(alerts,/setRecipientType\(nextRecipient\)/);
   assert.match(alerts,/setMessageText\(generateTemplateText\(nextRecipient\)\)/);
-  assert.match(alerts,/setCustomPhone\\(\\"\\"\\)/);
+  assert.match(alerts,/setCustomPhone\(""\)/);
   assert.match(alerts,/^\s*const handleCopyText = async \(\) => \{/m);
   assert.match(alerts,/await navigator\.clipboard\.writeText\(messageText\)/);
 });
