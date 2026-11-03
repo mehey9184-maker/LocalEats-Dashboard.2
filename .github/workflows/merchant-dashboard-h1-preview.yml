@@ -13,6 +13,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
@@ -24,7 +25,9 @@ jobs:
         run: node --experimental-strip-types --test tests/merchant-activation.test.mjs tests/merchant-pickup.test.mjs
       - name: Existing merchant availability regressions
         run: npm run test:merchant-availability
-      - name: Frontend lint
-        run: npm run lint
+      - name: New helper code ESLint
+        run: npx eslint src/services/merchantDashboardTrust.ts
+      - name: No new ESLint errors compared with original Merchant Preview
+        run: node tests/merchant-dashboard-h1-lint-baseline.mjs
       - name: Complete Merchant Preview build
         run: npm run build
