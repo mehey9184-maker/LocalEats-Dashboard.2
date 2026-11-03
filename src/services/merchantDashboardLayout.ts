@@ -90,3 +90,13 @@ export function merchantOrderCompletedOnSastDay(
   return !!day && order.status==="completed" &&
     merchantJohannesburgDayKey(order.completed_at)===day;
 }
+
+/** Kitchen clocks use shop-local SAST regardless of the device timezone. */
+export function merchantJohannesburgClock(value:string|null|undefined):string{
+  if(!value)return "Time unavailable";
+  const timestamp=new Date(value);
+  if(!Number.isFinite(timestamp.getTime()))return "Time unavailable";
+  return new Intl.DateTimeFormat("en-GB",{
+    timeZone:"Africa/Johannesburg",hour:"2-digit",minute:"2-digit",hourCycle:"h23"
+  }).format(timestamp);
+}
