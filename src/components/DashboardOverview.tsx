@@ -986,13 +986,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/10 shadow-xs justify-center sm:justify-start">
               <button
                 type="button"
+                aria-pressed={layoutMode==="compact"}
                 onClick={() => {
                   setLayoutMode("compact");
                   localStorage.setItem("localeats_dashboard_layout", "compact");
                   toast.success("Switched to clean Minimalist view");
                 }}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer",
+                  "min-h-11 px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-2 focus-visible:outline-primary",
                   layoutMode === "compact"
                     ? "bg-primary text-white shadow-sm"
                     : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
@@ -1002,13 +1003,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               </button>
               <button
                 type="button"
+                aria-pressed={layoutMode==="advanced"}
                 onClick={() => {
                   setLayoutMode("advanced");
                   localStorage.setItem("localeats_dashboard_layout", "advanced");
                   toast.success("Switched to Advanced Analytics view");
                 }}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer",
+                  "min-h-11 px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-2 focus-visible:outline-primary",
                   layoutMode === "advanced"
                     ? "bg-primary text-white shadow-sm"
                     : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
@@ -1021,19 +1023,20 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             <div className="flex gap-2 justify-end">
 
               <button
+                type="button"
                 onClick={exportWeeklyCSV}
-                className="p-3 bg-surface-container-low text-primary rounded-xl hover:bg-surface-container-high transition-colors shadow-sm flex items-center gap-2 text-xs font-bold"
+                aria-label="Download weekly orders CSV"
+                className="min-h-11 p-3 bg-surface-container-low text-primary rounded-xl hover:bg-surface-container-high transition-colors shadow-sm flex items-center gap-2 text-xs font-bold"
                 title="Download Weekly Report"
               >
                 <Download size={18} />
                 <span className="hidden sm:inline">Weekly Report</span>
               </button>
               <button
-                onClick={() => {
-                  onRefresh();
-                  console.log("Dashboard refreshed");
-                }}
-                className="p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm"
+                type="button"
+                onClick={() => {void Promise.resolve(onRefresh());}}
+                aria-label="Refresh dashboard data"
+                className="min-w-11 min-h-11 inline-flex items-center justify-center p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm"
                 title="Refresh Dashboard"
               >
                 <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
@@ -1189,7 +1192,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             {label:"New / Pending",count:kitchenQueue.pending,icon:ReceiptText,tone:"text-orange-600 bg-orange-500/10",urgent:true},
             {label:"Preparing",count:kitchenQueue.preparing,icon:Clock,tone:"text-blue-600 bg-blue-500/10",urgent:false},
             {label:"Ready for Pickup",count:kitchenQueue.readyForPickup,icon:CheckCircle2,tone:"text-emerald-600 bg-emerald-500/10",urgent:false},
-            {label:"Completed (all time)",count:kitchenQueue.completed,icon:Check,tone:"text-on-surface-variant bg-surface-container-high",urgent:false},
+            {label:"Completed in list",count:kitchenQueue.completed,icon:Check,tone:"text-on-surface-variant bg-surface-container-high",urgent:false},
           ].map(item=>(
             <button key={item.label} type="button"
               onClick={()=>onNavigate("orders")}
@@ -1289,7 +1292,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               <Bike size={18} />
             </div>
           </div>
-          <div className="mt-4 flex items-baseline gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
               {connectedRidersCount}
             </span>
@@ -1548,6 +1551,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
       
 
+      {layoutMode==="advanced" && (
+        <section aria-label="Advanced shop data tools" className="space-y-3">
       {/* Storefront Ownership Sync & Repair Card */}
       <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
         <div className="flex items-center gap-4">
@@ -1580,6 +1585,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           <span>{isSyncing ? "Refreshing..." : "Refresh Data"}</span>
         </button>
       </div>
+
+        </section>
+      )}
 
       {/* Bulk Storefront Status Switch */}
       {shops.length > 1 && (
