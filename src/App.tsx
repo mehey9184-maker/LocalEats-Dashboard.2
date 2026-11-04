@@ -1,5 +1,6 @@
 ﻿import {pickupOrderingEnabled,pickupPaymentSettingsEnabled} from "./services/merchantPickupPolicy";
 import {merchantSettingsOperationalWritesEnabled,merchantSettingsOperationsNotice,merchantSettingsHardwareNotice} from "./services/merchantSettingsOperationalPreview";
+import {merchantSettingsS3WritesEnabled,merchantSettingsS3PickupNotice,merchantSettingsS3DeliveryNotice,pickupMethodRecordLabel} from "./services/merchantSettingsS3Trust";
 import {isPickupOrder} from "./services/merchantPickupPolicy";
 import { checkPrinterConnectivity, printViaBluetooth, printViaUSB } from "./utils/escPosEngine";
 import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
@@ -524,7 +525,7 @@ function App() {
   }, [currentShop?.id,pickupPaymentMethodsKey]);
 
   const savePickupPaymentSettings=async()=>{
-    if(!currentShop || savingPickupPayments || !pickupPaymentSettingsEnabled())return;
+    if(!currentShop || savingPickupPayments || !pickupPaymentSettingsEnabled() || !merchantSettingsS3WritesEnabled())return;
     const methods=pickupPaymentChoice==="both" ? ["cash","card_machine"] as const : [pickupPaymentChoice] as const;
     setSavingPickupPayments(true);setPickupPaymentError("");
     try{
@@ -2439,29 +2440,30 @@ function App() {
                     {settingsCategory === "pickup-payments" && currentShop && (
                       <section className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <div>
-                          <h3 className="font-headline font-bold text-lg">Pickup payment methods</h3>
-                          <p className="text-sm text-on-surface-variant mt-1">Customers can choose only methods your shop accepts. Payment is confirmed separately when received at collection.</p>
+                          <h3 className="font-headline font-bold text-lg">Pickup payment methods (Preview)</h3>
+                          <p className="text-sm text-on-surface-variant mt-1">Cash or a physical card machine may be used at collection after launch approval. This screen does not verify that a card terminal is connected or that any customer has paid.</p>
                         </div>
-                        {!currentShop.pickup_payment_methods?.length && <p role="status" className="text-xs text-amber-700">Payment methods are not configured yet.</p>}
+                        <p role="status" className="text-xs text-on-surface-variant bg-surface-container-low border border-outline-variant/15 rounded-xl p-3">{merchantSettingsS3PickupNotice()}</p>
+                        {!currentShop.pickup_payment_methods?.length && <p role="status" className="text-xs text-amber-700">No pickup payment methods are verified in this shop record.</p>}
                         <fieldset className="space-y-2">
                           <legend className="sr-only">Accepted pickup payment methods</legend>
                           {([
-                            ["cash", "Cash only"],
-                            ["card_machine", "Card only"],
-                            ["both", "Cash and card"],
+                            ["cash", "Cash at shop (proposed)"],
+                            ["card_machine", "Physical card machine at shop (proposed)"],
+                            ["both", "Cash or physical card machine (proposed)"],
                           ] as const).map(([value,label])=>(
                             <label key={value} className="flex items-center gap-3 p-3 border border-outline-variant/30 rounded-xl cursor-pointer">
-                              <input type="radio" name="pickup-payment-settings" value={value} checked={pickupPaymentChoice===value} onChange={()=>setPickupPaymentChoice(value)} />
+                              <input type="radio" name="pickup-payment-settings" disabled={!merchantSettingsS3WritesEnabled()} value={value} checked={pickupPaymentChoice===value} onChange={()=>{if(merchantSettingsS3WritesEnabled())setPickupPaymentChoice(value);}} />
                               <span className="text-sm font-bold text-on-surface">{label}</span>
                             </label>
                           ))}
                         </fieldset>
-                        {currentShop.pickup_payment_methods?.length ? <p className="text-xs text-on-surface-variant">Saved: {currentShop.pickup_payment_methods.includes("cash") && currentShop.pickup_payment_methods.includes("card_machine") ? "Cash and card" : currentShop.pickup_payment_methods[0]==="cash" ? "Cash only" : "Card only"}</p> : null}
+                        <p className="text-xs text-on-surface-variant">Recorded settings (not proof of payment): {pickupMethodRecordLabel(currentShop.pickup_payment_methods)}</p>
                         {pickupPaymentError && <p role="alert" className="text-xs text-error">{pickupPaymentError}</p>}
-                        <button type="button" disabled={savingPickupPayments || !pickupPaymentSettingsEnabled()} onClick={()=>void savePickupPaymentSettings()} className="px-4 py-3 bg-primary text-on-primary rounded-xl font-bold text-sm disabled:opacity-50">
-                          {savingPickupPayments ? "Saving..." : "Save accepted methods"}
+                        <button type="button" disabled={savingPickupPayments || !pickupPaymentSettingsEnabled() || !merchantSettingsS3WritesEnabled()} onClick={()=>{ if(merchantSettingsS3WritesEnabled())void savePickupPaymentSettings(); }} className="px-4 py-3 bg-primary text-on-primary rounded-xl font-bold text-sm disabled:opacity-50">
+                          {savingPickupPayments ? "Saving..." : "Save methods — Unavailable"}
                         </button>
-                        {!pickupPaymentSettingsEnabled() && <p className="text-xs text-on-surface-variant">Payment settings remain locked until separately enabled; pickup order creation can stay disabled.</p>}
+                        {!pickupPaymentSettingsEnabled() && <p className="text-xs text-on-surface-variant">Payment method editing and real pickup ordering require separate approval; no customer payments or methods are activated here.</p>}
                       </section>
                     )}
                     {settingsCategory === "diagnostics" && (
