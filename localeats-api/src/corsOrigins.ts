@@ -4,6 +4,8 @@ interface CorsOriginEnvironment {
   MERCHANT_DASHBOARD_PREVIEW_HOST_SUFFIX?: string;
   SUPER_ADMIN_ORIGIN?: string;
   CUSTOMER_APP_ORIGIN?: string;
+  CUSTOMER_PROFILE_STAGING_ORIGINS?: string;
+  VERCEL_ENV?: string;
   RIDER_APP_ORIGIN?: string;
 }
 
@@ -53,6 +55,23 @@ export const isAllowedOrigin = (
 
   const customerOrigin = normalizeExactBrowserOrigin(environment.CUSTOMER_APP_ORIGIN);
   if (customerOrigin !== null && origin === customerOrigin) return true;
+
+  // Owner-approved disposable Customer P5 Preview catalog reads. Only these
+  // exact Vercel deployment/branch-alias origins are accepted in Preview;
+  // never allow wildcard host patterns or expose this override in Production.
+  if (environment.VERCEL_ENV === "preview" && environment.CUSTOMER_PROFILE_STAGING_ORIGINS) {
+    const candidates = environment.CUSTOMER_PROFILE_STAGING_ORIGINS.split(",").map(value=>value.trim());
+    if (candidates.length > 0 && candidates.length <= 4 &&
+        candidates.every(value=>value.length > 0)) {
+      for (const candidate of candidates) {
+        const approved = normalizeExactBrowserOrigin(candidate);
+        if (!approved || approved !== origin || !approved.startsWith("https://")) continue;
+        const hostname = new URL(approved).hostname;
+        if (/^project-x7cvt-[a-z0-9-]+-mehey9184-makers-projects\.vercel\.app$/.test(hostname))
+          return true;
+      }
+    }
+  }
 
   const riderOrigin = normalizeExactBrowserOrigin(environment.RIDER_APP_ORIGIN);
   if (riderOrigin !== null && origin === riderOrigin) return true;

@@ -1,0 +1,46 @@
+name: Customer P5 Live Preview CORS Smoke (Read Only)
+on:
+  push:
+    branches: [repair/customer-p5-catalog-preview-cors-01]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Verify P5 Preview CORS and public shop catalog (read-only)
+        run: |
+          node --input-type=module <<'JS'
+          import assert from "node:assert/strict";
+          const api="https://localeats-qjj0h4np6-mehey9184-makers-projects.vercel.app";
+          const allowed="https://project-x7cvt-git-repair-custo-0a45c9-mehey9184-makers-projects.vercel.app";
+          const denied="https://example.evil.invalid";
+          const path="/api/v1/catalog/shops";
+          const get=await fetch(api+path,{headers:{Origin:allowed},signal:AbortSignal.timeout(15000)});
+          assert.equal(get.status,200,"Allowed P5 catalog should return 200");
+          assert.equal(get.headers.get("access-control-allow-origin"),allowed,"P5 browser must be allowed to read API");
+          const catalog=await get.json();
+          assert.equal(catalog.success,true);
+          assert.ok(Array.isArray(catalog.shops));
+          assert.ok(catalog.shops.some(shop=>shop.id==="shop-my-kota-ivory-park"),"My-Kota still in approved catalog");
+          const preflight=await fetch(api+path,{
+            method:"OPTIONS",
+            headers:{
+              Origin:allowed,
+              "Access-Control-Request-Method":"GET",
+              "Access-Control-Request-Headers":"content-type",
+            },
+            signal:AbortSignal.timeout(15000),
+          });
+          assert.equal(preflight.status,204,"P5 CORS preflight must pass");
+          assert.equal(preflight.headers.get("access-control-allow-origin"),allowed,"P5 preflight must allow exact origin");
+          const block=await fetch(api+path,{headers:{Origin:denied},signal:AbortSignal.timeout(15000)});
+          assert.equal(block.status,403,"Untrusted origin must be denied");
+          assert.equal(block.headers.get("access-control-allow-origin"),null,"Untrusted CORS must not be exposed");
+          console.log("P5 live catalog and OPTIONS verified; unauthorized origin denied; no mutations made.");
+          JS
