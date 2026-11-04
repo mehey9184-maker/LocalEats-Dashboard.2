@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Check, Crosshair, Info, MapPin, RotateCcw, Store } from "lucide-react";
 import { toast } from "sonner";
 import type { Shop } from "../types";
@@ -39,13 +39,6 @@ export function MerchantStorefrontPreview({ shop }: { shop: Shop | null }) {
   const [storedPin, setStoredPin] = useState<PreviewPin | null>(() => safeStoredPin(storageKey));
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState("");
-
-  useEffect(() => {
-    const restored = safeStoredPin(storageKey);
-    setTestPin(restored);
-    setStoredPin(restored);
-    setLocationError("");
-  }, [storageKey]);
 
   const registeredPin: PreviewPin | null = (() => {
     const lat = shop?.lat ?? shop?.latitude;
