@@ -72,7 +72,7 @@ test("30-minute merchant outage: 300 virtual orders across 20 shops, 5000 regist
   const disconnected=await reader.refresh("merchant-1:shop-01",
     ()=>merchantRead(store,"shop-01",{failRecent:true}));
   assert.equal(disconnected.kind,"failed");
-  assert.equal(verified.length,271,"Failure preserves same-scope last-verified rows with a warning");
+  assert.equal(verified.length,251,"Failure preserves the last verified 250 recent plus older pending row, with a warning");
 
   // First online recovery fetch is authoritative. The older unfinished order
   // is absent from a naive newest-250 query, but present after reconciliation.
