@@ -296,11 +296,11 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
       try {
         localStorage.setItem(pendingSortStorageKey, JSON.stringify(updated));
+        toast.success(`Priority saved on this device: #${sourceId.slice(-4).toUpperCase()} moved to position #${toIndex + 1}`);
       } catch (e) {
         console.error("Failed to save pending order priorities", e);
+        toast.error("Priority order changed for this session, but was not saved on this device.");
       }
-
-      toast.success(`Priority updated: #${sourceId.slice(-4).toUpperCase()} moved to position #${toIndex + 1}`);
       return updated;
     });
   };
@@ -2705,7 +2705,7 @@ Notes: "${order.notes || "None"}"
                       <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">New Orders</h3>
                       {pendingOrderPriorityIds.length > 0 && (
                         <span className="text-[8px] font-bold text-amber-600 dark:text-amber-400 block -mt-0.5 flex items-center gap-1">
-                          <SlidersHorizontal size={8} /> Prioritized
+                          <SlidersHorizontal size={8} /> Prioritized on this device
                         </span>
                       )}
                     </div>
