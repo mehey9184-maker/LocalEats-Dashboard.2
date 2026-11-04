@@ -16,6 +16,7 @@ import {
 } from "../orders/orderService.js";
 import { commandPickup, createPickup, parsePickupInput, pickupPricing, pickupQuote } from "../orders/pickupService.js";
 import { drainPickupPush } from "../orders/pickupPush.js";
+import { readCompleteMerchantInbox, MERCHANT_UNFINISHED_FILTER, MERCHANT_INBOX_RECENT_LIMIT } from "../orders/merchantInboxRead.js";
 import { deriveDeliveryProof } from "../orders/deliveryProof.js";
 
 const router = Router();
@@ -215,16 +216,32 @@ merchantOrderRoutes.get(
         return;
       }
 
-      const { data: orders, error: ordersError } = await supabaseAdmin
-        .from("orders")
-        .select("*")
-        .in("shop_id", shopIds)
-        .order("created_at", { ascending: false })
-        .limit(250);
-      if (ordersError) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Orders could not be loaded.");
+      const orders = await readCompleteMerchantInbox({
+        recent: async () => {
+          const { data, error } = await supabaseAdmin.from("orders")
+            .select("*")
+            .in("shop_id", shopIds)
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .limit(MERCHANT_INBOX_RECENT_LIMIT);
+          if (error || !data) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Orders could not be loaded.");
+          return data as StoredOrder[];
+        },
+        unfinishedPage: async (start, end) => {
+          const { data, error } = await supabaseAdmin.from("orders")
+            .select("*")
+            .in("shop_id", shopIds)
+            .or(MERCHANT_UNFINISHED_FILTER)
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(start, end);
+          if (error || !data) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Unfinished orders could not be verified.");
+          return data as StoredOrder[];
+        },
+      }, shopIds);
       res.status(200).json({
         success: true,
-        orders: (orders ?? []).map((order) => withoutDeliveryProofState(order as StoredOrder)),
+        orders: orders.map((order) => withoutDeliveryProofState(order)),
       });
     } catch (error) {
       sendOrderError(res, error);
