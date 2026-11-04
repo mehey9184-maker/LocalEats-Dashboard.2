@@ -65,7 +65,7 @@ test("flash deals neither read nor overwrite browser-stored deals in preview",()
 test("QR codes in marketing preview lead only to non-operational example.invalid",()=>{
  assert.match(marketing,/previewQrTarget = publishingEnabled \? storeUrl : "https:\/\/example\.invalid\/localeats-marketing-preview"/);
  assert.match(marketing,/QRCodeLib\.toDataURL\(previewQrTarget, \{/);
- assert.match(builder,/storeUrl=\{publishingEnabled \? storeUrl : "https:\/\/example\.invalid\/localeats-marketing-preview"\}/);
+ assert.match(marketing,/storeUrl=\{publishingEnabled \? storeUrl : "https:\/\/example\.invalid\/localeats-marketing-preview"\}/);
  assert.match(table,/if\(previewOnly\) return \`https:\/\/example\.invalid\/localeats-table-preview\?table=\$\{tableNum\}\`/);
  assert.match(table,/const handleDownloadBatchPdf = async \(\) => \{\s*if\(previewOnly\) return;/);
  assert.match(table,/QR codes cannot place orders and PDF export is disabled/);
