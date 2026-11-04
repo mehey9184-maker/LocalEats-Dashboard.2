@@ -16,17 +16,19 @@ import { Shop } from "../../types";
 interface TableTentGeneratorProps {
   activeShop: Shop | undefined;
   storeUrl: string;
+  previewOnly?: boolean;
 }
 
 export const TableTentGenerator: React.FC<TableTentGeneratorProps> = ({
   activeShop,
   storeUrl,
+  previewOnly = false,
 }) => {
   const shopName = activeShop?.name || "LocalEats Store";
   const [startTable, setStartTable] = useState<number>(1);
   const [endTable, setEndTable] = useState<number>(10);
   const [previewTableNum, setPreviewTableNum] = useState<number>(1);
-  const [headerTitle, setHeaderTitle] = useState<string>("TABLE SERVICE • SCAN TO ORDER");
+  const [headerTitle, setHeaderTitle] = useState<string>(previewOnly ? "EXAMPLE TABLE CARD — NOT LIVE" : "TABLE SERVICE • SCAN TO ORDER");
   const [themeColor, setThemeColor] = useState<"coral" | "midnight" | "amber" | "emerald">("coral");
   const [wifiInfo, setWifiInfo] = useState<string>("");
   const [previewQrDataUrl, setPreviewQrDataUrl] = useState<string>("");
@@ -69,10 +71,11 @@ export const TableTentGenerator: React.FC<TableTentGeneratorProps> = ({
 
   // Helper to generate dynamic URL with table parameter
   const getTableOrderUrl = useCallback((tableNum: number) => {
+    if(previewOnly) return `https://example.invalid/localeats-table-preview?table=${tableNum}`;
     const base = storeUrl || `https://www.localeatssa.co.za/?shopId=${activeShop?.id || "demo"}`;
     const separator = base.includes("?") ? "&" : "?";
     return `${base}${separator}table=${tableNum}&dineIn=true`;
-  }, [storeUrl, activeShop?.id]);
+  }, [storeUrl, activeShop?.id, previewOnly]);
 
   // Generate QR for preview table number
   useEffect(() => {
@@ -101,6 +104,7 @@ export const TableTentGenerator: React.FC<TableTentGeneratorProps> = ({
 
   // Generate Batch Multi-Page A4 PDF
   const handleDownloadBatchPdf = async () => {
+    if(previewOnly) return;
     const totalCount = endTable - startTable + 1;
     if (totalCount <= 0 || totalCount > 50) {
       toast.error("Please select between 1 and 50 tables.");
@@ -162,7 +166,7 @@ export const TableTentGenerator: React.FC<TableTentGeneratorProps> = ({
 
         doc.setTextColor(activeTheme.primary);
         doc.setFontSize(10);
-        doc.text("DINE-IN ORDERING", pageWidth / 2, 52, { align: "center" });
+        doc.text("TABLE CARD - SAMPLE ONLY", pageWidth / 2, 52, { align: "center" });
         doc.setFontSize(18);
         doc.text(`TABLE ${tableNum < 10 ? "0" + tableNum : tableNum}`, pageWidth / 2, 62, { align: "center" });
 
@@ -178,13 +182,13 @@ export const TableTentGenerator: React.FC<TableTentGeneratorProps> = ({
         doc.setTextColor(30, 41, 59);
         doc.setFontSize(10);
         doc.setFont("helvetica", "bold");
-        doc.text("HOW TO ORDER FROM YOUR TABLE:", pageWidth / 2, 160, { align: "center" });
+        doc.text("FUTURE TABLE FLOW - NOT ACTIVE:", pageWidth / 2, 160, { align: "center" });
 
         doc.setFont("helvetica", "normal");
         doc.setFontSize(9);
         doc.text("1. Open your phone camera & point at the QR Code", pageWidth / 2, 168, { align: "center" });
         doc.text(`2. Select your meals & Kota specials (Table #${tableNum} is auto-linked)`, pageWidth / 2, 175, { align: "center" });
-        doc.text("3. Submit order — Pay Cash to Waiter or Pay Card online!", pageWidth / 2, 182, { align: "center" });
+        doc.text("3. No table checkout. Payment at shop after approval.", pageWidth / 2, 182, { align: "center" });
 
         // Optional WiFi Footer
         if (wifiInfo.trim()) {
@@ -236,17 +240,17 @@ export const TableTentGenerator: React.FC<TableTentGeneratorProps> = ({
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-black text-[10px] uppercase tracking-wider flex items-center gap-1">
-                <Utensils size={12} /> Dine-In QR Tables
+                <Utensils size={12} /> {previewOnly ? "Example Table Cards" : "Dine-In QR Tables"}
               </span>
               <span className="text-xs font-bold text-on-surface-variant">
-                Batch Table Tent & Stand Generator
+                {previewOnly ? "Design Inspection — Not Live" : "Batch Table Tent & Stand Generator"}
               </span>
             </div>
             <h3 className="text-lg font-black text-on-surface font-headline">
-              Batch Dine-In Table Tent Card Generator
+              {previewOnly ? "Example Table Card Layout" : "Batch Dine-In Table Tent Card Generator"}
             </h3>
             <p className="text-xs text-on-surface-variant max-w-2xl leading-relaxed">
-              Generate numbered table QR codes for tables 1 through 20 with embedded table parameters. Diners scan from their table and their order automatically includes their table number!
+              {previewOnly ? "Example table-card layout only. These QR codes cannot place orders and PDF export is disabled." : "Generate numbered table QR codes for tables 1 through 20 with embedded table parameters. Diners scan from their table and their order automatically includes their table number!"}
             </p>
           </div>
 
@@ -418,7 +422,7 @@ export const TableTentGenerator: React.FC<TableTentGeneratorProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-black text-on-surface flex items-center gap-1.5">
                 <Eye size={16} className="text-emerald-600" />
-                <span>Live Table Tent Stand Preview</span>
+                <span>{previewOnly ? "Table Card Design Preview" : "Live Table Tent Stand Preview"}</span>
               </span>
 
               {/* Preview Table Switcher */}
@@ -488,19 +492,19 @@ export const TableTentGenerator: React.FC<TableTentGeneratorProps> = ({
                 {/* Steps */}
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-left space-y-1 text-xs text-slate-600">
                   <p className="font-extrabold text-slate-900 text-center mb-1">
-                    How to order from Table {previewTableNum}:
+                    {previewOnly ? `Example Table ${previewTableNum} — Ordering Disabled` : `How to order from Table ${previewTableNum}:`}
                   </p>
                   <p className="flex items-center gap-2">
                     <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px] flex items-center justify-center shrink-0">1</span>
-                    <span>Scan with your phone camera</span>
+                    <span>{previewOnly ? "Sample QR — not a live order" : "Scan with your phone camera"}</span>
                   </p>
                   <p className="flex items-center gap-2">
                     <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px] flex items-center justify-center shrink-0">2</span>
-                    <span>Select meals & customize order</span>
+                    <span>{previewOnly ? "Example menu display only" : "Select meals & customize order"}</span>
                   </p>
                   <p className="flex items-center gap-2">
                     <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px] flex items-center justify-center shrink-0">3</span>
-                    <span>Pay Cash to waiter or Card online!</span>
+                    <span>{previewOnly ? "No table checkout or online payments" : "Pay at shop with cash or physical card machine"}</span>
                   </p>
                 </div>
 
