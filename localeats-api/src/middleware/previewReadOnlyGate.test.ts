@@ -38,6 +38,8 @@ test("Preview HTTP requests cannot mutate database via any API verb, but can rea
 
 test("Production and local API handling remain unchanged by Preview guard",async()=>{
   const previous=process.env.VERCEL_ENV;
+  const previousFlag=process.env.LOCALEATS_PREVIEW_READ_ONLY;
+  delete process.env.LOCALEATS_PREVIEW_READ_ONLY;
   let next=0,responseCode=0;
   const res={
     status(status:number){responseCode=status;return this;},
@@ -59,6 +61,31 @@ test("Production and local API handling remain unchanged by Preview guard",async
   }finally{
     if(previous===undefined)delete process.env.VERCEL_ENV;
     else process.env.VERCEL_ENV=previous;
+    if(previousFlag===undefined)delete process.env.LOCALEATS_PREVIEW_READ_ONLY;
+    else process.env.LOCALEATS_PREVIEW_READ_ONLY=previousFlag;
+  }
+});
+
+test("Explicit Preview read-only flag blocks writes even without Vercel system env",()=>{
+  const prev=process.env.VERCEL_ENV;
+  const prevFlag=process.env.LOCALEATS_PREVIEW_READ_ONLY;
+  try{
+    delete process.env.VERCEL_ENV;
+    process.env.LOCALEATS_PREVIEW_READ_ONLY="true";
+    let blocked=0,nextCalled=false;
+    const res={
+      status(n:number){blocked=n;return this;},
+      set(){return this;},
+      json(){return this;}
+    };
+    previewReadOnlyGate({method:"POST"} as never,res as never,()=>{nextCalled=true;});
+    assert.equal(blocked,503);
+    assert.equal(nextCalled,false);
+  } finally {
+    if(prev===undefined)delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV=prev;
+    if(prevFlag===undefined)delete process.env.LOCALEATS_PREVIEW_READ_ONLY;
+    else process.env.LOCALEATS_PREVIEW_READ_ONLY=prevFlag;
   }
 });
 
