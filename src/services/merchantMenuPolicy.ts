@@ -54,3 +54,11 @@ export function merchantMenuMatchesCategory(category:unknown,selected:string):bo
 export function merchantMenuFiltersActive(query:string,category:string):boolean {
  return query.trim().length>0 || category!=="All";
 }
+
+/** A bounded step keeps the original card grid usable for large menus. */
+export const MERCHANT_MENU_PAGE_SIZE=24;
+export function merchantMenuNextVisibleCount(current:number,total:number):number {
+ const max=Number.isSafeInteger(total) && total>0 ? total : 0;
+ const shown=Number.isSafeInteger(current) && current>0 ? current : 0;
+ return Math.min(max,shown+MERCHANT_MENU_PAGE_SIZE);
+}

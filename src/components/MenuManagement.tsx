@@ -1,8 +1,7 @@
 import {MerchantApi} from "../services/MerchantApi";
-import {menuWritesUnavailable,merchantMenuStockLabel,merchantMenuLowStock,merchantMenuOutOfStock,merchantMenuCategoryName,merchantMenuCategories,merchantMenuMatchesCategory,merchantMenuFiltersActive} from "../services/merchantMenuPolicy";
+import {menuWritesUnavailable,merchantMenuStockLabel,merchantMenuLowStock,merchantMenuOutOfStock,merchantMenuCategoryName,merchantMenuCategories,merchantMenuMatchesCategory,merchantMenuFiltersActive,MERCHANT_MENU_PAGE_SIZE,merchantMenuNextVisibleCount} from "../services/merchantMenuPolicy";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Fuse from "fuse.js";
-import { List } from "react-window";
 import {
   Plus,
   Sparkles,
@@ -30,11 +29,9 @@ import { useAuthGuard } from "../hooks/useAuthGuard";
 import { cn } from "../lib/utils";
 import { uploadImageToCloudinary, getOptimizedCloudinaryUrl } from "../lib/cloudinary";
 import AIMenuScannerModal from "./AIMenuScannerModal";
+import { OperationFeedback } from "./ui/OperationFeedback";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
 
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const VirtualizedList = List as any;
 
 export const DIETARY_TAGS = [
   "Halal",
@@ -59,6 +56,24 @@ const isPlaceholderImage = (url?: string) => {
     url.includes("placeholder.com") ||
     url.includes("via.placeholder") ||
     url.includes("food-placeholder")
+  );
+};
+
+const MenuItemPhoto: React.FC<{imageUrl?:string;name:string;available:boolean}> = ({imageUrl,name,available}) => {
+  const [failed,setFailed]=useState(false);
+  if(failed || isPlaceholderImage(imageUrl))return <FoodPlaceholder size={44} />;
+  return (
+    <img
+      className={cn(
+        "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500",
+        !available && "grayscale opacity-50"
+      )}
+      src={getOptimizedCloudinaryUrl(imageUrl)}
+      alt={name}
+      loading="lazy"
+      decoding="async"
+      onError={()=>setFailed(true)}
+    />
   );
 };
 
@@ -210,6 +225,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState("All");
   const [selectedItems, setSelectedItems] = useState<(number | string)[]>([]);
+  const [visibleCount,setVisibleCount] = useState(MERCHANT_MENU_PAGE_SIZE);
+  useEffect(() => { setVisibleCount(MERCHANT_MENU_PAGE_SIZE); }, [selectedShopId,searchTerm,filterCategory]);
 
   const [isAiScannerOpen, setIsAiScannerOpen] = useState(false);
   const [editingPriceId, setEditingPriceId] = useState<number | string | null>(null);
@@ -229,6 +246,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [menuSaveError, setMenuSaveError] = useState("");
 
   // Clean up object URL when component unmounts or image changes
   useEffect(() => {
@@ -321,6 +339,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   const menuRequest = React.useRef(0);
   const fetchMenu = useCallback(async (_showLoadingSpinner = true) => {
     const request = ++menuRequest.current;
+    setVisibleCount(MERCHANT_MENU_PAGE_SIZE);
     setItems([]);
     setMenuError(null);
     setIsMenuLoading(true);
@@ -410,6 +429,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       return;
     }
 
+    setMenuSaveError("");
     setIsSaving(true);
     try {
       let finalImageUrl = editingItem ? (editingItem.image_url || null) : null;
@@ -421,6 +441,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
           finalImageUrl = await uploadImageToCloudinary(imageFile);
         } catch (uploadErr: unknown) {
           const errMsg = uploadErr instanceof Error ? uploadErr.message : "Failed to upload image to Cloudinary";
+          setMenuSaveError(errMsg);
           toast.error(errMsg);
           setIsSaving(false);
           setIsUploadingImage(false);
@@ -493,6 +514,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       setActiveMenuSection("list");
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
+      setMenuSaveError(errorMsg || "Unable to save the menu item.");
       toast.error(errorMsg || "Failed to save item");
     } finally {
       setIsSaving(false);
@@ -615,20 +637,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         </button>
 
         <div className="relative h-36 bg-surface-container rounded-xl flex items-center justify-center overflow-hidden shrink-0">
-          {!isPlaceholderImage(item.image_url) ? (
-            <img
-              className={cn(
-                "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500",
-                !item.is_available && "grayscale opacity-50"
-              )}
-              src={getOptimizedCloudinaryUrl(item.image_url)}
-              alt={item.name}
-              loading="lazy"
-              decoding="async"
-            />
-          ) : (
-            <FoodPlaceholder size={44} />
-          )}
+          <MenuItemPhoto key={`${item.id}:${item.image_url ?? ""}`} imageUrl={item.image_url} name={item.name} available={item.is_available} />
           {(!item.is_available || merchantMenuOutOfStock(item.stock_quantity)) && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-xs">
               <span className="bg-error text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg">
@@ -726,13 +735,6 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     );
   };
 
-  // 3. REACT-WINDOW VIRTUALIZED LIST ROW RENDERER
-  const VirtualRow = ({ index, style }: { index: number; style: React.CSSProperties }) => {
-    const item = filteredItems[index];
-    if (!item) return null;
-    return <div style={style}>{renderItemCard(item)}</div>;
-  };
-
   return (
     <div className="w-full space-y-6">
       <p className="text-xs text-on-surface-variant" role="status">Menu is read-only in this Preview. You can view and search items, but adding, editing, stock updates and import are unavailable. No changes will be saved.</p>
@@ -766,7 +768,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             disabled={menuWritesUnavailable()}
             title="Adding menu items is unavailable in this Preview"
             onClick={handleAdd}
-            className="flex-1 sm:flex-none px-4 py-2.5 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="merchant-tap-feedback flex-1 sm:flex-none px-4 py-2.5 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus size={16} />
             <span>Add New Item</span>
@@ -796,7 +798,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
               key={shop.id}
               onClick={() => selectMenuShop(shop.id)}
               className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5",
+                "merchant-tap-feedback px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5",
                 String(selectedShopId) === String(shop.id)
                   ? "bg-primary text-on-primary shadow-xs"
                   : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
@@ -855,7 +857,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
           {/* Item Count and Bulk Actions Bar */}
           <div className="flex items-center justify-between px-2">
             <span className="text-xs font-bold text-on-surface-variant">
-              Showing {filteredItems.length} of {items.length} items
+              Showing {Math.min(visibleCount, filteredItems.length)} of {filteredItems.length} items{hasActiveFilters ? ` matching filters (${items.length} total)` : ""}
             </span>
             {filteredItems.length > 0 && (
               <button
@@ -918,22 +920,22 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                 </div>
               )}
             </div>
-          ) : filteredItems.length > 20 ? (
-            /* Virtualized Window for Large Inventory */
-            <div className="bg-surface-container-lowest p-2 rounded-3xl border border-outline-variant/15">
-              <VirtualizedList
-                height={600}
-                itemCount={filteredItems.length}
-                itemSize={220}
-                width="100%"
-              >
-                {VirtualRow}
-              </VirtualizedList>
-            </div>
           ) : (
-            /* Standard Grid for Standard Inventory Size */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredItems.map((item) => renderItemCard(item))}
+            <div className="space-y-4">
+              {/* The original responsive card grid works for every menu size.
+                  Render in batches instead of using the incompatible legacy List props. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredItems.slice(0,visibleCount).map((item) => renderItemCard(item))}
+              </div>
+              {visibleCount < filteredItems.length && (
+                <div className="flex justify-center">
+                  <button type="button"
+                    onClick={()=>setVisibleCount(count=>merchantMenuNextVisibleCount(count,filteredItems.length))}
+                    className="px-4 py-2.5 rounded-xl bg-surface-container-high text-on-surface text-xs font-bold hover:bg-surface-container-highest border border-outline-variant/20">
+                    Show more items ({filteredItems.length-Math.min(visibleCount,filteredItems.length)} remaining)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1116,6 +1118,11 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             </div>
           </div>
 
+          <OperationFeedback
+            status={isSaving ? "loading" : menuSaveError ? "error" : "idle"}
+            message={isSaving ? (isUploadingImage ? "Uploading menu photo…" : "Saving menu item…") : "Menu item was not saved"}
+            detail={isSaving ? "Please keep this editor open until the operation finishes." : menuSaveError || undefined}
+          />
           <div className="flex justify-end gap-3 pt-4 border-t border-outline-variant/15 mt-6">
              <button
                 type="button"
@@ -1128,7 +1135,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
              <button
                 type="submit"
                 disabled={isSaving || menuWritesUnavailable()}
-                className="px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-xl hover:bg-primary/90 cursor-pointer disabled:opacity-70 flex items-center gap-2"
+                className="merchant-tap-feedback px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-xl hover:bg-primary/90 cursor-pointer disabled:opacity-70 flex items-center gap-2"
              >
                 {isSaving ? (
                   <>
