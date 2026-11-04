@@ -15,8 +15,9 @@ declare global {
   }
 }
 
-export const LanguageSwitcher: React.FC = () => {
+export const LanguageSwitcher: React.FC<{previewOnly?:boolean}> = ({previewOnly=false}) => {
   useEffect(() => {
+    if(previewOnly)return; // Never fetch or run a third-party translation script inside the locked Preview.
     // Check if the script is already added
     if (!document.getElementById('google-translate-script')) {
       const script = document.createElement('script');
@@ -49,7 +50,7 @@ export const LanguageSwitcher: React.FC = () => {
         }
       };
     }
-  }, []);
+  }, [previewOnly]);
 
   return (
     <div className="flex flex-col space-y-3">
@@ -58,9 +59,15 @@ export const LanguageSwitcher: React.FC = () => {
         <h3 className="font-headline font-bold text-lg">Language Settings</h3>
       </div>
       <p className="text-sm text-on-surface-variant mb-2">
-        Select your preferred South African language. UI elements will be automatically translated.
+        {previewOnly ? "Language translation is not activated or verified in this Preview. The original layout is shown for review only." : "Select your preferred South African language. Automatic translations may be incomplete; check important information in the original language."}
       </p>
-      <div id="google_translate_element" className="mt-2 min-h-[40px] rounded-lg overflow-hidden [&>div]:!bg-transparent border border-outline-variant/20 p-2 bg-surface-container-low" />
+      {previewOnly ? (
+        <div role="status" className="mt-2 min-h-[40px] rounded-lg border border-outline-variant/20 p-2 bg-surface-container-low text-xs text-on-surface-variant">
+          Translation control unavailable in Preview
+        </div>
+      ) : (
+        <div id="google_translate_element" className="mt-2 min-h-[40px] rounded-lg overflow-hidden [&>div]:!bg-transparent border border-outline-variant/20 p-2 bg-surface-container-low" />
+      )}
     </div>
   );
 };
