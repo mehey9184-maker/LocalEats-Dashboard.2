@@ -2,7 +2,6 @@
 // Stores offline order updates & inventory modifications in IndexedDB
 // Automatically syncs when network connectivity returns
 
-import { updateFirestoreOrder, updateFirestoreMenuItem } from "../lib/firebase";
 
 export interface OfflineMutation {
   id: string;
@@ -104,53 +103,15 @@ export async function removeQueuedMutation(id: string): Promise<void> {
   }
 }
 
+/**
+ * SECURITY: Legacy offline mutations must NEVER replay into Firestore.
+ *
+ * Order state is owned by the authenticated LocalEats API, not the browser.
+ * Keep old records available in IndexedDB for deliberate investigation;
+ * do not silently delete, replay or claim that any item was synchronized.
+ * A future recovery feature must be server-authorized and idempotent.
+ */
 export async function processOfflineSyncQueue(): Promise<number> {
-  if (!navigator.onLine) {
-    console.log("[OfflineSyncQueue] Browser is offline. Delaying sync.");
-    return 0;
-  }
-
-  const mutations = await getQueuedMutations();
-  if (mutations.length === 0) return 0;
-
-  console.log(`[OfflineSyncQueue] Synchronizing ${mutations.length} pending mutations to Firestore...`);
-  let syncedCount = 0;
-
-  for (const item of mutations) {
-    try {
-      if (item.type === "UPDATE_ORDER") {
-        const { id, status, delivery_status, cancellation_reason } = item.payload;
-        const updateObj: Record<string, unknown> = {};
-        if (status) updateObj.status = status;
-        if (delivery_status !== undefined) updateObj.delivery_status = delivery_status;
-        if (cancellation_reason) updateObj.cancellation_reason = cancellation_reason;
-
-        const { error } = await updateFirestoreOrder(id as string | number, updateObj);
-        if (!error) {
-          await removeQueuedMutation(item.id);
-          syncedCount++;
-        }
-      } else if (item.type === "UPDATE_MENU" || item.type === "UPDATE_STOCK") {
-        const { id, is_available, stock_quantity, price } = item.payload;
-        const updateObj: Record<string, unknown> = {};
-        if (typeof is_available === "boolean") updateObj.is_available = is_available;
-        if (typeof stock_quantity === "number") updateObj.stock_quantity = stock_quantity;
-        if (typeof price === "number") updateObj.price = price;
-
-        const { error } = await updateFirestoreMenuItem(id as string | number, updateObj);
-        if (!error) {
-          await removeQueuedMutation(item.id);
-          syncedCount++;
-        }
-      }
-    } catch (err) {
-      console.error(`[OfflineSyncQueue] Sync failed for ${item.id}:`, err);
-    }
-  }
-
-  console.log(`[OfflineSyncQueue] Successfully synchronized ${syncedCount} offline operations.`);
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event("offline_queue_updated"));
-  }
-  return syncedCount;
+  console.warn("[OfflineSyncQueue] Legacy direct-Firestore replay is disabled. Review pending items against the authoritative server.");
+  return 0;
 }
