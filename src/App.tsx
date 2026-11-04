@@ -1,7 +1,6 @@
 import {pickupOrderingEnabled} from "./services/merchantPickupPolicy";
 import {isPickupOrder} from "./services/merchantPickupPolicy";
 import { checkPrinterConnectivity, printViaBluetooth, printViaUSB } from "./utils/escPosEngine";
-import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
 import React, {
   useState,
   useEffect,
@@ -255,7 +254,9 @@ function App() {
   const [soundAlerts, setSoundAlerts] = useState<boolean>(() => localStorage.getItem("soundAlerts") !== "false");
   const [soundStyle, setSoundStyle] = useState<string>(() => localStorage.getItem("soundStyle") || "modern");
   const [soundVolume, setSoundVolume] = useState<number>(() => Number(localStorage.getItem("soundVolume") || "70"));
-  const [autoAcceptOrders, setAutoAcceptOrders] = useState<boolean>(() => localStorage.getItem("autoAcceptOrders") === "true");
+  // Client-side automatic acceptance remains safety-locked. It must not accept
+  // old orders after reconnection or based solely on a browser-stored toggle.
+  const [autoAcceptOrders, setAutoAcceptOrders] = useState<boolean>(false);
   const [autoPrint, setAutoPrint] = useState<boolean>(() => localStorage.getItem("autoPrint") === "true");
   const [printingFormat, setPrintingFormat] = useState<"80mm" | "58mm">(() => (localStorage.getItem("printingFormat") as "80mm" | "58mm") || "80mm");
   const [deliverySettings, setDeliverySettings] = useState({ 
@@ -1319,41 +1320,33 @@ function App() {
     };
   }, [user, merchantShopGate.status, currentShop]);
 
+  // Recover authoritative server state only. Never replay legacy IndexedDB
+  // order/menu commands directly into Firestore on reconnect or SW messages.
   useEffect(() => {
-    const triggerQueueSync = async () => {
+    const reconcileFromServer = () => {
       if (merchantShopGate.status !== "ready" || !currentShop) return;
-      const synced = await processOfflineSyncQueue(supabase);
-      if (synced > 0) {
-        toast.success(`Network Restored: ${synced} offline operations synchronized!`);
-        void fetchOrders();
-        void fetchShops();
-        void fetchAllMenuItems();
-      }
+      void fetchOrders();
+      void fetchShops();
+      void fetchAllMenuItems();
     };
-
     const handleOnline = () => {
       setIsOffline(false);
       setIsHeartbeatFailed(false);
       setDismissedOfflineOverlay(false);
-      void triggerQueueSync();
+      reconcileFromServer();
     };
     const handleOffline = () => {
       setIsOffline(true);
       setDismissedOfflineOverlay(false);
     };
-
-    const handleSWMessage = (event: Event) => {
-      if (event.data?.type === "TRIGGER_OFFLINE_SYNC") {
-        void triggerQueueSync();
-      }
+    const handleSWMessage = (event: MessageEvent) => {
+      if (event.data?.type === "TRIGGER_OFFLINE_SYNC") reconcileFromServer();
     };
-
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.addEventListener("message", handleSWMessage);
     }
-
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
@@ -1467,23 +1460,8 @@ function App() {
     }
   };
 
-  useEffect(() => {
-    if (merchantShopGate.status !== "ready" || !currentShop) return;
-    if (!autoAcceptOrders || orders.length === 0) return;
-
-    // Automatically accept any "pending" orders that aren't yet handled
-    const pendingOrders = orders.filter(o => o.status === "pending");
-    if (pendingOrders.length > 0) {
-      pendingOrders.forEach(async (order) => {
-        try {
-          console.log(`Auto-accepting order ${order.id}`);
-          await updateOrderStatus(order.id, "preparing", "Auto-Accepted by system.");
-        } catch (e) {
-          console.warn("Auto-accept failed for order", order.id, e);
-        }
-      });
-    }
-  }, [orders, autoAcceptOrders, updateOrderStatus, merchantShopGate.status, currentShop]);
+  // Never auto-accept from browser memory, including after a stale reconnect.
+  // Future auto-accept requires a separately approved server-authoritative policy.
 
 
   const sendRiderNudge = async (riderId: string, message: string) => {
@@ -2022,9 +2000,9 @@ function App() {
           confirmText="Yes, Enable Auto-Accept"
           cancelText="Cancel"
           onConfirm={() => {
-            setAutoAcceptOrders(true);
+            setAutoAcceptOrders(false);
             setShowAutoAcceptModal(false);
-            toast.success("Automated Auto-Accept Enabled.");
+            toast.info("Auto-Accept is unavailable until server-authorized acceptance is approved.");
           }}
           onCancel={() => setShowAutoAcceptModal(false)}
           isDestructive={false}
@@ -3247,14 +3225,14 @@ function App() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6 mt-6 border-t border-outline-variant/10">
                       <div className="text-left">
                          <p className="font-bold text-on-surface flex items-center gap-2">
-                           Automated Auto-Accept <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Fast</span>
+                           Automated Auto-Accept <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Paused</span>
                          </p>
-                         <p className="text-xs text-on-surface-variant">Automatically accept incoming orders into your "Preparing" queue instantly without manual review.</p>
+                         <p className="text-xs text-on-surface-variant">Paused for safety. Orders must be accepted through the verified LocalEats API; old offline orders are never auto-accepted.</p>
                       </div>
                       <button
                         onClick={() => {
                           if (!autoAcceptOrders) {
-                            setShowAutoAcceptModal(true);
+                            toast.info("Auto-Accept is paused until server-side acceptance is approved.");
                           } else {
                             setAutoAcceptOrders(false);
                             toast.success("Auto-Accept disabled.");
