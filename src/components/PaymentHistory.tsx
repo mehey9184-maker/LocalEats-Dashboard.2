@@ -2,6 +2,11 @@ import React, { useState } from "react";
 import { Download } from "lucide-react";
 import { Shop, Order } from "../types";
 import {
+  MERCHANT_SUBSCRIPTION_PLANS, MERCHANT_SUBSCRIPTION_FREE_MONTHS,
+  MERCHANT_SUBSCRIPTION_START_POLICY, merchantSubscriptionsNotActivated,
+  merchantSubscriptionPriceLabel,
+} from "../services/merchantSubscriptionPreview";
+import {
   verifiedShopPickupPaymentRecords,
   pickupPaymentAmount,
   pickupPaymentMethod,
@@ -82,7 +87,35 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
       </div>
 
       {paymentsSubTab === "billing" ? (
-        <div className="overflow-x-auto">
+        <div className="space-y-4">
+          {/* Pricing is the owner's proposal, NOT the authenticated billing ledger. */}
+          <section aria-label="Proposed shop subscriptions" className="space-y-3">
+            <div className="space-y-1">
+              <h3 className="text-sm font-extrabold text-on-surface">Proposed shop subscriptions — not active</h3>
+              <p className="text-xs text-on-surface-variant">
+                {MERCHANT_SUBSCRIPTION_FREE_MONTHS} free calendar months per shop after its verified launch. Pricing is proposed monthly, per shop; features are still being decided.
+              </p>
+              <p className="text-xs text-on-surface-variant">
+                {MERCHANT_SUBSCRIPTION_START_POLICY}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {MERCHANT_SUBSCRIPTION_PLANS.map((plan) => (
+                <div key={plan.id} className="bg-surface-container-low rounded-2xl border border-outline-variant/15 p-4 space-y-1.5">
+                  <p className="text-xs font-bold text-on-surface">{plan.name}</p>
+                  <p className="text-xl font-black font-headline text-primary">{merchantSubscriptionPriceLabel(plan.monthlyRand)}</p>
+                  <p className="text-[11px] text-on-surface-variant">Proposed monthly price per shop</p>
+                  <p className="text-[11px] text-on-surface-variant">Benefits under discussion</p>
+                </div>
+              ))}
+            </div>
+            {merchantSubscriptionsNotActivated() && (
+              <p className="text-xs text-on-surface-variant border border-outline-variant/15 rounded-xl px-3 py-2">
+                No plan is selected, no trial countdown has started, and no subscription charges, invoices or automatic renewals are enabled in this Preview. Billing requires a verified launch date and explicit merchant agreement.
+              </p>
+            )}
+          </section>
+          <div className="overflow-x-auto">
           <p role="status" className="text-xs text-on-surface-variant py-4">
             Verified subscription and billing transactions are unavailable. An authoritative payment API is required before presenting a financial ledger.
           </p>
@@ -104,6 +137,7 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
