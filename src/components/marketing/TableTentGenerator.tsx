@@ -16,11 +16,13 @@ import { Shop } from "../../types";
 interface TableTentGeneratorProps {
   activeShop: Shop | undefined;
   storeUrl: string;
+  previewOnly?: boolean;
 }
 
 export const TableTentGenerator: React.FC<TableTentGeneratorProps> = ({
   activeShop,
   storeUrl,
+  previewOnly = false,
 }) => {
   const shopName = activeShop?.name || "LocalEats Store";
   const [startTable, setStartTable] = useState<number>(1);
@@ -69,10 +71,11 @@ export const TableTentGenerator: React.FC<TableTentGeneratorProps> = ({
 
   // Helper to generate dynamic URL with table parameter
   const getTableOrderUrl = useCallback((tableNum: number) => {
+    if(previewOnly) return `https://example.invalid/localeats-table-preview?table=${tableNum}`;
     const base = storeUrl || `https://www.localeatssa.co.za/?shopId=${activeShop?.id || "demo"}`;
     const separator = base.includes("?") ? "&" : "?";
     return `${base}${separator}table=${tableNum}&dineIn=true`;
-  }, [storeUrl, activeShop?.id]);
+  }, [storeUrl, activeShop?.id, previewOnly]);
 
   // Generate QR for preview table number
   useEffect(() => {
@@ -101,6 +104,7 @@ export const TableTentGenerator: React.FC<TableTentGeneratorProps> = ({
 
   // Generate Batch Multi-Page A4 PDF
   const handleDownloadBatchPdf = async () => {
+    if(previewOnly) return;
     const totalCount = endTable - startTable + 1;
     if (totalCount <= 0 || totalCount > 50) {
       toast.error("Please select between 1 and 50 tables.");
