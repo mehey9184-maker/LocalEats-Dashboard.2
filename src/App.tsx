@@ -3187,23 +3187,26 @@ function App() {
                     {settingsCategory === "hardware" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">Hardware & POS Integrations</h3>
+                        <p role="status" className="text-xs text-on-surface-variant bg-surface-container-low rounded-2xl border border-outline-variant/15 p-3">{merchantSettingsHardwareNotice()}</p>
                   {/* Direct Terminal Integration */}
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
                     <div className="flex items-center gap-2 border-b border-outline-variant/10 pb-4">
                       <CreditCard size={18} className="text-on-surface-variant" />
-                      <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Direct Terminal Integration</h3>
+                      <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Terminal Integration — Not Connected</h3>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="flex flex-col space-y-2">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                            Require Card Linking
+                            Card Terminal Verification — Unavailable
                          </label>
                          <label className="flex items-center gap-3 mt-2 cursor-pointer bg-surface-container-high p-3 rounded-xl border border-outline-variant/5">
                            <input
                              type="checkbox"
+                             disabled={!merchantSettingsOperationalWritesEnabled()}
                              checked={currentShop?.require_terminal_sync || false}
                              onChange={async (e) => {
+                               if(!merchantSettingsOperationalWritesEnabled()) return;
                                const newValue = e.target.checked;
                                setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, require_terminal_sync: newValue } : s));
                                try {
@@ -3217,17 +3220,19 @@ function App() {
                              }}
                              className="w-5 h-5 rounded accent-primary border-outline-variant/30 text-primary focus:ring-primary focus:ring-offset-surface-container-high"
                            />
-                           <span className="text-sm font-bold text-on-surface select-none">Require Card Number Match</span>
+                           <span className="text-sm font-bold text-on-surface select-none">Terminal Match — Not Verified</span>
                          </label>
                       </div>
 
                       <div className="flex flex-col space-y-2">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                            Terminal Provider
+                            Terminal Provider (Not Linked)
                          </label>
                          <select
+                           disabled={!merchantSettingsOperationalWritesEnabled()}
                            value={currentShop?.terminal_provider || ""}
                            onChange={async (e) => {
+                             if(!merchantSettingsOperationalWritesEnabled()) return;
                              const newValue = e.target.value;
                              setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, terminal_provider: newValue } : s));
                              try {
@@ -3247,17 +3252,20 @@ function App() {
 
                       <div className="flex flex-col space-y-2 md:col-span-2">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                            Terminal Serial Number
+                            Terminal Serial (Not Verified)
                          </label>
                          <input
                            type="text"
+                           disabled={!merchantSettingsOperationalWritesEnabled()}
                            placeholder="e.g. SN-12345678"
                            value={currentShop?.terminal_serial || ""}
                            onChange={(e) => {
+                             if(!merchantSettingsOperationalWritesEnabled()) return;
                              const newValue = e.target.value;
                              setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, terminal_serial: newValue } : s));
                            }}
                            onBlur={async (e) => {
+                             if(!merchantSettingsOperationalWritesEnabled()) return;
                              const newValue = e.target.value;
                              try {
                                await supabase.from("shops").update({ terminal_serial: newValue }).eq("id", currentShop?.id);
@@ -3274,12 +3282,15 @@ function App() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6 mt-6 border-t border-outline-variant/10">
                       <div className="text-left">
                          <p className="font-bold text-on-surface flex items-center gap-2">
-                           Automated Auto-Accept <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Fast</span>
+                           Automated Auto-Accept <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Not Active</span>
                          </p>
-                         <p className="text-xs text-on-surface-variant">Automatically accept incoming orders into your "Preparing" queue instantly without manual review.</p>
+                         <p className="text-xs text-on-surface-variant">Order auto-accept is not activated. No order is moved into Preparing from this Preview.</p>
                       </div>
                       <button
+                        type="button"
+                        disabled={!merchantSettingsOperationalWritesEnabled()}
                         onClick={() => {
+                          if(!merchantSettingsOperationalWritesEnabled()) return;
                           if (!autoAcceptOrders) {
                             setShowAutoAcceptModal(true);
                           } else {
@@ -3305,12 +3316,15 @@ function App() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6 mt-6 border-t border-outline-variant/10">
                       <div className="text-left">
                          <p className="font-bold text-on-surface flex items-center gap-2">
-                           ESC/POS Receipt Auto-Print <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Beta</span>
+                           ESC/POS Receipt Auto-Print <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Not Connected</span>
                          </p>
-                         <p className="text-xs text-on-surface-variant">Automatically print the receipt when order is accepted. Requires connection to local ESC/POS network printer.</p>
+                         <p className="text-xs text-on-surface-variant">Receipt auto-print is not connected or verified in this Preview. No print job is sent.</p>
                       </div>
                       <button
+                        type="button"
+                        disabled={!merchantSettingsOperationalWritesEnabled()}
                         onClick={() => {
+                          if(!merchantSettingsOperationalWritesEnabled()) return;
                           const nextState = !autoPrint;
                           setAutoPrint(nextState);
                           if (nextState) toast.success("Auto-print enabled. Please ensure your POS printer is connected.");
@@ -3336,12 +3350,13 @@ function App() {
                           Default Paper Width
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Select the width of your thermal printer paper roll (58mm or 80mm).
+                          Example paper widths (58mm or 80mm). No printer configuration is saved.
                         </p>
                       </div>
                       <div className="flex bg-surface-container-high p-1 rounded-xl border border-outline-variant/5 text-xs font-black uppercase">
                         <button
-                          onClick={() => setPrintingFormat("80mm")}
+                          disabled={!merchantSettingsOperationalWritesEnabled()}
+                          onClick={() => { if(merchantSettingsOperationalWritesEnabled()) setPrintingFormat("80mm"); }}
                           className={cn(
                             "px-3 py-1.5 rounded-lg transition-colors",
                             printingFormat === "80mm" ? "bg-zinc-800 text-white" : "text-on-surface-variant hover:bg-surface-container-highest"
@@ -3350,7 +3365,8 @@ function App() {
                           80mm
                         </button>
                         <button
-                          onClick={() => setPrintingFormat("58mm")}
+                          disabled={!merchantSettingsOperationalWritesEnabled()}
+                          onClick={() => { if(merchantSettingsOperationalWritesEnabled()) setPrintingFormat("58mm"); }}
                           className={cn(
                             "px-3 py-1.5 rounded-lg transition-colors",
                             printingFormat === "58mm" ? "bg-zinc-800 text-white" : "text-on-surface-variant hover:bg-surface-container-highest"
@@ -3366,12 +3382,12 @@ function App() {
                           Receipt Template Format
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Toggle between large-text Kitchen dispatch dockets vs customer stylized thermal receipts.
+                          Sample receipt layouts only; selecting a printer template is not available here.
                         </p>
                       </div>
                       <div className="flex bg-surface-container-high p-1 rounded-xl border border-outline-variant/5 text-xs font-black uppercase">
-                        <button className="px-3 py-1.5 bg-zinc-800 text-white rounded-lg">Standard</button>
-                        <button className="px-3 py-1.5 text-on-surface-variant hover:bg-surface-container-highest rounded-lg transition-colors">Kitchen</button>
+                        <button disabled={!merchantSettingsOperationalWritesEnabled()} className="px-3 py-1.5 bg-zinc-800 text-white rounded-lg">Standard</button>
+                        <button disabled={!merchantSettingsOperationalWritesEnabled()} className="px-3 py-1.5 text-on-surface-variant hover:bg-surface-container-highest rounded-lg transition-colors">Kitchen</button>
                       </div>
                     </div>
 
@@ -3382,16 +3398,17 @@ function App() {
                           Network IP
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Local IP address of your receipt printer on the WiFi network.
+                          Printer network address (example only). No device connection is verified.
                         </p>
                       </div>
                       <div className="flex items-center gap-2 w-full md:w-auto">
                         <input
+                           disabled={!merchantSettingsOperationalWritesEnabled()}
                            type="text"
                            placeholder="e.g. 192.168.1.100"
                            className="bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50 w-full md:w-48"
                         />
-                        <button onClick={() => toast.success("Attempting test print to network printer...")} className="bg-primary/10 text-primary px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap hover:bg-primary/20 transition-colors">Test Print</button>
+                        <button type="button" disabled={!merchantSettingsOperationalWritesEnabled()} title="Printer test unavailable until a verified device integration exists" className="bg-primary/10 text-primary px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Test Print — Unavailable</button>
                       </div>
                     </div>
 
