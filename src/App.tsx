@@ -1,6 +1,7 @@
 ﻿import {pickupOrderingEnabled,pickupPaymentSettingsEnabled} from "./services/merchantPickupPolicy";
 import {merchantSettingsOperationalWritesEnabled,merchantSettingsOperationsNotice,merchantSettingsHardwareNotice} from "./services/merchantSettingsOperationalPreview";
 import {merchantSettingsS3WritesEnabled,merchantSettingsS3PickupNotice,merchantSettingsS3DeliveryNotice,pickupMethodRecordLabel} from "./services/merchantSettingsS3Trust";
+import {merchantSettingsS4ActionsEnabled,merchantSettingsS4Notice} from "./services/merchantSettingsS4Preview";
 import {isPickupOrder} from "./services/merchantPickupPolicy";
 import { checkPrinterConnectivity, printViaBluetooth, printViaUSB } from "./utils/escPosEngine";
 import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
@@ -89,10 +90,10 @@ import {
 import { LocalEatsLogo } from "./components/LocalEatsLogo";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
 import { DashboardOverview } from "./components/DashboardOverview";
-import { ShopProfile } from "./components/ShopProfile";
+import { MerchantStorefrontPreview } from "./components/MerchantStorefrontPreview";
+import { merchantStorefrontPreviewOnly, merchantStorefrontWritesEnabled } from "./services/merchantStorefrontPreviewPolicy";
 import { OrdersManagement } from "./components/OrdersManagement";
 import { MenuManagement } from "./components/MenuManagement";
-import { RiderManagement } from "./components/RiderManagement";
 import { Coupons } from "./components/Coupons";
 import { Marketing } from "./components/Marketing";
 import { Insights } from "./components/Insights";
@@ -514,7 +515,8 @@ function App() {
   // A legacy creation-date-based 30-day countdown cannot start a three-month trial.
   const trialInfo = null;
 
-  const [settingsCategory, setSettingsCategory] = useState<string>("account");
+  const [settingsCategory, setSettingsCategory] = useState<string>("storefront");
+  const [settingsAdvancedExpanded, setSettingsAdvancedExpanded] = useState(false);
   const [pickupPaymentChoice, setPickupPaymentChoice] = useState<"cash" | "card_machine" | "both">("cash");
   const [savingPickupPayments, setSavingPickupPayments] = useState(false);
   const [pickupPaymentError, setPickupPaymentError] = useState("");
@@ -1534,6 +1536,7 @@ function App() {
   }
 
   const handleSaveProfile = async (data: ProfileData) => {
+    if (!merchantStorefrontWritesEnabled()) { toast.info("Profile saving is unavailable in Merchant Preview."); return; }
     setIsSaving(true);
     setIsSaveSuccess(false);
     try {
@@ -1612,6 +1615,17 @@ function App() {
   }
 
   if (user && merchantShopGate.status === "no-shop") {
+    if (merchantStorefrontPreviewOnly()) {
+      return (
+        <div className="min-h-screen bg-surface px-4 py-10 text-on-surface flex items-center justify-center">
+          <section className="max-w-xl w-full rounded-[2rem] bg-surface-container-lowest border border-outline-variant/20 p-8 text-center space-y-4">
+            <h2 className="font-headline text-2xl font-black">Shop Onboarding — Preview Only</h2>
+            <p className="text-sm text-on-surface-variant">No verified shop is selected. Shop registration and uploads are unavailable in this Preview. No shop or database record is created.</p>
+            <button type="button" onClick={() => void handleSignOut()} className="rounded-xl px-5 py-3 bg-surface-container-high text-on-surface text-sm font-bold">Sign Out</button>
+          </section>
+        </div>
+      );
+    }
     return (
       <CreateShopOnboarding
         onCreated={handleCreatedMerchantShop}
@@ -1654,7 +1668,7 @@ function App() {
     );
   }
 
-  if (isEditingProfile) {
+  if (isEditingProfile && !merchantStorefrontPreviewOnly()) {
     console.log("[Render] editing-profile", { isSessionChecking, isAuthReady, loading, userId: user?.id });
     return (
       <>
@@ -2218,9 +2232,10 @@ function App() {
              Store Offline - Not Receiving Orders
            </div>
            <button
-             disabled={availabilityBusy}
+             disabled={availabilityBusy || merchantStorefrontPreviewOnly()}
+             title={merchantStorefrontPreviewOnly() ? "Shop availability changes are unavailable in Merchant Preview" : "Mark shop available"}
              onClick={async () => {
-                if (availabilityBusy) return;
+                if (availabilityBusy || merchantStorefrontPreviewOnly()) return;
                 const newStatus = true;
 
                 const { success, error, freshShop } = await syncShopAvailability({
@@ -2249,7 +2264,7 @@ function App() {
              }}
              className="px-4 py-1 bg-white text-error rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-zinc-100 transition-colors ml-2 shadow-xs cursor-pointer active:scale-95 border border-white"
            >
-             Mark Shop Available
+             {merchantStorefrontPreviewOnly() ? "Status Change Unavailable" : "Mark Shop Available"}
            </button>
         </div>
       )}
@@ -2264,6 +2279,7 @@ function App() {
             <React.Suspense fallback={<DashboardSkeleton />}>
               {activeTab === "dashboard" && (
                 <DashboardOverview
+                  previewOnly={merchantStorefrontPreviewOnly()}
                   orders={orders}
                   loading={loading}
                   ordersReadState={ordersReadState}
@@ -2275,7 +2291,7 @@ function App() {
                     await fetchShops();
                     await Promise.all([fetchOrders(), fetchAllMenuItems()]);
                   }}
-                  onEditProfile={() => setIsEditingProfile(true)}
+                  onEditProfile={() => { if (merchantStorefrontPreviewOnly()) toast.info("Profile editing is unavailable in Merchant Preview."); else setIsEditingProfile(true); }}
                   menuItems={menuItems}
                   trialInfo={trialInfo}
                   currentShop={currentShop}
@@ -2350,19 +2366,18 @@ function App() {
                 />
               )}
               {activeTab === "riders" && (
-                currentShop ? (
-                  <RiderManagement
-                    currentShop={currentShop}
-                    orders={orders}
-                    onRequestRider={requestRider}
-                    sendRiderNudge={sendRiderNudge}
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
-                    <p className="text-on-surface-variant font-medium">Create a shop first to manage riders.</p>
-                    <button onClick={() => setActiveTab("storefront")} className="px-4 py-2 bg-primary text-white rounded-xl">Go to Storefront</button>
+                <section aria-labelledby="riders-coming-soon-title" className="min-h-[60vh] flex items-center justify-center px-4">
+                  <div className="w-full max-w-lg rounded-3xl border border-outline-variant/20 bg-surface-container-low p-8 md:p-12 text-center shadow-sm">
+                    <div aria-hidden="true" className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      <Bike size={30} />
+                    </div>
+                    <p className="mb-2 text-xs font-black uppercase tracking-widest text-primary">Riders</p>
+                    <h1 id="riders-coming-soon-title" className="font-headline text-3xl font-black text-on-surface">Coming Soon</h1>
+                    <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
+                      Rider management is not available yet. Pairing, dispatch, and deliveries are disabled.
+                    </p>
                   </div>
-                )
+                </section>
               )}
               {activeTab === "payments" && (
                 currentShop ? (
@@ -2392,24 +2407,31 @@ function App() {
                     </h2>
                   </div>
                   <p className="text-sm text-on-surface-variant font-medium">
-                    Manage your account and storefront preferences.
+                    Storefront, account and basic preferences first. Less-used settings are under More settings.
                   </p>
+                  <div className="pt-3">
+                    <button type="button" onClick={() => setActiveTab("storefront")}
+                      className="merchant-tap-feedback inline-flex items-center gap-2 rounded-xl bg-primary text-on-primary px-4 py-2.5 font-bold text-sm shadow-sm focus-visible:outline-2 focus-visible:outline-primary">
+                      <Store size={17} aria-hidden="true" /> Open Storefront &amp; Test Location <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                    <p className="mt-2 text-xs text-on-surface-variant">Opens a safe view of the original location map. Test pin changes do not edit the registered shop or change Customer App discovery.</p>
+                  </div>
                 </header>
 
                 <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-start px-4 md:px-0">
                   {/* Sidebar */}
                   <nav className="w-full md:w-56 shrink-0 flex md:flex-col gap-2 overflow-x-auto pb-4 md:pb-0 hide-scrollbar border-b md:border-b-0 border-outline-variant/10 md:pr-4">
                      {[
-                       { id: "account", label: "Account & Staff", icon: UserIcon },
                        { id: "storefront", label: "Storefront", icon: Store },
+                       { id: "account", label: "Account", icon: UserIcon },
+                       { id: "preferences", label: "Preferences", icon: Settings },
                        { id: "pickup-payments", label: "Pickup payments", icon: CreditCard },
                        { id: "operations", label: "Operations", icon: Sliders },
                        { id: "delivery", label: "Delivery", icon: Truck },
                        { id: "hardware", label: "Printing & Hardware", icon: Printer },
                        { id: "billing", label: "Billing & Subscription", icon: Wallet },
-                       { id: "preferences", label: "Preferences", icon: Settings },
                        { id: "diagnostics", label: "Database Diagnostics", icon: Activity },
-                     ].map(category => (
+                     ].filter(category => settingsAdvancedExpanded || ["storefront", "account", "preferences"].includes(category.id)).map(category => (
                        <button
                          key={category.id}
                          onClick={() => setSettingsCategory(category.id)}
@@ -2426,6 +2448,13 @@ function App() {
                          {category.label}
                        </button>
                      ))}
+                     <button type="button" onClick={() => setSettingsAdvancedExpanded(value => !value)}
+                       aria-expanded={settingsAdvancedExpanded}
+                       className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-on-surface-variant hover:bg-surface-container-high border border-outline-variant/15 focus-visible:outline-2 focus-visible:outline-primary">
+                       <Sliders size={17} aria-hidden="true" />
+                       {settingsAdvancedExpanded ? "Fewer settings" : "More settings"}
+                       <ChevronRight size={15} aria-hidden="true" className={settingsAdvancedExpanded ? "-rotate-90" : "rotate-90"} />
+                     </button>
                   </nav>
 
                   {/* Settings Content Panels */}
@@ -2435,7 +2464,7 @@ function App() {
                     onSubmitCapture={(event) => { event.preventDefault(); event.stopPropagation(); }}
                     className="flex-1 w-full space-y-4 max-w-3xl pb-16 pointer-events-none">
                     <p role="status" className="text-xs text-on-surface-variant bg-surface-container-low rounded-2xl p-3 border border-outline-variant/15">
-                      Settings Preview is read-only. Navigate with the tabs on the left; saving account, operations, delivery, hardware, payment and billing changes is unavailable in this Preview.
+                      Settings Preview is read-only. {merchantSettingsS4Notice()}
                     </p>
                     {settingsCategory === "pickup-payments" && currentShop && (
                       <section className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -2468,31 +2497,33 @@ function App() {
                     )}
                     {settingsCategory === "diagnostics" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h3 className="font-headline font-bold text-lg mb-2">Firestore Diagnostics</h3>
+                        <h3 className="font-headline font-bold text-lg mb-2">Shop Diagnostics — Preview</h3>
                         <ShopDiagnosticPanel currentShop={currentShop} />
                       </div>
                     )}
                     
                     {settingsCategory === "storefront" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h3 className="font-headline font-bold text-lg mb-2">Store Profile & Location Sync</h3>
+                        <h3 className="font-headline font-bold text-lg mb-2">Store Profile & Location — Preview</h3>
                         
                         {/* Real-time Location Sync Status Indicator */}
                         {currentShop && (
                           <LocationSyncIndicator
+                            previewOnly={!merchantSettingsS4ActionsEnabled()}
                             locationState={currentShopLocation}
                             syncAnalysis={currentShopLocationSync}
                             isLocating={isLocatingShopGPS}
                             isSaving={isSavingShopLocation}
-                            onDetectGPS={detectShopGPS}
-                            onAutoAlign={autoAlignShopCity}
-                            onSave={() => saveShopLocationSettings()}
-                            onOpenStorefrontMap={() => setActiveTab("storefront")}
+                            onDetectGPS={merchantSettingsS4ActionsEnabled() ? detectShopGPS : undefined}
+                            onAutoAlign={merchantSettingsS4ActionsEnabled() ? autoAlignShopCity : undefined}
+                            onSave={merchantSettingsS4ActionsEnabled() ? () => saveShopLocationSettings() : undefined}
+                            onOpenStorefrontMap={merchantSettingsS4ActionsEnabled() ? () => setActiveTab("storefront") : undefined}
                           />
                         )}
 
                         <button
-                          onClick={() => setActiveTab("storefront")}
+                          disabled={!merchantSettingsS4ActionsEnabled()}
+                          onClick={() => { if(merchantSettingsS4ActionsEnabled()) setActiveTab("storefront"); }}
                     className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-0 p-5 bg-primary/5 hover:bg-primary/10 rounded-2xl transition-all border border-primary/20 group shadow-sm shadow-primary/5"
                   >
                     <div className="flex items-center gap-4">
@@ -2504,13 +2535,13 @@ function App() {
                           Storefront Profile
                         </p>
                         <p className="text-xs text-on-surface-variant line-clamp-1 md:line-clamp-none">
-                          Update your shop name, logo, and cover photo.
+                          Profile changes are unavailable in read-only Preview.
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 self-end md:self-auto">
                       <span className="text-[10px] items-center font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap">
-                        New Location
+                        Read-only Preview
                       </span>
                       <ChevronRight
                         size={18}
@@ -2525,7 +2556,8 @@ function App() {
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">My Account</h3>
                   <button
-                    onClick={() => setIsEditingProfile(true)}
+                    disabled={!merchantSettingsS4ActionsEnabled()}
+                    onClick={() => { if(merchantSettingsS4ActionsEnabled()) setIsEditingProfile(true); }}
                     className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
                   >
                     <div className="flex items-center gap-4">
@@ -2537,7 +2569,7 @@ function App() {
                           Edit Profile
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Change your name, email, and photo.
+                          Profile editing is not available in this Preview.
                         </p>
                       </div>
                     </div>
@@ -2553,10 +2585,12 @@ function App() {
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">App Preferences</h3>
                   <button
+                    disabled={!merchantSettingsS4ActionsEnabled()}
                     onClick={() => {
+                      if(!merchantSettingsS4ActionsEnabled())return;
                       setActiveTab("dashboard");
                       setOnboardingOpen(true);
-                      toast.success("✨ Starting interactive walkthrough tour...");
+                      toast.info("Walkthrough opened for inspection only.");
                     }}
                     className="w-full flex items-center justify-between p-5 bg-gradient-to-r from-primary/[0.04] to-transparent hover:from-primary/[0.08] hover:to-primary/[0.02] rounded-2xl transition-all border border-primary/10 group shadow-sm shadow-primary/[0.02]"
                   >
@@ -2569,7 +2603,7 @@ function App() {
                           App Walkthrough Tour
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Restart the guided interactive manual tour of your workspace resources.
+                          Walkthrough controls are unavailable while Settings is read-only.
                         </p>
                       </div>
                     </div>
@@ -2584,12 +2618,9 @@ function App() {
                     {settingsCategory === "account" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <button
-                    onClick={() =>
-                      toast.info("Staff Accounts coming soon!", {
-                        description:
-                          "You will be able to add staff members with limited access (e.g., cannot view revenue or delete menu items).",
-                      })
-                    }
+                    disabled={!merchantSettingsS4ActionsEnabled()}
+                    title="Staff accounts require a separate permissions review"
+                    onClick={() => { if(merchantSettingsS4ActionsEnabled()) toast.info("Staff accounts are not activated."); }}
                     className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
                   >
                     <div className="flex items-center gap-4">
@@ -2601,7 +2632,7 @@ function App() {
                           Staff Accounts
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Manage roles and permissions for your team.
+                          Staff access management is not activated or verified.
                         </p>
                       </div>
                     </div>
@@ -2615,10 +2646,8 @@ function App() {
 
                     {settingsCategory === "storefront" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <a
-                    href="https://rider.localeatssa.co.za/"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <div
+                    aria-disabled="true"
                     className="w-full flex items-center justify-between p-5 bg-blue-500/5 hover:bg-blue-500/10 rounded-2xl transition-all border border-blue-500/20 group shadow-sm shadow-blue-500/5"
                   >
                     <div className="flex items-center gap-4">
@@ -2630,18 +2659,17 @@ function App() {
                           Rider Marketplace
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Access the dedicated platform for deliveries and
-                          missions.
+                          Rider missions and delivery are deferred. This is not an active service or link.
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-black uppercase text-blue-500/60 bg-blue-500/10 px-2 py-0.5 rounded-md">
-                        External
+                        Not Active
                       </span>
                       <DollarSign size={18} className="text-blue-500" />
                     </div>
-                  </a>
+                  </div>
                       </div>
                     )}
 
@@ -3458,7 +3486,7 @@ function App() {
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Staff & Managers</p>
-                        <p className="text-xs text-on-surface-variant">Add staff accounts and configure permission roles.</p>
+                        <p className="text-xs text-on-surface-variant">Staff permissions require an authorised server-side access review.</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -3475,6 +3503,7 @@ function App() {
 
                     {settingsCategory === "preferences" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <p role="status" className="text-xs text-on-surface-variant rounded-2xl bg-surface-container-low border border-outline-variant/15 p-3">Preferences are design-only in this Preview. Sound, theme and push settings cannot be changed, and background notification delivery is not guaranteed.</p>
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-4">
@@ -3486,12 +3515,14 @@ function App() {
                             Sound Alerts
                           </p>
                           <p className="text-xs text-on-surface-variant">
-                            Play a sound when new orders arrive.
+                            Sound alerts are a local preference; no order alert is guaranteed while this Preview is locked.
                           </p>
                         </div>
                       </div>
                       <button
+                        disabled={!merchantSettingsS4ActionsEnabled()}
                         onClick={() => {
+                          if(!merchantSettingsS4ActionsEnabled())return;
                           const nextState = !soundAlerts;
                           setSoundAlerts(nextState);
                           if (nextState) {
@@ -3534,7 +3565,9 @@ function App() {
                               return (
                                 <button
                                   key={theme.id}
+                                  disabled={!merchantSettingsS4ActionsEnabled()}
                                   onClick={() => {
+                                    if(!merchantSettingsS4ActionsEnabled())return;
                                     setSoundStyle(theme.id);
                                     playNotificationSound(false, theme.id);
                                   }}
@@ -3577,17 +3610,21 @@ function App() {
                             <Volume1 size={16} className="text-on-surface-variant" />
                             <input
                               type="range"
+                              disabled={!merchantSettingsS4ActionsEnabled()}
                               min="0"
                               max="100"
                               value={soundVolume}
                               onChange={(e) => {
+                                if(!merchantSettingsS4ActionsEnabled())return;
                                 const v = parseInt(e.target.value);
                                 setSoundVolume(v);
                               }}
                               onMouseUp={() => {
+                                if(!merchantSettingsS4ActionsEnabled())return;
                                 playNotificationSound(false, soundStyle);
                               }}
                               onTouchEnd={() => {
+                                if(!merchantSettingsS4ActionsEnabled())return;
                                 playNotificationSound(false, soundStyle);
                               }}
                               className="flex-1 accent-primary h-1.5 rounded-lg appearance-none bg-outline-variant/40 cursor-pointer"
@@ -3609,12 +3646,14 @@ function App() {
                           Push Notifications
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Get browser alerts even when the app is closed.
+                          Browser push is not verified in Preview; notifications depend on permission, connectivity and the device.
                         </p>
                       </div>
                     </div>
                     <button
+                      disabled={!merchantSettingsS4ActionsEnabled()}
                       onClick={() => {
+                        if(!merchantSettingsS4ActionsEnabled())return;
                         if (!pushEnabled) {
                           requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
                         } else {
@@ -3650,7 +3689,8 @@ function App() {
                       </div>
                     </div>
                     <button
-                      onClick={() => setDarkMode(!darkMode)}
+                      disabled={!merchantSettingsS4ActionsEnabled()}
+                      onClick={() => { if(merchantSettingsS4ActionsEnabled())setDarkMode(!darkMode); }}
                       className={cn(
                         "w-12 h-6 rounded-full transition-all relative",
                         darkMode ? "bg-primary" : "bg-outline-variant",
@@ -3669,9 +3709,10 @@ function App() {
 
                     {settingsCategory === "account" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300 mt-8">
-                  <div className="w-full p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10"><LanguageSwitcher /></div>
+                  <div className="w-full p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10"><LanguageSwitcher previewOnly={!merchantSettingsS4ActionsEnabled()} /></div>
                   <button
-                    onClick={handleSignOut}
+                    onClick={() => { if(merchantSettingsS4ActionsEnabled()) void handleSignOut(); }}
+                    disabled={!merchantSettingsS4ActionsEnabled()}
                     className="w-full flex items-center justify-between p-5 bg-error/5 hover:bg-error/10 rounded-2xl transition-all border border-error/10 group"
                   >
                     <div className="flex items-center gap-4">
@@ -3681,7 +3722,7 @@ function App() {
                       <div className="text-left">
                         <p className="font-bold text-error">Sign Out</p>
                         <p className="text-xs text-error/60">
-                          Logout from your account.
+                          Unavailable from the read-only Settings Preview; use the authorised account flow.
                         </p>
                       </div>
                     </div>
@@ -3710,16 +3751,7 @@ function App() {
                 {currentShop && (
                   <>
                     
-                    <ShopProfile
-                      shop={currentShop}
-                    onRefresh={fetchShops}
-                    user={user}
-                    setIsSaving={setIsSaving}
-                    setIsSaveSuccess={setIsSaveSuccess}
-                    isSaving={isSaving}
-                    isSuccess={isSaveSuccess}
-                    onFinished={() => setActiveTab("dashboard")}
-                  />
+                    <MerchantStorefrontPreview key={String(currentShop.id)} shop={currentShop} />
                   </>
                 )}
               </div>
@@ -3799,61 +3831,61 @@ function App() {
                     },
                     {
                       title: "Real-time Orders",
-                      desc: "Never miss a beat. Orders pop up instantly with sound alerts. Use Kitchen Mode for focus.",
+                      desc: "Order updates require a verified connection and may be delayed. Kitchen Mode focuses the display; alerts are not guaranteed in the background.",
                       icon: ReceiptText,
                       color: "text-green-500 bg-green-50",
                     },
                     {
                       title: "Marketing & Coupons",
-                      desc: "Grow your reach. Create discount codes and use AI to craft perfect campaigns.",
+                      desc: "Marketing campaigns and discount codes are design previews; distribution and redemption are not active.",
                       icon: Megaphone,
                       color: "text-purple-500 bg-purple-50",
                     },
                     {
                       title: "Insights",
-                      desc: "Understand your customers. View reviews and analyze performance trends.",
+                      desc: "Review verified shop-scoped figures where available; missing or unverified trends must not be treated as results.",
                       icon: TrendingUp,
                       color: "text-indigo-500 bg-indigo-50",
                     },
                     {
                       title: "Storefront",
-                      desc: "Customize how customers see your shop. Update your bio, location, and social links.",
+                      desc: "Shop profile changes are unavailable from Settings Preview. Customer-facing changes require an authorised workflow.",
                       icon: Store,
                       color: "text-pink-500 bg-pink-50",
                     },
                     {
                       title: "Delivery & Logistics",
-                      desc: "Set your delivery radius, monitor rider progress on the live map, and manage dispatching.",
+                      desc: "Delivery, live rider tracking and dispatch are deferred; the current Settings controls are examples only.",
                       icon: Truck,
                       color: "text-cyan-500 bg-cyan-50",
                     },
                     {
                       title: "Earnings & Payouts",
-                      desc: "Monitor your revenue in real-time and manage your weekly payout schedule securely.",
+                      desc: "Bank payouts and live settlement reports are not supported or verified in the collection-first pilot.",
                       icon: Wallet,
                       color: "text-emerald-500 bg-emerald-50",
                     },
                     {
                       title: "Customer Engagement",
-                      desc: "Respond to reviews, track repeat customers, and build loyalty with tailored rewards.",
+                      desc: "Verified customer data and outreach consent are required before using loyalty or engagement tools.",
                       icon: Heart,
                       color: "text-rose-500 bg-rose-50",
                     },
                     {
                       title: "Rider Network",
-                      desc: "Access a fleet of on-demand riders. Real-time GPS tracking ensures your food reaches customers hot and fresh.",
+                      desc: "Rider assignment and delivery tracking are not activated for the pickup-first pilot.",
                       icon: Bike,
                       color: "text-blue-600 bg-blue-50",
                     },
                     {
                       title: "QR Verification",
-                      desc: "The gold standard for security. QR codes ensure the right order goes to the right person every single time.",
+                      desc: "Order pickup verification must be checked against the authoritative API. Sample QR designs are not live order confirmation.",
                       icon: QrCode,
                       color: "text-amber-600 bg-amber-50",
                     },
                     {
                       title: "Growth Support",
-                      desc: "Get help when you need it. Our automated tools and community forum are here to help you grow your business.",
+                      desc: "Support and community features shown here may be planned or unavailable; verify access before relying on them.",
                       icon: HelpCircle,
                       color: "text-teal-600 bg-teal-50",
                     },
@@ -3865,7 +3897,7 @@ function App() {
                     },
                     {
                       title: "Community Forum",
-                      desc: "Connect with other vendors, share success stories, and get advice from the LocalEats community.",
+                      desc: "A merchant community forum is a future idea, not an active service in this Preview.",
                       icon: Users,
                       color: "text-indigo-600 bg-indigo-50",
                     },
@@ -3900,8 +3932,7 @@ function App() {
                     Pro Tip
                   </h4>
                   <p className="text-sm text-on-surface-variant">
-                    Enable <b>Sound Alerts</b> in Settings to ensure you hear
-                    every new order even when the tab is in the background.
+                    After launch, check notification permissions and test alerts on your device. Background delivery is not guaranteed; always verify order status.
                   </p>
                 </div>
 
@@ -3911,7 +3942,7 @@ function App() {
                     Safety & Trust
                   </h4>
                   <p className="text-sm text-on-surface-variant">
-                    All transactions are encrypted and secured. We use multi-factor verification for payouts and location data is only shared with active delivery participants.
+                    Do not enter payment-card or sensitive billing details in Preview. Payment settlement, payout verification and delivery-location privacy need a separate production security review.
                   </p>
                 </div>
 
