@@ -109,6 +109,8 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // Never infer revenue, diners or retention from cached/unverified orders.
   const publishingEnabled = merchantMarketingPublishingEnabled();
+  // Preview QR codes must not take customers to a live ordering surface.
+  const previewQrTarget = publishingEnabled ? storeUrl : "https://example.invalid/localeats-marketing-preview";
   const dinerStats = useMemo(
     () => verifiedMarketingStats(orders, activeShop?.id, ordersReadState),
     [orders, activeShop?.id, ordersReadState]
@@ -155,7 +157,7 @@ export const Marketing: React.FC<MarketingProps> = ({
           darkColor = "#020617";
         }
 
-        const url = await QRCodeLib.toDataURL(storeUrl, {
+        const url = await QRCodeLib.toDataURL(previewQrTarget, {
           width: 500,
           margin: 1,
           color: {
@@ -177,7 +179,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [storeUrl, qrStyle]);
+  }, [previewQrTarget, qrStyle]);
 
   // Copy Store Link Handler
   const copyStoreUrl = () => {
