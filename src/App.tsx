@@ -3736,7 +3736,7 @@ function App() {
                 {currentShop && (
                   <>
                     
-                    <MerchantStorefrontPreview shop={currentShop} />
+                    <MerchantStorefrontPreview key={String(currentShop.id)} shop={currentShop} />
                   </>
                 )}
               </div>
