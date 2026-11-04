@@ -34,6 +34,7 @@ interface CustomerReEngagementProps {
   orders: Order[];
   menuItems: MenuItem[];
   storeUrl: string;
+  previewOnly?: boolean;
 }
 
 function sanitizeWhatsAppPhone(phoneStr: string): string {
@@ -60,17 +61,19 @@ export const CustomerReEngagement: React.FC<CustomerReEngagementProps> = ({
   orders = [],
   menuItems = [],
   storeUrl,
+  previewOnly = false,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<"all" | "vip" | "recent" | "inactive">("all");
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [customOfferText, setCustomOfferText] = useState("10% OFF with code LOYAL10");
+  const [customOfferText, setCustomOfferText] = useState(previewOnly ? "EXAMPLE ONLY — no offer is active" : "10% OFF with code LOYAL10");
 
   const shopName = activeShop?.name || "LocalEats";
   const now = new Date().getTime();
 
   // Compile unique customer profiles from past orders
   const customers: CustomerProfile[] = useMemo(() => {
+    if(previewOnly) return []; // Do not collect contact records for a locked design preview.
     const map = new Map<string, CustomerProfile>();
 
     // Sort orders from oldest to newest to build accurate cumulative stats
@@ -140,7 +143,7 @@ export const CustomerReEngagement: React.FC<CustomerReEngagementProps> = ({
 
     // Sort by most recent or highest spend
     return list.sort((a, b) => b.totalSpent - a.totalSpent);
-  }, [orders, now]);
+  }, [orders, now, previewOnly]);
 
   // Executive Metrics
   const metrics = useMemo(() => {
@@ -200,6 +203,7 @@ export const CustomerReEngagement: React.FC<CustomerReEngagementProps> = ({
   };
 
   const handleSendWhatsApp = (customer: CustomerProfile) => {
+    if(previewOnly) return;
     const phone = sanitizeWhatsAppPhone(customer.phone);
     if (!phone) {
       toast.error(`No valid phone number found for ${customer.name}`);
@@ -214,6 +218,7 @@ export const CustomerReEngagement: React.FC<CustomerReEngagementProps> = ({
   };
 
   const handleCopyPhone = (customer: CustomerProfile) => {
+    if(previewOnly) return;
     navigator.clipboard.writeText(customer.phone);
     setCopiedId(customer.id);
     toast.success(`Copied phone: ${customer.phone}`);
@@ -234,7 +239,7 @@ export const CustomerReEngagement: React.FC<CustomerReEngagementProps> = ({
             </div>
           </div>
           <p className="text-2xl font-black font-headline text-on-surface mt-2">
-            {metrics.totalDiners}
+            {previewOnly ? "—" : metrics.totalDiners}
           </p>
           <p className="text-[11px] text-on-surface-variant/70 mt-0.5">
             Unique phone contacts compiled
@@ -251,10 +256,10 @@ export const CustomerReEngagement: React.FC<CustomerReEngagementProps> = ({
             </div>
           </div>
           <p className="text-2xl font-black font-headline text-emerald-600 mt-2">
-            {metrics.repeatDiners}
+            {previewOnly ? "—" : metrics.repeatDiners}
           </p>
           <p className="text-[11px] text-on-surface-variant/70 mt-0.5">
-            {metrics.repeatRate}% repeat customer rate
+            {previewOnly ? "No verified customer records loaded" : `${metrics.repeatRate}% repeat customer rate`}
           </p>
         </div>
 
@@ -268,7 +273,7 @@ export const CustomerReEngagement: React.FC<CustomerReEngagementProps> = ({
             </div>
           </div>
           <p className="text-2xl font-black font-headline text-on-surface mt-2">
-            {metrics.activePast14Days}
+            {previewOnly ? "—" : metrics.activePast14Days}
           </p>
           <p className="text-[11px] text-on-surface-variant/70 mt-0.5">
             Recent active buyers
@@ -285,10 +290,10 @@ export const CustomerReEngagement: React.FC<CustomerReEngagementProps> = ({
             </div>
           </div>
           <p className="text-2xl font-black font-headline text-amber-600 mt-2">
-            R {metrics.avgSpend.toFixed(0)}
+            {previewOnly ? "—" : `R ${metrics.avgSpend.toFixed(0)}`}
           </p>
           <p className="text-[11px] text-on-surface-variant/70 mt-0.5">
-            R {metrics.totalRevenue.toFixed(0)} lifetime volume
+            {previewOnly ? "No verified spend data in Preview" : `R ${metrics.totalRevenue.toFixed(0)} lifetime volume`}
           </p>
         </div>
       </div>
@@ -298,14 +303,14 @@ export const CustomerReEngagement: React.FC<CustomerReEngagementProps> = ({
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-black text-[10px] uppercase tracking-wider">
-              1-Tap WhatsApp Re-Engagement
+              {previewOnly ? "Customer Outreach — Not Available" : "1-Tap WhatsApp Re-Engagement"}
             </span>
           </div>
           <h4 className="text-sm font-black text-on-surface">
-            Re-engage past customers with customized incentives
+            {previewOnly ? "Design preview: no customer data or incentives are active" : "Re-engage past customers with customized incentives"}
           </h4>
           <p className="text-xs text-on-surface-variant">
-            Tap the WhatsApp button on any diner card to send a pre-filled invitation with your live store menu link.
+            {previewOnly ? "Messages, contact lists, discounts and storefront links are disabled until launch and consent checks." : "Tap the WhatsApp button on any diner card to send a pre-filled invitation with your live store menu link."}
           </p>
         </div>
 
@@ -390,9 +395,11 @@ export const CustomerReEngagement: React.FC<CustomerReEngagementProps> = ({
           <div className="w-12 h-12 rounded-2xl bg-on-surface/5 flex items-center justify-center mx-auto text-on-surface-variant">
             <Users size={24} />
           </div>
-          <h4 className="text-base font-bold text-on-surface">No Diners Found</h4>
+          <h4 className="text-base font-bold text-on-surface">{previewOnly ? "Customer Contacts Not Loaded" : "No Diners Found"}</h4>
           <p className="text-xs text-on-surface-variant max-w-sm mx-auto">
-            {searchQuery
+            {previewOnly
+              ? "This is a design-only preview. No contact records are loaded and customer messaging is not available."
+              : searchQuery
               ? "No customers matched your search query. Try typing a different name or phone number."
               : "When customers order from your online storefront, their contact profiles will automatically compile here."}
           </p>
