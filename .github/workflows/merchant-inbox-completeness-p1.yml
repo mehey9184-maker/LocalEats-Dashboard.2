@@ -1,0 +1,37 @@
+name: Merchant Phase 1 Complete Unfinished Inbox Release Gate
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/src/orders/merchantInboxRead.ts'
+      - 'localeats-api/src/orders/merchantInboxRead.test.ts'
+      - 'localeats-api/src/routes/orders.ts'
+      - 'docs/PHASE1_MERCHANT_INBOX_RECONCILIATION.md'
+      - '.github/workflows/merchant-inbox-completeness-p1.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-inbox-completeness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Install API dependencies without live secrets
+        run: npm ci --prefix localeats-api --no-audit --no-fund
+      - name: TypeScript compile
+        run: npm run build --prefix localeats-api
+      - name: Verify unfinished orders and fail-closed merchant inbox
+        run: node --test localeats-api/dist/orders/merchantInboxRead.test.js
+      - name: Existing API contracts and pickup-write guards
+        run: npm test --prefix localeats-api
+        env:
+          PICKUP_WRITES_ENABLED: 'false'
+          RIDER_ACTIVATION_ENABLED: 'false'
