@@ -3212,7 +3212,7 @@ function App() {
                                try {
                                  const { error } = await supabase.from("shops").update({ require_terminal_sync: newValue }).eq("id", currentShop?.id);
                                  if (error) throw error;
-                                 toast.success(newValue ? "Terminal sync now required for card payments" : "Terminal sync requirement disabled");
+                                 toast.success(newValue ? "Terminal preference requested; provider verification still required" : "Terminal preference cleared; provider verification still required");
                                } catch {
                                  toast.error("Failed to update terminal sync requirement");
                                  setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, require_terminal_sync: !newValue } : s));
@@ -3295,7 +3295,7 @@ function App() {
                             setShowAutoAcceptModal(true);
                           } else {
                             setAutoAcceptOrders(false);
-                            toast.success("Auto-Accept disabled.");
+                            toast.success("Auto-accept preference updated; actual order processing remains server-controlled.");
                           }
                         }}
                         className={cn(
@@ -3327,7 +3327,7 @@ function App() {
                           if(!merchantSettingsOperationalWritesEnabled()) return;
                           const nextState = !autoPrint;
                           setAutoPrint(nextState);
-                          if (nextState) toast.success("Auto-print enabled. Please ensure your POS printer is connected.");
+                          if (nextState) toast("Print preference selected; receipt delivery must be verified separately.");
                         }}
                         className={cn(
                           "w-12 h-6 rounded-full transition-all relative shrink-0",
