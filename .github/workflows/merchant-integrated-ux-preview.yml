@@ -1,0 +1,32 @@
+name: Merchant Reviewed Integration (Riders Locked) Preview
+on:
+  push:
+    branches: [preview/merchant-riders-coming-soon-20261104]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-integrated-ux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Settings S5, S4-S1, Motion M1, Orders, Riders and inherited regressions
+        run: |
+          node --experimental-strip-types --test tests/merchant-settings-s5-storefront-access.test.mjs tests/merchant-settings-s4-final-privacy-clarity.test.mjs tests/merchant-settings-s3-pickup-delivery.test.mjs tests/merchant-settings-s2-operations-hardware.test.mjs tests/merchant-settings-s1-billing-trust.test.mjs tests/merchant-motion-m1.test.mjs tests/merchant-orders-refresh-shimmer.test.mjs tests/merchant-ux2-orders-confidence.test.mjs tests/merchant-ux1-feedback.test.mjs tests/merchant-orders-compact-toolbar.test.mjs tests/merchant-riders-coming-soon.test.mjs tests/merchant-riders-r2-filter-clarity.test.mjs tests/merchant-riders-r1-readonly-trust.test.mjs tests/merchant-orders-o6-final-pickup-safety.test.mjs tests/merchant-orders-o5-pickup-history.test.mjs tests/merchant-orders-o4-pickup-first.test.mjs tests/merchant-orders-o3-comms-receipts.test.mjs tests/merchant-orders-o2-confirmed-actions.test.mjs tests/merchant-orders-o1-trust.test.mjs tests/merchant-dashboard-h4-sast-dates.test.mjs tests/merchant-dashboard-h3-freshness.test.mjs tests/merchant-dashboard-h2-layout.test.mjs tests/merchant-dashboard-h1-trust.test.mjs tests/merchant-menu-m3-large-menu-images.test.mjs tests/merchant-menu-m2-usability.test.mjs tests/merchant-menu-m1-trust.test.mjs
+      - name: Existing activation and availability guards
+        run: |
+          node --experimental-strip-types --test tests/merchant-activation.test.mjs tests/merchant-pickup.test.mjs
+          npm run test:merchant-availability
+      - name: UX1 and UX2 shared UI and trust helpers lint
+        run: npx eslint src/components/MerchantStorefrontPreview.tsx src/services/merchantOrdersUXTrust.ts src/components/ui/OperationFeedback.tsx src/components/ui/SavingOverlay.tsx src/components/ui/RollingOrderCount.tsx src/hooks/useMerchantPullToRefresh.ts
+      - name: Full merchant build
+        run: npm run build
