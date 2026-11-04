@@ -1707,7 +1707,7 @@ export const RiderManagement = ({
               setShowPairModal(true);
             }}
             className="px-4 py-2.5 bg-primary hover:bg-primary/90 text-on-primary font-black rounded-2xl shadow-sm transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer"
-            title="Pair a new driver using 6-digit code or QR"
+            title={previewOnly ? "Rider pairing is unavailable in Preview" : "Pair a new driver using 6-digit code or QR"}
           >
             <Plus size={16} />
             <span>{previewOnly ? "Pairing Unavailable" : "Pair New Rider"}</span>
@@ -1717,7 +1717,7 @@ export const RiderManagement = ({
             disabled={previewOnly}
             onClick={() => { if (!previewOnly) setShowBroadcastModal(true); }}
             className="px-3.5 py-2.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-black rounded-2xl shadow-xs transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer border border-outline-variant/20"
-            title="Broadcast instant alert to online drivers"
+            title={previewOnly ? "Rider messaging is unavailable in Preview" : "Broadcast instant alert to online drivers"}
           >
             <Megaphone size={15} className="text-amber-500" />
             <span>{previewOnly ? "Broadcast Unavailable" : "Broadcast"}</span>
@@ -1781,9 +1781,10 @@ export const RiderManagement = ({
                 <p className="text-xs text-on-surface-variant">{previewOnly ? "Delivery and tracking are deferred. Missions are not loaded in Preview." : "Live delivery tracking and dispatch retries"}</p>
               </div>
               <button 
-                onClick={() => void fetchConnections()}
+                disabled={previewOnly}
+                onClick={() => { if(!previewOnly)void fetchConnections(); }}
                 className="p-2 hover:bg-on-surface/5 rounded-xl border border-outline-variant/10 text-on-surface-variant hover:text-on-surface transition-colors"
-                title="Force Refresh Coordinates"
+                title={previewOnly ? "Live GPS refresh is unavailable in Preview" : "Force Refresh Coordinates"}
               >
                 <RefreshCw size={15} />
               </button>
@@ -1951,6 +1952,7 @@ export const RiderManagement = ({
 
               <button
                 type="button"
+                data-rider-preview-safe="true"
                 onClick={() => setStatusFilter(statusFilter === "online" ? "all" : "online")}
                 className={cn(
                   "p-4 rounded-2xl border transition-all flex flex-col justify-between text-left cursor-pointer relative overflow-hidden",
@@ -1981,12 +1983,15 @@ export const RiderManagement = ({
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (previewOnly) return;
                       const allOnline = connections.every((c) => c.is_online);
                       void toggleAllRidersOnline(!allOnline);
                     }}
-                    className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-600/10 hover:bg-emerald-600 text-emerald-700 hover:text-white transition-colors"
+                    title={previewOnly ? "Fleet status changes require live delivery activation" : "Change rider fleet availability"}
+                    aria-disabled={previewOnly}
+                    className={cn("text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-600/10 text-emerald-700 transition-colors", previewOnly ? "opacity-60 cursor-not-allowed" : "hover:bg-emerald-600 hover:text-white cursor-pointer")}
                   >
-                    {connections.every((c) => c.is_online) && connections.length > 0 ? "Set All Offline" : "Turn All Online"}
+                    {previewOnly ? "Fleet Status Unavailable" : connections.every((c) => c.is_online) && connections.length > 0 ? "Set All Offline" : "Turn All Online"}
                   </span>
                 </div>
               </button>
@@ -2057,6 +2062,7 @@ export const RiderManagement = ({
                 <button
                   disabled={previewOnly}
                   onClick={() => {if(!previewOnly)setShowQRScanner(true);}}
+                  title={previewOnly ? "QR pairing requires delivery activation" : "Scan rider pairing QR"}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-container-high text-on-surface rounded-xl font-bold text-xs cursor-pointer border border-outline-variant/20 transition-all"
                 >
                   <Camera size={14} className="text-primary" />
@@ -2066,6 +2072,7 @@ export const RiderManagement = ({
                 <button
                   disabled={previewOnly}
                   onClick={() => {if(!previewOnly)setShowInHouseModal(true);}}
+                  title={previewOnly ? "Staff registration requires an authorised rider workflow" : "Add rider staff"}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 rounded-xl font-bold text-xs cursor-pointer border border-indigo-500/20 transition-all"
                 >
                   <Users size={14} />
@@ -2203,7 +2210,7 @@ export const RiderManagement = ({
                   data-rider-preview-safe="true"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search rider name, phone, or code..."
+                  placeholder={previewOnly ? "Search layout (rider records unavailable)" : "Search rider name, phone, or code..."}
                   className="w-full pl-10 pr-8 py-2 text-xs bg-surface text-on-surface placeholder:text-on-surface-variant/50 border border-outline-variant/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
                 />
                 {searchQuery && (
@@ -2249,7 +2256,7 @@ export const RiderManagement = ({
                 <h4 className="text-xs font-black uppercase text-on-surface-variant tracking-wider flex items-center gap-2">
                   <span>Rider Roster</span>
                   <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                    {previewOnly ? "Not loaded" : `${filteredConnections.length} shown`}
+                    {previewOnly ? "Records unavailable" : `${filteredConnections.length} shown`}
                   </span>
                 </h4>
                 {availableCodesCount > 0 && (
@@ -2270,14 +2277,18 @@ export const RiderManagement = ({
                   </div>
                   <div className="space-y-1">
                     <h4 className="text-sm font-bold text-on-surface uppercase tracking-tight">
-                      {statusFilter === "online" && connections.length > 0
+                      {previewOnly
+                        ? "Rider Data Unavailable"
+                        : statusFilter === "online" && connections.length > 0
                         ? "No Riders Online & Ready"
                         : connections.length === 0
                         ? (previewOnly ? "Rider Data Unavailable" : "No Riders Connected Yet")
                         : "No Matching Riders"}
                     </h4>
                     <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
-                      {statusFilter === "online" && connections.length > 0
+                      {previewOnly
+                        ? (searchQuery.trim() || statusFilter !== "all" ? "Filters are for reviewing this layout only; no rider records are loaded. Clear filters to return to the default view." : "Rider records are not loaded in Preview. This does not mean your shop has no riders.")
+                        : statusFilter === "online" && connections.length > 0
                         ? "None of your riders are currently marked as online for order dispatch. You can activate all riders with one tap."
                         : connections.length === 0
                         ? (previewOnly ? "Rider records are not loaded in Preview. This does not mean your shop has no riders." : "Generate a pairing code or add an in-house driver above to activate your delivery network.")
@@ -2297,10 +2308,11 @@ export const RiderManagement = ({
                     )}
                     {statusFilter !== "all" && (
                       <button
+                        data-rider-preview-safe="true"
                         onClick={() => { setSearchQuery(""); setStatusFilter("all"); }}
                         className="px-4 py-2 bg-surface text-on-surface text-xs font-bold rounded-xl border border-outline-variant/20 hover:bg-on-surface/5 transition-all cursor-pointer"
                       >
-                        View All Riders ({connections.length})
+                        {previewOnly ? "Clear filters" : `View All Riders (${connections.length})`}
                       </button>
                     )}
                     {connections.length === 0 && (
@@ -2310,7 +2322,7 @@ export const RiderManagement = ({
                         className="px-4 py-2 bg-primary text-on-primary text-xs font-bold rounded-xl shadow-xs hover:bg-primary/90 transition-all cursor-pointer flex items-center gap-1.5"
                       >
                         <Plus size={13} />
-                        <span>Add In-House Staff</span>
+                        <span>{previewOnly ? "Staff Registration Unavailable" : "Add In-House Staff"}</span>
                       </button>
                     )}
                   </div>
