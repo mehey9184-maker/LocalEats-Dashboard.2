@@ -24,6 +24,7 @@ interface CampaignBuilderProps {
   activeShop: Shop | undefined;
   storeMenuItems?: MenuItem[];
   storeUrl: string;
+  previewOnly?: boolean;
 }
 
 type CampaignType = "push" | "coupon" | "combo";
@@ -50,6 +51,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
   activeShop,
   storeMenuItems = [],
   storeUrl,
+  previewOnly = false,
 }) => {
   // Campaign Configuration State
   const [campaignType, setCampaignType] = useState<CampaignType>("combo");
@@ -58,7 +60,9 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
   // Campaign Content Fields
   const [title, setTitle] = useState<string>("🔥 20% OFF LUNCH RUSH SPECIAL!");
   const [body, setBody] = useState<string>(
-    "Craving fresh hot Kotas & Meals? Order now and enjoy 20% off your entire meal plus super fast township delivery!"
+    previewOnly
+      ? "Example promotion only: collection at the shop with payment at the shop. No discount is active."
+      : "Craving fresh hot Kotas & Meals? Order now and enjoy 20% off your entire meal plus super fast township delivery!"
   );
   const [couponCode, setCouponCode] = useState<string>("LUNCH20");
   const [discountType, setDiscountType] = useState<DiscountType>("percentage");
@@ -82,6 +86,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
   const storageKey = `localeats_campaigns_${shopId}`;
 
   const [savedCampaigns, setSavedCampaigns] = useState<SavedCampaign[]>(() => {
+    if(previewOnly) return []; // Never display old local drafts or a fictional live campaign.
     try {
       const saved = localStorage.getItem(`localeats_campaigns_${shopId}`);
       if (saved) return JSON.parse(saved);
@@ -218,6 +223,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
   };
 
   const handleSimulatePushAlert = () => {
+    if(previewOnly) return;
     setIsSimulatingPush(true);
     playPushNotificationSound();
     toast(title, {
@@ -239,6 +245,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
   };
 
   const handleCopyCode = () => {
+    if(previewOnly) return;
     navigator.clipboard.writeText(couponCode);
     setCopiedCode(true);
     toast.success(`Coupon code "${couponCode}" copied to clipboard!`);
@@ -246,6 +253,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
   };
 
   const handleCopyPayload = () => {
+    if(previewOnly) return;
     const payload = JSON.stringify(
       {
         notification: {
@@ -275,6 +283,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
   };
 
   const handleCopyShareLink = () => {
+    if(previewOnly) return;
     const promoLink = `${storeUrl}&promo=${encodeURIComponent(couponCode)}`;
     navigator.clipboard.writeText(promoLink);
     setCopiedShareLink(true);
@@ -283,6 +292,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
   };
 
   const handleSaveCampaign = () => {
+    if(previewOnly) return;
     if (!title || !couponCode) {
       toast.error("Please fill in campaign title and coupon code.");
       return;
@@ -321,6 +331,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
   };
 
   const handleToggleCampaignStatus = (id: string) => {
+    if(previewOnly) return;
     const updated = savedCampaigns.map((c) => (c.id === id ? { ...c, active: !c.active } : c));
     setSavedCampaigns(updated);
     try {
@@ -337,6 +348,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
   };
 
   const handleDeleteCampaign = (id: string) => {
+    if(previewOnly) return;
     const updated = savedCampaigns.filter((c) => c.id !== id);
     setSavedCampaigns(updated);
     try {
@@ -424,7 +436,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
             Campaign & Coupon Builder
           </h2>
           <p className="text-xs md:text-sm text-on-surface-variant font-medium">
-            Design push notification blasts, in-app storefront banners, and coupon vouchers with live customer previews.
+            {previewOnly ? "Inspect example campaign layouts only. Nothing is sent, saved or activated." : "Design push notification blasts, in-app storefront banners, and coupon vouchers with live customer previews."}
           </p>
         </div>
 
@@ -436,7 +448,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
                 ? "bg-amber-500 text-white scale-95"
                 : "bg-primary hover:bg-primary-container text-on-primary active:scale-95"
             }`}
-            title="Trigger realistic customer phone alert"
+            title={previewOnly ? "Simulations are unavailable in read-only Preview" : "Trigger realistic customer phone alert"}
           >
             <Volume2 size={15} className={isSimulatingPush ? "animate-spin" : ""} />
             <span>{isSimulatingPush ? "Ringing Phone..." : "Test Push Sound"}</span>
@@ -1097,25 +1109,25 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
             <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/15 space-y-2">
               <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-on-surface">
                 <span className="flex items-center gap-1.5">
-                  <TrendingUp size={14} className="text-emerald-500" /> Projected Campaign Impact
+                  <TrendingUp size={14} className="text-emerald-500" /> {previewOnly ? "Campaign Impact — Unverified" : "Projected Campaign Impact"}
                 </span>
                 <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                  High Conversion
+                  {previewOnly ? "Not Validated" : "High Conversion"}
                 </span>
               </div>
 
               <div className="grid grid-cols-3 gap-2 pt-1">
                 <div className="p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/10 text-center">
                   <span className="text-[9px] text-on-surface-variant font-bold uppercase block">Audience Reach</span>
-                  <span className="text-xs font-black text-on-surface">~350+ Users</span>
+                  <span className="text-xs font-black text-on-surface">{previewOnly ? "—" : "~350+ Users"}</span>
                 </div>
                 <div className="p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/10 text-center">
                   <span className="text-[9px] text-on-surface-variant font-bold uppercase block">Est. Lift</span>
-                  <span className="text-xs font-black text-emerald-600">+28% Orders</span>
+                  <span className="text-xs font-black text-emerald-600">{previewOnly ? "—" : "+28% Orders"}</span>
                 </div>
                 <div className="p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/10 text-center">
                   <span className="text-[9px] text-on-surface-variant font-bold uppercase block">Avg Ticket</span>
-                  <span className="text-xs font-black text-primary">~R165.00</span>
+                  <span className="text-xs font-black text-primary">{previewOnly ? "—" : "~R165.00"}</span>
                 </div>
               </div>
             </div>
@@ -1145,7 +1157,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
       </div>
 
       {/* Saved / Active Campaigns Dashboard */}
-      {savedCampaigns.length > 0 && (
+      {!previewOnly && savedCampaigns.length > 0 && (
         <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <div>
