@@ -33,7 +33,6 @@ import {
   Copy,
   UtensilsCrossed,
   CreditCard,
-  LayoutGrid,
   FileDown,
   ReceiptText,
   ArrowUp,
