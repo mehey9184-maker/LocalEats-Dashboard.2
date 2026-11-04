@@ -1,0 +1,28 @@
+name: Merchant Riders Locked Main Release Gate
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/App.tsx'
+      - 'tests/merchant-riders-coming-soon-main.test.mjs'
+      - '.github/workflows/merchant-riders-locked-main.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-riders-locked:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Riders lock and inherited pickup safety regressions
+        run: node --experimental-strip-types --test tests/merchant-riders-coming-soon-main.test.mjs tests/merchant-pickup.test.mjs
+      - name: Merchant production build
+        run: npm run build
