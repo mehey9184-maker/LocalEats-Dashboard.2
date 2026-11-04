@@ -1,7 +1,7 @@
-name: Merchant Integrated UX S5 Orders Preview
+name: Merchant Reviewed Integration (Riders Locked) Preview
 on:
   push:
-    branches: [preview/merchant-orders-compact-toolbar-20261104]
+    branches: [preview/merchant-riders-coming-soon-20261104]
   workflow_dispatch:
 permissions:
   contents: read
