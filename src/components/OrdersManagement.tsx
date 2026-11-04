@@ -67,6 +67,7 @@ import { Pagination } from "./Pagination";
 import { useAuthGuard } from "../hooks/useAuthGuard";
 import { AddressDisplay } from "./AddressDisplay";
 import { Skeleton } from "./ui/Skeleton";
+import { OperationFeedback, type OperationFeedbackStatus } from "./ui/OperationFeedback";
 import { DispatchAlertModal } from "./DispatchAlertModal";
 import { format } from "date-fns";
 
@@ -101,7 +102,7 @@ export interface OrdersManagementProps {
   onDispatchToRider?: (id: string, riderId: string, riderName?: string, riderPhone?: string) => Promise<void> | void;
   onConvertOrderToPickup?: (id: string) => Promise<void> | void;
   loading: boolean;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
   kitchenMode: boolean;
   setKitchenMode: (val: boolean) => void;
   soundAlerts: boolean;
@@ -221,6 +222,28 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [showRiderPicker, setShowRiderPicker] = useState<string | null>(null);
   const [connectedRiders, setConnectedRiders] = useState<RiderConnection[]>([]);
   const [showMobileActions, setShowMobileActions] = useState(false);
+  const [isRefreshingOrders, setIsRefreshingOrders] = useState(false);
+  const [orderRefreshFeedback, setOrderRefreshFeedback] = useState<OperationFeedbackStatus>("idle");
+  const [verifiedBeforeRefresh, setVerifiedBeforeRefresh] = useState<number | null>(null);
+  const handleRefreshOrders = async () => {
+    if (isRefreshingOrders) return;
+    setVerifiedBeforeRefresh(ordersVerifiedAt);
+    setIsRefreshingOrders(true);
+    setOrderRefreshFeedback("loading");
+    try {
+      await Promise.resolve(onRefresh());
+      // Resolving an API read is not proof of freshness: the parent may catch errors.
+      setOrderRefreshFeedback("unverified");
+    } catch {
+      setOrderRefreshFeedback("error");
+    } finally {
+      setIsRefreshingOrders(false);
+    }
+  };
+  const refreshedOrdersVerified = orderRefreshFeedback === "unverified" &&
+    ordersReadState === "confirmed" && ordersVerifiedAt !== null &&
+    (verifiedBeforeRefresh === null || ordersVerifiedAt > verifiedBeforeRefresh);
+  const orderRefreshStatus: OperationFeedbackStatus = refreshedOrdersVerified ? "success" : orderRefreshFeedback;
   const [dispatchAlertOrder, setDispatchAlertOrder] = useState<Order | null>(null);
   const [dispatchAlertType, setDispatchAlertType] = useState<"rider_dispatch" | "customer_status" | "rider_pairing">("customer_status");
 
@@ -2240,7 +2263,7 @@ Notes: "${order.notes || "None"}"
         <div role="status" className="flex flex-wrap items-center gap-2 px-4 py-3 rounded-xl border border-amber-500/25 bg-amber-500/5 text-xs text-on-surface-variant">
           <AlertTriangle size={15} className="text-amber-600" />
           <span>Orders are not recently verified by the API. Refresh before confirming customer payment or handover.</span>
-          <button type="button" className="font-bold underline text-primary" onClick={onRefresh}>Refresh Orders</button>
+          <button type="button" className="font-bold underline text-primary" onClick={() => { void handleRefreshOrders(); }}>Refresh Orders</button>
         </div>
       )}
       {/* Compact workspace toolbar: put order cards ahead of secondary controls. */}
@@ -2260,9 +2283,11 @@ Notes: "${order.notes || "None"}"
                 History
               </button>
             </div>
-            <button type="button" onClick={onRefresh}
-              className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-2 text-xs font-bold text-on-primary hover:opacity-90 focus-visible:outline-2 focus-visible:outline-primary">
-              <RefreshCw size={15} /> Refresh
+            <button type="button" onClick={() => { void handleRefreshOrders(); }}
+              disabled={isRefreshingOrders} aria-busy={isRefreshingOrders}
+              className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-2 text-xs font-bold text-on-primary hover:opacity-90 focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-70 disabled:cursor-wait">
+              <RefreshCw size={15} className={isRefreshingOrders ? "animate-spin motion-reduce:animate-none" : ""} />
+              {isRefreshingOrders ? "Refreshing…" : "Refresh"}
             </button>
             <button type="button" aria-expanded={showMobileActions} aria-controls="orders-extra-tools"
               onClick={() => setShowMobileActions(!showMobileActions)}
@@ -2288,6 +2313,16 @@ Notes: "${order.notes || "None"}"
             </button>
           </div>
         )}
+        <OperationFeedback
+          status={orderRefreshStatus}
+          message={orderRefreshStatus === "loading" ? "Checking orders…" :
+            orderRefreshStatus === "success" ? "Orders verified after refresh" :
+            orderRefreshStatus === "error" ? "Could not refresh orders" :
+            "Refresh finished; new order verification not confirmed"}
+          detail={orderRefreshStatus === "unverified" ? "The previous list may be out of date. Order actions still require current API verification." :
+            orderRefreshStatus === "error" ? "Check the connection, then retry." : undefined}
+          onRetry={orderRefreshStatus === "unverified" || orderRefreshStatus === "error" ? () => { void handleRefreshOrders(); } : undefined}
+        />
       </section>
 
       <div
@@ -2606,7 +2641,7 @@ Notes: "${order.notes || "None"}"
               </div>
               {viewMode === "active" && (
                 <button
-                  onClick={onRefresh}
+                  onClick={() => { void handleRefreshOrders(); }}
                   className="px-8 py-3 bg-surface-container-lowest text-primary font-bold rounded-full shadow-sm hover:scale-105 transition-all border border-primary/10"
                 >
                   Check for New Orders
