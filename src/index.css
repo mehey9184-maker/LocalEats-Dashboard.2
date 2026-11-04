@@ -142,3 +142,56 @@ body {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
+
+
+/*
+ * Orders manual-refresh feedback: a lightweight Facebook-style shimmer sweep.
+ * Existing order cards stay mounted and readable; the layer is decorative and
+ * cannot intercept taps, keyboard focus, navigation or order controls.
+ */
+.orders-refresh-surface {
+  position: relative;
+  isolation: isolate;
+}
+
+.orders-refresh-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  border-radius: 1.25rem;
+  background-image: linear-gradient(
+    105deg,
+    transparent 22%,
+    rgba(255, 84, 0, 0.035) 39%,
+    rgba(255, 255, 255, 0.28) 50%,
+    rgba(255, 84, 0, 0.035) 61%,
+    transparent 78%
+  );
+  background-size: 240% 100%;
+  animation: merchant-orders-refresh-sweep 1.45s linear infinite;
+}
+
+.dark .orders-refresh-surface::after {
+  background-image: linear-gradient(
+    105deg,
+    transparent 22%,
+    rgba(255, 84, 0, 0.025) 39%,
+    rgba(255, 255, 255, 0.085) 50%,
+    rgba(255, 84, 0, 0.025) 61%,
+    transparent 78%
+  );
+}
+
+@keyframes merchant-orders-refresh-sweep {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orders-refresh-surface::after {
+    animation: none;
+    background-image: linear-gradient(90deg, transparent, rgba(255, 84, 0, 0.04), transparent);
+  }
+}
