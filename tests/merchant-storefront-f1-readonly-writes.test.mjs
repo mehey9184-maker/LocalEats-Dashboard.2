@@ -11,7 +11,7 @@ test("Storefront Preview hard-disabled without public feature activation flags",
  assert.match(merchantStorefrontPreviewNotice(),/Saving shop details, changing availability, following, image uploads/);
  assert.match(app,/import \{ merchantStorefrontPreviewOnly, merchantStorefrontWritesEnabled \} from "\.\/services\/merchantStorefrontPreviewPolicy"/);
  assert.match(app,/<ShopProfile[\s\S]*?previewOnly=\{merchantStorefrontPreviewOnly\(\)\}/);
- assert.match(app,/merchantStorefrontPreviewOnly\(\) && currentShop && settingsCategory === "storefront"/);
+ assert.match(app,/merchantStorefrontPreviewOnly\(\) && currentShop && \(/);
  assert.match(app,/onClick=\{\(\) => setActiveTab\("storefront"\)\}/);
  assert.match(app,/View Storefront Preview/);
 });
@@ -77,4 +77,25 @@ test("Preview does not unlock rider, payments, ordering or menu operations",()=>
  assert.match(app,/ordersReadState=\{ordersReadState\}/);
  assert.match(app,/merchantSettingsS4ActionsEnabled\(\)/);
  assert.match(profile,/if\(previewOnly\)return;/);
+});
+
+test("Storefront Preview entry is visible at Settings header and outside inert Settings panels",()=>{
+ const start=app.indexOf('{activeTab === "settings" && (');
+ const end=app.indexOf('{activeTab === "storefront" && (',start);
+ assert.ok(start>=0 && end>start,"Settings and Storefront routes exist");
+ const settings=app.slice(start,end);
+ const heading=settings.indexOf('Settings\n');
+ const access=settings.indexOf('aria-label="Open read-only Storefront Preview"');
+ const locked=settings.indexOf('ref={settingsPreviewPanelRef}');
+ assert.ok(heading>=0 && access>heading && locked>access,"Access must be prominent and outside inert Settings content");
+ assert.match(settings,/aria-label="Open read-only Storefront Preview"/);
+ assert.match(settings,/onClick=\{\(\) => setActiveTab\("storefront"\)\}/);
+ assert.match(settings,/View Storefront Preview/);
+ assert.match(settings,/Profile changes are unavailable in read-only Preview/);
+ assert.match(settings,/Use “View Storefront Preview” at the top of Settings/);
+ assert.match(settings,/disabled=\{!merchantSettingsS4ActionsEnabled\(\)\}/);
+ assert.match(settings,/className="flex-1 w-full space-y-4 max-w-3xl pb-16 pointer-events-none"/);
+ assert.match(app,/element\.inert = true/);
+ const route=app.slice(end);
+ assert.match(route,/<ShopProfile[\s\S]*?previewOnly=\{merchantStorefrontPreviewOnly\(\)\}/);
 });
