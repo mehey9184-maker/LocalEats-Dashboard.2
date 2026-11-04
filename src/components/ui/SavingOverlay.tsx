@@ -1,5 +1,5 @@
-import React from 'react';
-import { Loader2, Check } from 'lucide-react';
+import React from "react";
+import { OperationFeedback } from "./OperationFeedback";
 
 interface SavingOverlayProps {
   isSaving: boolean;
@@ -8,36 +8,27 @@ interface SavingOverlayProps {
   successMessage?: string;
 }
 
+/**
+ * Existing save callers retain control of verification: isSuccess must only
+ * be set after the save operation has been confirmed. This small status chip
+ * never blocks the whole dashboard or claims progress percentages.
+ */
 export const SavingOverlay: React.FC<SavingOverlayProps> = ({
   isSaving,
   isSuccess,
-  message = "Saving changes...",
-  successMessage = "Saved successfully!"
+  message = "Saving changes…",
+  successMessage = "Changes saved",
 }) => {
   if (!isSaving && !isSuccess) return null;
 
   return (
-    <div role="alertdialog" aria-live="assertive" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-surface-container-highest p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-6 min-w-[280px]">
-        <div className="relative w-16 h-16 flex items-center justify-center">
-          {isSaving && !isSuccess ? (
-            <Loader2 className="w-12 h-12 text-primary animate-spin" />
-          ) : (
-            <div className="bg-green-500 rounded-full p-3 shadow-lg shadow-green-500/30">
-              <Check className="w-10 h-10 text-white" strokeWidth={3} />
-            </div>
-          )}
-        </div>
-        
-        <div className="text-center">
-          <h3 className="text-xl font-headline font-bold text-on-surface">
-            {isSuccess ? successMessage : message}
-          </h3>
-          {!isSuccess && (
-            <p className="text-sm text-on-surface-variant mt-1">Please wait a moment</p>
-          )}
-        </div>
-      </div>
+    <div className="pointer-events-none fixed inset-x-4 bottom-24 z-[100] mx-auto max-w-sm md:bottom-6">
+      <OperationFeedback
+        status={isSaving ? "loading" : "success"}
+        message={isSaving ? message : successMessage}
+        detail={isSaving ? "Waiting for confirmation." : undefined}
+        className="shadow-lg"
+      />
     </div>
   );
 };
