@@ -11,7 +11,11 @@ import type {RequestHandler} from "express";
 export const previewReadOnlyGate:RequestHandler=(req,res,next)=>{
   if(process.env.VERCEL_ENV !== "preview" && process.env.LOCALEATS_PREVIEW_READ_ONLY !== "true") { next(); return; }
   const method=req.method.toUpperCase();
-  if(!["POST","PUT","PATCH","DELETE"].includes(method)) {next();return;}
+  // The legacy GET /notifications endpoint internally drains FCM outbox jobs
+  // (writes + sends push). Block both GET and implicit HEAD on that route.
+  const sideEffectRead=["GET","HEAD"].includes(method)
+    && /^\\/api\\/v1\\/notifications\\/?$/.test(req.path);
+  if(!sideEffectRead && !["POST","PUT","PATCH","DELETE"].includes(method)) {next();return;}
   res.status(503).set("Cache-Control","no-store").json({
     success:false,
     code:"PREVIEW_READ_ONLY",
