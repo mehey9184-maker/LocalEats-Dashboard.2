@@ -2422,6 +2422,7 @@ function App() {
                     currentShop={currentShop}
                     setShops={setShops}
                     orders={orders}
+                    ordersReadState={ordersReadState}
                     setOrders={setOrders}
                   />
                 ) : (
