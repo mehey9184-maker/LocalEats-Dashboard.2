@@ -9,6 +9,13 @@ import {
   merchantPaymentWritesUnavailable,
   type MerchantPaymentReadState,
 } from "../services/merchantPaymentsTrust";
+import {
+  MERCHANT_FREE_MONTHS,
+  PROPOSED_MERCHANT_PLANS,
+  merchantSubscriptionsActivationEnabled,
+  merchantSubscriptionsTrialNotice,
+  merchantSubscriptionPaymentNotice,
+} from "../services/merchantSubscriptionsPreview";
 
 interface PaymentHistoryProps {
   shopId: number;
@@ -82,7 +89,37 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
       </div>
 
       {paymentsSubTab === "billing" ? (
-        <div className="overflow-x-auto">
+        <div className="space-y-5">
+          <section aria-labelledby="merchant-subscription-preview-heading" className="space-y-3">
+            <div>
+              <h3 id="merchant-subscription-preview-heading" className="text-sm font-extrabold text-on-surface">
+                Proposed shop subscriptions — Preview only
+              </h3>
+              <p className="text-xs text-on-surface-variant">
+                {MERCHANT_FREE_MONTHS} free calendar months per shop after verified trading launch. Tier benefits are proposals, not active features.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {PROPOSED_MERCHANT_PLANS.map((plan) => (
+                <article key={plan.id} className="rounded-2xl border border-outline-variant/15 bg-surface-container-low p-4 space-y-2">
+                  <h4 className="text-sm font-extrabold text-on-surface">{plan.label}</h4>
+                  <p className="text-lg font-extrabold text-on-surface">R{plan.monthlyPriceZar}<span className="text-xs font-medium text-on-surface-variant">/month per shop</span></p>
+                  <p className="text-xs font-bold text-on-surface">{plan.headline}</p>
+                  <ul className="list-disc pl-4 space-y-1 text-xs text-on-surface-variant">
+                    {plan.proposedBenefits.map((benefit) => <li key={benefit}>{benefit}</li>)}
+                  </ul>
+                  <p className="text-xs text-on-surface-variant">Proposed — not available to select</p>
+                </article>
+              ))}
+            </div>
+            {!merchantSubscriptionsActivationEnabled() && (
+              <div role="status" className="space-y-1 text-xs text-on-surface-variant bg-surface-container border border-outline-variant/15 rounded-2xl p-3">
+                <p>{merchantSubscriptionsTrialNotice()}</p>
+                <p>{merchantSubscriptionPaymentNotice()}</p>
+              </div>
+            )}
+          </section>
+          <div className="overflow-x-auto">
           <p role="status" className="text-xs text-on-surface-variant py-4">
             Verified subscription and billing transactions are unavailable. An authoritative payment API is required before presenting a financial ledger.
           </p>
@@ -104,6 +141,7 @@ export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
