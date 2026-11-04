@@ -1482,11 +1482,11 @@ export const Marketing: React.FC<MarketingProps> = ({
                         <p className="text-xs font-bold text-slate-900 dark:text-white">
                           {activeShop?.name || "LocalEats Merchant"}
                         </p>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400">WhatsApp Status / Broadcast Preview</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">WhatsApp Draft Mockup — Not Sent</p>
                       </div>
                     </div>
                     <span className="text-[10px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold px-2 py-0.5 rounded-full">
-                      Live Preview
+                      Sample Only
                     </span>
                   </div>
 
@@ -1640,7 +1640,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xl text-center space-y-4 w-full max-w-lg">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-black text-on-surface flex items-center gap-1.5">
-                      <Eye size={14} className="text-primary" /> Live Social Card Preview (1080 × 1080)
+                      <Eye size={14} className="text-primary" /> Social Card Design Preview (1080 × 1080)
                     </span>
                     <span className="text-[10px] font-bold text-on-surface-variant bg-surface-container-high px-2 py-0.5 rounded-full">
                       Square Post
@@ -1678,8 +1678,8 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="p-4 bg-surface-container-low rounded-2xl border border-outline-variant/15 space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-on-surface">
                     <span>SMS Copy</span>
-                    <span className={`font-mono text-[11px] ${smsText.length <= 160 ? "text-emerald-500" : "text-amber-500"}`}>
-                      {smsText.length} / 160 characters ({Math.ceil(smsText.length / 160)} SMS)
+                    <span className="font-mono text-[11px] text-on-surface-variant">
+                      {smsText.length} characters · segment count not verified
                     </span>
                   </div>
                   <p className="text-xs font-mono text-on-surface bg-surface-container-lowest p-3 rounded-xl border border-outline-variant/10 leading-relaxed">
