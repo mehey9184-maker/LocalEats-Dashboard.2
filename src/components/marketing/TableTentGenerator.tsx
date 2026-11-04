@@ -250,7 +250,7 @@ export const TableTentGenerator: React.FC<TableTentGeneratorProps> = ({
               Batch Dine-In Table Tent Card Generator
             </h3>
             <p className="text-xs text-on-surface-variant max-w-2xl leading-relaxed">
-              Generate numbered table QR codes for tables 1 through 20 with embedded table parameters. Diners scan from their table and their order automatically includes their table number!
+              {previewOnly ? "Example table-card layout only. These QR codes cannot place orders and PDF export is disabled." : "Generate numbered table QR codes for tables 1 through 20 with embedded table parameters. Diners scan from their table and their order automatically includes their table number!"}
             </p>
           </div>
 
