@@ -1,6 +1,7 @@
 import {legacyOrderGuard} from "./legacyOrderGuard.js";
 import {pickupNotificationRoutes} from "./routes/pickupNotifications.js";
 import {pickupWriteGate} from "./middleware/pickupWriteGate.js";
+import { previewReadOnlyGate } from "./middleware/previewReadOnlyGate.js";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -40,6 +41,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+app.use(previewReadOnlyGate);
 app.use(legacyOrderGuard);
 app.use(pickupWriteGate);
 app.use(express.json());
