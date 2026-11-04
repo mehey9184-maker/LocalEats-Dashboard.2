@@ -529,6 +529,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // Direct Browser Print
   const handleDirectPrint = () => {
+    if(!publishingEnabled) return;
     window.print();
   };
 
@@ -1198,14 +1199,22 @@ export const Marketing: React.FC<MarketingProps> = ({
                     </button>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <a
-                        href={qrDataUrl}
-                        download={`QR_Code_${activeShop?.name || "LocalEats"}.png`}
-                        className="py-2.5 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-outline-variant/20"
-                      >
-                        <Download size={15} />
-                        <span>Download PNG</span>
-                      </a>
+                      {publishingEnabled ? (
+                        <a
+                          href={qrDataUrl}
+                          download={`QR_Code_${activeShop?.name || "LocalEats"}.png`}
+                          className="py-2.5 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-outline-variant/20"
+                        >
+                          <Download size={15} />
+                          <span>Download PNG</span>
+                        </a>
+                      ) : (
+                        <span aria-disabled="true" title="QR export is unavailable before launch"
+                          className="py-2.5 rounded-2xl bg-surface-container-high text-on-surface-variant text-xs font-bold flex items-center justify-center gap-1.5 border border-outline-variant/20 opacity-50 cursor-not-allowed">
+                          <Download size={15} />
+                          <span>Export Unavailable</span>
+                        </span>
+                      )}
 
                       <button
                         onClick={handleDirectPrint}
@@ -1617,6 +1626,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       <span>Instagram & Facebook Caption</span>
                       <button
                         onClick={() => {
+                          if(!publishingEnabled) return;
                           navigator.clipboard.writeText(socialCaption);
                           setCopiedCaption(true);
                           toast.success("Caption copied!");
@@ -1689,6 +1699,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
                 <button
                   onClick={() => {
+                    if(!publishingEnabled) return;
                     navigator.clipboard.writeText(smsText);
                     setCopiedSms(true);
                     toast.success("SMS broadcast copied to clipboard!");
@@ -1754,7 +1765,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                   </button>
                   {onNavigateTab && (
                     <button
-                      onClick={() => onNavigateTab("coupons")}
+                      disabled={!publishingEnabled}
+                      title="Coupons are unavailable while marketing is in Preview"
+                      onClick={() => { if(publishingEnabled) onNavigateTab("coupons"); }}
                       className="text-xs font-bold text-on-surface-variant hover:text-on-surface flex items-center gap-1 cursor-pointer"
                     >
                       <span>(or Merchant Coupons tab)</span>
