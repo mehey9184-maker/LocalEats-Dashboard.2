@@ -1778,7 +1778,7 @@ export const RiderManagement = ({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-headline font-bold text-on-surface">Transit Operations</h3>
-                <p className="text-xs text-on-surface-variant">Live delivery tracking and dispatch retries</p>
+                <p className="text-xs text-on-surface-variant">{previewOnly ? "Delivery and tracking are deferred. Missions are not loaded in Preview." : "Live delivery tracking and dispatch retries"}</p>
               </div>
               <button 
                 onClick={() => void fetchConnections()}
@@ -1795,9 +1795,9 @@ export const RiderManagement = ({
                   <Compass size={24} className="animate-pulse" />
                 </div>
                 <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-on-surface uppercase tracking-tight">No Active Missions</h4>
+                  <h4 className="text-sm font-bold text-on-surface uppercase tracking-tight">{previewOnly ? "Missions Unavailable" : "No Active Missions"}</h4>
                   <p className="text-xs text-on-surface-variant leading-relaxed font-medium">
-                    All orders are fully delivered or awaiting pickup. Launch an order from your store front to track live driver transit routes.
+                    {previewOnly ? "Rider missions are not loaded in Preview. No live transit, order status or delivery conclusion is available." : "All orders are fully delivered or awaiting pickup. Launch an order from your store front to track live driver transit routes."}
                   </p>
                 </div>
               </div>
@@ -1944,7 +1944,7 @@ export const RiderManagement = ({
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Total Fleet</p>
-                  <p className="text-lg font-headline font-black text-on-surface">{connections.length} Riders</p>
+                  <p className="text-lg font-headline font-black text-on-surface">{previewOnly ? "— Riders" : `${connections.length} Riders`}</p>
                 </div>
               </button>
 
@@ -1971,7 +1971,7 @@ export const RiderManagement = ({
                       "text-lg font-headline font-black",
                       connections.filter((c) => c.is_online).length > 0 ? "text-emerald-600" : "text-amber-600"
                     )}>
-                      {connections.filter((c) => c.is_online).length} Ready
+                      {previewOnly ? "— Unverified" : `${connections.filter((c) => c.is_online).length} Ready`}
                     </p>
                   </div>
                 </div>
@@ -2006,7 +2006,7 @@ export const RiderManagement = ({
                     )}
                   </div>
                   <p className="text-lg font-headline font-black text-on-surface">
-                    {activeMissions.length} In Transit
+                    {previewOnly ? "— Unavailable" : `${activeMissions.length} In Transit`}
                   </p>
                 </div>
               </button>
@@ -2020,7 +2020,7 @@ export const RiderManagement = ({
                     <div>
                       <p className="text-[9px] font-black uppercase text-on-surface-variant/60 tracking-wider">Fleet COD Cash</p>
                       <p className="text-base font-headline font-black text-emerald-600">
-                        R {totalUnsettledCashAmount.toFixed(2)}
+                        {previewOnly ? "Unverified" : `R ${totalUnsettledCashAmount.toFixed(2)}`}
                       </p>
                     </div>
                   </div>
@@ -2034,7 +2034,7 @@ export const RiderManagement = ({
                     title="Settle all outstanding cash collections into store register"
                   >
                     <Check size={12} />
-                    <span>Settle All (R {totalUnsettledCashAmount.toFixed(2)})</span>
+                    <span>Settle All ({previewOnly ? "Unverified" : `R ${totalUnsettledCashAmount.toFixed(2)}`})</span>
                   </button>
                 )}
               </div>
@@ -2047,13 +2047,14 @@ export const RiderManagement = ({
                   <Sparkles size={14} className="text-primary" /> Fleet Handshake
                 </span>
                 <span className="text-xs text-on-surface-variant font-medium">
-                  • Link riders with 6-digit codes or register in-house staff
+                  {previewOnly ? "• Pairing and staff registration are not active" : "• Link riders with 6-digit codes or register in-house staff"}
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setShowQRScanner(true)}
+                  disabled={previewOnly}
+                  onClick={() => {if(!previewOnly)setShowQRScanner(true);}}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-container-high text-on-surface rounded-xl font-bold text-xs cursor-pointer border border-outline-variant/20 transition-all"
                 >
                   <Camera size={14} className="text-primary" />
@@ -2061,7 +2062,8 @@ export const RiderManagement = ({
                 </button>
 
                 <button
-                  onClick={() => setShowInHouseModal(true)}
+                  disabled={previewOnly}
+                  onClick={() => {if(!previewOnly)setShowInHouseModal(true);}}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 rounded-xl font-bold text-xs cursor-pointer border border-indigo-500/20 transition-all"
                 >
                   <Users size={14} />
@@ -2242,7 +2244,7 @@ export const RiderManagement = ({
                 <h4 className="text-xs font-black uppercase text-on-surface-variant tracking-wider flex items-center gap-2">
                   <span>Rider Roster</span>
                   <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                    {filteredConnections.length} shown
+                    {previewOnly ? "Not loaded" : `${filteredConnections.length} shown`}
                   </span>
                 </h4>
                 {availableCodesCount > 0 && (
@@ -2266,14 +2268,14 @@ export const RiderManagement = ({
                       {statusFilter === "online" && connections.length > 0
                         ? "No Riders Online & Ready"
                         : connections.length === 0
-                        ? "No Riders Connected Yet"
+                        ? (previewOnly ? "Rider Data Unavailable" : "No Riders Connected Yet")
                         : "No Matching Riders"}
                     </h4>
                     <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
                       {statusFilter === "online" && connections.length > 0
                         ? "None of your riders are currently marked as online for order dispatch. You can activate all riders with one tap."
                         : connections.length === 0
-                        ? "Generate a pairing code or add an in-house driver above to activate your delivery network."
+                        ? (previewOnly ? "Rider records are not loaded in Preview. This does not mean your shop has no riders." : "Generate a pairing code or add an in-house driver above to activate your delivery network.")
                         : "Try clearing your search term or selecting a different status filter above."}
                     </p>
                   </div>
@@ -2948,7 +2950,7 @@ export const RiderManagement = ({
                   <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                     <Award size={12} /> Top 5% Fleet Quality
                   </span>
-                  <span className="text-on-surface-variant/60">{connections.length} Riders Active</span>
+                  <span className="text-on-surface-variant/60">{previewOnly ? "— Riders" : `${connections.length} Riders`} Active</span>
                 </div>
               </div>
 
@@ -3029,7 +3031,7 @@ export const RiderManagement = ({
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-bold bg-primary/10 text-primary px-2.5 py-1 rounded-xl">
-                    {connections.length} Riders Rated
+                    {previewOnly ? "— Riders" : `${connections.length} Riders`} Rated
                   </span>
                 </div>
               </div>
@@ -3116,7 +3118,7 @@ export const RiderManagement = ({
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-headline font-black text-on-surface">Store Rider Dispatch</h3>
-                <p className="text-xs text-on-surface-variant">Configure independent fleet access permissions</p>
+                <p className="text-xs text-on-surface-variant">{previewOnly ? "Dispatch, permission changes and delivery are unavailable in Preview." : "Configure independent fleet access permissions"}</p>
               </div>
 
               <div className="bg-surface-container-low rounded-3xl p-5 border border-outline-variant/10 shadow-sm space-y-4">
@@ -3124,7 +3126,7 @@ export const RiderManagement = ({
                   <div className="space-y-1">
                     <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Allow External Pool Riders</h4>
                     <p className="text-[11px] text-on-surface-variant font-medium leading-relaxed">
-                      Enable verified public or independent riders on the network to view and accept your orders when your in-house fleet is busy.
+                      {previewOnly ? "External riders cannot be activated or assigned from this Preview." : "Enable verified public or independent riders on the network to view and accept your orders when your in-house fleet is busy."}
                     </p>
                   </div>
                   <button
@@ -3145,7 +3147,7 @@ export const RiderManagement = ({
                   <div className="space-y-1">
                     <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Auto-Dispatch to Paired Riders</h4>
                     <p className="text-[11px] text-on-surface-variant font-medium leading-relaxed">
-                      Automatically dispatch the order to your active paired riders the moment you accept an order.
+                      {previewOnly ? "Automatic rider dispatch is unavailable; no orders are sent from this Preview." : "Automatically dispatch the order to your active paired riders the moment you accept an order."}
                     </p>
                   </div>
                   <button
@@ -3167,11 +3169,11 @@ export const RiderManagement = ({
               <div className="bg-gradient-to-br from-primary/[0.02] via-surface-container-low to-primary/[0.05] rounded-3xl p-6 border-2 border-primary/5 space-y-4 shadow-sm">
                 <div className="space-y-2">
                   <span className="inline-flex items-center gap-1 text-[9px] font-black bg-primary/10 text-primary px-2.5 py-0.5 rounded-full tracking-wider uppercase">
-                    ★ Premium Trust Booster
+                    {previewOnly ? "Preview Only — Not a Plan Benefit" : "★ Premium Trust Booster"}
                   </span>
                   <h4 className="text-sm font-headline font-black text-on-surface">No Rider? Cash-on-Arrival Banner</h4>
                   <p className="text-[11px] text-on-surface-variant font-medium leading-relaxed">
-                    Build instant user checkout trust. Let customers know they can choose standard Cash on Delivery with full safety guarantees, and we'll route in-house or paired partners to collect it safely.
+                    {previewOnly ? "Delivery and rider cash collection are deferred. No COD guarantee, banner, dispatch or checkout feature is activated." : "Build instant user checkout trust. Let customers know they can choose standard Cash on Delivery with full safety guarantees, and we'll route in-house or paired partners to collect it safely."}
                   </p>
                 </div>
 
@@ -3199,7 +3201,7 @@ export const RiderManagement = ({
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-headline font-black text-on-surface">Rider Cash-on-Hand</h3>
-                <p className="text-xs text-on-surface-variant">COD outstanding balances and warning caps</p>
+                <p className="text-xs text-on-surface-variant">{previewOnly ? "Reconciliation requires verified cash and delivery records." : "COD outstanding balances and warning caps"}</p>
               </div>
 
               {riderCashBalances.length === 0 ? (
@@ -3207,7 +3209,7 @@ export const RiderManagement = ({
                   <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center mx-auto text-on-surface-variant/30">
                     <Wallet size={18} />
                   </div>
-                  <h4 className="text-xs font-bold text-on-surface uppercase tracking-tight">No Cash Collections</h4>
+                  <h4 className="text-xs font-bold text-on-surface uppercase tracking-tight">{previewOnly ? "Cash Records Unavailable" : "No Cash Collections"}</h4>
                   <p className="text-[11px] text-on-surface-variant leading-relaxed font-medium">
                     {previewOnly ? "COD and cash settlements are not loaded or verified in Preview; no reconciliation conclusion is possible." : "All Cash-on-Delivery orders are fully reconciled. No drivers currently carry active storefront cash."}
                   </p>
