@@ -8,7 +8,8 @@ test("Orders starts with a compact workspace toolbar and a visible queue heading
   assert.match(source, /aria-label="Orders workspace"/);
   assert.match(source, /aria-label="Orders view"/);
   assert.match(source, /Current Orders/);
-  assert.match(source, /onClick=\{onRefresh\}/);
+  assert.match(source, /onClick=\{\(\) => \{ void handleRefreshOrders\(\); \}\}/);
+  assert.match(source, /await Promise\.resolve\(onRefresh\(\)\)/);
   assert.match(source, /Active Queue/);
   assert.ok(source.indexOf("Active Queue", source.indexOf('aria-label="Orders workspace"')) <
     source.indexOf('aria-label="Order fulfillment filter"'), "queue heading must come before advanced filters");

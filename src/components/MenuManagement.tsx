@@ -29,6 +29,7 @@ import { useAuthGuard } from "../hooks/useAuthGuard";
 import { cn } from "../lib/utils";
 import { uploadImageToCloudinary, getOptimizedCloudinaryUrl } from "../lib/cloudinary";
 import AIMenuScannerModal from "./AIMenuScannerModal";
+import { OperationFeedback } from "./ui/OperationFeedback";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
 
 
@@ -245,6 +246,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [menuSaveError, setMenuSaveError] = useState("");
 
   // Clean up object URL when component unmounts or image changes
   useEffect(() => {
@@ -427,6 +429,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       return;
     }
 
+    setMenuSaveError("");
     setIsSaving(true);
     try {
       let finalImageUrl = editingItem ? (editingItem.image_url || null) : null;
@@ -438,6 +441,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
           finalImageUrl = await uploadImageToCloudinary(imageFile);
         } catch (uploadErr: unknown) {
           const errMsg = uploadErr instanceof Error ? uploadErr.message : "Failed to upload image to Cloudinary";
+          setMenuSaveError(errMsg);
           toast.error(errMsg);
           setIsSaving(false);
           setIsUploadingImage(false);
@@ -510,6 +514,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       setActiveMenuSection("list");
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
+      setMenuSaveError(errorMsg || "Unable to save the menu item.");
       toast.error(errorMsg || "Failed to save item");
     } finally {
       setIsSaving(false);
@@ -763,7 +768,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             disabled={menuWritesUnavailable()}
             title="Adding menu items is unavailable in this Preview"
             onClick={handleAdd}
-            className="flex-1 sm:flex-none px-4 py-2.5 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="merchant-tap-feedback flex-1 sm:flex-none px-4 py-2.5 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus size={16} />
             <span>Add New Item</span>
@@ -793,7 +798,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
               key={shop.id}
               onClick={() => selectMenuShop(shop.id)}
               className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5",
+                "merchant-tap-feedback px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5",
                 String(selectedShopId) === String(shop.id)
                   ? "bg-primary text-on-primary shadow-xs"
                   : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
@@ -1113,6 +1118,11 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             </div>
           </div>
 
+          <OperationFeedback
+            status={isSaving ? "loading" : menuSaveError ? "error" : "idle"}
+            message={isSaving ? (isUploadingImage ? "Uploading menu photo…" : "Saving menu item…") : "Menu item was not saved"}
+            detail={isSaving ? "Please keep this editor open until the operation finishes." : menuSaveError || undefined}
+          />
           <div className="flex justify-end gap-3 pt-4 border-t border-outline-variant/15 mt-6">
              <button
                 type="button"
@@ -1125,7 +1135,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
              <button
                 type="submit"
                 disabled={isSaving || menuWritesUnavailable()}
-                className="px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-xl hover:bg-primary/90 cursor-pointer disabled:opacity-70 flex items-center gap-2"
+                className="merchant-tap-feedback px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-xl hover:bg-primary/90 cursor-pointer disabled:opacity-70 flex items-center gap-2"
              >
                 {isSaving ? (
                   <>
