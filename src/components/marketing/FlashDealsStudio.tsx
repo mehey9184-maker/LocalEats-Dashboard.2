@@ -31,12 +31,14 @@ interface FlashDealsStudioProps {
   activeShop: Shop | undefined;
   menuItems: MenuItem[];
   storeUrl: string;
+  previewOnly?: boolean;
 }
 
 export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
   activeShop,
   menuItems = [],
   storeUrl,
+  previewOnly = false,
 }) => {
   const shopId = activeShop?.id || "default";
   const shopName = activeShop?.name || "LocalEats Shop";
@@ -53,6 +55,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
 
   // Active Deals
   const [deals, setDeals] = useState<FlashDeal[]>(() => {
+    if(previewOnly) return []; // Old local deal records cannot imply an active discount.
     try {
       const stored = localStorage.getItem(storageKey);
       if (stored) {
@@ -66,12 +69,13 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
 
   // Save to local storage on changes
   useEffect(() => {
+    if(previewOnly) return;
     try {
       localStorage.setItem(storageKey, JSON.stringify(deals));
     } catch {
       // ignore
     }
-  }, [deals, storageKey]);
+  }, [deals, storageKey, previewOnly]);
 
   // Selected item object
   const selectedItem = useMemo(() => {
@@ -114,6 +118,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
 
   // Launch Flash Deal
   const handleLaunchDeal = () => {
+    if(previewOnly) return;
     if (!selectedItem) {
       toast.error("Please select a menu item first.");
       return;
@@ -143,6 +148,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
   };
 
   const handleEndDeal = (dealId: string) => {
+    if(previewOnly) return;
     setDeals((prev) => prev.filter((d) => d.id !== dealId));
     toast.info("Flash deal removed.");
   };
@@ -153,6 +159,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
   };
 
   const handleShareWhatsApp = (deal: FlashDeal) => {
+    if(previewOnly) return;
     const text = getDealWhatsAppText(deal);
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(url, "_blank");
@@ -160,6 +167,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
   };
 
   const handleCopyDealBroadcast = (deal: FlashDeal) => {
+    if(previewOnly) return;
     const text = getDealWhatsAppText(deal);
     navigator.clipboard.writeText(text);
     setCopiedDealId(deal.id);
@@ -185,7 +193,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
               Timed Flash Deals & Lightning Boosters
             </h3>
             <p className="text-xs text-on-surface-variant max-w-2xl leading-relaxed">
-              Launch temporary countdown deals (10% - 40% off) for 2 to 8 hours during slow afternoons or lunch rushes. Share directly to WhatsApp Status with 1-click.
+              {previewOnly ? "Example flash-deal layout only. No discounts, countdown offers or customer sharing are active." : "Launch temporary countdown deals (10% - 40% off) for 2 to 8 hours during slow afternoons or lunch rushes. Share directly to WhatsApp Status with 1-click."}
             </p>
           </div>
 
