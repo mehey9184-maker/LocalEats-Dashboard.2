@@ -352,6 +352,7 @@ export const RiderManagement = ({
   const [isBroadcasting, setIsBroadcasting] = useState(false);
 
   const handleSendBroadcast = async () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     if (!broadcastText.trim()) {
       toast.error("Please enter a broadcast announcement.");
       return;
@@ -465,6 +466,7 @@ export const RiderManagement = ({
 
   // PDF Summary Report Generator for Rider Performance & COD Handovers
   const generateRiderPerformanceReport = useCallback(() => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     try {
       const doc = new jsPDF();
       const shopName = currentShop?.name || "LocalEats Vendor";
@@ -582,7 +584,7 @@ export const RiderManagement = ({
       console.error("PDF generation error:", err);
       toast.error("Failed to generate PDF report.");
     }
-  }, [currentShop?.name, connections, orders]);
+  }, [currentShop?.name, connections, orders, previewOnly]);
 
   const dbCashTrust = currentShop.cash_trust_enabled;
   const dbAllowExternal = currentShop.allow_external_riders;
@@ -616,6 +618,7 @@ export const RiderManagement = ({
   });
 
   const handleSettleRiderCash = (riderId: string, riderName: string) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const matchingOrders = orders.filter(
       (o) =>
         (o.rider_id === riderId || o.rider_name === riderName) &&
@@ -642,6 +645,7 @@ export const RiderManagement = ({
   };
 
   const handleSettleAllCash = () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const unsettledCashOrders = orders.filter(
       (o) =>
         (o.status === "completed" || (o.status as string) === "delivered" || o.delivery_status === "delivered") &&
@@ -713,6 +717,7 @@ export const RiderManagement = ({
   }, [currentShop.id, dbAutoLookForRider, previewOnly]);
 
   const toggleCashTrust = async () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const newValue = !cashTrustEnabled;
     setCashTrustEnabled(newValue);
     localStorage.setItem(`localeats_cash_trust_${currentShop.id}`, String(newValue));
@@ -734,6 +739,7 @@ export const RiderManagement = ({
   };
 
   const toggleAllowExternalRiders = async () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const newValue = !allowExternalRiders;
     setAllowExternalRiders(newValue);
     localStorage.setItem(`localeats_allow_external_${currentShop.id}`, String(newValue));
@@ -755,6 +761,7 @@ export const RiderManagement = ({
   };
 
   const toggleAutoLookForRider = async () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const newValue = !autoLookForRider;
     setAutoLookForRider(newValue);
     localStorage.setItem(`localeats_auto_look_${currentShop.id}`, String(newValue));
@@ -1064,6 +1071,7 @@ export const RiderManagement = ({
   }, [fetchConnections, currentShop?.id, selectedTrackId, previewOnly]);
 
   const generateCode = async () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const shopId = currentShop?.id || 1;
 
     const linkedRidersCount = connections.filter((c) => Boolean(c.rider_id) || c.connection_code === "IN-HOUSE").length;
@@ -1150,6 +1158,7 @@ export const RiderManagement = ({
   };
 
   const addInHouseRider = async () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     if (!inHouseName.trim() || !inHousePhone.trim()) {
       toast.error("Please fill in Driver Name and Phone Number");
       return;
@@ -1212,6 +1221,7 @@ export const RiderManagement = ({
   };
 
   const deleteConnection = async (id: string, connectionCode?: string, riderId?: string) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const shopId = currentShop?.id || 1;
     const numericShopId = typeof shopId === "number" ? shopId : (parseInt(String(shopId).replace(/\D/g, ""), 10) || shopId);
 
@@ -1289,6 +1299,7 @@ export const RiderManagement = ({
   };
 
   const invalidateAndRegenerate = async (connId?: string, oldCode?: string) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const shopId = currentShop?.id || 1;
     const numericShopId = typeof shopId === "number" ? shopId : (parseInt(String(shopId).replace(/\D/g, ""), 10) || shopId);
 
@@ -1370,6 +1381,7 @@ export const RiderManagement = ({
   };
 
   const syncCodeToSupabase = async (conn: RiderConnection) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const shopId = currentShop?.id || 1;
     try {
       const { error } = await supabase.from("rider_connections").insert({
@@ -1393,6 +1405,7 @@ export const RiderManagement = ({
   };
 
   const claimPairingCode = async (connId: string, connCode: string, customName?: string, customPhone?: string) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const shopId = currentShop?.id || 1;
     const riderName = customName?.trim() || `Express Rider (${connCode})`;
     const riderPhone = customPhone?.trim() || `+27 82 555 ${Math.floor(1000 + Math.random() * 9000)}`;
@@ -1461,6 +1474,7 @@ export const RiderManagement = ({
 
   // Toggle single rider online / ready status
   const toggleRiderOnlineStatus = async (conn: RiderConnection, targetStatus?: boolean) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const newStatus = targetStatus !== undefined ? targetStatus : !conn.is_online;
     const shopId = currentShop?.id || 1;
     const isNowOnline = newStatus;
@@ -1542,6 +1556,7 @@ export const RiderManagement = ({
 
   // Turn all fleet riders online/ready or offline
   const toggleAllRidersOnline = async (targetStatus = true) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const shopId = currentShop?.id || 1;
     const eligibleConns = connections.filter((c) => c.rider_id || c.connection_code === "IN-HOUSE");
 
@@ -1673,17 +1688,19 @@ export const RiderManagement = ({
               Fleet Command Center
             </h2>
             <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-wider">
-              Live Fleet
+              {previewOnly ? "Preview Only" : "Live Fleet"}
             </span>
           </div>
           <p className="text-xs text-on-surface-variant font-medium">
-            Real-time driver roster, active mission tracking, instant COD settlements, and pairing dispatch.
+            {previewOnly ? "Fleet layout only: no rider data, pairing, dispatch, financial settlement or tracking is verified." : "Real-time driver roster, active mission tracking, instant COD settlements, and pairing dispatch."}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <button
+            disabled={previewOnly}
             onClick={() => {
+              if (previewOnly) return;
               if (!activeCode) {
                 void generateCode();
               }
@@ -1693,22 +1710,24 @@ export const RiderManagement = ({
             title="Pair a new driver using 6-digit code or QR"
           >
             <Plus size={16} />
-            <span>Pair New Rider</span>
+            <span>{previewOnly ? "Pairing Unavailable" : "Pair New Rider"}</span>
           </button>
 
           <button
-            onClick={() => setShowBroadcastModal(true)}
+            disabled={previewOnly}
+            onClick={() => { if (!previewOnly) setShowBroadcastModal(true); }}
             className="px-3.5 py-2.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-black rounded-2xl shadow-xs transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer border border-outline-variant/20"
             title="Broadcast instant alert to online drivers"
           >
             <Megaphone size={15} className="text-amber-500" />
-            <span>Broadcast</span>
+            <span>{previewOnly ? "Broadcast Unavailable" : "Broadcast"}</span>
           </button>
 
           <button
+            disabled={previewOnly}
             onClick={generateRiderPerformanceReport}
             className="p-2.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-black rounded-2xl shadow-xs transition-all flex items-center justify-center text-xs uppercase tracking-wider cursor-pointer border border-outline-variant/20"
-            title="Export Rider Performance & COD Summary (PDF)"
+            title={previewOnly ? "Financial export unavailable without a verified settlement ledger" : "Export Rider Performance & COD Summary (PDF)"}
           >
             <Download size={16} className="text-on-surface-variant" />
           </button>
@@ -1719,7 +1738,7 @@ export const RiderManagement = ({
       <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-outline-variant/10 scrollbar-none">
         {[
           { id: "network", label: "Rider Fleet", icon: Bike, count: activeConnectionsCount },
-          { id: "missions", label: "Live Deliveries", icon: Compass, count: activeMissions.length },
+          { id: "missions", label: previewOnly ? "Deliveries (Deferred)" : "Live Deliveries", icon: Compass, count: activeMissions.length },
           { id: "controls", label: "Dispatch Settings", icon: Settings },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -1727,6 +1746,7 @@ export const RiderManagement = ({
           return (
             <button
               key={tab.id}
+              data-rider-preview-safe="true"
               onClick={() => setActiveSubTab(tab.id as "missions" | "network" | "health" | "ratings" | "controls")}
               className={cn(
                 "flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-black transition-all cursor-pointer whitespace-nowrap border uppercase tracking-wider",
@@ -3189,7 +3209,7 @@ export const RiderManagement = ({
                   </div>
                   <h4 className="text-xs font-bold text-on-surface uppercase tracking-tight">No Cash Collections</h4>
                   <p className="text-[11px] text-on-surface-variant leading-relaxed font-medium">
-                    All Cash-on-Delivery orders are fully reconciled. No drivers currently carry active storefront cash.
+                    {previewOnly ? "COD and cash settlements are not loaded or verified in Preview; no reconciliation conclusion is possible." : "All Cash-on-Delivery orders are fully reconciled. No drivers currently carry active storefront cash."}
                   </p>
                 </div>
               ) : (
