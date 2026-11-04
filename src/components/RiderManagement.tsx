@@ -46,6 +46,7 @@ import { supabase, getFreshChannel } from "../lib/supabase";
 import { cn } from "../lib/utils";
 import { Shop, Order, RiderProfile } from "../types";
 import { QRScanner } from "./QRScanner";
+import { merchantRiderPreviewNotice } from "../services/merchantRiderPreviewPolicy";
 
 // --- Leaflet Map Config & Helpers ---
 const MapViewRefocus = ({ center, zoom }: { center: [number, number]; zoom: number }) => {
@@ -307,14 +308,16 @@ export const RiderManagement = ({
   orders,
   onRequestRider,
   sendRiderNudge,
+  previewOnly = false,
 }: {
   currentShop: Shop;
   orders: Order[];
   onRequestRider: (id: string, riderId?: string, riderName?: string, riderPhone?: string) => void;
   sendRiderNudge: (riderId: string, message: string) => Promise<void>;
+  previewOnly?: boolean;
 }) => {
   const [connections, setConnections] = useState<RiderConnection[]>(() => {
-    if (typeof window === "undefined") return [];
+    if (previewOnly || typeof window === "undefined") return [];
     const shopId = currentShop?.id || 1;
     const localKey1 = `localeats_local_conns_${shopId}`;
     const localKey2 = `localeats_rider_conns_${shopId}`;
@@ -336,7 +339,7 @@ export const RiderManagement = ({
     }
   });
   const [dbSyncedSet, setDbSyncedSet] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState<boolean>(() => connections.length === 0);
+  const [loading, setLoading] = useState<boolean>(() => !previewOnly && connections.length === 0);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [showTrafficLayer, setShowTrafficLayer] = useState(false);
   const [mapCenterOverride, setMapCenterOverride] = useState<[number, number] | null>(null);
@@ -586,21 +589,25 @@ export const RiderManagement = ({
   const dbAutoLookForRider = currentShop.auto_look_for_rider;
 
   const [cashTrustEnabled, setCashTrustEnabled] = useState(() => {
+    if (previewOnly) return false;
     const localVal = localStorage.getItem(`localeats_cash_trust_${currentShop.id}`) === "true";
     return dbCashTrust !== undefined ? !!dbCashTrust : localVal;
   });
 
   const [allowExternalRiders, setAllowExternalRiders] = useState(() => {
+    if (previewOnly) return false;
     const localVal = localStorage.getItem(`localeats_allow_external_${currentShop.id}`) !== "false";
     return dbAllowExternal !== undefined ? !!dbAllowExternal : localVal;
   });
 
   const [autoLookForRider, setAutoLookForRider] = useState(() => {
+    if (previewOnly) return false;
     const localVal = localStorage.getItem(`localeats_auto_look_${currentShop.id}`) !== "false";
     return dbAutoLookForRider !== undefined ? !!dbAutoLookForRider : localVal;
   });
 
   const [settledCodOrders, setSettledCodOrders] = useState<string[]>(() => {
+    if (previewOnly) return [];
     try {
       return JSON.parse(localStorage.getItem("localeats_settled_cod_orders") || "[]") as string[];
     } catch {
@@ -676,31 +683,34 @@ export const RiderManagement = ({
   }, [orders, settledCodOrders]);
 
   useEffect(() => {
+    if (previewOnly) return;
     if (dbCashTrust !== undefined) {
       setCashTrustEnabled(!!dbCashTrust);
     } else {
       const localVal = localStorage.getItem(`localeats_cash_trust_${currentShop.id}`) === "true";
       setCashTrustEnabled(localVal);
     }
-  }, [currentShop.id, dbCashTrust]);
+  }, [currentShop.id, dbCashTrust, previewOnly]);
 
   useEffect(() => {
+    if (previewOnly) return;
     if (dbAllowExternal !== undefined) {
       setAllowExternalRiders(!!dbAllowExternal);
     } else {
       const localVal = localStorage.getItem(`localeats_allow_external_${currentShop.id}`) !== "false";
       setAllowExternalRiders(localVal);
     }
-  }, [currentShop.id, dbAllowExternal]);
+  }, [currentShop.id, dbAllowExternal, previewOnly]);
 
   useEffect(() => {
+    if (previewOnly) return;
     if (dbAutoLookForRider !== undefined) {
       setAutoLookForRider(!!dbAutoLookForRider);
     } else {
       const localVal = localStorage.getItem(`localeats_auto_look_${currentShop.id}`) !== "false";
       setAutoLookForRider(localVal);
     }
-  }, [currentShop.id, dbAutoLookForRider]);
+  }, [currentShop.id, dbAutoLookForRider, previewOnly]);
 
   const toggleCashTrust = async () => {
     const newValue = !cashTrustEnabled;
@@ -796,6 +806,7 @@ export const RiderManagement = ({
   ), [orders]);
 
   const fetchAndCacheRiders = useCallback(async (forceRefresh = false) => {
+    if (previewOnly) { setLoading(false); return; }
     const shopId = currentShop?.id || 1;
     const cacheKey = `localeats_rider_conns_cache_${shopId}`;
     const cacheTimeKey = `localeats_rider_conns_cache_time_${shopId}`;
@@ -983,13 +994,14 @@ export const RiderManagement = ({
     } finally {
       setLoading(false);
     }
-  }, [currentShop?.id, currentShop?.name]);
+  }, [currentShop?.id, currentShop?.name, previewOnly]);
 
   const fetchConnections = useCallback((forceRefresh = false) => {
     return fetchAndCacheRiders(forceRefresh);
   }, [fetchAndCacheRiders]);
 
   useEffect(() => {
+    if (previewOnly) return;
     fetchConnections();
 
     const shopId = currentShop?.id || 1;
@@ -1049,7 +1061,7 @@ export const RiderManagement = ({
       void supabase.removeChannel(channel);
       if (profileSub) void supabase.removeChannel(profileSub);
     };
-  }, [fetchConnections, currentShop?.id, selectedTrackId]);
+  }, [fetchConnections, currentShop?.id, selectedTrackId, previewOnly]);
 
   const generateCode = async () => {
     const shopId = currentShop?.id || 1;
@@ -1621,7 +1633,38 @@ export const RiderManagement = ({
   ).length, [connections]);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6"
+      onClickCapture={(event) => {
+        if (!previewOnly) return;
+        const target = event.target as Element;
+        if (!target.closest('[data-rider-preview-safe="true"]')) {
+          event.preventDefault(); event.stopPropagation();
+        }
+      }}
+      onChangeCapture={(event) => {
+        if (!previewOnly) return;
+        const target = event.target as Element;
+        if (!target.closest('[data-rider-preview-safe="true"]')) {
+          event.preventDefault(); event.stopPropagation();
+        }
+      }}
+      onKeyDownCapture={(event) => {
+        if (!previewOnly || (event.key !== "Enter" && event.key !== " ")) return;
+        const target = event.target as Element;
+        if (!target.closest('[data-rider-preview-safe="true"]')) {
+          event.preventDefault(); event.stopPropagation();
+        }
+      }}
+      onSubmitCapture={(event) => {
+        if (!previewOnly) return;
+        event.preventDefault(); event.stopPropagation();
+      }}
+    >
+      {previewOnly && (
+        <p role="status" className="rounded-2xl bg-surface-container-low border border-outline-variant/15 px-4 py-3 text-xs text-on-surface-variant">
+          {merchantRiderPreviewNotice()}
+        </p>
+      )}
       {/* Visual Header */}
       <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-outline-variant/10 pb-4">
         <div className="space-y-1">
