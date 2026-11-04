@@ -11,6 +11,7 @@ import {
   subscribeAvailabilityCommand,
 } from "../utils/merchantAvailabilityCommand";
 import { Skeleton } from "../components/ui/Skeleton";
+import { OperationFeedback, type OperationFeedbackStatus } from "./ui/OperationFeedback";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { RiderConnection } from "../types";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
@@ -510,17 +511,31 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   }, [currentShop?.id]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isManualRefreshing,setIsManualRefreshing]=useState(false);
+  const [refreshFeedback,setRefreshFeedback]=useState<OperationFeedbackStatus>("idle");
+  const [verificationBeforeRefresh,setVerificationBeforeRefresh]=useState<number|null>(null);
   const hasVerifiedOrders=ordersVerifiedAt!==null;
   const ordersStatusText=ordersReadState==="checking" ? "Checking current orders…" :
     ordersReadState==="unavailable" ? (hasVerifiedOrders ? "Orders API unavailable · showing last confirmed list" : "Orders API unavailable · counts not verified") :
     ordersVerifiedAt!==null ? `Orders checked at ${new Date(ordersVerifiedAt).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit"})}` : "Checking current orders…";
   const refreshDashboard=async()=>{
     if(isManualRefreshing)return;
+    setVerificationBeforeRefresh(ordersVerifiedAt);
     setIsManualRefreshing(true);
-    try{await Promise.resolve(onRefresh());}
-    catch{toast.error("Dashboard refresh could not be completed. Check your connection.");}
-    finally{setIsManualRefreshing(false);}
+    setRefreshFeedback("loading");
+    try{
+      await Promise.resolve(onRefresh());
+      // The fetch returning does not itself prove that the Orders API succeeded.
+      setRefreshFeedback("unverified");
+    }catch{
+      setRefreshFeedback("error");
+    }finally{
+      setIsManualRefreshing(false);
+    }
   };
+  const refreshWasVerified = refreshFeedback === "unverified" &&
+    ordersReadState === "confirmed" && ordersVerifiedAt !== null &&
+    (verificationBeforeRefresh === null || ordersVerifiedAt > verificationBeforeRefresh);
+  const refreshDisplayStatus:OperationFeedbackStatus = refreshWasVerified ? "success" : refreshFeedback;
   const [layoutMode, setLayoutMode] = useState<"compact" | "advanced">(() => {
     return (localStorage.getItem("localeats_dashboard_layout") as "compact" | "advanced") || "compact";
   });
@@ -1041,6 +1056,18 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           </div>
         </div>
       </motion.section>
+
+      <OperationFeedback
+        status={refreshDisplayStatus}
+        message={refreshDisplayStatus === "loading" ? "Refreshing dashboard…" :
+          refreshDisplayStatus === "success" ? "Orders verified after refresh" :
+          refreshDisplayStatus === "error" ? "Dashboard refresh failed" :
+          "Refresh finished; order status not newly verified"}
+        detail={refreshDisplayStatus === "unverified" ? "Keep previously loaded figures marked as unverified until the Orders API confirms a fresh read." :
+          refreshDisplayStatus === "error" ? "Check the connection and retry. Your previous information remains visible." : undefined}
+        onRetry={refreshDisplayStatus === "error" || refreshDisplayStatus === "unverified" ? () => { void refreshDashboard(); } : undefined}
+        className="max-w-2xl"
+      />
 
       {currentShop && (
         <motion.div
