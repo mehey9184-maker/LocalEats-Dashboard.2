@@ -90,7 +90,7 @@ import {
 import { LocalEatsLogo } from "./components/LocalEatsLogo";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
 import { DashboardOverview } from "./components/DashboardOverview";
-import { ShopProfile } from "./components/ShopProfile";
+import { MerchantStorefrontPreview } from "./components/MerchantStorefrontPreview";
 import { OrdersManagement } from "./components/OrdersManagement";
 import { MenuManagement } from "./components/MenuManagement";
 import { Coupons } from "./components/Coupons";
@@ -514,7 +514,8 @@ function App() {
   // A legacy creation-date-based 30-day countdown cannot start a three-month trial.
   const trialInfo = null;
 
-  const [settingsCategory, setSettingsCategory] = useState<string>("account");
+  const [settingsCategory, setSettingsCategory] = useState<string>("storefront");
+  const [settingsAdvancedExpanded, setSettingsAdvancedExpanded] = useState(false);
   const [pickupPaymentChoice, setPickupPaymentChoice] = useState<"cash" | "card_machine" | "both">("cash");
   const [savingPickupPayments, setSavingPickupPayments] = useState(false);
   const [pickupPaymentError, setPickupPaymentError] = useState("");
@@ -2391,24 +2392,31 @@ function App() {
                     </h2>
                   </div>
                   <p className="text-sm text-on-surface-variant font-medium">
-                    Manage your account and storefront preferences.
+                    Storefront, account and basic preferences first. Less-used settings are under More settings.
                   </p>
+                  <div className="pt-3">
+                    <button type="button" onClick={() => setActiveTab("storefront")}
+                      className="merchant-tap-feedback inline-flex items-center gap-2 rounded-xl bg-primary text-on-primary px-4 py-2.5 font-bold text-sm shadow-sm focus-visible:outline-2 focus-visible:outline-primary">
+                      <Store size={17} aria-hidden="true" /> Open Storefront &amp; Test Location <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                    <p className="mt-2 text-xs text-on-surface-variant">Opens a safe view of the original location map. Test pin changes do not edit the registered shop or change Customer App discovery.</p>
+                  </div>
                 </header>
 
                 <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-start px-4 md:px-0">
                   {/* Sidebar */}
                   <nav className="w-full md:w-56 shrink-0 flex md:flex-col gap-2 overflow-x-auto pb-4 md:pb-0 hide-scrollbar border-b md:border-b-0 border-outline-variant/10 md:pr-4">
                      {[
-                       { id: "account", label: "Account & Staff", icon: UserIcon },
                        { id: "storefront", label: "Storefront", icon: Store },
+                       { id: "account", label: "Account", icon: UserIcon },
+                       { id: "preferences", label: "Preferences", icon: Settings },
                        { id: "pickup-payments", label: "Pickup payments", icon: CreditCard },
                        { id: "operations", label: "Operations", icon: Sliders },
                        { id: "delivery", label: "Delivery", icon: Truck },
                        { id: "hardware", label: "Printing & Hardware", icon: Printer },
                        { id: "billing", label: "Billing & Subscription", icon: Wallet },
-                       { id: "preferences", label: "Preferences", icon: Settings },
                        { id: "diagnostics", label: "Database Diagnostics", icon: Activity },
-                     ].map(category => (
+                     ].filter(category => settingsAdvancedExpanded || ["storefront", "account", "preferences"].includes(category.id)).map(category => (
                        <button
                          key={category.id}
                          onClick={() => setSettingsCategory(category.id)}
@@ -2425,6 +2433,13 @@ function App() {
                          {category.label}
                        </button>
                      ))}
+                     <button type="button" onClick={() => setSettingsAdvancedExpanded(value => !value)}
+                       aria-expanded={settingsAdvancedExpanded}
+                       className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-on-surface-variant hover:bg-surface-container-high border border-outline-variant/15 focus-visible:outline-2 focus-visible:outline-primary">
+                       <Sliders size={17} aria-hidden="true" />
+                       {settingsAdvancedExpanded ? "Fewer settings" : "More settings"}
+                       <ChevronRight size={15} aria-hidden="true" className={settingsAdvancedExpanded ? "-rotate-90" : "rotate-90"} />
+                     </button>
                   </nav>
 
                   {/* Settings Content Panels */}
@@ -3721,16 +3736,7 @@ function App() {
                 {currentShop && (
                   <>
                     
-                    <ShopProfile
-                      shop={currentShop}
-                    onRefresh={fetchShops}
-                    user={user}
-                    setIsSaving={setIsSaving}
-                    setIsSaveSuccess={setIsSaveSuccess}
-                    isSaving={isSaving}
-                    isSuccess={isSaveSuccess}
-                    onFinished={() => setActiveTab("dashboard")}
-                  />
+                    <MerchantStorefrontPreview shop={currentShop} />
                   </>
                 )}
               </div>
