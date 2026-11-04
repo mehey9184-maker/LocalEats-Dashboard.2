@@ -7,7 +7,7 @@ const page=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.me
 
 test("owner proposed tiers and prices are not active subscriptions",()=>{
  assert.deepEqual(MERCHANT_SUBSCRIPTION_PLANS.map(p=>[p.id,p.name,p.monthlyRand]),[["plus","Plus",199],["pro","Pro",399],["premium","Premium",499]]);
- for(const amount of [199,399,499])assert.equal(merchantSubscriptionPriceLabel(amount),\`R\${amount}\`);
+ for(const amount of [199,399,499])assert.equal(merchantSubscriptionPriceLabel(amount),"R"+amount);
  for(const value of [NaN,-1,199.99])assert.equal(merchantSubscriptionPriceLabel(value),"Price unavailable");
  assert.equal(merchantSubscriptionsNotActivated(),true);
  assert.equal(merchantPaymentWritesUnavailable(),true);
