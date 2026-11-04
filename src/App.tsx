@@ -1062,12 +1062,9 @@ function App() {
       return timeB - timeA;
     });
 
+    // Confirmed orders stay only in component memory; customer details must not
+    // survive logout or shop-switch in shared-browser localStorage.
     setOrders(combinedOrders);
-    try {
-      localStorage.setItem("localeats_cached_orders", JSON.stringify(combinedOrders));
-    } catch {
-      // Cache is optional and never used as order authority.
-    }
   }, []);
 
   const fetchOrders = useCallback(async () => {
@@ -1805,7 +1802,7 @@ function App() {
               </div>
               <div className="flex justify-between items-center text-xs">
                 <span className="text-zinc-500 font-bold">Local Data:</span>
-                <span className="font-mono text-emerald-500 font-bold uppercase text-[10px]">CACHE SAFE</span>
+                <span className="font-mono text-emerald-500 font-bold uppercase text-[10px]">NOT SAVED</span>
               </div>
             </div>
 
@@ -1825,11 +1822,11 @@ function App() {
                 type="button"
                 onClick={() => {
                   setDismissedOfflineOverlay(true);
-                  toast.info("Operating in local cached mode");
+                  toast.info("Offline view only. Orders and changes require server confirmation.");
                 }}
                 className="w-full py-2.5 px-4 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-semibold text-xs rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all cursor-pointer"
               >
-                Continue & Work Offline
+                Continue in Read-only View
               </button>
             </div>
           </div>
@@ -1894,17 +1891,17 @@ function App() {
                   <div>
                     <div className="text-[10px] font-mono font-black text-amber-500 uppercase tracking-widest flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-                      Offline Engine Active
+                      Connection Unavailable
                     </div>
                     <h3 className="font-headline font-black text-lg text-on-surface tracking-tight mt-0.5">
-                      Smart Offline Caching
+                      Safe Connection Recovery
                     </h3>
                   </div>
                 </div>
 
                 {/* Subtitle */}
                 <p className="text-xs text-on-surface-variant/80 leading-relaxed mb-5">
-                  Your device has lost its active database connection. Don&apos;t worry—LocalEats is fully prepared and handles network pauses automatically without interruption.
+                  Your device cannot reach the ordering service. You can review this screen, but business changes need online server confirmation.
                 </p>
 
                 {/* Status Grid */}
@@ -1915,9 +1912,9 @@ function App() {
                       <Circle size={15} />
                     </div>
                     <div>
-                      <h4 className="text-xs font-black tracking-tight text-on-surface">State Protection Enabled</h4>
+                      <h4 className="text-xs font-black tracking-tight text-on-surface">No Offline Order Writes</h4>
                       <p className="text-[10px] text-on-surface-variant/75 mt-0.5">
-                        All orders, menu additions, and promotional codes are stored in your secure browser cache immediately.
+                        Orders and menu changes are never considered saved without a successful server response.
                       </p>
                     </div>
                   </div>
@@ -1928,9 +1925,9 @@ function App() {
                       <Circle size={15} />
                     </div>
                     <div>
-                      <h4 className="text-xs font-black tracking-tight text-on-surface">Automated Cloud Sync</h4>
+                      <h4 className="text-xs font-black tracking-tight text-on-surface">Fresh Server Confirmation</h4>
                       <p className="text-[10px] text-on-surface-variant/75 mt-0.5">
-                        Your cached updates will transparently merge back to the cloud database the moment your connection is restored.
+                        Reconnect and refresh to verify current orders, menu changes and shop status. Offline actions are not automatically submitted.
                       </p>
                     </div>
                   </div>
@@ -1941,9 +1938,9 @@ function App() {
                       <Activity size={15} />
                     </div>
                     <div>
-                      <h4 className="text-xs font-black tracking-tight text-on-surface">Instant Performance</h4>
+                      <h4 className="text-xs font-black tracking-tight text-on-surface">Verified Data on Reconnect</h4>
                       <p className="text-[10px] text-on-surface-variant/75 mt-0.5">
-                        Reads are loaded directly from lightning-fast memory registers, keeping checkout and rider controls snappy.
+                        The latest order and payment status must come from an authenticated server read after reconnecting.
                       </p>
                     </div>
                   </div>
