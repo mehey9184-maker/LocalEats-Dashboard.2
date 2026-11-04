@@ -29,6 +29,13 @@ test("Preview HTTP requests cannot mutate database via any API verb, but can rea
       const response=await fetch(url,{method});
       assert.equal(response.status,200,method+" should remain read-only available");
     }
+    // Despite being GET, the legacy notifications handler runs outbox RPC
+    // updates and FCM sends; it is intentionally disabled on Preview.
+    for(const method of ["GET","HEAD"]){
+      const response=await fetch("http://127.0.0.1:"+addr.port+"/api/v1/notifications",{method});
+      assert.equal(response.status,503,"Side-effectful notification "+method+" must be blocked");
+      assert.equal(response.headers.get("cache-control"),"no-store");
+    }
   }finally{
     server.close();
     if(prior===undefined)delete process.env.VERCEL_ENV;
