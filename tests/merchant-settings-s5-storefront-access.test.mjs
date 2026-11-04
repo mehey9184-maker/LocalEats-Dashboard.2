@@ -24,7 +24,7 @@ test("S5: old direct-writing ShopProfile is never rendered in Storefront Preview
   assert.match(originalEditor, /supabase/);
   assert.match(originalEditor, /onSubmit=\{handleUpdate\}/);
   assert.doesNotMatch(app, /<ShopProfile\b/);
-  assert.match(app, /<MerchantStorefrontPreview shop=\{currentShop\}/);
+  assert.match(app, /<MerchantStorefrontPreview key=\{String\(currentShop\.id\)\} shop=\{currentShop\}/);
   assert.match(storefront, /Read-only Preview/);
   assert.doesNotMatch(storefront, /\.from\(|MerchantApi|fetch\(|axios|updateFirestoreShop|onLocationSaved/);
 });
