@@ -1747,6 +1747,7 @@ export const RiderManagement = ({
             <button
               key={tab.id}
               data-rider-preview-safe="true"
+              aria-pressed={isActive}
               onClick={() => setActiveSubTab(tab.id as "missions" | "network" | "health" | "ratings" | "controls")}
               className={cn(
                 "flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-black transition-all cursor-pointer whitespace-nowrap border uppercase tracking-wider",
@@ -1953,6 +1954,7 @@ export const RiderManagement = ({
               <button
                 type="button"
                 data-rider-preview-safe="true"
+                aria-pressed={statusFilter === "online"}
                 onClick={() => setStatusFilter(statusFilter === "online" ? "all" : "online")}
                 className={cn(
                   "p-4 rounded-2xl border transition-all flex flex-col justify-between text-left cursor-pointer relative overflow-hidden",
@@ -2236,6 +2238,7 @@ export const RiderManagement = ({
                   <button
                     key={chip.id}
                     data-rider-preview-safe="true"
+                    aria-pressed={statusFilter === chip.id}
                     onClick={() => setStatusFilter(chip.id as "all" | "online" | "offline" | "in_house" | "paired")}
                     className={cn(
                       "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap",
@@ -2282,7 +2285,7 @@ export const RiderManagement = ({
                         : statusFilter === "online" && connections.length > 0
                         ? "No Riders Online & Ready"
                         : connections.length === 0
-                        ? (previewOnly ? "Rider Data Unavailable" : "No Riders Connected Yet")
+                        ? "No Riders Connected Yet"
                         : "No Matching Riders"}
                     </h4>
                     <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
@@ -2291,7 +2294,7 @@ export const RiderManagement = ({
                         : statusFilter === "online" && connections.length > 0
                         ? "None of your riders are currently marked as online for order dispatch. You can activate all riders with one tap."
                         : connections.length === 0
-                        ? (previewOnly ? "Rider records are not loaded in Preview. This does not mean your shop has no riders." : "Generate a pairing code or add an in-house driver above to activate your delivery network.")
+                        ? "Generate a pairing code or add an in-house driver above to activate your delivery network."
                         : "Try clearing your search term or selecting a different status filter above."}
                     </p>
                   </div>
@@ -2306,7 +2309,7 @@ export const RiderManagement = ({
                         <span>Turn Fleet Online</span>
                       </button>
                     )}
-                    {statusFilter !== "all" && (
+                    {(statusFilter !== "all" || (previewOnly && searchQuery.trim().length > 0)) && (
                       <button
                         data-rider-preview-safe="true"
                         onClick={() => { setSearchQuery(""); setStatusFilter("all"); }}
