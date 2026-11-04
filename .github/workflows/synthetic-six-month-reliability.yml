@@ -29,4 +29,5 @@ jobs:
       - name: Simulate six months with fake in-memory Supabase RPC and FCM
         run: node --test localeats-api/tests/synthetic-180day-load.test.mjs
       - name: Existing production pickup API contract tests
-        run: node --test localeats-api/dist/contracts/pickupDraft.test.js localeats-api/dist/orders/pickupService.test.js localeats-api/dist/middleware/pickupWriteGate.test.js localeats-api/dist/orders/orderContract.test.js
+        working-directory: localeats-api
+        run: node --test dist/contracts/pickupDraft.test.js dist/orders/pickupService.test.js dist/middleware/pickupWriteGate.test.js dist/orders/orderContract.test.js
