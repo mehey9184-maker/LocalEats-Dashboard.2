@@ -47,3 +47,10 @@ jobs:
         run: psql -X -v ON_ERROR_STOP=1 -f security/drafts/rider_notifications_lockdown_REVIEW_ONLY.sql
       - name: Assert blocked public rights, retained service access
         run: psql -X -v ON_ERROR_STOP=1 -f tests/security/rider_notification_assertions.sql
+      - name: Reapplication is rejected cleanly after policy removal
+        run: |
+          if psql -X -v ON_ERROR_STOP=1 -f security/drafts/rider_notifications_lockdown_REVIEW_ONLY.sql > /tmp/reapply-check.log 2>&1; then
+            echo "Review-only lockdown unexpectedly applied twice" >&2
+            exit 1
+          fi
+          grep -q 'SECURITY_REVIEW_POLICY_DRIFT' /tmp/reapply-check.log
