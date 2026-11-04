@@ -17,7 +17,7 @@ export const PROPOSED_MERCHANT_PLANS=[
     id:"pro",label:"Pro",monthlyPriceZar:399,
     headline:"Growth tools (future)",
     proposedBenefits:[
-      "Everything in Plus, including core ordering and security",
+      "Everything in Plus",
       "Item, category and busy-period insights (planned)",
       "Marketing drafts, approved offers and QR artwork (planned)",
     ],
@@ -26,7 +26,7 @@ export const PROPOSED_MERCHANT_PLANS=[
     id:"premium",label:"Premium",monthlyPriceZar:499,
     headline:"Advanced growth (future)",
     proposedBenefits:[
-      "Everything in Pro; no core features removed from lower plans",
+      "Everything in Pro",
       "Advanced trend comparisons and report exports (planned)",
       "Campaign measurement and optional team workflows (planned)",
     ],
