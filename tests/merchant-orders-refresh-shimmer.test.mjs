@@ -33,7 +33,7 @@ test("Shimmer remains decorative, uses existing palette, supports dark and reduc
 test("Keep inherited order verification and disabled activation boundaries", () => {
   assert.match(orders, /merchantOrdersConfidence\(ordersReadState, ordersVerifiedAt\)/);
   assert.match(orders, /emptyOrderMessage.title/);
-  assert.match(orders, /unverifiedWithoutPreviousOrders \? "—" : stat.count/);
+  assert.match(orders, /unverifiedWithoutPreviousOrders \? "—" : <RollingOrderCount value=\{stat.count\} animate=\{ordersConfidence === "verified"\}/);
   assert.match(app, /id="riders-coming-soon-title"/);
   assert.doesNotMatch(app, /<RiderManagement\b/);
 });
