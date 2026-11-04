@@ -136,7 +136,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // 2. QR Code State & Generator
   const [qrStyle, setQrStyle] = useState<QrStyle>("coral");
-  const [qrFrameText, setQrFrameText] = useState<string>("SCAN TO ORDER ONLINE");
+  const [qrFrameText, setQrFrameText] = useState<string>("PREVIEW — NOT LIVE");
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedMsg, setCopiedMsg] = useState(false);
@@ -202,25 +202,25 @@ export const Marketing: React.FC<MarketingProps> = ({
     const shopLocation = activeShop?.address || activeShop?.location || activeShop?.city || "Township";
     const featuredItemName = customFeaturedItem || storeMenuItems[0]?.name || "Kota Special";
     const featuredItemPrice = storeMenuItems.find((i) => i.name === featuredItemName)?.price;
-    const priceText = featuredItemPrice ? `for only R${featuredItemPrice}` : "";
+    const priceText = Number.isFinite(featuredItemPrice) ? `(listed R${featuredItemPrice})` : "";
 
     switch (selectedPreset) {
       case "opening":
-        return `🔥 *${shopName} IS LIVE ON LOCALEATS!* 🔥\n\nSkip the queues! You can now order all our delicious meals directly from your phone for instant pickup or fast local delivery in ${shopLocation}.\n\n👉 *View Menu & Order Here:*\n${storeUrl}\n\n✅ Cash on Arrival & Card Accepted!\n⚡ Powered by LocalEats SA`;
+        return `📋 *${shopName} — SAMPLE LAUNCH MESSAGE*\n\nThis is an example for a future LocalEats collection pilot in ${shopLocation}. Ordering is NOT active. When approved, customers will collect food and pay at the shop (cash or the shop card machine).\n\nPreview only: ${previewQrTarget}`;
       case "lunch":
-        return `🍔 *LUNCH TIME SPECIAL AT ${shopName.toUpperCase()}!* 🕒\n\nHungry? Treat yourself today to our fresh ${featuredItemName} ${priceText}! Order right now on your phone and get fast delivery straight to your door or ready for quick pickup.\n\n📲 *Tap to order now:*\n${storeUrl}\n\nTag your friends and order together! 🛵💨`;
+        return `🍔 *SAMPLE LUNCH POST FOR ${shopName.toUpperCase()}*\n\nFeatured menu idea: ${featuredItemName} ${priceText}. This is not a live order or active special. Future orders will be for collection, with payment at the shop.\n\nPreview only: ${previewQrTarget}`;
       case "item_deal":
-        return `✨ *DEAL OF THE DAY: ${featuredItemName.toUpperCase()}* ✨\n\nMade fresh to order at *${shopName}* ${priceText}.\n\nDon't wait in the cold — order online in 30 seconds:\n👉 ${storeUrl}\n\n📍 Location: ${shopLocation}\n🛵 Local delivery riders available!`;
+        return `✨ *SAMPLE ITEM HIGHLIGHT: ${featuredItemName.toUpperCase()}*\n\nExample menu spotlight from ${shopName} ${priceText}. No deal has been activated. Future pickup customers will collect and pay at the shop.\n\n📍 ${shopLocation}\nPreview only: ${previewQrTarget}`;
       case "delivery":
-        return `🛵 *TOWNSHIP DELIVERY NOW AVAILABLE!* 📦\n\nGet your favorite meals from *${shopName}* delivered right to your house or workplace!\n\n💳 Pay Cash on Delivery or Card\n📍 Delivering around ${shopLocation}\n\n👉 *Order here:* ${storeUrl}`;
+        return `📍 *COLLECTION-ONLY PLAN FOR ${shopName}*\n\nDelivery and riders are not available. This is a sample message, not an invitation to order. Following approval, customers will collect their food and pay at the shop.\n\nPreview only: ${previewQrTarget}`;
       case "discount":
-        return `🎉 *SPECIAL VOUCHER FOR YOU!* 🎁\n\nGet a special discount on your next order from *${shopName}* using code *${customDiscountCode}* at checkout on LocalEats!\n\n👉 *Order & Apply Code:*\n${storeUrl}\n\nValid for online orders. Treat yourself today! 😋`;
+        return `🎟️ *SAMPLE VOUCHER — NOT VALID*\n\nExample code: ${customDiscountCode}. No discount exists or can be redeemed at checkout. Any future promotion requires separate merchant and LocalEats approval.\n\nPreview only: ${previewQrTarget}`;
       case "weekend":
-        return `🔥 *WEEKEND VIBES AT ${shopName.toUpperCase()}!* 🎉\n\nRelax and let us do the cooking! Fresh hot Kotas and township favorites ready for you and your family.\n\n📲 *Order online before we sell out:*\n${storeUrl}\n\nHave a great weekend! 🍻🍔`;
+        return `🍔 *SAMPLE WEEKEND MESSAGE FOR ${shopName.toUpperCase()}*\n\nA possible future post about your weekend menu. No online ordering, delivery or customer offer is active. The approved pilot will use collection and payment at the shop.\n\nPreview only: ${previewQrTarget}`;
       default:
-        return `Order delicious food from ${shopName} online: ${storeUrl}`;
+        return `Sample marketing message for ${shopName}. Ordering is not active: ${previewQrTarget}`;
     }
-  }, [selectedPreset, activeShop, storeUrl, customFeaturedItem, customDiscountCode, storeMenuItems]);
+  }, [selectedPreset, activeShop, previewQrTarget, customFeaturedItem, customDiscountCode, storeMenuItems]);
 
   const activeMessage = userEditedMessage !== null ? userEditedMessage : generatedMessage;
 
@@ -256,8 +256,8 @@ export const Marketing: React.FC<MarketingProps> = ({
   const socialCaption = useMemo(() => {
     const shopName = activeShop?.name || "Our Shop";
     const shopLocation = activeShop?.address || activeShop?.location || "Township";
-    return `🔥 ${shopName} is now on LocalEats SA! Order your favorite meals online for fast pickup and delivery in ${shopLocation}. 📲 Link in bio or order at: ${storeUrl} #LocalEats #SupportLocal #${shopName.replace(/\s+/g, "")} #TownshipFood #KotaSA #FastDelivery`;
-  }, [activeShop, storeUrl]);
+    return `📋 SAMPLE SOCIAL POST — ${shopName} in ${shopLocation}. Collection and payment at the shop are planned only after launch approval. Ordering and delivery are not active. Preview link: ${previewQrTarget} #LocalEats #SupportLocal #${shopName.replace(/\s+/g, "")}`;
+  }, [activeShop, previewQrTarget]);
 
   // Draw Social Graphic Canvas
   const renderSocialGraphic = useCallback(() => {
@@ -318,7 +318,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
     ctx.font = "bold 24px system-ui, sans-serif";
     ctx.fillStyle = "#FFFFFF";
-    ctx.fillText("🛵 LOCALEATS SA", 115, 117);
+    ctx.fillText("LOCALEATS SA", 115, 117);
 
     // Verified Store Badge
     ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
@@ -326,7 +326,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     ctx.fill();
     ctx.fillStyle = accentColor;
     ctx.font = "bold 22px system-ui, sans-serif";
-    ctx.fillText("⚡ OFFICIAL STORE", 765, 116);
+    ctx.fillText("PREVIEW ONLY", 765, 116);
 
     // Shop Name
     ctx.font = "900 68px system-ui, sans-serif";
@@ -337,7 +337,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     // Tagline / Category
     ctx.font = "bold 32px system-ui, sans-serif";
     ctx.fillStyle = accentColor;
-    ctx.fillText(socialTagline || "Fresh Meals & Fast Delivery", 80, 300);
+    ctx.fillText(socialTagline || "Collection Preview Only", 80, 300);
 
     // Central Card (Featured item or order callout)
     ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
@@ -362,20 +362,20 @@ export const Marketing: React.FC<MarketingProps> = ({
 
       ctx.font = "24px system-ui, sans-serif";
       ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
-      ctx.fillText("• Prepared fresh to order", 120, 620);
-      ctx.fillText("• Fast local rider delivery", 120, 665);
-      ctx.fillText("• Cash or Card on Arrival", 120, 710);
+      ctx.fillText("• Example menu item and price", 120, 620);
+      ctx.fillText("• Collection only after approval", 120, 665);
+      ctx.fillText("• Pay at the shop after launch", 120, 710);
     } else {
       ctx.fillStyle = "#FFFFFF";
       ctx.font = "900 44px system-ui, sans-serif";
-      ctx.fillText("ORDER ONLINE", 120, 470);
-      ctx.fillText("IN 3 STEPS", 120, 530);
+      ctx.fillText("MARKETING", 120, 470);
+      ctx.fillText("PREVIEW ONLY", 120, 530);
 
       ctx.font = "26px system-ui, sans-serif";
       ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-      ctx.fillText("1. Scan QR or click store link", 120, 610);
-      ctx.fillText("2. Pick your favorite meal", 120, 665);
-      ctx.fillText("3. Fast pickup or delivery!", 120, 720);
+      ctx.fillText("1. Sample QR (not live)", 120, 610);
+      ctx.fillText("2. Future collection only", 120, 665);
+      ctx.fillText("3. Pay at shop after launch", 120, 720);
     }
 
     // QR Code Container Box
@@ -395,7 +395,7 @@ export const Marketing: React.FC<MarketingProps> = ({
         ctx.fillText("SCAN WITH PHONE", 825, 720);
         ctx.font = "bold 20px system-ui, sans-serif";
         ctx.fillStyle = "#EA580C";
-        ctx.fillText("TO ORDER NOW", 825, 755);
+        ctx.fillText("NOT A LIVE ORDER", 825, 755);
         ctx.textAlign = "left";
       };
       qrImg.src = qrDataUrl;
@@ -463,11 +463,11 @@ export const Marketing: React.FC<MarketingProps> = ({
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(16);
-      doc.text("LOCALEATS SA - OFFICIAL STORE", 105, 18, { align: "center" });
+      doc.text("LOCALEATS SA - PREVIEW ONLY", 105, 18, { align: "center" });
 
       doc.setFontSize(11);
       doc.setFont("helvetica", "normal");
-      doc.text("Order Online • Fast Local Delivery • Instant Pickup", 105, 28, { align: "center" });
+      doc.text("Example layout • Collection planned • Not live", 105, 28, { align: "center" });
 
       // Shop Name Heading
       doc.setTextColor(15, 23, 42); // #0F172A
@@ -477,7 +477,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
       doc.setFontSize(14);
       doc.setTextColor(234, 88, 12);
-      doc.text("SCAN TO VIEW OUR FULL MENU & ORDER", 105, 75, { align: "center" });
+      doc.text("SAMPLE QR - NOT FOR CUSTOMER ORDERS", 105, 75, { align: "center" });
 
       // Frame around QR code
       doc.setDrawColor(226, 232, 240);
@@ -496,13 +496,13 @@ export const Marketing: React.FC<MarketingProps> = ({
       doc.setFontSize(12);
       doc.setTextColor(15, 23, 42);
       doc.setFont("helvetica", "bold");
-      doc.text("HOW TO ORDER IN 3 EASY STEPS:", 105, 227, { align: "center" });
+      doc.text("FUTURE COLLECTION FLOW (NOT ACTIVE):", 105, 227, { align: "center" });
 
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
-      doc.text("1. Open your phone camera & scan the QR code above.", 35, 236);
-      doc.text("2. Choose your favorite meals & add special instructions.", 35, 243);
-      doc.text("3. Pay Cash on Arrival or Card — sit back while we prepare!", 35, 250);
+      doc.text("1. Preview the sample QR design above.", 35, 236);
+      doc.text("2. View a menu when LocalEats ordering is approved.", 35, 243);
+      doc.text("3. Collect and pay at the shop (cash/card machine).", 35, 250);
 
       // Footer bar
       doc.setFillColor(15, 23, 42);
@@ -535,8 +535,8 @@ export const Marketing: React.FC<MarketingProps> = ({
   // SMS Text State
   const smsText = useMemo(() => {
     const shopName = activeShop?.name || "Our Shop";
-    return `Hi! Order delicious meals from ${shopName} online for fast pickup & delivery: ${storeUrl}`;
-  }, [activeShop, storeUrl]);
+    return `SAMPLE: ${shopName} — collection and payment at shop planned after approval. No ordering active. ${previewQrTarget}`;
+  }, [activeShop, previewQrTarget]);
 
   return (
     <div className="w-full space-y-6">
@@ -1159,10 +1159,10 @@ export const Marketing: React.FC<MarketingProps> = ({
                       onChange={(e) => setQrFrameText(e.target.value)}
                       className="w-full bg-surface-container-high border-none rounded-xl px-3.5 py-2.5 text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary outline-none"
                     >
-                      <option value="SCAN TO ORDER ONLINE">SCAN TO ORDER ONLINE</option>
+                      <option value="PREVIEW — NOT LIVE">PREVIEW — NOT LIVE</option>
                       <option value="TABLE & COUNTER MENU">TABLE & COUNTER MENU</option>
-                      <option value="ORDER AHEAD & SKIP THE LINE">ORDER AHEAD & SKIP THE LINE</option>
-                      <option value="SCAN FOR TODAY'S SPECIALS">SCAN FOR TODAY'S SPECIALS</option>
+                      <option value="PICKUP AFTER LAUNCH">PICKUP AFTER LAUNCH</option>
+                      <option value="SAMPLE MENU ONLY">SAMPLE MENU ONLY</option>
                     </select>
                   </div>
 
@@ -1250,29 +1250,29 @@ export const Marketing: React.FC<MarketingProps> = ({
 
                   {/* Ordering Steps Pill */}
                   <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/15 text-left space-y-1.5">
-                    <p className="text-xs font-extrabold text-on-surface text-center mb-1">How customers order:</p>
+                    <p className="text-xs font-extrabold text-on-surface text-center mb-1">Example collection flow (not active):</p>
                     <div className="flex items-center gap-2 text-xs text-on-surface-variant">
                       <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0">1</span>
-                      <span>Open Camera & Scan QR Code</span>
+                      <span>Sample QR — not live</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-on-surface-variant">
                       <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0">2</span>
-                      <span>Select meal from live menu</span>
+                      <span>View menu after launch</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-on-surface-variant">
                       <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0">3</span>
-                      <span>Pay Cash on Arrival or Card!</span>
+                      <span>Pay at shop after approval</span>
                     </div>
                   </div>
 
                   {/* Footer Trust Signals */}
                   <div className="flex items-center justify-center gap-4 text-[11px] font-bold text-on-surface-variant/80 pt-1">
                     <span className="flex items-center gap-1">
-                      <Truck size={13} className="text-primary" /> Fast Local Delivery
+                      <Store size={13} className="text-primary" /> Delivery Not Active
                     </span>
                     <span>•</span>
                     <span className="flex items-center gap-1">
-                      <Utensils size={13} className="text-primary" /> Instant Pickup
+                      <Utensils size={13} className="text-primary" /> Collection Planned
                     </span>
                   </div>
                 </div>
@@ -1306,7 +1306,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
                         <Flame size={14} className="text-orange-500" /> Grand Opening
                       </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Announce you're taking orders</p>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Sample launch message only</p>
                     </button>
 
                     <button
@@ -1321,9 +1321,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                       }`}
                     >
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                        <Utensils size={14} className="text-amber-500" /> Lunch Rush (11:30)
+                        <Utensils size={14} className="text-amber-500" /> Example Lunch Post
                       </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Post before lunch breaks</p>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Experiment with timing later</p>
                     </button>
 
                     <button
@@ -1355,9 +1355,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                       }`}
                     >
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                        <Truck size={14} className="text-blue-500" /> Local Delivery
+                        <Truck size={14} className="text-blue-500" /> Delivery Deferred
                       </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Highlight fast rider delivery</p>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Riders not part of pilot</p>
                     </button>
 
                     <button
@@ -1374,7 +1374,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
                         <Percent size={14} className="text-purple-500" /> Promo Voucher
                       </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Give a coupon discount</p>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Unissued code example only</p>
                     </button>
 
                     <button
@@ -1391,7 +1391,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
                         <Sparkles size={14} className="text-rose-500" /> Weekend Vibes
                       </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Family & gathering promos</p>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Sample weekend message only</p>
                     </button>
                   </div>
 
@@ -1591,7 +1591,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                         onChange={(e) => setFeaturedSocialItemId(e.target.value)}
                         className="w-full bg-surface-container-high border-none rounded-xl px-3.5 py-2.5 text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary outline-none"
                       >
-                        <option value="">General Store Online Ordering</option>
+                        <option value="">Sample Store Preview</option>
                         {storeMenuItems.map((item) => (
                           <option key={item.id} value={item.id}>
                             {item.name} (R{item.price})
@@ -1671,7 +1671,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                   <h3 className="font-extrabold text-base text-on-surface">SMS Customer Broadcast</h3>
                 </div>
                 <p className="text-xs text-on-surface-variant">
-                  Copy this standard single-credit SMS text message (under 160 characters) to send to your loyal customer phone list.
+                  Sample SMS text only. Sending is disabled; length and billing depend on the network, encoding and message content.
                 </p>
 
                 <div className="p-4 bg-surface-container-low rounded-2xl border border-outline-variant/15 space-y-2">
@@ -1709,9 +1709,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="w-10 h-10 rounded-2xl bg-orange-500/10 text-orange-500 flex items-center justify-center font-bold">
                   ⏰
                 </div>
-                <h3 className="font-extrabold text-base text-on-surface">1. The 11:30 AM Status Strategy</h3>
+                <h3 className="font-extrabold text-base text-on-surface">1. Test Lunch-Time Posting</h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Township and office workers decide what to eat for lunch between 11:30 and 12:00. Always post your daily special or Kota deal on WhatsApp Status at 11:30 AM sharp with your direct ordering link.
+                  Try different lunchtime posting times once your shop launches. Measure actual enquiries rather than assuming 11:30 works for every neighbourhood. Do not share inactive order links or unapproved discounts.
                 </p>
               </div>
 
@@ -1719,9 +1719,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="w-10 h-10 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center font-bold">
                   🛍️
                 </div>
-                <h3 className="font-extrabold text-base text-on-surface">2. Takeaway Bag QR Flyers</h3>
+                <h3 className="font-extrabold text-base text-on-surface">2. Takeaway Bag QR Flyers — Later</h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Print our A4 / small flyers and stick them on top of every takeaway box or brown paper bag. When walk-in customers get home, they will scan to order online next time!
+                  Draft QR flyers now if useful, but do not print or distribute them until the customer ordering flow is approved and the QR target has been tested.
                 </p>
               </div>
 
@@ -1729,9 +1729,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold">
                   💬
                 </div>
-                <h3 className="font-extrabold text-base text-on-surface">3. Community WhatsApp Groups</h3>
+                <h3 className="font-extrabold text-base text-on-surface">3. Community Groups — With Permission</h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Share your store link once a week in neighborhood business & community groups. Highlight that cash-on-arrival and local delivery riders are supported.
+                  After launch approval, share accurate collection-only information in community groups that allow business posts. Avoid unsolicited messages and never claim rider delivery is available.
                 </p>
               </div>
 
@@ -1739,9 +1739,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="w-10 h-10 rounded-2xl bg-purple-500/10 text-purple-500 flex items-center justify-center font-bold">
                   🎟️
                 </div>
-                <h3 className="font-extrabold text-base text-on-surface">4. First-Order Voucher Codes</h3>
+                <h3 className="font-extrabold text-base text-on-surface">4. Voucher Codes — Future Feature</h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Create a 10% discount coupon in your Campaign Builder (e.g. <code>FIRST10</code>) and mention it on your social media posts to encourage first-time online orders.
+                  Voucher codes shown in this Preview are examples only. Do not advertise or promise a discount until the checkout rules, approval process and redemption flow are verified.
                 </p>
                 <div className="flex items-center gap-3 pt-1">
                   <button
