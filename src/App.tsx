@@ -138,6 +138,7 @@ import {
   clearVerifiedShopOwnership,
 } from "./utils/shopOwnership";
 import { MerchantApi, MerchantApiError } from "./services/MerchantApi";
+import { createMerchantOrderReadCoordinator } from "./services/merchantOrderRecovery";
 import { fetchWithRetry } from "./utils/fetchWithRetry";
 
 function cn(...inputs: ClassValue[]) {
@@ -1067,25 +1068,51 @@ function App() {
     setOrders(combinedOrders);
   }, []);
 
+  // Orders are always read from the authenticated API. Keep only the current
+  // shop's verified rows, in component memory, never in browser storage.
+  const orderReadCoordinator = useRef(createMerchantOrderReadCoordinator<Record<string, unknown>>());
+  const orderReadShopId = currentShop?.id == null ? null : String(currentShop.id);
+  const orderReadScope = user && merchantShopGate.status === "ready" && orderReadShopId
+    ? `${user.id}:${orderReadShopId}` : null;
+  const [orderReadStatus,setOrderReadStatus] = useState<{
+    state:"unverified"|"fresh"|"failed";lastSuccessAt:number|null;
+  }>({state:"unverified",lastSuccessAt:null});
+
+  useEffect(()=>{
+    orderReadCoordinator.current.activate(orderReadScope);
+    setOrderReadStatus({state:"unverified",lastSuccessAt:null});
+    if(!orderReadScope)setOrders([]);
+    return ()=>orderReadCoordinator.current.activate(null);
+  },[orderReadScope]);
+
   const fetchOrders = useCallback(async () => {
-    if (!user || merchantShopGate.status !== "ready" || !currentShop) {
+    if (!orderReadScope || !orderReadShopId) {
       setOrders([]);
       return;
     }
 
-    try {
+    const result = await orderReadCoordinator.current.refresh(orderReadScope, async()=>{
       const data = await MerchantApi.getOrders();
-      const apiOrders = data.map((d: Record<string, unknown>) => ({
-          ...d,
-          id: String(d.id),
-          total_price: Number(d.total_price ?? d.price ?? 0),
-        })) as Order[];
-      processAndSetOrders([], apiOrders);
-    } catch (apiError) {
-      console.warn("[Orders Sync] Authoritative API unavailable:", apiError);
-      toast.error(apiError instanceof Error ? apiError.message : "Orders could not be refreshed. No cached order changes were applied.");
+      return data;
+    });
+    if (result.kind === "stale") return;
+    if (result.kind === "failed") {
+      // Keep the last verified rows visible, but clearly label them stale.
+      // Polling must not flood the merchant with a new toast every 15 seconds.
+      console.warn("[Orders Sync] Authoritative API unavailable:", result.error);
+      setOrderReadStatus(previous => ({...previous,state:"failed"}));
+      return;
     }
-  }, [user, shops, processAndSetOrders, merchantShopGate.status, currentShop]);
+    const apiOrders = result.rows
+      .filter(d=>String(d.shop_id)===orderReadShopId)
+      .map((d: Record<string, unknown>) => ({
+        ...d,
+        id: String(d.id),
+        total_price: Number(d.total_price ?? d.price ?? 0),
+      })) as Order[];
+    processAndSetOrders([], apiOrders);
+    setOrderReadStatus({state:"fresh",lastSuccessAt:Date.now()});
+  }, [orderReadScope,orderReadShopId,processAndSetOrders]);
 
   const menuReadRequest = useRef(0);
   useEffect(()=>{const refresh=()=>{void fetchOrders();};window.addEventListener("merchant-pickup-order-confirmed",refresh);return()=>window.removeEventListener("merchant-pickup-order-confirmed",refresh);},[fetchOrders]);
@@ -1130,17 +1157,26 @@ function App() {
     operationalReady: merchantShopGate.status === "ready" && Boolean(currentShop),
   });
 
-  // Orders are read from the authoritative LocalEats API. Polling avoids treating
-  // either Firestore or a frontend Supabase adapter as a competing order source.
+  // Polling is a recovery mechanism, not an alternative order authority.
+  // Read only while the app is visible/online, and reconcile on focus or
+  // visibility return. The coordinator coalesces overlapping triggers.
   useEffect(() => {
-    if (merchantShopGate.status !== "ready" || !currentShop || !user || shops.length === 0) return;
-    void fetchOrders();
-    const pollingInterval = setInterval(() => void fetchOrders(), 15000);
-
+    if (!orderReadScope) return;
+    const refreshVisibleOrders = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) void fetchOrders();
+    };
+    refreshVisibleOrders();
+    const pollingInterval = setInterval(refreshVisibleOrders, 15000);
+    window.addEventListener("focus", refreshVisibleOrders);
+    document.addEventListener("visibilitychange", refreshVisibleOrders);
+    window.addEventListener("online", refreshVisibleOrders);
     return () => {
       clearInterval(pollingInterval);
+      window.removeEventListener("focus", refreshVisibleOrders);
+      document.removeEventListener("visibilitychange", refreshVisibleOrders);
+      window.removeEventListener("online", refreshVisibleOrders);
     };
-  }, [user, shops, fetchOrders, merchantShopGate.status, currentShop]);
+  }, [orderReadScope,fetchOrders]);
 
   const deleteAllOrders = async () => {
     if (!user) return;
@@ -2279,6 +2315,13 @@ function App() {
                 />
               )}
               {activeTab === "orders" && (
+                <>
+                  {orderReadStatus.state === "failed" && (
+                    <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                      <span>Order list could not be verified. It may be out of date; do not assume there are no new orders. {orderReadStatus.lastSuccessAt ? `Last confirmed sync: ${new Date(orderReadStatus.lastSuccessAt).toLocaleTimeString()}.` : "No confirmed order sync yet."}</span>
+                      <button type="button" className="rounded-lg border border-current px-3 py-2 font-bold" onClick={() => void fetchOrders()}>Retry order sync</button>
+                    </div>
+                  )}
                 <OrdersManagement
                   orders={orders}
                   onUpdateStatus={updateOrderStatus}
@@ -2305,6 +2348,7 @@ function App() {
                   retryQueuedPrintDirect={retryQueuedPrintDirect}
                   clearPrintQueue={clearPrintQueue}
                 />
+                </>
               )}
               {activeTab === "marketing" && (
                 <Marketing
