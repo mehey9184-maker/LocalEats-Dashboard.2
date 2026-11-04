@@ -65,7 +65,7 @@ test("a failed request can retry without fabricated success or offline writes",a
  reader.activate("merchant-1:shop-a");
  const failed=await reader.refresh("merchant-1:shop-a",async()=>{throw Error("Synthetic 503");});
  assert.equal(failed.kind,"failed");
- assert.match(String(failed.error),"Synthetic 503");
+ assert.match(String(failed.error),/Synthetic 503/);
  const invalid=await reader.refresh("merchant-1:shop-a",async()=>({orders:[]})); // wrong payload
  assert.equal(invalid.kind,"failed");
  const success=await reader.refresh("merchant-1:shop-a",async()=>[]);
