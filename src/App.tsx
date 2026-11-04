@@ -2445,6 +2445,17 @@ function App() {
                          {category.label}
                        </button>
                      ))}
+                     {merchantStorefrontPreviewOnly() && currentShop && settingsCategory === "storefront" && (
+                       <button
+                         type="button"
+                         onClick={() => setActiveTab("storefront")}
+                         className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-colors text-primary bg-primary/5 hover:bg-primary/10 border border-primary/15"
+                         title="Inspect shop profile without saving or changing availability"
+                       >
+                         <Store size={18} />
+                         View Storefront Preview
+                       </button>
+                     )}
                   </nav>
 
                   {/* Settings Content Panels */}
