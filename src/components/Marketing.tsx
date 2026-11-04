@@ -1074,6 +1074,7 @@ export const Marketing: React.FC<MarketingProps> = ({
             <CustomerReEngagement
               activeShop={activeShop}
               orders={publishingEnabled ? orders : []}
+              previewOnly={!publishingEnabled}
               menuItems={storeMenuItems}
               storeUrl={publishingEnabled ? storeUrl : "https://example.invalid/localeats-marketing-preview"}
             />
