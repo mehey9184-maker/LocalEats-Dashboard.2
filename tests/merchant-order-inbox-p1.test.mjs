@@ -102,3 +102,10 @@ test("a failed authoritative read shows an explicit warning and manual Retry, no
  assert.doesNotMatch(app,/localStorage\.setItem\(["']localeats_cached_orders/);
  assert.match(app,/setOrders\(combinedOrders\)/);
 });
+
+
+test("changing verified shop clears prior orders before paint, including failed refresh",()=>{
+ assert.match(app,/useLayoutEffect\(\(\)=>\{/);
+ assert.match(app,/orderReadCoordinator\.current\.activate\(orderReadScope\);\s*setOrders\(\[\]\);/);
+ assert.match(app,/\},\[orderReadScope\]\);/);
+});
