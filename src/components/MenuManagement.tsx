@@ -768,7 +768,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             disabled={menuWritesUnavailable()}
             title="Adding menu items is unavailable in this Preview"
             onClick={handleAdd}
-            className="flex-1 sm:flex-none px-4 py-2.5 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="merchant-tap-feedback flex-1 sm:flex-none px-4 py-2.5 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus size={16} />
             <span>Add New Item</span>
@@ -798,7 +798,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
               key={shop.id}
               onClick={() => selectMenuShop(shop.id)}
               className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5",
+                "merchant-tap-feedback px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5",
                 String(selectedShopId) === String(shop.id)
                   ? "bg-primary text-on-primary shadow-xs"
                   : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
@@ -1135,7 +1135,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
              <button
                 type="submit"
                 disabled={isSaving || menuWritesUnavailable()}
-                className="px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-xl hover:bg-primary/90 cursor-pointer disabled:opacity-70 flex items-center gap-2"
+                className="merchant-tap-feedback px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-xl hover:bg-primary/90 cursor-pointer disabled:opacity-70 flex items-center gap-2"
              >
                 {isSaving ? (
                   <>
