@@ -2963,18 +2963,20 @@ function App() {
                     {settingsCategory === "delivery" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">Delivery & Logistics Settings</h3>
+                        <p role="status" className="text-xs text-on-surface-variant bg-surface-container-low border border-outline-variant/15 rounded-2xl p-3">{merchantSettingsS3DeliveryNotice()}</p>
 
                         {/* Location Sync & Boundary Alignment Indicator */}
                         {currentShop && (
                           <LocationSyncIndicator
+                            previewOnly={!merchantSettingsS3WritesEnabled()}
                             locationState={currentShopLocation}
                             syncAnalysis={currentShopLocationSync}
                             isLocating={isLocatingShopGPS}
                             isSaving={isSavingShopLocation}
-                            onDetectGPS={detectShopGPS}
-                            onAutoAlign={autoAlignShopCity}
-                            onSave={() => saveShopLocationSettings()}
-                            onOpenStorefrontMap={() => setActiveTab("storefront")}
+                            onDetectGPS={merchantSettingsS3WritesEnabled() ? detectShopGPS : undefined}
+                            onAutoAlign={merchantSettingsS3WritesEnabled() ? autoAlignShopCity : undefined}
+                            onSave={merchantSettingsS3WritesEnabled() ? () => saveShopLocationSettings() : undefined}
+                            onOpenStorefrontMap={merchantSettingsS3WritesEnabled() ? () => setActiveTab("storefront") : undefined}
                           />
                         )}
 
@@ -2986,7 +2988,7 @@ function App() {
                         <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Delivery Logistics</h3>
                       </div>
                       <span className="text-[10px] font-black uppercase tracking-widest text-primary bg-primary/10 px-2.5 py-1 rounded-full">
-                        Live Radius Engine
+                        Delivery Deferred
                       </span>
                     </div>
 
@@ -2997,18 +2999,19 @@ function App() {
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-sm text-on-surface">Enforce Maximum Delivery Radius</span>
                             {deliverySettings.radiusEnabled ? (
-                              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded">Active</span>
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded">Example Only</span>
                             ) : (
-                              <span className="text-[10px] font-black uppercase tracking-wider bg-surface-container-highest text-on-surface-variant/70 px-2 py-0.5 rounded">Disabled</span>
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-surface-container-highest text-on-surface-variant/70 px-2 py-0.5 rounded">Not Configured</span>
                             )}
                           </div>
                           <p className="text-xs text-on-surface-variant leading-relaxed">
-                            Restrict incoming orders to customers within a specific straight-line distance (KM) from your shop pin to preserve food freshness and delivery speeds.
+                            Example radius control only. A number shown here does not enable delivery, limit real customer ordering or verify a delivery zone.
                           </p>
                         </div>
                         <button
                           type="button"
-                          onClick={() => setDeliverySettings({ ...deliverySettings, radiusEnabled: !deliverySettings.radiusEnabled })}
+                          disabled={!merchantSettingsS3WritesEnabled()}
+                          onClick={() => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({ ...deliverySettings, radiusEnabled: !deliverySettings.radiusEnabled });}}
                           className={cn(
                             "w-12 h-6 rounded-full transition-all relative shrink-0",
                             deliverySettings.radiusEnabled ? "bg-primary" : "bg-surface-container-highest border border-outline-variant/30"
@@ -3032,25 +3035,27 @@ function App() {
                             <div className="flex items-center gap-2">
                               <input
                                 type="number"
+                           disabled={!merchantSettingsS3WritesEnabled()}
                                 min="1"
                                 max="50"
                                 value={deliverySettings.maxDistanceKm}
-                                onChange={(e) => setDeliverySettings({ ...deliverySettings, maxDistanceKm: Math.max(1, Number(e.target.value)) })}
+                                onChange={(e) => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({ ...deliverySettings, maxDistanceKm: Math.max(1, Number(e.target.value)) });}}
                                 className="w-16 text-right text-xs font-black text-primary font-mono bg-surface-container-high border border-outline-variant/20 rounded-lg px-2 py-1 focus:outline-none focus:border-primary"
                               />
                               <span className="text-xs font-bold text-on-surface-variant">KM</span>
                             </div>
                           </div>
                           <input 
-                            type="range" 
+                            type="range"
+                            disabled={!merchantSettingsS3WritesEnabled()} 
                             min="1" 
                             max="30" 
                             value={deliverySettings.maxDistanceKm}
-                            onChange={(e) => setDeliverySettings({ ...deliverySettings, maxDistanceKm: Number(e.target.value) })}
+                            onChange={(e) => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({ ...deliverySettings, maxDistanceKm: Number(e.target.value) });}}
                             className="w-full accent-primary h-2 bg-outline-variant/20 rounded-lg appearance-none cursor-pointer"
                           />
                           <p className="text-[11px] font-medium text-on-surface-variant/70 italic">
-                            Map view in Storefront Profile will display a {deliverySettings.maxDistanceKm} KM circular boundary overlay.
+                            Example: {deliverySettings.maxDistanceKm} KM shown here is not a live service or collection radius.
                           </p>
                         </div>
                       )}
@@ -3066,7 +3071,8 @@ function App() {
                             <button
                               key={type}
                               type="button"
-                              onClick={() => setDeliverySettings({...deliverySettings, type})}
+                              disabled={!merchantSettingsS3WritesEnabled()}
+                              onClick={() => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({...deliverySettings, type});}}
                               className={cn(
                                 "flex-1 px-4 py-2 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all",
                                 deliverySettings.type === type ? "bg-primary text-on-primary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-highest"
@@ -3080,24 +3086,26 @@ function App() {
 
                       <div className="space-y-3">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                           {deliverySettings.type === "fixed" ? "Base Delivery Fee (R)" : "Rate Per KM (R)"}
+                           {deliverySettings.type === "fixed" ? "Example Delivery Fee (R) — Not Charged" : "Example Rate Per KM (R) — Not Charged"}
                          </label>
                          <input 
-                           type="number" 
+                           type="number"
+                           disabled={!merchantSettingsS3WritesEnabled()} 
                            value={deliverySettings.baseFee}
-                           onChange={(e) => setDeliverySettings({...deliverySettings, baseFee: Number(e.target.value)})}
+                           onChange={(e) => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({...deliverySettings, baseFee: Number(e.target.value)});}}
                            className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
                          />
                       </div>
 
                       <div className="space-y-3">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                           Free Delivery Threshold (R)
+                           Example Free-Delivery Threshold — Not Active (R)
                          </label>
                          <input 
-                           type="number" 
+                           type="number"
+                           disabled={!merchantSettingsS3WritesEnabled()} 
                            value={deliverySettings.freeDeliveryOver}
-                           onChange={(e) => setDeliverySettings({...deliverySettings, freeDeliveryOver: Number(e.target.value)})}
+                           onChange={(e) => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({...deliverySettings, freeDeliveryOver: Number(e.target.value)});}}
                            className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
                            placeholder="e.g. 300 (0 for no free delivery)"
                          />
@@ -3105,12 +3113,13 @@ function App() {
 
                       <div className="space-y-3">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                           Minimum Order Amount (R)
+                           Example Delivery Minimum — Not Enforced (R)
                          </label>
                          <input 
-                           type="number" 
+                           type="number"
+                           disabled={!merchantSettingsS3WritesEnabled()} 
                            value={deliverySettings.minOrderAmount}
-                           onChange={(e) => setDeliverySettings({...deliverySettings, minOrderAmount: Number(e.target.value)})}
+                           onChange={(e) => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({...deliverySettings, minOrderAmount: Number(e.target.value)});}}
                            className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
                            placeholder="e.g. 50"
                          />
@@ -3120,7 +3129,9 @@ function App() {
                     <div className="pt-4 border-t border-outline-variant/10 flex justify-end">
                       <button
                         type="button"
+                        disabled={!merchantSettingsS3WritesEnabled()}
                         onClick={async () => {
+                          if(!merchantSettingsS3WritesEnabled()) return;
                           if (!currentShop?.id) {
                             toast.error("No active shop found to save delivery settings.");
                             return;
@@ -3178,7 +3189,7 @@ function App() {
                         }}
                         className="px-6 py-2.5 bg-primary text-on-primary font-bold text-xs uppercase tracking-wider rounded-xl shadow-md active:scale-95 transition-all hover:bg-primary/90"
                       >
-                        Save Delivery Settings
+                        Save Delivery — Unavailable
                       </button>
                     </div>
 
