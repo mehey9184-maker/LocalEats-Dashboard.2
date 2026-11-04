@@ -11,13 +11,15 @@ test("merchant marketing cannot claim publishing or enable campaign tools in pic
  assert.match(marketing,/const publishingEnabled = merchantMarketingPublishingEnabled\(\)/);
  assert.match(marketing,/if\(!publishingEnabled\) return;/);
  assert.match(marketing,/disabled=\{!publishingEnabled\}/);
- assert.match(marketing,/publishingEnabled && mainSegment === "campaign_builder"/);
- assert.match(marketing,/publishingEnabled && mainSegment === "tool_library"/);
+ assert.match(marketing,/mainSegment === "campaign_builder" && \(/);
+ assert.match(marketing,/mainSegment === "tool_library" && \(/);
+ assert.match(marketing,/ReadOnlyMarketingPreview/);
+ assert.match(marketing,/locked=\{!publishingEnabled\}/);
  assert.match(marketing,/Marketing Preview only/);
  assert.match(marketing,/QR Preview Only — Not for Distribution/);
  assert.match(marketing,/title="QR export is unavailable before launch"/);
  assert.doesNotMatch(marketing,/● Live & Accepting Orders|Your Live Online Storefront|Instant Scan to Order/);
- // The tool-library export path is inaccessible while publishing remains locked.
+ // Tool previews can be inspected, but exported links stay inert while publishing is locked.
 });
 
 test("no phantom 75%-of-orders diner estimates or unsafe name-based merges",()=>{
