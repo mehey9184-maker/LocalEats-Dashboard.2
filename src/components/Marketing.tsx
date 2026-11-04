@@ -32,6 +32,7 @@ import { isShopOwnedByUser } from "../utils/shopOwnership";
 import {merchantMarketingPublishingEnabled,verifiedMarketingStats} from "../services/merchantMarketingTrust";
 import type { User } from "@supabase/supabase-js";
 import { CampaignBuilder } from "./CampaignBuilder";
+import { ReadOnlyMarketingPreview } from "./marketing/ReadOnlyMarketingPreview";
 import { CustomerReEngagement } from "./marketing/CustomerReEngagement";
 import { FlashDealsStudio } from "./marketing/FlashDealsStudio";
 import { TableTentGenerator } from "./marketing/TableTentGenerator";
@@ -112,6 +113,17 @@ export const Marketing: React.FC<MarketingProps> = ({
     () => verifiedMarketingStats(orders, activeShop?.id, ordersReadState),
     [orders, activeShop?.id, ordersReadState]
   );
+
+  const previewToolDescriptions:Record<ToolSubTab,string> = {
+    direct_reach:"Customer lists are excluded from this preview; outreach needs consent and verified customer data.",
+    flash_deals:"Example deal prices only; no discount, timer or campaign is active.",
+    table_tents:"Dine-in table ordering is not part of the pickup pilot; QR codes use non-operational demo links.",
+    qr_stands:"QR stands and printed customer ordering links are not approved for distribution.",
+    whatsapp:"WhatsApp campaign templates are examples; they do not send or copy messages.",
+    social_studio:"Social graphics are examples; no post or offer may be published.",
+    sms:"SMS content is a mockup; no customer broadcast is permitted.",
+    playbook:"Growth advice is not a verified result and cannot activate a promotion.",
+  };
 
   // Quick Action Switchers
   const handleLaunchQuickAction = (tool: ToolSubTab) => {
@@ -595,9 +607,8 @@ export const Marketing: React.FC<MarketingProps> = ({
         {/* Segment 2: Campaign Builder */}
         <button
           type="button"
-          disabled={!publishingEnabled}
-          title="Campaign building is unavailable before launch"
-          onClick={() => { if(publishingEnabled) setMainSegment("campaign_builder"); }}
+          title="Inspect Campaign Builder layout (read-only)"
+          onClick={() => setMainSegment("campaign_builder")}
           className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
             mainSegment === "campaign_builder"
               ? "bg-primary text-on-primary shadow-sm"
@@ -611,9 +622,8 @@ export const Marketing: React.FC<MarketingProps> = ({
         {/* Segment 3: Tool Library */}
         <button
           type="button"
-          disabled={!publishingEnabled}
-          title="Marketing tools are not activated in this Preview"
-          onClick={() => { if(publishingEnabled) setMainSegment("tool_library"); }}
+          title="Inspect Tool Library layouts (read-only)"
+          onClick={() => setMainSegment("tool_library")}
           className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
             mainSegment === "tool_library"
               ? "bg-primary text-on-primary shadow-sm"
@@ -937,18 +947,23 @@ export const Marketing: React.FC<MarketingProps> = ({
       {/* ========================================================================= */}
       {/* SEGMENT 2: CAMPAIGN BUILDER (DEDICATED INTERACTIVE CAMPAIGN & VOUCHERS)   */}
       {/* ========================================================================= */}
-      {publishingEnabled && mainSegment === "campaign_builder" && (
-        <CampaignBuilder
-          activeShop={activeShop}
-          storeMenuItems={storeMenuItems}
-          storeUrl={storeUrl}
-        />
+      {mainSegment === "campaign_builder" && (
+        <ReadOnlyMarketingPreview
+          locked={!publishingEnabled}
+          description="Campaign Builder: sample coupons, audience rules and push designs are not published or linked to checkout.">
+          <CampaignBuilder
+            activeShop={activeShop}
+            storeMenuItems={storeMenuItems}
+            storeUrl={publishingEnabled ? storeUrl : "https://example.invalid/localeats-marketing-preview"}
+            previewOnly={!publishingEnabled}
+          />
+        </ReadOnlyMarketingPreview>
       )}
 
       {/* ========================================================================= */}
       {/* SEGMENT 3: TOOL LIBRARY (CATEGORIZED TOOL SUITE)                          */}
       {/* ========================================================================= */}
-      {publishingEnabled && mainSegment === "tool_library" && (
+      {mainSegment === "tool_library" && (
         <div className="space-y-6">
           {/* Sub-Navigation for Tool Library */}
           <div className="flex items-center gap-1.5 p-1.5 bg-surface-container-lowest rounded-2xl border border-outline-variant/15 overflow-x-auto shadow-xs">
@@ -1049,15 +1064,16 @@ export const Marketing: React.FC<MarketingProps> = ({
             </button>
           </div>
 
-          {/* ACTIVE TOOL RENDERING */}
+          {/* ACTIVE TOOL RENDERING — visual-only until separately approved */}
+          <ReadOnlyMarketingPreview locked={!publishingEnabled} description={previewToolDescriptions[activeTool]}>
 
           {/* Tool 1: Direct Customer Reach & Diners */}
           {activeTool === "direct_reach" && (
             <CustomerReEngagement
               activeShop={activeShop}
-              orders={orders}
+              orders={publishingEnabled ? orders : []}
               menuItems={storeMenuItems}
-              storeUrl={storeUrl}
+              storeUrl={publishingEnabled ? storeUrl : "https://example.invalid/localeats-marketing-preview"}
             />
           )}
 
@@ -1066,7 +1082,8 @@ export const Marketing: React.FC<MarketingProps> = ({
             <FlashDealsStudio
               activeShop={activeShop}
               menuItems={storeMenuItems}
-              storeUrl={storeUrl}
+              storeUrl={publishingEnabled ? storeUrl : "https://example.invalid/localeats-marketing-preview"}
+              previewOnly={!publishingEnabled}
             />
           )}
 
@@ -1074,7 +1091,8 @@ export const Marketing: React.FC<MarketingProps> = ({
           {activeTool === "table_tents" && (
             <TableTentGenerator
               activeShop={activeShop}
-              storeUrl={storeUrl}
+              storeUrl={publishingEnabled ? storeUrl : "https://example.invalid/localeats-marketing-preview"}
+              previewOnly={!publishingEnabled}
             />
           )}
 
@@ -1743,6 +1761,7 @@ export const Marketing: React.FC<MarketingProps> = ({
               </div>
             </div>
           )}
+          </ReadOnlyMarketingPreview>
         </div>
       )}
     </div>
