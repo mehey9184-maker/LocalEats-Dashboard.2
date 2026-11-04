@@ -1,8 +1,7 @@
 import {MerchantApi} from "../services/MerchantApi";
-import {menuWritesUnavailable} from "../services/merchantMenuPolicy";
+import {menuWritesUnavailable,merchantMenuStockLabel,merchantMenuLowStock,merchantMenuOutOfStock,merchantMenuCategoryName,merchantMenuCategories,merchantMenuMatchesCategory,merchantMenuFiltersActive,MERCHANT_MENU_PAGE_SIZE,merchantMenuNextVisibleCount} from "../services/merchantMenuPolicy";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Fuse from "fuse.js";
-import { List } from "react-window";
 import {
   Plus,
   Sparkles,
@@ -30,11 +29,9 @@ import { useAuthGuard } from "../hooks/useAuthGuard";
 import { cn } from "../lib/utils";
 import { uploadImageToCloudinary, getOptimizedCloudinaryUrl } from "../lib/cloudinary";
 import AIMenuScannerModal from "./AIMenuScannerModal";
+import { OperationFeedback } from "./ui/OperationFeedback";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
 
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const VirtualizedList = List as any;
 
 export const DIETARY_TAGS = [
   "Halal",
@@ -59,6 +56,24 @@ const isPlaceholderImage = (url?: string) => {
     url.includes("placeholder.com") ||
     url.includes("via.placeholder") ||
     url.includes("food-placeholder")
+  );
+};
+
+const MenuItemPhoto: React.FC<{imageUrl?:string;name:string;available:boolean}> = ({imageUrl,name,available}) => {
+  const [failed,setFailed]=useState(false);
+  if(failed || isPlaceholderImage(imageUrl))return <FoodPlaceholder size={44} />;
+  return (
+    <img
+      className={cn(
+        "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500",
+        !available && "grayscale opacity-50"
+      )}
+      src={getOptimizedCloudinaryUrl(imageUrl)}
+      alt={name}
+      loading="lazy"
+      decoding="async"
+      onError={()=>setFailed(true)}
+    />
   );
 };
 
@@ -184,15 +199,15 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     return found ? found.id : "all";
   });
 
-  // Ensure selectedShopId stays valid if shops change, but don't reset manual user selections
+  // API reads one verified shop at a time. Never treat a saved "all"
+  // selection as authoritative combined inventory.
   useEffect(() => {
-    if (selectedShopId !== "all") {
-      const exists = userOwnedShops.some((s) => String(s.id) === String(selectedShopId));
-      if (!exists && userOwnedShops.length > 0) {
-        setSelectedShopId(userOwnedShops[0].id);
-      } else if (!exists) {
-        setSelectedShopId("all");
-      }
+    const exists = selectedShopId !== "all" &&
+      userOwnedShops.some(shop => String(shop.id) === String(selectedShopId));
+    if (!exists && userOwnedShops.length > 0) {
+      setSelectedShopId(userOwnedShops[0].id);
+    } else if (!exists && selectedShopId !== "all") {
+      setSelectedShopId("all");
     }
   }, [selectedShopId, userOwnedShops]);
 
@@ -210,6 +225,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState("All");
   const [selectedItems, setSelectedItems] = useState<(number | string)[]>([]);
+  const [visibleCount,setVisibleCount] = useState(MERCHANT_MENU_PAGE_SIZE);
+  useEffect(() => { setVisibleCount(MERCHANT_MENU_PAGE_SIZE); }, [selectedShopId,searchTerm,filterCategory]);
 
   const [isAiScannerOpen, setIsAiScannerOpen] = useState(false);
   const [editingPriceId, setEditingPriceId] = useState<number | string | null>(null);
@@ -229,6 +246,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [menuSaveError, setMenuSaveError] = useState("");
 
   // Clean up object URL when component unmounts or image changes
   useEffect(() => {
@@ -290,40 +308,45 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     }
 
     return source.filter((item) => {
-      const matchesCategory = filterCategory === "All" || item.category === filterCategory;
+      const matchesCategory = merchantMenuMatchesCategory(item.category,filterCategory);
       return matchesCategory;
     });
   }, [items, searchTerm, fuseIndex, filterCategory]);
 
-  const categories = useMemo(() => {
-    const defaultCats = [
-      "All",
-      "Breakfast Menu",
-      "Eggs Menu",
-      "Toast Bread",
-      "Sandwiches",
-      "Main Course",
-      "Appetizers",
-      "Desserts",
-      "Beverages",
-    ];
-    items.forEach((item) => {
-      if (item.category && !defaultCats.includes(item.category)) {
-        defaultCats.push(item.category);
-      }
-    });
-    return defaultCats;
-  }, [items]);
+  const categories = useMemo(() => merchantMenuCategories(items), [items]);
+  const hasActiveFilters = merchantMenuFiltersActive(searchTerm, filterCategory);
+
+  // Category chips belong to the current shop only. A stale category from a
+  // prior shop or refresh must not leave the new menu looking empty.
+  useEffect(() => {
+    if (filterCategory !== "All" && !categories.includes(filterCategory)) setFilterCategory("All");
+  }, [categories, filterCategory]);
+
+  const selectMenuShop = useCallback((shopId:string|number) => {
+    const verified = userOwnedShops.find(shop => String(shop.id) === String(shopId));
+    if (!verified) return;
+    setSelectedShopId(verified.id);
+    setSearchTerm("");
+    setFilterCategory("All");
+    setSelectedItems([]);
+    try {
+      localStorage.setItem("localeats_selected_menu_shop_id", String(verified.id));
+    } catch {
+      // Storage is optional. The selected shop still changes in memory.
+    }
+  }, [userOwnedShops]);
 
   const menuRequest = React.useRef(0);
   const fetchMenu = useCallback(async (_showLoadingSpinner = true) => {
     const request = ++menuRequest.current;
+    setVisibleCount(MERCHANT_MENU_PAGE_SIZE);
     setItems([]);
     setMenuError(null);
     setIsMenuLoading(true);
     try {
       const shop = selectedShopId === "all" ? userOwnedShops[0] : userOwnedShops.find(s => String(s.id) === String(selectedShopId));
-      const rows = shop ? await MerchantApi.getMenuItems(shop.id) : [];
+      if (!shop) throw new Error("No verified shop is available for this menu. Refresh your shop details.");
+      const rows = await MerchantApi.getMenuItems(shop.id);
       if (request === menuRequest.current) setItems(rows);
     } catch (error) {
       if (request === menuRequest.current) setMenuError(error instanceof Error ? error.message : "Unable to load menu.");
@@ -406,6 +429,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       return;
     }
 
+    setMenuSaveError("");
     setIsSaving(true);
     try {
       let finalImageUrl = editingItem ? (editingItem.image_url || null) : null;
@@ -417,6 +441,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
           finalImageUrl = await uploadImageToCloudinary(imageFile);
         } catch (uploadErr: unknown) {
           const errMsg = uploadErr instanceof Error ? uploadErr.message : "Failed to upload image to Cloudinary";
+          setMenuSaveError(errMsg);
           toast.error(errMsg);
           setIsSaving(false);
           setIsUploadingImage(false);
@@ -489,6 +514,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       setActiveMenuSection("list");
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
+      setMenuSaveError(errorMsg || "Unable to save the menu item.");
       toast.error(errorMsg || "Failed to save item");
     } finally {
       setIsSaving(false);
@@ -579,11 +605,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
   // Render Card Component for each item
   const renderItemCard = (item: MenuItem) => {
-    const isLowStock =
-      item.stock_quantity !== null &&
-      item.stock_quantity !== undefined &&
-      item.stock_quantity !== -1 &&
-      (item.stock_quantity || 0) < 5;
+    const isLowStock = merchantMenuLowStock(item.stock_quantity);
 
 
     return (
@@ -599,9 +621,13 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         )}
       >
         <button
+          type="button"
+          disabled={menuWritesUnavailable()}
+          title="Bulk menu actions are unavailable in this Preview"
+          aria-label={`Select ${item.name} (unavailable)`}
           onClick={() => toggleSelectItem(item.id)}
           className={cn(
-            "absolute top-3 left-3 z-20 p-2 rounded-xl transition-all shadow-lg cursor-pointer",
+            "absolute top-3 left-3 z-20 p-2 rounded-xl transition-all shadow-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
             selectedItems.includes(item.id)
               ? "bg-primary text-on-primary scale-110"
               : "bg-surface-container-highest/60 text-on-surface-variant backdrop-blur-md border border-outline-variant/10"
@@ -611,21 +637,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         </button>
 
         <div className="relative h-36 bg-surface-container rounded-xl flex items-center justify-center overflow-hidden shrink-0">
-          {!isPlaceholderImage(item.image_url) ? (
-            <img
-              className={cn(
-                "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500",
-                !item.is_available && "grayscale opacity-50"
-              )}
-              src={getOptimizedCloudinaryUrl(item.image_url)}
-              alt={item.name}
-              loading="lazy"
-              decoding="async"
-            />
-          ) : (
-            <FoodPlaceholder size={44} />
-          )}
-          {(!item.is_available || item.stock_quantity === 0) && (
+          <MenuItemPhoto key={`${item.id}:${item.image_url ?? ""}`} imageUrl={item.image_url} name={item.name} available={item.is_available} />
+          {(!item.is_available || merchantMenuOutOfStock(item.stock_quantity)) && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-xs">
               <span className="bg-error text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg">
                 {!item.is_available ? "Unavailable" : "Out of Stock"}
@@ -647,10 +660,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                 autoFocus
               />
             ) : (
-              <span
-                onClick={() => setEditingPriceId(item.id)}
-                className="cursor-pointer font-bold hover:scale-105 transition-all"
-              >
+              <span className="font-bold" title="Prices are read-only in this Preview">
                 R {Number(item.price || 0).toFixed(2)}
               </span>
             )}
@@ -661,18 +671,21 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
           <div>
             <div className="flex items-center justify-between gap-2 mb-1">
               <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">
-                {item.category || "General"}
+                {merchantMenuCategoryName(item.category)}
               </span>
               <button
+                type="button"
+                disabled={menuWritesUnavailable()}
+                title="Availability changes are unavailable until menu editing is activated"
                 onClick={() => toggleAvailability(item)}
                 className={cn(
-                  "text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider cursor-pointer transition-colors",
+                  "text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider cursor-pointer transition-colors disabled:cursor-not-allowed",
                   item.is_available
                     ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25"
                     : "bg-zinc-500/15 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-500/25"
                 )}
               >
-                {item.is_available ? "Available" : "Hidden"}
+                {item.is_available ? "Available" : "Unavailable"}
               </button>
             </div>
 
@@ -705,13 +718,16 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
           <div className="flex items-center justify-between pt-2 border-t border-outline-variant/10">
             <button
+              type="button"
+              disabled={menuWritesUnavailable()}
+              title="Menu editing is not activated in this Preview"
               onClick={() => handleEdit(item)}
-              className="text-xs font-bold text-primary hover:underline cursor-pointer"
+              className="text-xs font-bold text-primary hover:underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Edit Item
             </button>
             <span className="text-[10px] font-mono font-bold text-on-surface-variant">
-              Stock: {item.stock_quantity === null || item.stock_quantity === -1 ? "∞" : item.stock_quantity}
+              {merchantMenuStockLabel(item.stock_quantity)}
             </span>
           </div>
         </div>
@@ -719,17 +735,10 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     );
   };
 
-  // 3. REACT-WINDOW VIRTUALIZED LIST ROW RENDERER
-  const VirtualRow = ({ index, style }: { index: number; style: React.CSSProperties }) => {
-    const item = filteredItems[index];
-    if (!item) return null;
-    return <div style={style}>{renderItemCard(item)}</div>;
-  };
-
   return (
     <div className="w-full space-y-6">
-      <p className="text-xs text-on-surface-variant" role="status">Menu is read-only. Editing and import are unavailable until authoritative menu editing is supported. No changes will be saved.</p>
-      {menuError && <p role="alert" className="text-sm text-red-600">{menuError}</p>}
+      <p className="text-xs text-on-surface-variant" role="status">Menu is read-only in this Preview. You can view and search items, but adding, editing, stock updates and import are unavailable. No changes will be saved.</p>
+      {/* Failed reads have a dedicated retry state below, not an empty-menu claim. */}
       {/* Background Revalidating Indicator */}
       {isBackgroundSyncing && (
         <div className="flex items-center justify-between p-2.5 px-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs font-bold animate-pulse">
@@ -737,7 +746,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             <RotateCw size={14} className="animate-spin text-emerald-600" />
             <span>Syncing latest menu data in background...</span>
           </div>
-          <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full uppercase">SWR Active</span>
+          <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full uppercase">Refreshing</span>
         </div>
       )}
 
@@ -746,24 +755,29 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         <div>
           <h2 className="text-xl font-extrabold text-on-surface flex items-center gap-2">
             <UtensilsCrossed size={22} className="text-primary" />
-            <span>Menu & Inventory Management</span>
+            <span>Menu Management</span>
           </h2>
           <p className="text-xs text-on-surface-variant mt-1">
-            Manage your food items, instant stock, prices, and dietary flags.
+            View your verified menu items, availability and prices. Editing is not activated.
           </p>
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
+            type="button"
+            disabled={menuWritesUnavailable()}
+            title="Adding menu items is unavailable in this Preview"
             onClick={handleAdd}
-            className="flex-1 sm:flex-none px-4 py-2.5 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer"
+            className="merchant-tap-feedback flex-1 sm:flex-none px-4 py-2.5 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus size={16} />
             <span>Add New Item</span>
           </button>
           <button
-            onClick={() => toast.error("Menu import is unavailable. No change was saved.")}
-            className="px-4 py-2.5 rounded-2xl bg-surface-container-high text-on-surface text-xs font-bold flex items-center gap-2 hover:bg-surface-container-highest transition-all cursor-pointer border border-outline-variant/20"
+            type="button"
+            disabled
+            title="Menu scanning and import are not yet available"
+            className="px-4 py-2.5 rounded-2xl bg-surface-container-high text-on-surface text-xs font-bold flex items-center gap-2 hover:bg-surface-container-highest transition-all cursor-pointer border border-outline-variant/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles size={16} className="text-amber-500" />
             <span className="hidden md:inline">Scan Menu PDF/Image</span>
@@ -778,37 +792,13 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             <Store size={14} className="text-primary" />
             <span>Store Filter:</span>
           </div>
-          <button
-            onClick={() => {
-              setSelectedShopId("all");
-              try {
-                localStorage.setItem("localeats_selected_menu_shop_id", "all");
-              } catch {
-                // ignore
-              }
-            }}
-            className={cn(
-              "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer",
-              selectedShopId === "all"
-                ? "bg-primary text-on-primary shadow-xs"
-                : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-            )}
-          >
-            All My Stores ({items.length})
-          </button>
+          {/* No combined inventory: the API verifies one merchant shop per menu read. */}
           {userOwnedShops.map((shop) => (
             <button
               key={shop.id}
-              onClick={() => {
-                setSelectedShopId(shop.id);
-                try {
-                  localStorage.setItem("localeats_selected_menu_shop_id", String(shop.id));
-                } catch {
-                  // ignore
-                }
-              }}
+              onClick={() => selectMenuShop(shop.id)}
               className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5",
+                "merchant-tap-feedback px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5",
                 String(selectedShopId) === String(shop.id)
                   ? "bg-primary text-on-primary shadow-xs"
                   : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
@@ -832,12 +822,13 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Instant Fuse.js Search by item name, ingredient, tag or category..."
+                aria-label="Search this shop's menu"
+                placeholder="Search menu items by name, description or category..."
                 className="w-full pl-10 pr-4 py-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 text-xs font-medium text-on-surface outline-none focus:ring-2 focus:ring-primary/40"
               />
               {searchTerm && (
                 <span className="absolute right-3.5 top-3.5 text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                  Fuse Indexed
+                  Search active
                 </span>
               )}
             </div>
@@ -846,7 +837,9 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
               {categories.map((cat) => (
                 <button
+                  type="button"
                   key={cat}
+                  aria-pressed={filterCategory === cat}
                   onClick={() => setFilterCategory(cat)}
                   className={cn(
                     "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer",
@@ -864,12 +857,15 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
           {/* Item Count and Bulk Actions Bar */}
           <div className="flex items-center justify-between px-2">
             <span className="text-xs font-bold text-on-surface-variant">
-              Showing {filteredItems.length} of {items.length} items
+              Showing {Math.min(visibleCount, filteredItems.length)} of {filteredItems.length} items{hasActiveFilters ? ` matching filters (${items.length} total)` : ""}
             </span>
             {filteredItems.length > 0 && (
               <button
+                type="button"
+                disabled={menuWritesUnavailable()}
+                title="Bulk menu actions are unavailable in this Preview"
                 onClick={handleSelectAll}
-                className="text-xs font-bold text-primary hover:underline cursor-pointer"
+                className="text-xs font-bold text-primary hover:underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {selectedItems.length === filteredItems.length ? "Deselect All" : "Select All"}
               </button>
@@ -882,49 +878,40 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
               <RotateCw size={32} className="animate-spin text-primary mx-auto" />
               <p className="text-xs font-bold text-on-surface-variant">Loading menu inventory...</p>
             </div>
+          ) : menuError ? (
+            <div className="py-16 text-center space-y-3 bg-surface-container-lowest rounded-3xl border border-outline-variant/15 p-6" role="alert">
+              <UtensilsCrossed size={40} className="text-on-surface-variant/40 mx-auto" />
+              <h3 className="font-extrabold text-base text-on-surface">Menu could not be loaded</h3>
+              <p className="text-xs text-on-surface-variant max-w-sm mx-auto">{menuError}</p>
+              <button type="button" onClick={() => void fetchMenu()} className="px-4 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold hover:bg-primary/90">Retry loading menu</button>
+            </div>
           ) : filteredItems.length === 0 ? (
             <div className="py-16 text-center space-y-3 bg-surface-container-lowest rounded-3xl border border-outline-variant/15 p-6">
               <UtensilsCrossed size={40} className="text-on-surface-variant/40 mx-auto" />
               <h3 className="font-extrabold text-base text-on-surface">
-                {searchTerm
-                  ? "No matching menu items"
-                  : selectedShopId === "all"
-                  ? "No menu items found across your stores"
-                  : `No menu items found in "${shops.find((s) => String(s.id) === String(selectedShopId))?.name || `Store #${selectedShopId}`}"`}
+                {items.length > 0 && hasActiveFilters ? "No matching menu items" : "No menu items found for this shop"}
               </h3>
               <p className="text-xs text-on-surface-variant max-w-sm mx-auto">
-                {searchTerm
-                  ? "No items match your search query."
-                  : "Start adding items or switch stores to view other inventory."}
+                {items.length > 0 && hasActiveFilters
+                  ? "No items match your current search or category. Clear filters to view this shop's menu."
+                  : "No items were returned for this shop. Menu editing is not available in this Preview."}
               </p>
+              {items.length > 0 && hasActiveFilters && (
+                <button type="button" onClick={() => { setSearchTerm(""); setFilterCategory("All"); }}
+                  className="px-3.5 py-2 rounded-xl bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20">
+                  Clear search and category
+                </button>
+              )}
+              <p className="sr-only">Menu filters only affect the current verified shop.</p>
+              {/* Empty-menu and no-results states must stay distinct. */}
               {userOwnedShops.length > 1 && selectedShopId !== "all" && (
                 <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
-                  <button
-                    onClick={() => {
-                      setSelectedShopId("all");
-                      try {
-                        localStorage.setItem("localeats_selected_menu_shop_id", "all");
-                      } catch {
-                        // ignore
-                      }
-                    }}
-                    className="px-3.5 py-2 rounded-xl bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-all cursor-pointer"
-                  >
-                    View All Stores
-                  </button>
                   {userOwnedShops
                     .filter((s) => String(s.id) !== String(selectedShopId))
                     .map((s) => (
                       <button
                         key={s.id}
-                        onClick={() => {
-                          setSelectedShopId(s.id);
-                          try {
-                            localStorage.setItem("localeats_selected_menu_shop_id", String(s.id));
-                          } catch {
-                            // ignore
-                          }
-                        }}
+                        onClick={() => selectMenuShop(s.id)}
                         className="px-3.5 py-2 rounded-xl bg-surface-container-high text-on-surface text-xs font-bold hover:bg-surface-container-highest transition-all cursor-pointer"
                       >
                         Switch to {s.name}
@@ -933,22 +920,22 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                 </div>
               )}
             </div>
-          ) : filteredItems.length > 20 ? (
-            /* Virtualized Window for Large Inventory */
-            <div className="bg-surface-container-lowest p-2 rounded-3xl border border-outline-variant/15">
-              <VirtualizedList
-                height={600}
-                itemCount={filteredItems.length}
-                itemSize={220}
-                width="100%"
-              >
-                {VirtualRow}
-              </VirtualizedList>
-            </div>
           ) : (
-            /* Standard Grid for Standard Inventory Size */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredItems.map((item) => renderItemCard(item))}
+            <div className="space-y-4">
+              {/* The original responsive card grid works for every menu size.
+                  Render in batches instead of using the incompatible legacy List props. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredItems.slice(0,visibleCount).map((item) => renderItemCard(item))}
+              </div>
+              {visibleCount < filteredItems.length && (
+                <div className="flex justify-center">
+                  <button type="button"
+                    onClick={()=>setVisibleCount(count=>merchantMenuNextVisibleCount(count,filteredItems.length))}
+                    className="px-4 py-2.5 rounded-xl bg-surface-container-high text-on-surface text-xs font-bold hover:bg-surface-container-highest border border-outline-variant/20">
+                    Show more items ({filteredItems.length-Math.min(visibleCount,filteredItems.length)} remaining)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1131,6 +1118,11 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             </div>
           </div>
 
+          <OperationFeedback
+            status={isSaving ? "loading" : menuSaveError ? "error" : "idle"}
+            message={isSaving ? (isUploadingImage ? "Uploading menu photo…" : "Saving menu item…") : "Menu item was not saved"}
+            detail={isSaving ? "Please keep this editor open until the operation finishes." : menuSaveError || undefined}
+          />
           <div className="flex justify-end gap-3 pt-4 border-t border-outline-variant/15 mt-6">
              <button
                 type="button"
@@ -1142,8 +1134,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
              </button>
              <button
                 type="submit"
-                disabled={isSaving}
-                className="px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-xl hover:bg-primary/90 cursor-pointer disabled:opacity-70 flex items-center gap-2"
+                disabled={isSaving || menuWritesUnavailable()}
+                className="merchant-tap-feedback px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-xl hover:bg-primary/90 cursor-pointer disabled:opacity-70 flex items-center gap-2"
              >
                 {isSaving ? (
                   <>

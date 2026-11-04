@@ -2,6 +2,7 @@ import React, { useState, useCallback } from "react";
 import { MessageCircle, Copy, Share2, Phone, X, Check, ShieldCheck, Sparkles, AlertCircle, QrCode, BookmarkPlus, ListOrdered, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Order, Shop } from "../types";
+import { merchantOrderMoney } from "../services/merchantOrdersTrust";
 
 export interface DispatchAlertModalProps {
   isOpen: boolean;
@@ -43,24 +44,7 @@ function formatPhoneForMessaging(phoneStr?: string): { raw: string; cleanDigits:
   return { raw, cleanDigits: digits, isSA: digits.startsWith("27") };
 }
 
-// LocalStorage Helper for Dispatch Alert Offline Queue
-function getQueuedAlerts(): QueuedAlert[] {
-  try {
-    const raw = localStorage.getItem("localeats_queued_dispatch_alerts");
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveQueuedAlerts(alerts: QueuedAlert[]) {
-  try {
-    localStorage.setItem("localeats_queued_dispatch_alerts", JSON.stringify(alerts));
-  } catch (e) {
-    console.warn("Failed to persist dispatch queue:", e);
-  }
-}
-
+// Unsent drafts live only in this mounted tab. No automatic dispatch or persistent storage.
 export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
   isOpen,
   onClose,
@@ -76,9 +60,8 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
     type === "customer_status" ? "customer" : type === "rider_pairing" ? "rider" : "rider"
   );
   const [customPhone, setCustomPhone] = useState<string>("");
-  const [activeTemplate, setActiveTemplate] = useState<string>("default");
   const [copied, setCopied] = useState<boolean>(false);
-  const [queuedAlerts, setQueuedAlerts] = useState<QueuedAlert[]>(getQueuedAlerts);
+  const [queuedAlerts, setQueuedAlerts] = useState<QueuedAlert[]>([]);
 
   // Target phone determination
   const targetPhoneRaw =
@@ -92,117 +75,41 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
 
   // Helper to generate template message
   const generateTemplateText = useCallback(
-    (
-      currentRecipient: "rider" | "customer" | "custom",
-      tpl: string
-    ) => {
+    (currentRecipient: "rider" | "customer" | "custom") => {
       const shopName = currentShop?.name || "LocalEats Merchant";
-      const shopPhone = currentShop?.phone || currentShop?.whatsapp || "";
-      const orderId = order?.id ? String(order.id).slice(-6) : "1001";
-      const customerName = order?.customer_name || "Valued Customer";
-      const address = order?.address || "Address provided in app";
-      const amount = order?.total_price != null
-        ? (typeof order.total_price === "number"
-            ? order.total_price
-            : parseFloat(String(order.total_price).replace(/[^0-9.]/g, "")) || 0
-          ).toFixed(2)
-        : "0.00";
-      const paymentMethod = order?.payment_method?.toUpperCase() || "CASH";
+      const orderId = order?.id ? String(order.id).slice(-6) : "Unavailable";
+      const amount = order ? merchantOrderMoney(order.total_price) : "Total unavailable";
       const itemsSummary = Array.isArray(order?.items)
         ? order.items.map((i: Record<string, unknown> | string) => typeof i === "string" ? i : `${(i as { quantity?: number; name?: string })?.quantity || 1}x ${(i as { quantity?: number; name?: string })?.name || "Item"}`).join(", ")
         : "Standard Meal Order";
 
-      let mapsUrl = "";
-      if (order?.lat && order?.lng) {
-        mapsUrl = `https://www.google.com/maps/search/?api=1&query=${order.lat},${order.lng}`;
-      }
-
       if (type === "rider_pairing" || (currentRecipient === "rider" && connectionCode)) {
-        const code = connectionCode || "123456";
-        const pairingUrl = `${window.location.origin}/rider/pair?code=${code}&shop=${currentShop?.id || ""}`;
-        return (
-          `🚨 *LocalEats Rider Fleet Invitation*\n` +
-          `Shop: *${shopName}*\n` +
-          `Pairing Code: *${code}*\n\n` +
-          `Enter this 6-digit code in your LocalEats Rider app to accept dispatch missions!\n` +
-          `Direct Link: ${pairingUrl}`
-        );
+        if (!connectionCode) return "No verified pairing code is available. Open Rider pairing to obtain one.";
+        return `LocalEats rider pairing invitation\nShop: ${shopName}\nPairing code: ${connectionCode}\nUse this code only in the official Rider app. This message does not assign a delivery.`;
       }
-
       if (currentRecipient === "rider") {
-        const landmarkNotes = order?.notes ? `🏡 Landmark / Local Directions: *${order.notes}*\n` : "";
-        return (
-          `🛵 *NEW DELIVERY MISSION - ${shopName.toUpperCase()}*\n\n` +
-          `Order ID: *#${orderId}*\n` +
-          `Customer: *${customerName}* (${order?.phone || "No phone"})\n` +
-          `Delivery Address: *${address}*\n` +
-          landmarkNotes +
-          `Items: ${itemsSummary}\n` +
-          `Total to Collect: *R${amount}* (${paymentMethod})\n` +
-          (mapsUrl ? `📍 Navigation Pin: ${mapsUrl}\n\n` : "\n") +
-          `Please confirm acceptance in your Rider App when en route!`
-        );
-      } else if (currentRecipient === "customer") {
-        if (tpl === "ready_pickup") {
-          return (
-            `📦 *ORDER READY FOR PICKUP - ${shopName.toUpperCase()}*\n\n` +
-            `Hi ${customerName}! Your order *#${orderId}* is hot and ready for pickup.\n` +
-            `Items: ${itemsSummary}\n` +
-            `Shop Location: ${currentShop?.address || "Local Merchant Hub"}\n` +
-            `Phone: ${shopPhone}\n\n` +
-            `Thank you for supporting local business!`
-          );
-        } else if (tpl === "out_for_delivery") {
-          return (
-            `🛵 *ORDER OUT FOR DELIVERY - ${shopName.toUpperCase()}*\n\n` +
-            `Hi ${customerName}! Order *#${orderId}* is on its way with our driver *${riderName}*.\n` +
-            `Rider Phone: ${riderPhone || "Contact via app"}\n` +
-            `Delivery Address: ${address}\n` +
-            `Total: R${amount} (${paymentMethod})\n\n` +
-            `Please ensure someone is available at the door!`
-          );
-        } else {
-          return (
-            `🍳 *ORDER ACCEPTED & PREPARING - ${shopName.toUpperCase()}*\n\n` +
-            `Hi ${customerName}! Order *#${orderId}* has been accepted and is currently being prepared.\n` +
-            `Items: ${itemsSummary}\n` +
-            `Estimated ETA: ~${order?.estimated_delivery_time || "25-35"} mins\n\n` +
-            `Questions? Reply to this message or call ${shopPhone}.`
-          );
-        }
-      } else {
-        return (
-          `📢 *LocalEats Order Update - ${shopName}*\n` +
-          `Order #${orderId} status: ${order?.status || "Processing"}\n` +
-          `Total: R${amount}`
-        );
+        return `LocalEats delivery update from ${shopName}\nOrder reference: #${orderId}\nPlease check your authorized assignments in the Rider app. This message does not assign an order or disclose customer information.`;
       }
+      const recordedStatus = String(order?.status || "Unavailable").replaceAll("_", " ");
+      const recordedDelivery = order?.delivery_status ? `\nRecorded delivery status: ${String(order.delivery_status).replaceAll("_", " ")}` : "";
+      // User-editable messages must not invent payment status, rider movement or ETA.
+      return `LocalEats order update — ${shopName}\nOrder #${orderId}\nRecorded order status: ${recordedStatus}${recordedDelivery}\nItems: ${itemsSummary}\nRecorded order total: ${amount}\nPlease check the LocalEats app for the latest confirmed order information.`;
     },
-    [currentShop, order, type, connectionCode, riderName, riderPhone]
+    [currentShop, order, type, connectionCode]
   );
 
-  const [messageText, setMessageText] = useState<string>(() => generateTemplateText(recipientType, activeTemplate));
+  const [messageText, setMessageText] = useState<string>(() => generateTemplateText(recipientType));
 
   // Sync recipient type switch handler
   const handleSelectRecipient = (newType: "rider" | "customer" | "custom") => {
     setRecipientType(newType);
-    setMessageText(generateTemplateText(newType, activeTemplate));
-  };
-
-  // Sync template switch handler
-  const handleSelectTemplate = (tpl: string) => {
-    setActiveTemplate(tpl);
-    setMessageText(generateTemplateText(recipientType, tpl));
+    setMessageText(generateTemplateText(newType));
   };
 
   if (!isOpen) return null;
 
-  const directWhatsAppUrl = formattedTarget.cleanDigits
-    ? `https://wa.me/${formattedTarget.cleanDigits}?text=${encodeURIComponent(messageText)}`
-    : "";
-
   const handleOpenWhatsApp = () => {
-    if (!formattedTarget.cleanDigits) {
+    if (!/^\d{8,15}$/.test(formattedTarget.cleanDigits)) {
       toast.error("Please enter a valid target phone number first.");
       return;
     }
@@ -214,7 +121,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
   };
 
   const handleSendSMS = () => {
-    if (!formattedTarget.cleanDigits) {
+    if (!/^\d{8,15}$/.test(formattedTarget.cleanDigits)) {
       toast.error("Please enter a valid target phone number first.");
       return;
     }
@@ -232,7 +139,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
           title: `LocalEats Dispatch - Order #${order?.id ? String(order.id).slice(-6) : ""}`,
           text: messageText,
         });
-        toast.success("Message dispatched via Native Share!");
+        toast.info("Share sheet completed; delivery is not confirmed here.");
         onClose();
       } catch (err) {
         console.warn("Native share canceled/failed:", err);
@@ -242,11 +149,15 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
     }
   };
 
-  const handleCopyText = () => {
-    navigator.clipboard.writeText(messageText);
-    setCopied(true);
-    toast.success("Dispatch message copied to clipboard!");
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopyText = async () => {
+    try {
+      await navigator.clipboard.writeText(messageText);
+      setCopied(true);
+      toast.info("Message text copied. Nothing was sent.");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Clipboard unavailable. Copy the draft text manually.");
+    }
   };
 
   const handleSaveToOfflineQueue = () => {
@@ -261,21 +172,18 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
     };
     const updated = [newAlert, ...queuedAlerts];
     setQueuedAlerts(updated);
-    saveQueuedAlerts(updated);
-    toast.success("Saved to Dispatch Queue for later execution!");
+    toast.info("Draft saved in this tab only. Nothing has been sent.");
   };
 
   const handleRemoveQueued = (id: string) => {
     const updated = queuedAlerts.filter((q) => q.id !== id);
     setQueuedAlerts(updated);
-    saveQueuedAlerts(updated);
-    toast.info("Alert removed from queue.");
+    toast.info("Draft removed.");
   };
 
   const handleClearQueue = () => {
     setQueuedAlerts([]);
-    saveQueuedAlerts([]);
-    toast.info("Dispatch queue cleared.");
+    toast.info("Saved drafts cleared.");
   };
 
   return (
@@ -291,11 +199,11 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
               <h3 className="font-extrabold text-base sm:text-lg leading-tight flex items-center gap-2">
                 <span>SMS & WhatsApp Dispatch Studio</span>
                 <span className="bg-emerald-400/30 text-white text-[10px] uppercase font-black px-2 py-0.5 rounded-full border border-white/20">
-                  Zero Cost
+                  Manual share
                 </span>
               </h3>
               <p className="text-xs text-emerald-100/90 font-medium">
-                Direct native dispatch without paid API subscriptions
+                Opens a messaging app; review and send the message yourself.
               </p>
             </div>
           </div>
@@ -343,7 +251,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
             }`}
           >
             <ListOrdered size={14} />
-            <span>Queue</span>
+            <span>Drafts</span>
             {queuedAlerts.length > 0 && (
               <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full">
                 {queuedAlerts.length}
@@ -360,7 +268,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
               <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 flex items-start gap-2.5 text-xs">
                 <ShieldCheck size={18} className="text-emerald-600 shrink-0 mt-0.5" />
                 <p className="leading-snug font-medium">
-                  <strong className="font-bold">No API Key Required:</strong> Launches WhatsApp Web / App or native SMS directly on your phone or desktop. Always 100% free and instant.
+                  <strong className="font-bold">Manual messages:</strong> Launches WhatsApp Web / App or native SMS directly on your phone or desktop. Nothing is sent automatically. SMS charges may apply.
                 </p>
               </div>
 
@@ -445,49 +353,9 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
                 </div>
               )}
 
-              {/* Customer Preset Selector */}
-              {recipientType === "customer" && (
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-on-surface uppercase tracking-wider">
-                    Status Alert Preset:
-                  </label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTemplate("default")}
-                      className={`px-2.5 py-2 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
-                        activeTemplate === "default"
-                          ? "bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300"
-                          : "bg-surface-container/40 border-outline-variant/10 text-on-surface-variant"
-                      }`}
-                    >
-                      🍳 Preparing
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTemplate("out_for_delivery")}
-                      className={`px-2.5 py-2 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
-                        activeTemplate === "out_for_delivery"
-                          ? "bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300"
-                          : "bg-surface-container/40 border-outline-variant/10 text-on-surface-variant"
-                      }`}
-                    >
-                      🛵 En Route
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTemplate("ready_pickup")}
-                      className={`px-2.5 py-2 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
-                        activeTemplate === "ready_pickup"
-                          ? "bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300"
-                          : "bg-surface-container/40 border-outline-variant/10 text-on-surface-variant"
-                      }`}
-                    >
-                      📦 Ready Pickup
-                    </button>
-                  </div>
-                </div>
-              )}
+              <p className="text-[11px] text-on-surface-variant" role="note">
+                Template wording reflects recorded order status only. Review and edit it before sending.
+              </p>
 
               {/* Live Message Textarea */}
               <div className="space-y-1.5">
@@ -516,38 +384,9 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
           )}
 
           {activeTab === "qr" && (
-            <div className="flex flex-col items-center justify-center p-4 text-center space-y-4">
-              <div className="p-3 bg-white rounded-3xl border-2 border-emerald-500/30 shadow-xl">
-                {directWhatsAppUrl ? (
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-                      directWhatsAppUrl
-                    )}`}
-                    alt="Scan for Direct WhatsApp Dispatch"
-                    className="w-52 h-52 object-contain rounded-xl"
-                  />
-                ) : (
-                  <div className="w-52 h-52 flex items-center justify-center text-xs text-amber-600 font-bold p-4 bg-amber-50 rounded-xl">
-                    Please provide a valid recipient phone number in the Composer tab to generate QR.
-                  </div>
-                )}
-              </div>
-              <div className="space-y-1 max-w-xs">
-                <h4 className="font-extrabold text-sm text-on-surface">Scan & Dispatch via Camera</h4>
-                <p className="text-xs text-on-surface-variant leading-snug">
-                  Customer or driver present at counter? Scan this QR code with any smartphone camera to launch the WhatsApp chat instantly.
-                </p>
-              </div>
-              {directWhatsAppUrl && (
-                <button
-                  type="button"
-                  onClick={handleCopyText}
-                  className="px-4 py-2 rounded-xl bg-surface-container-high border border-outline-variant/20 text-xs font-bold text-on-surface hover:bg-surface-container-highest cursor-pointer flex items-center gap-1.5"
-                >
-                  <Copy size={14} />
-                  <span>Copy Direct WhatsApp Link</span>
-                </button>
-              )}
+            <div className="p-6 text-center space-y-2 bg-surface-container-low rounded-2xl" role="status">
+              <p className="text-sm font-bold text-on-surface">QR sharing unavailable in this Preview</p>
+              <p className="text-xs text-on-surface-variant">A third-party QR generator would receive the recipient number and message. Use the manual WhatsApp or SMS buttons instead.</p>
             </div>
           )}
 
@@ -555,7 +394,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="font-extrabold text-xs text-on-surface uppercase tracking-wider">
-                  Pending Offline Alerts Queue ({queuedAlerts.length})
+                  Saved Drafts (not sent) ({queuedAlerts.length})
                 </h4>
                 {queuedAlerts.length > 0 && (
                   <button
@@ -564,7 +403,7 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
                     className="text-[11px] font-bold text-rose-600 hover:underline flex items-center gap-1 cursor-pointer"
                   >
                     <Trash2 size={12} />
-                    <span>Clear Queue</span>
+                    <span>Clear Drafts</span>
                   </button>
                 )}
               </div>
@@ -572,16 +411,16 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
               {queuedAlerts.length === 0 ? (
                 <div className="p-8 text-center bg-surface-container-low rounded-2xl border border-outline-variant/15 text-xs text-on-surface-variant/70 space-y-2">
                   <BookmarkPlus size={28} className="mx-auto opacity-40 text-emerald-600" />
-                  <p className="font-bold text-on-surface">No queued alerts right now.</p>
+                  <p className="font-bold text-on-surface">No saved drafts in this tab.</p>
                   <p className="text-[11px]">
-                    Use the "Queue Alert" button in the composer to store dispatch alerts for offline processing or batch execution.
+                    Use "Save Draft" to keep a message while this tab is open. Drafts are never sent automatically.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                   {queuedAlerts.map((item) => {
                     const clean = formatPhoneForMessaging(item.recipientPhone).cleanDigits;
-                    const waUrl = clean ? `https://wa.me/${clean}?text=${encodeURIComponent(item.messageText)}` : "";
+                    const waUrl = /^\d{8,15}$/.test(clean) ? `https://wa.me/${clean}?text=${encodeURIComponent(item.messageText)}` : "";
                     return (
                       <div
                         key={item.id}
@@ -609,11 +448,11 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
                               href={waUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              onClick={() => handleRemoveQueued(item.id)}
+                              onClick={() => toast.info("WhatsApp opened; delivery is not confirmed here.")}
                               className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] flex items-center gap-1 shadow-xs"
                             >
                               <MessageCircle size={12} className="fill-current" />
-                              <span>Dispatch WhatsApp Now</span>
+                              <span>Open WhatsApp Draft</span>
                             </a>
                           ) : (
                             <span className="text-[10px] text-amber-600 font-bold">No Phone</span>
@@ -645,10 +484,10 @@ export const DispatchAlertModal: React.FC<DispatchAlertModalProps> = ({
               type="button"
               onClick={handleSaveToOfflineQueue}
               className="px-3 py-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-xs font-bold flex items-center gap-1.5 cursor-pointer text-emerald-800 dark:text-emerald-300"
-              title="Queue alert for offline/later dispatching"
+              title="Save an unsent draft while this tab is open"
             >
               <BookmarkPlus size={14} />
-              <span>Queue Alert</span>
+              <span>Save Draft</span>
             </button>
           </div>
 

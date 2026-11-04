@@ -1,32 +1,167 @@
-import React,{useState} from "react";
-import {MerchantApi} from "../services/MerchantApi";
-import {pickupOrderingEnabled,type PickupAction} from "../services/merchantPickupPolicy";
-import {pickupState,pickupPaymentLabel,pickupAmountLabel} from "../services/merchantPickupPolicy";
-export function PickupOrderActions({order}:{order:any}){
- const [busy,setBusy]=useState(false),[error,setError]=useState("");
- let status:string;
- try{status=pickupState(order);}catch{return <p role="alert" className="text-xs text-amber-700">Pickup state unavailable. Required schema is not installed; no action was saved.</p>;}
- const actions=status==="pending" ? ["Accept → Preparing","Reject"] : status==="preparing" ? ["Mark Ready"] : status==="ready_for_pickup" ?
-  order.payment_status==="paid" ? ["Food handed over → Collected"] : ["Confirm cash received","Confirm card-machine payment"] : [];
- const act=async(label:string)=>{
-  if(busy || !pickupOrderingEnabled())return;
-  let action:PickupAction=label.startsWith("Accept") ? "accept" : label==="Reject" ? "reject" : label==="Mark Ready" ? "ready" : label.startsWith("Food") ? "collect" : "confirm_payment";
-  const extra:Record<string,unknown>={};
-  if(action==="reject"){const reason=window.prompt("Why is this order rejected?");if(!reason?.trim())return;extra.reason=reason;}
-  if(action==="confirm_payment"){if(!window.confirm("Confirm you have actually received payment at the shop?"))return;extra.payment_method=label.includes("cash") ? "cash" : "card_machine";}
-  if(action==="collect"){if(!window.confirm("Confirm the food has actually been handed to the customer?"))return;extra.handover_confirmed=true;}
-  setBusy(true);setError("");
-  try{await MerchantApi.transitionPickupOrder(order,action,extra);window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));}
-  catch(e){setError(e instanceof Error?e.message:"No change was confirmed. Retry the same action.");}
-  finally{setBusy(false);}
- };
- return <div className="space-y-2 py-2">
-  <p className="text-xs font-bold">Pickup · {status==="collected" ? "Collected" : status==="ready_for_pickup" ? "Ready" : status} · {pickupPaymentLabel(order)}</p>
-  <p className="text-xs">{pickupAmountLabel(order)}</p>
-  {order.phone && <a className="text-xs underline" href={`tel:${String(order.phone).replace(/[^+0-9]/g,"")}`}>Optional call: {order.phone}</a>}
-  <div className="flex flex-wrap gap-2">{actions.map(action=><button key={action} type="button" disabled={busy || !pickupOrderingEnabled()} onClick={()=>void act(action)} title={pickupOrderingEnabled()?"Confirm actual order facts":"Requires separately approved pickup database activation"} className="px-3 py-2 rounded-full bg-surface-container-high text-on-surface-variant text-xs font-bold opacity-50">{action}</button>)}</div>
-  {pickupOrderingEnabled() && MerchantApi.hasPendingPickupCommand(order) && <button type="button" disabled={busy} onClick={async()=>{setBusy(true);try{await MerchantApi.retryPendingPickupOrder(order);window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));setError("");}catch(e){setError(e instanceof Error?e.message:"Outcome unconfirmed.");}finally{setBusy(false);}}}>Retry previous action</button>}
-  {error && <p role="alert">{error}</p>}
-  {!!actions.length && !pickupOrderingEnabled() && <p className="text-xs text-on-surface-variant">Pickup changes are disabled pending database activation. Payment and actual handover are separate confirmations.</p>}
- </div>;
+import React, { useState } from "react";
+import { MerchantApi } from "../services/MerchantApi";
+import {merchantPickupReadCurrent,type MerchantOrderReadState} from "../services/merchantDashboardFreshness";
+import {
+  pickupOrderingEnabled,
+  pickupState,
+  pickupPaymentLabel,
+  pickupAmountLabel,
+  type PickupAction,
+} from "../services/merchantPickupPolicy";
+
+type DisplayMode = "full" | "summary" | "actions";
+
+export function PickupOrderActions({
+  order, mode = "full", disabled = false,
+  readState = "checking", verifiedAt = null,
+}: {
+  order: any;
+  mode?: DisplayMode;
+  disabled?: boolean;
+  readState?: MerchantOrderReadState;
+  verifiedAt?: number | null;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  // After an API-confirmed write, block further actions until the authoritative
+  // list shows a changed order revision. A stale card must not submit twice.
+  const [confirmedPrevious, setConfirmedPrevious] = useState<{
+    orderId: string; revision: number;
+  } | null>(null);
+  let status: string;
+  try {
+    status = pickupState(order);
+  } catch {
+    return <p role="alert" className="text-xs text-amber-700">Pickup state unavailable. Refresh before changing this order.</p>;
+  }
+  const actions = status === "pending" ? ["Accept → Preparing", "Reject"]
+    : status === "preparing" ? ["Mark Ready"]
+    : status === "ready_for_pickup"
+      ? order.payment_status === "paid" ? ["Food handed over → Collected"] : ["Confirm cash received", "Confirm card-machine payment"]
+      : [];
+  const hasUnconfirmedCommand = pickupOrderingEnabled() && MerchantApi.hasPendingPickupCommand(order);
+  const awaitingRefresh = confirmedPrevious !== null &&
+    confirmedPrevious.orderId === String(order.id) && confirmedPrevious.revision === order.revision;
+  const readCurrent = merchantPickupReadCurrent(readState, verifiedAt);
+  const canAct = pickupOrderingEnabled() && !busy && !disabled &&
+    readCurrent && !hasUnconfirmedCommand && !awaitingRefresh;
+  const markConfirmed = () => {
+    setConfirmedPrevious({orderId: String(order.id), revision: order.revision});
+    window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));
+  };
+
+  const act = async (label: string) => {
+    // Refresh timestamps can expire while the tab remains mounted; check at click time too.
+    if (!merchantPickupReadCurrent(readState, verifiedAt)) {
+      setError("The order list is no longer verified. Refresh Orders before changing payment or handover.");
+      return;
+    }
+    if (!canAct) return;
+    const action: PickupAction = label.startsWith("Accept") ? "accept"
+      : label === "Reject" ? "reject" : label === "Mark Ready" ? "ready"
+      : label.startsWith("Food") ? "collect" : "confirm_payment";
+    const extra: Record<string, unknown> = {};
+    if (action === "reject") {
+      const reason = window.prompt("Why is this order rejected?");
+      if (!reason?.trim()) return;
+      extra.reason = reason;
+    }
+    if (action === "confirm_payment") {
+      const method=label.includes("cash") ? "cash" : "card_machine";
+      const methodLabel=method==="cash" ? "cash" : "physical card-machine";
+      if (!window.confirm(
+        `Have you actually received ${methodLabel} payment of R ${order.total_price.toFixed(2)} at the shop? This records PAYMENT only, not food collection.`
+      )) return;
+      extra.payment_method = method;
+    }
+    if (action === "collect") {
+      if (!window.confirm("Has the customer actually received the food? Mark Collected only after physical handover; payment alone does not complete an order.")) return;
+      extra.handover_confirmed = true;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await MerchantApi.transitionPickupOrder(order, action, extra);
+      markConfirmed();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No change was confirmed. Retry the same action.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2 py-2" onClick={event => event.stopPropagation()}>
+      {mode !== "actions" && (
+        <>
+          <p className="text-xs font-bold">
+            Pickup · {status === "collected" ? "Collected" : status === "ready_for_pickup" ? "Ready" : status} · {pickupPaymentLabel(order)}
+          </p>
+          <p className="text-xs">{pickupAmountLabel(order)}</p>
+          {order.phone && <a className="text-xs underline" href={`tel:${String(order.phone).replace(/[^+0-9]/g, "")}`}>Optional call: {order.phone}</a>}
+        </>
+      )}
+      {mode !== "summary" && (
+        <>
+          <div className={mode === "actions" ? "flex flex-col gap-2" : "flex flex-wrap gap-2"}>
+            {actions.map(label => {
+              const primary = label.startsWith("Accept") || label === "Mark Ready" || label.startsWith("Food");
+              return <button
+                key={label}
+                type="button"
+                disabled={!canAct}
+                onClick={event => { event.stopPropagation(); void act(label); }}
+                title={pickupOrderingEnabled() ? "Update the pickup order through the LocalEats API" : "Requires separately approved pickup activation"}
+                className={mode === "actions" && primary
+                  ? `w-full py-5 ${label === "Mark Ready" ? "bg-teal-500 hover:bg-teal-400" : label.startsWith("Food") ? "bg-blue-600 hover:bg-blue-500" : "bg-emerald-600 hover:bg-emerald-500"} text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed`
+                  : mode === "actions" ? "w-full px-3 py-3 rounded-xl bg-primary text-white text-sm font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed" : "px-3 py-2 rounded-full bg-primary text-white text-xs font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"}
+              >{busy ? "Saving..." : label}</button>;
+            })}
+          </div>
+          {pickupOrderingEnabled() && readCurrent && hasUnconfirmedCommand && !awaitingRefresh && (
+            <button type="button" disabled={busy}
+              className="text-xs font-bold underline"
+              onClick={async event => {
+                event.stopPropagation();
+                if (!merchantPickupReadCurrent(readState, verifiedAt)) {
+                  setError("Refresh Orders before retrying an unresolved command.");
+                  return;
+                }
+                setBusy(true);
+                try {
+                  await MerchantApi.retryPendingPickupOrder(order);
+                  markConfirmed();
+                  setError("");
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Outcome unconfirmed.");
+                } finally { setBusy(false); }
+              }}
+            >Retry unresolved command</button>
+          )}
+          {hasUnconfirmedCommand && !awaitingRefresh && (
+            <p role="alert" className="text-xs text-amber-700">
+              The previous command outcome is unconfirmed. Retry that same command;
+              do not start another payment or handover action.
+            </p>
+          )}
+          {awaitingRefresh && (
+            <p role="status" className="text-xs text-emerald-700">
+              The API confirmed the action. Waiting for refreshed order details before
+              allowing another step. Use Refresh if the order card stays unchanged.
+            </p>
+          )}
+          {!readCurrent && pickupOrderingEnabled() && !!actions.length && (
+            <p role="alert" className="text-xs text-amber-700">
+              Order data needs a fresh API verification before payment, collection or status changes. Use Refresh Orders.
+            </p>
+          )}
+          {error && <p role="alert" className="text-xs text-error">{error}</p>}
+          {!!actions.length && !pickupOrderingEnabled() && (
+            <p className="text-xs text-on-surface-variant">Pickup actions are disabled until the approved pilot is activated.</p>
+          )}
+          {disabled && !!actions.length && <p className="text-xs text-error">Order limit reached.</p>}
+        </>
+      )}
+    </div>
+  );
 }

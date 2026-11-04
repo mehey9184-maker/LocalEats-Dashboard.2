@@ -27,7 +27,9 @@ test('independent payment and real handover required; no Collected-to-paid infer
  assert.equal(pickupCommand(ready,'confirm_payment',{payment_method:'card_machine'}).path,'payment-confirmation');
  assert.throws(()=>pickupCommand({...ready,payment_status:'paid'},'collect'));
  assert.equal(pickupCommand({...ready,payment_status:'paid'},'collect',{handover_confirmed:true}).path,'collect');
- assert.equal(pickupPaymentLabel({...ready,payment_method:'card_machine'}),'Unpaid · pay at shop');
+ assert.equal(pickupPaymentLabel({...ready,payment_method:'card_machine'}),'Payment expected: Card at shop (physical card machine)');
+ assert.equal(pickupPaymentLabel({...ready,payment_method:'cash'}),'Payment expected: Cash at shop');
+ assert.match(pickupPaymentLabel({...ready,payment_status:'paid',payment_method:'cash'}),/^Payment received: Cash at shop$/);
  assert.equal(pickupPaymentLabel({...ready,payment_status:null}),'Payment status unavailable');
 });
 test('all pickup writes stop before transport and original entry is retained',()=>{
@@ -63,13 +65,37 @@ test('historical payment method and completion never prove payment',()=>{
  assert.equal(pickupPaymentLabel({payment_status:'unpaid',payment_method:'online'}),'Unpaid');
 });
 
-import {pickupAmountLabel} from '../src/services/merchantPickupPolicy.ts';
+import {pickupAmountLabel,pickupItemLineTotal} from '../src/services/merchantPickupPolicy.ts';
 test('pickup payable display uses server total and fee without deriving tax or payment',()=>{
  const persisted={...order,total_price:25,service_fee:0,payment_method:'card_machine'};
- assert.equal(pickupAmountLabel(mapApiOrder(persisted)),'Pay at shop: R 25.00 · Pickup service fee: R 0.00');
- assert.equal(pickupAmountLabel({...persisted,total_price:50}),'Pay at shop: R 50.00 · Pickup service fee: R 0.00');
- assert.equal(pickupAmountLabel({...persisted,total_price:27.5,service_fee:2.5}),'Pay at shop: R 27.50 · Pickup service fee: R 2.50');
- assert.equal(pickupPaymentLabel(persisted),'Unpaid · pay at shop');
+ assert.equal(pickupAmountLabel(mapApiOrder(persisted)),'Total due at shop: R 25.00 · Service fee included: R 0.00');
+ assert.equal(pickupAmountLabel({...persisted,total_price:50}),'Total due at shop: R 50.00 · Service fee included: R 0.00');
+ assert.equal(pickupAmountLabel({...persisted,total_price:27.5,service_fee:2.5}),'Total due at shop: R 27.50 · Service fee included: R 2.50');
+ assert.equal(pickupPaymentLabel(persisted),'Payment expected: Card at shop (physical card machine)');
  assert.match(pickupAmountLabel({...persisted,service_fee:undefined}),/unavailable/);
+ assert.equal(pickupAmountLabel({...persisted,payment_status:'paid'}),'Recorded paid total: R 25.00 · Service fee included: R 0.00');
+ assert.throws(()=>pickupAmountLabel({...persisted,payment_status:undefined}));
  assert.throws(()=>pickupAmountLabel({...persisted,total_price:NaN}));
+});
+
+
+test('pickup item amount uses persisted line snapshot and never fabricates R0',()=>{
+ assert.equal(pickupItemLineTotal({line_total:25,unit_price:25,quantity:1}),25);
+ assert.equal(pickupItemLineTotal({line_total:0,unit_price:25,quantity:1}),0);
+ assert.equal(pickupItemLineTotal({unit_price:12.50,quantity:2}),25);
+ assert.equal(pickupItemLineTotal({line_total:-1,unit_price:25,quantity:1}),null);
+ assert.equal(pickupItemLineTotal({line_total:'',unit_price:25,quantity:1}),null);
+ assert.equal(pickupItemLineTotal({name:'Food',quantity:1}),null);
+ assert.equal(pickupItemLineTotal(null),null);
+});
+
+test('kanban routes pickup Ready and Collected actions through the API component',()=>{
+ const source=readFileSync(new URL('../src/components/OrdersManagement.tsx',import.meta.url),'utf8');
+ assert.match(source,/if \(isPickupOrder\(order\)\) return <PickupOrderActions order=\{order\} mode="summary"\/>/);
+ assert.equal((source.match(/isPickupOrder\(order\) \? pickupItemLineTotal\(item\)/g) || []).length,4);
+ assert.equal((source.match(/<PickupOrderActions order=\{order\} mode="actions"\s+readState=\{ordersReadState\} verifiedAt=\{ordersVerifiedAt\} \/>/g) || []).length,3);
+ assert.doesNotMatch(source, /<PickupOrderActions order=\{order\} mode="actions" disabled=\{isLimitReached\}/);
+ const actions=readFileSync(new URL('../src/components/PickupOrderActions.tsx',import.meta.url),'utf8');
+ assert.match(actions,/label === "Mark Ready" \? "ready"/);
+ assert.match(actions,/await MerchantApi\.transitionPickupOrder\(order, action, extra\)/);
 });

@@ -1,4 +1,7 @@
-import {pickupOrderingEnabled} from "./services/merchantPickupPolicy";
+﻿import {pickupOrderingEnabled,pickupPaymentSettingsEnabled} from "./services/merchantPickupPolicy";
+import {merchantSettingsOperationalWritesEnabled,merchantSettingsOperationsNotice,merchantSettingsHardwareNotice} from "./services/merchantSettingsOperationalPreview";
+import {merchantSettingsS3WritesEnabled,merchantSettingsS3PickupNotice,merchantSettingsS3DeliveryNotice,pickupMethodRecordLabel} from "./services/merchantSettingsS3Trust";
+import {merchantSettingsS4ActionsEnabled,merchantSettingsS4Notice} from "./services/merchantSettingsS4Preview";
 import {isPickupOrder} from "./services/merchantPickupPolicy";
 import { checkPrinterConnectivity, printViaBluetooth, printViaUSB } from "./utils/escPosEngine";
 import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
@@ -25,7 +28,6 @@ import {
   Settings,
   HelpCircle,
   Check,
-  Zap,
   ShieldCheck,
   Sliders,
   MapPin,
@@ -44,8 +46,6 @@ import {
   Truck,
   Copy,
   Wallet,
-  Ticket,
-  Info,
   Rocket,
   Bell,
   BellOff,
@@ -90,13 +90,15 @@ import {
 import { LocalEatsLogo } from "./components/LocalEatsLogo";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
 import { DashboardOverview } from "./components/DashboardOverview";
-import { ShopProfile } from "./components/ShopProfile";
+import { MerchantStorefrontPreview } from "./components/MerchantStorefrontPreview";
+import { merchantStorefrontPreviewOnly, merchantStorefrontWritesEnabled } from "./services/merchantStorefrontPreviewPolicy";
 import { OrdersManagement } from "./components/OrdersManagement";
 import { MenuManagement } from "./components/MenuManagement";
 import { Coupons } from "./components/Coupons";
 import { Marketing } from "./components/Marketing";
 import { Insights } from "./components/Insights";
 import { PaymentHistory } from "./components/PaymentHistory";
+import { SettingsBillingPreview } from "./components/SettingsBillingPreview";
 import { LegalDocsModal } from "./components/LegalDocsModal";
 import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
 import { ShopDiagnosticPanel } from "./components/ShopDiagnosticPanel";
@@ -119,6 +121,12 @@ import {
   syncShopAvailability,
 } from "./utils/availabilityChecker";
 import {
+  isAvailabilityCommandPending,
+  logAvailabilityDiagnostic,
+  shouldAcceptAvailabilityShop,
+  subscribeAvailabilityCommand,
+} from "./utils/merchantAvailabilityCommand";
+import {
   cleanLocalStorageCache,
 } from "./utils/storageCleanup";
 import {
@@ -131,13 +139,13 @@ import {
   deleteFailedPrint,
 } from "./utils/escPosEngine";
 import {
-  isValidUUID,
   isShopOwnedByUser,
   getOwnedShopIds,
   registerVerifiedShopId,
   clearVerifiedShopOwnership,
 } from "./utils/shopOwnership";
 import { MerchantApi, MerchantApiError } from "./services/MerchantApi";
+import {merchantOrderReadScope,shouldPollMerchantOrders,merchantDisplayOrderAmount,newMerchantPendingOrders,type MerchantOrderReadState} from "./services/merchantDashboardFreshness";
 import { fetchWithRetry } from "./utils/fetchWithRetry";
 
 function cn(...inputs: ClassValue[]) {
@@ -147,6 +155,7 @@ function cn(...inputs: ClassValue[]) {
 const clearMerchantShopOperationalCache = () => {
   [
     "localeats_cached_shops",
+    "localeats_cached_orders",
     "localeats_cached_menu_items",
     "localeats_my_shop_id",
     "localeats_vendor_shop_id",
@@ -212,10 +221,6 @@ function App() {
     onConfirm: () => {},
   });
 
-  const confirmAction = (title: string, message: string, onConfirm: () => void, confirmText = "Delete") => {
-    setConfirmDialog({ isOpen: true, title, message, onConfirm, confirmText });
-  };
-
   const { activeTab, setActiveTab } = useAppNavigation("dashboard");
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -225,15 +230,19 @@ function App() {
   const [showOfflineInfoModal, setShowOfflineInfoModal] = useState<boolean>(false);
   const [testingConnection, setTestingConnection] = useState<boolean>(false);
 
+  // Check the authenticated API, not merely navigator.onLine or a timer.
+  // A successful read never proves payments, GPS, printing or push delivery.
   const handleTestConnection = async () => {
     setTestingConnection(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      if (navigator.onLine) {
-        toast.success("Connection to relay nodes is optimal.");
-      } else {
-        toast.error("Cannot reach dispatch edge servers.");
+      if (!navigator.onLine) {
+        toast.error("Device reports offline. API connection not verified.");
+        return;
       }
+      await MerchantApi.getOrders();
+      toast.success("Orders API responded. Payments, printing and notifications are not verified by this check.");
+    } catch {
+      toast.error("Orders API could not be verified. Do not rely on cached statuses for order actions.");
     } finally {
       setTestingConnection(false);
     }
@@ -278,8 +287,16 @@ function App() {
   const currentBuildVersion = useRef(19); // Moving to v5.4 tracker
   const topNavScrollRef = useRef<HTMLDivElement>(null);
   const shopsRef = useRef<Shop[]>([]);
-  const prevPendingCount = useRef<number>(0);
+  const observedPendingIdsRef=useRef<{scope:string;ids:Set<string>}|null>(null);
   const activeSoundRef = useRef<{ pause: () => void } | null>(null);
+  // Viewing Orders acknowledges the arrival alert. Do not keep the short
+  // notification melody running after the merchant has opened the queue.
+  useEffect(() => {
+    if (activeTab !== "orders") return;
+    const active = activeSoundRef.current;
+    activeSoundRef.current = null;
+    active?.pause();
+  }, [activeTab]);
 
   useEffect(() => {
     if (dataSaverMode) return;
@@ -298,20 +315,37 @@ function App() {
       }
     };
 
-    // once on mount and then every 30s
-    checkVersion();
-    const interval = setInterval(checkVersion, 30000);
-    return () => clearInterval(interval);
+    // Avoid a 30-second background version poll. Refresh on foreground return
+    // and periodically while the merchant has the tab open.
+    const refreshIfVisible=()=>{if(document.visibilityState==="visible")void checkVersion();};
+    refreshIfVisible();
+    const interval=window.setInterval(refreshIfVisible,300000);
+    window.addEventListener("focus",refreshIfVisible);
+    document.addEventListener("visibilitychange",refreshIfVisible);
+    return ()=>{
+      window.clearInterval(interval);
+      window.removeEventListener("focus",refreshIfVisible);
+      document.removeEventListener("visibilitychange",refreshIfVisible);
+    };
   }, [dataSaverMode]);
 
   const [orders, setOrders] = useState<Order[]>([]);
+  useEffect(() => {
+    // Clean up historical unscoped customer-order caches from previous previews.
+    try { localStorage.removeItem("localeats_cached_orders"); } catch { /* Storage blocked */ }
+  }, []);
+  const [ordersReadState,setOrdersReadState]=useState<MerchantOrderReadState>("checking");
+  const [ordersVerifiedAt,setOrdersVerifiedAt]=useState<number|null>(null);
+  const orderReadScopeRef=useRef<string|null>(null);
+  const lastConfirmedOrderScopeRef=useRef<string|null>(null);
+  const warnedOrderScopeRef=useRef<string|null>(null);
+  const orderReadSerialRef=useRef(0);
+  const lastOrderPayloadRef=useRef<string|null>(null);
+  const orderReadInFlightRef=useRef<{scope:string;promise:Promise<void>}|null>(null);
 
-  // --- Live Kitchen Alerter & Screen Wake ---
-  const {
-    isAudioEnabled,
-    enableAudio,
-  } = useKitchenAlerter(orders);
   const [shops, setShops] = useState<Shop[]>([]);
+  shopsRef.current = shops;
+  const [availabilityBusy, setAvailabilityBusy] = useState(false);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [merchantShopGate, setMerchantShopGate] = useState<MerchantShopGateState>({ status: "checking" });
@@ -324,8 +358,43 @@ function App() {
     [shops, user],
   );
 
+  const verifiedOrderScope=merchantOrderReadScope(user?.id,currentShop?.id,merchantShopGate.status);
+  // Siren is scoped to the API-verified current shop and never starts on the
+  // first historical order list or when alerts are turned off.
+  const {isAudioEnabled,enableAudio}=useKitchenAlerter(
+    orders,activeTab==="orders",verifiedOrderScope,ordersReadState==="confirmed",soundAlerts,
+  );
+
+  useEffect(()=>{
+    if(orderReadScopeRef.current===verifiedOrderScope)return;
+    orderReadScopeRef.current=verifiedOrderScope;
+    orderReadSerialRef.current++;
+    lastConfirmedOrderScopeRef.current=null;
+    lastOrderPayloadRef.current=null;
+    warnedOrderScopeRef.current=null;
+    observedPendingIdsRef.current=null;
+    activeSoundRef.current?.pause();
+    activeSoundRef.current=null;
+    setOrders([]);
+    setOrdersReadState("checking");
+    setOrdersVerifiedAt(null);
+  },[verifiedOrderScope]);
+
   const acceptAuthoritativeMerchantShop = useCallback((firebaseUid: string, shop: Shop) => {
     registerVerifiedShopId(firebaseUid, shop.id);
+    const current = shopsRef.current.find((s) => String(s.id) === String(shop.id));
+    if (current && !shouldAcceptAvailabilityShop(current, shop)) {
+      logAvailabilityDiagnostic({
+        outcome: "stale_read_ignored",
+        shopId: String(shop.id),
+        expectedRevision: current.availability_revision ?? null,
+        savedRevision: shop.availability_revision ?? null,
+      });
+      if (current.approval_status === "approved") {
+        setMerchantShopGate({ status: "ready", shop: current });
+      }
+      return;
+    }
     setShops([shop]);
     if (shop.approval_status === "approved") {
       setMerchantShopGate({ status: "ready", shop });
@@ -337,9 +406,11 @@ function App() {
     setMerchantShopGate({ status: "approval-required", shop });
   }, []);
 
-  const resolveMerchantShop = useCallback(async (firebaseUid: string): Promise<Shop | null> => {
-    setOrders([]);
-    setMerchantShopGate({ status: "checking" });
+  const resolveMerchantShop = useCallback(async (firebaseUid: string, options?: { background?: boolean }): Promise<Shop | null> => {
+    if (!options?.background) {
+      setOrders([]);
+      setMerchantShopGate({ status: "checking" });
+    }
     try {
       const verifiedShop = await MerchantApi.getMerchantShop();
       if (!verifiedShop || verifiedShop.id === null || verifiedShop.id === undefined) {
@@ -393,7 +464,7 @@ function App() {
       });
       return;
     }
-    await resolveMerchantShop(firebaseUid);
+    await resolveMerchantShop(firebaseUid, { background: true });
   }, [resolveMerchantShop]);
 
   // Centralized Shop Location & Sync State Engine
@@ -440,30 +511,33 @@ function App() {
     deliveryRadiusEnabled,
   ]);
 
-  const trialInfo = useMemo(() => {
-    if (!currentShop) return null;
+  // No verified trading-launch date, tier selection or subscription authority yet.
+  // A legacy creation-date-based 30-day countdown cannot start a three-month trial.
+  const trialInfo = null;
 
-    const status = currentShop.subscription_status || "trial";
+  const [settingsCategory, setSettingsCategory] = useState<string>("storefront");
+  const [settingsAdvancedExpanded, setSettingsAdvancedExpanded] = useState(false);
+  const [pickupPaymentChoice, setPickupPaymentChoice] = useState<"cash" | "card_machine" | "both">("cash");
+  const [savingPickupPayments, setSavingPickupPayments] = useState(false);
+  const [pickupPaymentError, setPickupPaymentError] = useState("");
+  const pickupPaymentMethodsKey=currentShop?.pickup_payment_methods?.join(",") ?? "";
+  useEffect(() => {
+    const methods=pickupPaymentMethodsKey.split(",").filter(Boolean);
+    setPickupPaymentChoice(methods.length===2 ? "both" : methods[0]==="card_machine" ? "card_machine" : "cash");
+  }, [currentShop?.id,pickupPaymentMethodsKey]);
 
-    // Default to a 30-day trial based on creation date or trial_start_date
-    const startDate = currentShop.trial_start_date || currentShop.created_at || new Date().toISOString();
-    const startMs = new Date(startDate).getTime();
-    const trialDurationMs = 30 * 24 * 60 * 60 * 1000; // 30 days
-    const endMs = startMs + trialDurationMs;
-    const nowMs = Date.now();
-
-    const daysRemaining = Math.max(0, Math.ceil((endMs - nowMs) / (1000 * 60 * 60 * 24)));
-    const isExpired = status === "expired" || status === "past_due" || (status === "trial" && daysRemaining <= 0);
-
-    return {
-      status,
-      daysRemaining,
-      isExpired,
-      nextPaymentDate: currentShop.next_payment_date || new Date(endMs).toISOString()
-    };
-  }, [currentShop]);
-
-  const [settingsCategory, setSettingsCategory] = useState<string>("account");
+  const savePickupPaymentSettings=async()=>{
+    if(!currentShop || savingPickupPayments || !pickupPaymentSettingsEnabled() || !merchantSettingsS3WritesEnabled())return;
+    const methods=pickupPaymentChoice==="both" ? ["cash","card_machine"] as const : [pickupPaymentChoice] as const;
+    setSavingPickupPayments(true);setPickupPaymentError("");
+    try{
+      const saved=await MerchantApi.setPickupPaymentMethods(currentShop.id,[...methods]);
+      setShops(previous=>previous.map(shop=>String(shop.id)===String(saved.id)?{...shop,...saved}:shop));
+      toast.success("Pickup payment methods saved.");
+    }catch(error){
+      setPickupPaymentError(error instanceof Error?error.message:"Pickup settings were not confirmed. Refresh and retry.");
+    }finally{setSavingPickupPayments(false);}
+  };
   const [storeStatus, setStoreStatus] = useState<"open" | "busy" | "closed">("open");
   const [prepTime, setPrepTime] = useState<number>(20);
   const [operatingHours, setOperatingHours] = useState<Array<{ day: string; open: string; close: string; active: boolean }>>([
@@ -476,47 +550,15 @@ function App() {
     { day: "Sun", open: "08:00", close: "17:00", active: false },
   ]);
 
-  const [billingDetails, setBillingDetails] = useState<{
-    companyName: string;
-    taxNumber: string;
-    billingEmail: string;
-    cardNumber: string;
-    expiryDate: string;
-    cvv: string;
-    cardholderName: string;
-    isCardSaved: boolean;
-  }>(() => {
-    try {
-      const saved = localStorage.getItem("localeats_billing_details");
-      return saved ? JSON.parse(saved) : {
-        companyName: "",
-        taxNumber: "",
-        billingEmail: "",
-        cardNumber: "",
-        expiryDate: "",
-        cvv: "",
-        cardholderName: "",
-        isCardSaved: false
-      };
-    } catch {
-      return {
-        companyName: "",
-        taxNumber: "",
-        billingEmail: "",
-        cardNumber: "",
-        expiryDate: "",
-        cvv: "",
-        cardholderName: "",
-        isCardSaved: false
-      };
-    }
-  });
-
-  const [selectedInvoice, setSelectedInvoice] = useState<{
-    id: string;
-    date: string;
-    amount: string;
-  } | null>(null);
+  // Never read the legacy browser-stored card number, CVV or fake invoice state.
+  // Any legacy stored data requires a separately approved removal/migration path.
+  const settingsPreviewPanelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = settingsPreviewPanelRef.current;
+    if(!element) return;
+    element.inert = true;
+    return () => { element.inert = false; };
+  }, [activeTab, settingsCategory]);
 
   const [updateDismissed, setUpdateDismissed] = useState<boolean>(false);
 
@@ -751,10 +793,31 @@ function App() {
 
   // Availability is evaluated by Postgres; a dashboard must never auto-write a schedule.
   useEffect(() => {
-    const confirmed=(event:Event)=>{const shop=(event as CustomEvent<Shop>).detail;setShops(prev=>prev.map(s=>String(s.id)===String(shop.id)?{...s,...shop}:s));};
+    const confirmed=(event:Event)=>{
+      const shop=(event as CustomEvent<Shop>).detail;
+      setShops(prev=>prev.map(s=>{
+        if(String(s.id)!==String(shop.id)) return s;
+        if(!shouldAcceptAvailabilityShop(s, shop)) {
+          logAvailabilityDiagnostic({
+            outcome:"stale_read_ignored",
+            shopId:String(shop.id),
+            expectedRevision:s.availability_revision ?? null,
+            savedRevision:shop.availability_revision ?? null,
+          });
+          return s;
+        }
+        return {...s,...shop};
+      }));
+    };
     window.addEventListener("localeats:availability-confirmed",confirmed);
     return ()=>window.removeEventListener("localeats:availability-confirmed",confirmed);
   },[]);
+
+  useEffect(() => {
+    const syncBusy = () => setAvailabilityBusy(isAvailabilityCommandPending(currentShop?.id));
+    syncBusy();
+    return subscribeAvailabilityCommand(syncBusy);
+  }, [currentShop?.id]);
 
 
   // VAPID Push configuration moved to custom hook usePushNotifications
@@ -991,44 +1054,31 @@ function App() {
     }
   }, [soundStyle, soundVolume]);
 
-  // Sound alert logic for new orders
-  useEffect(() => {
-    if (!user) return;
-    const currentPendingCount = orders.filter(
-      (o) => o.status === "pending",
-    ).length;
-
-    // Only trigger if count increased and sound is enabled
-    if (soundAlerts && currentPendingCount > prevPendingCount.current) {
-      const audio = playNotificationSound(true); // Enable repeating for new orders
-
-      const stopSound = () => {
-        audio.pause();
-        if (activeSoundRef.current) {
-          activeSoundRef.current.pause();
-          activeSoundRef.current = null;
-        }
-      };
-
-      toast.success("NEW ORDER RECEIVED!", {
-        description: `CRITICAL: You have ${currentPendingCount} pending ${currentPendingCount === 1 ? "order" : "orders"}.`,
-        duration: 15000,
-        important: true,
-        icon: <Bell className="text-primary animate-bounce" />,
-        action: {
-          label: "DISMISS ALERT",
-          onClick: () => {
-            stopSound();
-            setActiveTab("orders");
-          },
-        },
-        onDismiss: () => stopSound(),
-        onAutoClose: () => stopSound(),
-      });
-    }
-
-    prevPendingCount.current = currentPendingCount;
-  }, [orders, soundAlerts, user, playNotificationSound, setActiveTab]);
+  // Only newly pending order IDs trigger a kitchen alert. First hydration
+  // establishes a baseline; status churn cannot create fake arrival alerts.
+  useEffect(()=>{
+    if(!user || !verifiedOrderScope || ordersReadState!=="confirmed")return;
+    const previous=observedPendingIdsRef.current?.scope===verifiedOrderScope
+      ? observedPendingIdsRef.current.ids : null;
+    const {current,newIds}=newMerchantPendingOrders(orders,previous);
+    observedPendingIdsRef.current={scope:verifiedOrderScope,ids:current};
+    if(newIds.length===0 || !soundAlerts || activeTab==="orders" ||
+       document.visibilityState!=="visible")return;
+    const audio=playNotificationSound(true);
+    const stopSound=()=>{
+      audio.pause();
+      activeSoundRef.current?.pause();
+      activeSoundRef.current=null;
+    };
+    toast.success(newIds.length===1?"New pending order":"New pending orders",{
+      description:`${newIds.length} newly pending ${newIds.length===1?"order requires":"orders require"} attention. Open Orders to verify details.`,
+      duration:15000,important:true,
+      icon:<Bell className="text-primary" />,
+      action:{label:"OPEN ORDERS",onClick:()=>{stopSound();setActiveTab("orders");}},
+      onDismiss:stopSound,
+      onAutoClose:stopSound,
+    });
+  },[orders,ordersReadState,soundAlerts,user?.id,verifiedOrderScope,activeTab,playNotificationSound,setActiveTab]);
 
   const processAndSetOrders = useCallback((firestoreOrdersList: Order[], supabaseOrdersList: Order[] = []) => {
     // Merge Orders by unique string ID, prioritizing latest updated_at or created_at
@@ -1062,33 +1112,61 @@ function App() {
       return timeB - timeA;
     });
 
+    // Identical 15-second API responses must not re-render all Dashboard cards,
+    // restart list animations or rewrite local storage unnecessarily.
+    const serialized=JSON.stringify(combinedOrders);
+    if(lastOrderPayloadRef.current===serialized)return;
+    lastOrderPayloadRef.current=serialized;
     setOrders(combinedOrders);
-    try {
-      localStorage.setItem("localeats_cached_orders", JSON.stringify(combinedOrders));
-    } catch {
-      // Cache is optional and never used as order authority.
-    }
+    // Customer names, phone numbers, addresses and pickup/payment details
+    // remain in memory; do not persist all orders to a shared browser key.
   }, []);
 
-  const fetchOrders = useCallback(async () => {
-    if (!user || merchantShopGate.status !== "ready" || !currentShop) {
+  // Only one active read per authenticated shop scope. Ignore late responses
+  // from a previous login/shop; never let a failed request overwrite verified data.
+  const fetchOrders=useCallback(():Promise<void>=>{
+    const scope=merchantOrderReadScope(user?.id,currentShop?.id,merchantShopGate.status);
+    const uid=firebaseAuth.currentUser?.uid;
+    if(!scope || !uid || uid!==user?.id){
+      orderReadSerialRef.current++;
       setOrders([]);
-      return;
+      setOrdersReadState("checking");
+      return Promise.resolve();
     }
-
-    try {
-      const data = await MerchantApi.getOrders();
-      const apiOrders = data.map((d: Record<string, unknown>) => ({
-          ...d,
-          id: String(d.id),
-          total_price: Number(d.total_price ?? d.price ?? 0),
+    if(orderReadInFlightRef.current?.scope===scope)return orderReadInFlightRef.current.promise;
+    const requestSerial=++orderReadSerialRef.current;
+    if(lastConfirmedOrderScopeRef.current!==scope)setOrdersReadState("checking");
+    const request=(async()=>{
+      try{
+        const data=await MerchantApi.getOrders();
+        if(orderReadSerialRef.current!==requestSerial || orderReadScopeRef.current!==scope ||
+           firebaseAuth.currentUser?.uid!==uid)return;
+        const apiOrders=data.map((d:Record<string,unknown>)=>({
+          ...d,id:String(d.id),
+          total_price:merchantDisplayOrderAmount(d.total_price ?? d.price),
         })) as Order[];
-      processAndSetOrders([], apiOrders);
-    } catch (apiError) {
-      console.warn("[Orders Sync] Authoritative API unavailable:", apiError);
-      toast.error(apiError instanceof Error ? apiError.message : "Orders could not be refreshed. No cached order changes were applied.");
-    }
-  }, [user, shops, processAndSetOrders, merchantShopGate.status, currentShop]);
+        processAndSetOrders([],apiOrders);
+        lastConfirmedOrderScopeRef.current=scope;
+        warnedOrderScopeRef.current=null;
+        setOrdersVerifiedAt(Date.now());
+        setOrdersReadState("confirmed");
+      }catch(error){
+        if(orderReadSerialRef.current!==requestSerial || orderReadScopeRef.current!==scope ||
+           firebaseAuth.currentUser?.uid!==uid)return;
+        console.warn("[Orders Sync] Authenticated Orders API read failed:",error);
+        setOrdersReadState("unavailable");
+        if(warnedOrderScopeRef.current!==scope){
+          warnedOrderScopeRef.current=scope;
+          toast.error("Orders could not be verified. Existing counts may be outdated. Use Refresh to retry.");
+        }
+      }
+    })();
+    const promise=request.finally(()=>{
+      if(orderReadInFlightRef.current?.promise===promise)orderReadInFlightRef.current=null;
+    });
+    orderReadInFlightRef.current={scope,promise};
+    return promise;
+  },[user?.id,currentShop?.id,merchantShopGate.status,processAndSetOrders]);
 
   const menuReadRequest = useRef(0);
   useEffect(()=>{const refresh=()=>{void fetchOrders();};window.addEventListener("merchant-pickup-order-confirmed",refresh);return()=>window.removeEventListener("merchant-pickup-order-confirmed",refresh);},[fetchOrders]);
@@ -1133,73 +1211,23 @@ function App() {
     operationalReady: merchantShopGate.status === "ready" && Boolean(currentShop),
   });
 
-  // Orders are read from the authoritative LocalEats API. Polling avoids treating
-  // either Firestore or a frontend Supabase adapter as a competing order source.
-  useEffect(() => {
-    if (merchantShopGate.status !== "ready" || !currentShop || !user || shops.length === 0) return;
-    void fetchOrders();
-    const pollingInterval = setInterval(() => void fetchOrders(), 15000);
-
-    return () => {
-      clearInterval(pollingInterval);
+  // Poll while the Dashboard is visible; immediately wake on focus or tab return.
+  // Polling does not activate order writes and never treats local cache as authority.
+  useEffect(()=>{
+    if(!verifiedOrderScope)return;
+    const refresh=()=>{
+      if(shouldPollMerchantOrders(document.visibilityState,verifiedOrderScope))void fetchOrders();
     };
-  }, [user, shops, fetchOrders, merchantShopGate.status, currentShop]);
-
-  const deleteAllOrders = async () => {
-    if (!user) return;
-
-    confirmAction(
-      "Confirm Delete All",
-      "Are you sure you want to delete ALL orders? This action cannot be undone.",
-      async () => {
-        setConfirmDialog(p => ({...p, isOpen: false}));
-
-        if (!isValidUUID(user.id)) {
-          if (!isSupabaseMocked()) {
-            console.warn("Skipping confirmDeleteAll - user ID is not a valid UUID:", user.id);
-          }
-          toast.info("No orders to delete.");
-          return;
-        }
-
-        // First, get the shops owned by this user
-        const { data: ownedShops, error: shopsError } = await supabase
-          .from("shops")
-          .select("id")
-          .eq("owner_id", user.id);
-
-        if (shopsError) {
-          if (!isSupabaseMocked()) {
-            console.warn("Notice fetching owned shops for deletion:", shopsError.message || shopsError);
-          }
-          return;
-        }
-
-        const ownedShopIds = ownedShops?.map((s) => s.id) || [];
-
-        if (ownedShopIds.length === 0) {
-          toast.info("No orders to delete.");
-          return;
-        }
-
-        // Delete only orders belonging to these shops
-        let error = null;
-        try {
-          await OrderService.deleteAllOrdersForShops(ownedShopIds);
-        } catch (err) {
-          error = err;
-        }
-
-        if (error) {
-          console.error("Delete All Orders Error:", error);
-          toast.error("We couldn't delete these orders right now. Please try again.");
-        } else {
-
-          fetchOrders();
-        }
-      }
-    );
-  };
+    refresh();
+    const pollingInterval=window.setInterval(refresh,15000);
+    window.addEventListener("focus",refresh);
+    document.addEventListener("visibilitychange",refresh);
+    return ()=>{
+      window.clearInterval(pollingInterval);
+      window.removeEventListener("focus",refresh);
+      document.removeEventListener("visibilitychange",refresh);
+    };
+  },[verifiedOrderScope,fetchOrders]);
 
   const { updateOrderStatus, requestRider, dispatchOrderToRider, convertOrderToPickup, unassignRider } = useOrderWorkflow({
     orders,
@@ -1450,38 +1478,22 @@ function App() {
   }, [orders, autoAcceptOrders, updateOrderStatus, merchantShopGate.status, currentShop]);
 
 
-  const sendRiderNudge = async (riderId: string, message: string) => {
-    // 1. Record database nudge
-    const { error } = await supabase.rpc("nudge_rider", {
-      rider_id: riderId,
-      message,
-    });
-
-    // 2. Trigger silent push notification via send-alert edge function
-    try {
-      const sessionRes = await supabase.auth.getSession();
-      const token = sessionRes?.data?.session?.access_token;
+  const sendRiderNudge=async(riderId:string,message:string):Promise<void>=>{
+    // This legacy nudge is best-effort and never proof of device delivery.
+    const {error}=await supabase.rpc("nudge_rider",{rider_id:riderId,message});
+    if(error)throw new Error("The rider nudge could not be saved by the service.");
+    try{
+      const sessionRes=await supabase.auth.getSession();
+      const token=sessionRes?.data?.session?.access_token;
       await sendPushNotification({
-        userId: riderId,
-        title: "LocalEats Courier Nudge",
-        body: message || "Order update: Please check your active delivery mission!",
-        data: {
-          type: "nudge",
-          silent: true,
-          rider_id: riderId,
-          timestamp: Date.now(),
-        },
-        userJwt: token,
+        userId:riderId,title:"LocalEats Courier Nudge",
+        body:message || "Please check your active delivery mission.",
+        data:{type:"nudge",silent:true,rider_id:riderId,timestamp:Date.now()},
+        userJwt:token,
       });
-    } catch (pushErr) {
-      console.warn("Push notification edge function warning:", pushErr);
-    }
-
-    if (error) {
-      console.error("Nudge error:", error);
-      toast.success("Silent push nudge dispatched to courier device!");
-    } else {
-      toast.success("Silent push nudge sent to courier!");
+    }catch(pushErr){
+      // Request was saved, but push may not have reached the device.
+      console.warn("Rider push delivery not confirmed:",pushErr);
     }
   };
 
@@ -1524,6 +1536,7 @@ function App() {
   }
 
   const handleSaveProfile = async (data: ProfileData) => {
+    if (!merchantStorefrontWritesEnabled()) { toast.info("Profile saving is unavailable in Merchant Preview."); return; }
     setIsSaving(true);
     setIsSaveSuccess(false);
     try {
@@ -1602,6 +1615,17 @@ function App() {
   }
 
   if (user && merchantShopGate.status === "no-shop") {
+    if (merchantStorefrontPreviewOnly()) {
+      return (
+        <div className="min-h-screen bg-surface px-4 py-10 text-on-surface flex items-center justify-center">
+          <section className="max-w-xl w-full rounded-[2rem] bg-surface-container-lowest border border-outline-variant/20 p-8 text-center space-y-4">
+            <h2 className="font-headline text-2xl font-black">Shop Onboarding — Preview Only</h2>
+            <p className="text-sm text-on-surface-variant">No verified shop is selected. Shop registration and uploads are unavailable in this Preview. No shop or database record is created.</p>
+            <button type="button" onClick={() => void handleSignOut()} className="rounded-xl px-5 py-3 bg-surface-container-high text-on-surface text-sm font-bold">Sign Out</button>
+          </section>
+        </div>
+      );
+    }
     return (
       <CreateShopOnboarding
         onCreated={handleCreatedMerchantShop}
@@ -1644,7 +1668,7 @@ function App() {
     );
   }
 
-  if (isEditingProfile) {
+  if (isEditingProfile && !merchantStorefrontPreviewOnly()) {
     console.log("[Render] editing-profile", { isSessionChecking, isAuthReady, loading, userId: user?.id });
     return (
       <>
@@ -1731,10 +1755,10 @@ function App() {
             </div>
             <div className="space-y-2">
               <h2 className="font-headline font-black text-2xl text-zinc-900 dark:text-zinc-50 tracking-tight">
-                LocalEatsSA Kitchen Dashboard
+                LocalEats Merchant Kitchen
               </h2>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Authorize high-reliability kitchen alarms, prevent screen auto-locking, and register ESC/POS direct thermal print handshakes.
+                Enable optional kitchen sound alerts. Screen wake and printer support depend on your device and permissions.
               </p>
             </div>
             
@@ -1742,19 +1766,19 @@ function App() {
               <div className="flex gap-3 text-xs">
                 <span className="text-[#FF5A36] font-bold">●</span>
                 <p className="text-zinc-600 dark:text-zinc-300">
-                  <strong>Acoustic Siren Alerter:</strong> Plays a high-volume, dual-tone alarm pattern that halts only on manual resolution of `PENDING` orders.
+                  <strong>Acoustic Siren Alerter:</strong> May play an arrival sound when the browser allows audio. Check the Orders list to confirm new orders.
                 </p>
               </div>
               <div className="flex gap-3 text-xs">
                 <span className="text-[#FF5A36] font-bold">●</span>
                 <p className="text-zinc-600 dark:text-zinc-300">
-                  <strong>Screen Wake :</strong> Safeguards continuous screen illumination during busy, high-noise kitchen shifts.
+                  <strong>Screen Wake :</strong> Screen wake requires device and browser support and may not be available.
                 </p>
               </div>
               <div className="flex gap-3 text-xs">
                 <span className="text-[#FF5A36] font-bold">●</span>
                 <p className="text-zinc-600 dark:text-zinc-300">
-                  <strong>Direct s Interface:</strong> Streams byte-aligned ESC/POS receipts directly over Web Bluetooth and Web USB with IndexedDB queueing.
+                  <strong>Direct s Interface:</strong> Receipt printing is optional and requires supported hardware and browser permission.
                 </p>
               </div>
             </div>
@@ -1763,7 +1787,7 @@ function App() {
               onClick={enableAudio}
               className="w-full py-4 bg-[#FF5A36] hover:bg-[#e04f2f] text-white font-bold rounded-2xl tracking-wider uppercase text-xs shadow-xl shadow-orange-500/10 transition-all duration-200 cursor-pointer active:scale-95"
             >
-              Go Online & Initialize Dashboard
+              Enable Alerts & Open Dashboard
             </button>
           </div>
         </div>
@@ -1785,7 +1809,7 @@ function App() {
               </p>
               <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed pt-1">
                 {isOffline
-                  ? "Your device is not connected to Wi-Fi or mobile data. We are actively attempting to reconnect."
+                  ? "Your device is not connected to Wi-Fi or mobile data. Try reconnecting; order actions require API confirmation."
                   : "Your Wi-Fi or mobile data is active, but the cloud backend is currently taking longer than expected to respond."}
               </p>
             </div>
@@ -1805,7 +1829,7 @@ function App() {
               </div>
               <div className="flex justify-between items-center text-xs">
                 <span className="text-zinc-500 font-bold">Local Data:</span>
-                <span className="font-mono text-emerald-500 font-bold uppercase text-[10px]">CACHE SAFE</span>
+                <span className="font-mono text-emerald-500 font-bold uppercase text-[10px]">MAY BE STALE</span>
               </div>
             </div>
 
@@ -1825,7 +1849,7 @@ function App() {
                 type="button"
                 onClick={() => {
                   setDismissedOfflineOverlay(true);
-                  toast.info("Operating in local cached mode");
+                  toast.info("Cached information may be stale. Order changes still require server confirmation.");
                 }}
                 className="w-full py-2.5 px-4 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-semibold text-xs rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all cursor-pointer"
               >
@@ -1862,7 +1886,7 @@ function App() {
           onComplete={() => {
             setOnboardingOpen(false);
             localStorage.setItem("localeats_onboard_v1", "true");
-            toast.success("🎉 Guided onboarding completed! You are fully configured.");
+            toast.success("🎉 Guided onboarding completed! Review your shop setup separately.");
           }}
         />
 
@@ -1904,7 +1928,7 @@ function App() {
 
                 {/* Subtitle */}
                 <p className="text-xs text-on-surface-variant/80 leading-relaxed mb-5">
-                  Your device has lost its active database connection. Don&apos;t worry—LocalEats is fully prepared and handles network pauses automatically without interruption.
+                  Your device has lost its active database connection. Don&apos;t worry—Previously loaded information may remain visible, but live order actions require a network connection.
                 </p>
 
                 {/* Status Grid */}
@@ -1917,7 +1941,7 @@ function App() {
                     <div>
                       <h4 className="text-xs font-black tracking-tight text-on-surface">State Protection Enabled</h4>
                       <p className="text-[10px] text-on-surface-variant/75 mt-0.5">
-                        All orders, menu additions, and promotional codes are stored in your secure browser cache immediately.
+                        Some previously loaded information may be cached on this device. The server remains authoritative.
                       </p>
                     </div>
                   </div>
@@ -1930,7 +1954,7 @@ function App() {
                     <div>
                       <h4 className="text-xs font-black tracking-tight text-on-surface">Automated Cloud Sync</h4>
                       <p className="text-[10px] text-on-surface-variant/75 mt-0.5">
-                        Your cached updates will transparently merge back to the cloud database the moment your connection is restored.
+                        Do not assume changes have been saved until the server confirms them.
                       </p>
                     </div>
                   </div>
@@ -1943,7 +1967,7 @@ function App() {
                     <div>
                       <h4 className="text-xs font-black tracking-tight text-on-surface">Instant Performance</h4>
                       <p className="text-[10px] text-on-surface-variant/75 mt-0.5">
-                        Reads are loaded directly from lightning-fast memory registers, keeping checkout and rider controls snappy.
+                        Cached screens can be viewed, but order updates, checkout and dispatch require a server response.
                       </p>
                     </div>
                   </div>
@@ -2081,8 +2105,9 @@ function App() {
               />
               {currentShop && (
                 <button
+                  disabled={availabilityBusy}
                   onClick={async () => {
-                    if (!currentShop) return;
+                    if (!currentShop || availabilityBusy) return;
                     const newStatus = !currentShop.is_active;
 
                     const { success, error, freshShop } = await syncShopAvailability({
@@ -2094,13 +2119,13 @@ function App() {
                     });
 
                     if (success) {
+                      const open = freshShop?.is_active === true;
                       toast.success(
-                        `Shop is now ${newStatus ? "Open & Live" : "Closed & Offline"}`,
+                        `Shop is now ${open ? "Open & Live" : "Closed & Offline"}`,
                       );
-                      // Force a re-fetch of the current state immediately after success
                       try {
                         const verifiedShop = freshShop;
-                        if (verifiedShop) {
+                        if (verifiedShop && shouldAcceptAvailabilityShop(currentShop, verifiedShop)) {
                            setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
                         }
                         await fetchShops();
@@ -2108,8 +2133,9 @@ function App() {
                         console.error("Failed to re-fetch after toggling:", e);
                       }
                     } else {
-                      // Rollback on error
                       toast.error(typeof error === "string" ? error : "Failed to update shop status");
+                      // Always refresh from server on failure so display reflects real state, not a stale guess.
+                      try { await refreshAuthoritativeMerchantShop(); } catch { /* best-effort */ }
                     }
                   }}
                   className={cn(
@@ -2206,7 +2232,10 @@ function App() {
              Store Offline - Not Receiving Orders
            </div>
            <button
+             disabled={availabilityBusy || merchantStorefrontPreviewOnly()}
+             title={merchantStorefrontPreviewOnly() ? "Shop availability changes are unavailable in Merchant Preview" : "Mark shop available"}
              onClick={async () => {
+                if (availabilityBusy || merchantStorefrontPreviewOnly()) return;
                 const newStatus = true;
 
                 const { success, error, freshShop } = await syncShopAvailability({
@@ -2216,12 +2245,11 @@ function App() {
                   updateFirestoreShop,
                   getFirestoreShopById,
                 });
-                if (success) {
-                  toast.success("Shop is now Open and accepting customer orders!");
-                  // Force a re-fetch of the current state immediately after success
+                if (success && freshShop?.is_active === true) {
+                  toast.success("Shop marked available. Pickup checkout eligibility is confirmed separately.");
                   try {
                     const verifiedShop = freshShop;
-                    if (verifiedShop) {
+                    if (verifiedShop && shouldAcceptAvailabilityShop(currentShop, verifiedShop)) {
                        setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
                     }
                     await fetchShops();
@@ -2229,13 +2257,14 @@ function App() {
                     console.error("Failed to re-fetch after toggling:", e);
                   }
                 } else {
-
                   toast.error(typeof error === "string" ? error : "Failed to go online");
+                  // Refresh from server so display reflects real state, not a stale guess.
+                  try { await refreshAuthoritativeMerchantShop(); } catch { /* best-effort */ }
                 }
              }}
              className="px-4 py-1 bg-white text-error rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-zinc-100 transition-colors ml-2 shadow-xs cursor-pointer active:scale-95 border border-white"
            >
-             Go Online Now
+             {merchantStorefrontPreviewOnly() ? "Status Change Unavailable" : "Mark Shop Available"}
            </button>
         </div>
       )}
@@ -2250,8 +2279,11 @@ function App() {
             <React.Suspense fallback={<DashboardSkeleton />}>
               {activeTab === "dashboard" && (
                 <DashboardOverview
+                  previewOnly={merchantStorefrontPreviewOnly()}
                   orders={orders}
                   loading={loading}
+                  ordersReadState={ordersReadState}
+                  ordersVerifiedAt={ordersVerifiedAt}
                   shops={shops}
                   user={user}
                   onNavigate={setActiveTab}
@@ -2259,7 +2291,7 @@ function App() {
                     await fetchShops();
                     await Promise.all([fetchOrders(), fetchAllMenuItems()]);
                   }}
-                  onEditProfile={() => setIsEditingProfile(true)}
+                  onEditProfile={() => { if (merchantStorefrontPreviewOnly()) toast.info("Profile editing is unavailable in Merchant Preview."); else setIsEditingProfile(true); }}
                   menuItems={menuItems}
                   trialInfo={trialInfo}
                   currentShop={currentShop}
@@ -2284,10 +2316,11 @@ function App() {
               {activeTab === "orders" && (
                 <OrdersManagement
                   orders={orders}
+                  ordersReadState={ordersReadState}
+                  ordersVerifiedAt={ordersVerifiedAt}
                   onUpdateStatus={updateOrderStatus}
                   onDispatchToRider={dispatchOrderToRider}
                   onConvertOrderToPickup={convertOrderToPickup}
-                  onDeleteAllOrders={deleteAllOrders}
                   loading={loading}
                   onRefresh={fetchOrders}
                   kitchenMode={kitchenMode}
@@ -2316,6 +2349,7 @@ function App() {
                   shops={shops}
                   menuItems={menuItems}
                   orders={orders}
+                  ordersReadState={ordersReadState}
                   user={user}
                   onNavigateTab={setActiveTab}
                 />
@@ -2352,6 +2386,7 @@ function App() {
                     currentShop={currentShop}
                     setShops={setShops}
                     orders={orders}
+                    ordersReadState={ordersReadState}
                     setOrders={setOrders}
                   />
                 ) : (
@@ -2372,23 +2407,31 @@ function App() {
                     </h2>
                   </div>
                   <p className="text-sm text-on-surface-variant font-medium">
-                    Manage your account and storefront preferences.
+                    Storefront, account and basic preferences first. Less-used settings are under More settings.
                   </p>
+                  <div className="pt-3">
+                    <button type="button" onClick={() => setActiveTab("storefront")}
+                      className="merchant-tap-feedback inline-flex items-center gap-2 rounded-xl bg-primary text-on-primary px-4 py-2.5 font-bold text-sm shadow-sm focus-visible:outline-2 focus-visible:outline-primary">
+                      <Store size={17} aria-hidden="true" /> Open Storefront &amp; Test Location <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                    <p className="mt-2 text-xs text-on-surface-variant">Opens a safe view of the original location map. Test pin changes do not edit the registered shop or change Customer App discovery.</p>
+                  </div>
                 </header>
 
                 <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-start px-4 md:px-0">
                   {/* Sidebar */}
                   <nav className="w-full md:w-56 shrink-0 flex md:flex-col gap-2 overflow-x-auto pb-4 md:pb-0 hide-scrollbar border-b md:border-b-0 border-outline-variant/10 md:pr-4">
                      {[
-                       { id: "account", label: "Account & Staff", icon: UserIcon },
                        { id: "storefront", label: "Storefront", icon: Store },
+                       { id: "account", label: "Account", icon: UserIcon },
+                       { id: "preferences", label: "Preferences", icon: Settings },
+                       { id: "pickup-payments", label: "Pickup payments", icon: CreditCard },
                        { id: "operations", label: "Operations", icon: Sliders },
                        { id: "delivery", label: "Delivery", icon: Truck },
                        { id: "hardware", label: "Printing & Hardware", icon: Printer },
                        { id: "billing", label: "Billing & Subscription", icon: Wallet },
-                       { id: "preferences", label: "Preferences", icon: Settings },
                        { id: "diagnostics", label: "Database Diagnostics", icon: Activity },
-                     ].map(category => (
+                     ].filter(category => settingsAdvancedExpanded || ["storefront", "account", "preferences"].includes(category.id)).map(category => (
                        <button
                          key={category.id}
                          onClick={() => setSettingsCategory(category.id)}
@@ -2405,37 +2448,82 @@ function App() {
                          {category.label}
                        </button>
                      ))}
+                     <button type="button" onClick={() => setSettingsAdvancedExpanded(value => !value)}
+                       aria-expanded={settingsAdvancedExpanded}
+                       className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-on-surface-variant hover:bg-surface-container-high border border-outline-variant/15 focus-visible:outline-2 focus-visible:outline-primary">
+                       <Sliders size={17} aria-hidden="true" />
+                       {settingsAdvancedExpanded ? "Fewer settings" : "More settings"}
+                       <ChevronRight size={15} aria-hidden="true" className={settingsAdvancedExpanded ? "-rotate-90" : "rotate-90"} />
+                     </button>
                   </nav>
 
                   {/* Settings Content Panels */}
-                  <div className="flex-1 w-full space-y-4 max-w-3xl pb-16">
+                  <div ref={settingsPreviewPanelRef}
+                    onClickCapture={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                    onKeyDownCapture={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                    onSubmitCapture={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                    className="flex-1 w-full space-y-4 max-w-3xl pb-16 pointer-events-none">
+                    <p role="status" className="text-xs text-on-surface-variant bg-surface-container-low rounded-2xl p-3 border border-outline-variant/15">
+                      Settings Preview is read-only. {merchantSettingsS4Notice()}
+                    </p>
+                    {settingsCategory === "pickup-payments" && currentShop && (
+                      <section className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div>
+                          <h3 className="font-headline font-bold text-lg">Pickup payment methods (Preview)</h3>
+                          <p className="text-sm text-on-surface-variant mt-1">Cash or a physical card machine may be used at collection after launch approval. This screen does not verify that a card terminal is connected or that any customer has paid.</p>
+                        </div>
+                        <p role="status" className="text-xs text-on-surface-variant bg-surface-container-low border border-outline-variant/15 rounded-xl p-3">{merchantSettingsS3PickupNotice()}</p>
+                        {!currentShop.pickup_payment_methods?.length && <p role="status" className="text-xs text-amber-700">No pickup payment methods are verified in this shop record.</p>}
+                        <fieldset className="space-y-2">
+                          <legend className="sr-only">Accepted pickup payment methods</legend>
+                          {([
+                            ["cash", "Cash at shop (proposed)"],
+                            ["card_machine", "Physical card machine at shop (proposed)"],
+                            ["both", "Cash or physical card machine (proposed)"],
+                          ] as const).map(([value,label])=>(
+                            <label key={value} className="flex items-center gap-3 p-3 border border-outline-variant/30 rounded-xl cursor-pointer">
+                              <input type="radio" name="pickup-payment-settings" disabled={!merchantSettingsS3WritesEnabled()} value={value} checked={pickupPaymentChoice===value} onChange={()=>{if(merchantSettingsS3WritesEnabled())setPickupPaymentChoice(value);}} />
+                              <span className="text-sm font-bold text-on-surface">{label}</span>
+                            </label>
+                          ))}
+                        </fieldset>
+                        <p className="text-xs text-on-surface-variant">Recorded settings (not proof of payment): {pickupMethodRecordLabel(currentShop.pickup_payment_methods)}</p>
+                        {pickupPaymentError && <p role="alert" className="text-xs text-error">{pickupPaymentError}</p>}
+                        <button type="button" disabled={savingPickupPayments || !pickupPaymentSettingsEnabled() || !merchantSettingsS3WritesEnabled()} onClick={()=>{ if(merchantSettingsS3WritesEnabled())void savePickupPaymentSettings(); }} className="px-4 py-3 bg-primary text-on-primary rounded-xl font-bold text-sm disabled:opacity-50">
+                          {savingPickupPayments ? "Saving..." : "Save methods — Unavailable"}
+                        </button>
+                        {!pickupPaymentSettingsEnabled() && <p className="text-xs text-on-surface-variant">Payment method editing and real pickup ordering require separate approval; no customer payments or methods are activated here.</p>}
+                      </section>
+                    )}
                     {settingsCategory === "diagnostics" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h3 className="font-headline font-bold text-lg mb-2">Firestore Diagnostics</h3>
+                        <h3 className="font-headline font-bold text-lg mb-2">Shop Diagnostics — Preview</h3>
                         <ShopDiagnosticPanel currentShop={currentShop} />
                       </div>
                     )}
                     
                     {settingsCategory === "storefront" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h3 className="font-headline font-bold text-lg mb-2">Store Profile & Location Sync</h3>
+                        <h3 className="font-headline font-bold text-lg mb-2">Store Profile & Location — Preview</h3>
                         
                         {/* Real-time Location Sync Status Indicator */}
                         {currentShop && (
                           <LocationSyncIndicator
+                            previewOnly={!merchantSettingsS4ActionsEnabled()}
                             locationState={currentShopLocation}
                             syncAnalysis={currentShopLocationSync}
                             isLocating={isLocatingShopGPS}
                             isSaving={isSavingShopLocation}
-                            onDetectGPS={detectShopGPS}
-                            onAutoAlign={autoAlignShopCity}
-                            onSave={() => saveShopLocationSettings()}
-                            onOpenStorefrontMap={() => setActiveTab("storefront")}
+                            onDetectGPS={merchantSettingsS4ActionsEnabled() ? detectShopGPS : undefined}
+                            onAutoAlign={merchantSettingsS4ActionsEnabled() ? autoAlignShopCity : undefined}
+                            onSave={merchantSettingsS4ActionsEnabled() ? () => saveShopLocationSettings() : undefined}
+                            onOpenStorefrontMap={merchantSettingsS4ActionsEnabled() ? () => setActiveTab("storefront") : undefined}
                           />
                         )}
 
                         <button
-                          onClick={() => setActiveTab("storefront")}
+                          disabled={!merchantSettingsS4ActionsEnabled()}
+                          onClick={() => { if(merchantSettingsS4ActionsEnabled()) setActiveTab("storefront"); }}
                     className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-0 p-5 bg-primary/5 hover:bg-primary/10 rounded-2xl transition-all border border-primary/20 group shadow-sm shadow-primary/5"
                   >
                     <div className="flex items-center gap-4">
@@ -2447,13 +2535,13 @@ function App() {
                           Storefront Profile
                         </p>
                         <p className="text-xs text-on-surface-variant line-clamp-1 md:line-clamp-none">
-                          Update your shop name, logo, and cover photo.
+                          Profile changes are unavailable in read-only Preview.
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 self-end md:self-auto">
                       <span className="text-[10px] items-center font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap">
-                        New Location
+                        Read-only Preview
                       </span>
                       <ChevronRight
                         size={18}
@@ -2468,7 +2556,8 @@ function App() {
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">My Account</h3>
                   <button
-                    onClick={() => setIsEditingProfile(true)}
+                    disabled={!merchantSettingsS4ActionsEnabled()}
+                    onClick={() => { if(merchantSettingsS4ActionsEnabled()) setIsEditingProfile(true); }}
                     className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
                   >
                     <div className="flex items-center gap-4">
@@ -2480,7 +2569,7 @@ function App() {
                           Edit Profile
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Change your name, email, and photo.
+                          Profile editing is not available in this Preview.
                         </p>
                       </div>
                     </div>
@@ -2496,10 +2585,12 @@ function App() {
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">App Preferences</h3>
                   <button
+                    disabled={!merchantSettingsS4ActionsEnabled()}
                     onClick={() => {
+                      if(!merchantSettingsS4ActionsEnabled())return;
                       setActiveTab("dashboard");
                       setOnboardingOpen(true);
-                      toast.success("✨ Starting interactive walkthrough tour...");
+                      toast.info("Walkthrough opened for inspection only.");
                     }}
                     className="w-full flex items-center justify-between p-5 bg-gradient-to-r from-primary/[0.04] to-transparent hover:from-primary/[0.08] hover:to-primary/[0.02] rounded-2xl transition-all border border-primary/10 group shadow-sm shadow-primary/[0.02]"
                   >
@@ -2512,7 +2603,7 @@ function App() {
                           App Walkthrough Tour
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Restart the guided interactive manual tour of your workspace resources.
+                          Walkthrough controls are unavailable while Settings is read-only.
                         </p>
                       </div>
                     </div>
@@ -2527,12 +2618,9 @@ function App() {
                     {settingsCategory === "account" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <button
-                    onClick={() =>
-                      toast.info("Staff Accounts coming soon!", {
-                        description:
-                          "You will be able to add staff members with limited access (e.g., cannot view revenue or delete menu items).",
-                      })
-                    }
+                    disabled={!merchantSettingsS4ActionsEnabled()}
+                    title="Staff accounts require a separate permissions review"
+                    onClick={() => { if(merchantSettingsS4ActionsEnabled()) toast.info("Staff accounts are not activated."); }}
                     className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
                   >
                     <div className="flex items-center gap-4">
@@ -2544,7 +2632,7 @@ function App() {
                           Staff Accounts
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Manage roles and permissions for your team.
+                          Staff access management is not activated or verified.
                         </p>
                       </div>
                     </div>
@@ -2558,10 +2646,8 @@ function App() {
 
                     {settingsCategory === "storefront" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <a
-                    href="https://rider.localeatssa.co.za/"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <div
+                    aria-disabled="true"
                     className="w-full flex items-center justify-between p-5 bg-blue-500/5 hover:bg-blue-500/10 rounded-2xl transition-all border border-blue-500/20 group shadow-sm shadow-blue-500/5"
                   >
                     <div className="flex items-center gap-4">
@@ -2573,24 +2659,24 @@ function App() {
                           Rider Marketplace
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Access the dedicated platform for deliveries and
-                          missions.
+                          Rider missions and delivery are deferred. This is not an active service or link.
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-black uppercase text-blue-500/60 bg-blue-500/10 px-2 py-0.5 rounded-md">
-                        External
+                        Not Active
                       </span>
                       <DollarSign size={18} className="text-blue-500" />
                     </div>
-                  </a>
+                  </div>
                       </div>
                     )}
 
                     {settingsCategory === "operations" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">Operations Center</h3>
+                        <p role="status" className="text-xs text-on-surface-variant bg-surface-container-low rounded-2xl border border-outline-variant/15 p-3">{merchantSettingsOperationsNotice()}</p>
                   {/* Order Operations Section */}
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
                     <div className="flex items-center gap-2 border-b border-outline-variant/10 pb-4">
@@ -2602,7 +2688,7 @@ function App() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Store Status</p>
-                        <p className="text-xs text-on-surface-variant">Are you currently accepting new orders?</p>
+                        <p className="text-xs text-on-surface-variant">Shop open/closed setting only; real pickup ordering is not active in this Preview.</p>
                       </div>
                       <div className="flex bg-surface-container-high p-1 rounded-xl border border-outline-variant/10">
                          {(["open", "busy", "closed"] as const).map((statusOption) => {
@@ -2615,9 +2701,9 @@ function App() {
                            return (
                              <button
                                key={statusOption}
+                               disabled={availabilityBusy || !merchantSettingsOperationalWritesEnabled()}
                                onClick={() => {
-
-                                 if (currentShop) {
+                                 if (!currentShop || availabilityBusy || !merchantSettingsOperationalWritesEnabled()) return;
                                    const isActive = statusOption === "open" || statusOption === "busy";
                                    void syncShopAvailability({
                                      shopId: currentShop.id,
@@ -2626,12 +2712,12 @@ function App() {
                                      updateFirestoreShop,
                                      getFirestoreShopById,
                                      onSuccess: async (freshShop) => {
-                                       setStoreStatus(statusOption);
-                                       toast.success(`Shop is now ${statusOption === "open" ? "OPEN" : statusOption === "busy" ? "BUSY" : "CLOSED"}`);
-                                       // Force a re-fetch of the current state immediately after success
+                                       const open = freshShop?.is_active === true;
+                                       setStoreStatus(open ? (statusOption === "busy" ? "busy" : "open") : "closed");
+                                       toast.success(`Shop is now ${open ? (statusOption === "busy" ? "BUSY" : "OPEN") : "CLOSED"}`);
                                        try {
                                          const verifiedShop = freshShop;
-                                         if (verifiedShop) {
+                                         if (verifiedShop && shouldAcceptAvailabilityShop(currentShop, verifiedShop)) {
                                             setShops((prev) => prev.map((s) => s.id === currentShop.id ? { ...s, ...verifiedShop, is_active: verifiedShop.is_active } : s));
                                          }
                                          await fetchShops();
@@ -2643,7 +2729,6 @@ function App() {
                                        toast.error(typeof err === "string" ? err : "Failed to update status");
                                      },
                                    });
-                                 }
                                }}
                                className={cn(
                                  "px-4 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all",
@@ -2661,11 +2746,12 @@ function App() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Default Prep Time</p>
-                        <p className="text-xs text-on-surface-variant">Estimated minutes to prepare an average order.</p>
+                        <p className="text-xs text-on-surface-variant">Preparation-time example only. No customer order promise is set from this Preview.</p>
                       </div>
                       <div className="flex items-center gap-3">
                          <input 
-                           type="range" 
+                           type="range"
+                           disabled={!merchantSettingsOperationalWritesEnabled()} 
                            min="5" 
                            max="60" 
                            step="5"
@@ -2684,7 +2770,7 @@ function App() {
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-2">
                           <MapPin size={18} className="text-on-surface-variant" />
-                          <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Operating Hours</h3>
+                          <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Operating Hours (Preview)</h3>
                         </div>
                         <div className="flex flex-wrap items-center gap-4">
                            {/* Auto Schedule Store Hours Toggle */}
@@ -2692,7 +2778,7 @@ function App() {
                              <div className="flex flex-col">
                                <span className="text-xs font-bold text-on-surface">Auto-Schedule Opening</span>
                                <span className="text-[9px] text-on-surface-variant font-medium">
-                                 {"Server-managed in South African time; manual close takes priority"}
+                                 {"Schedule status requires server verification. Editing is unavailable in Preview."}
                                </span>
                              </div>
                              <button
@@ -2709,21 +2795,23 @@ function App() {
                            <div className="flex items-center gap-2">
                              <span className="text-xs font-bold text-on-surface-variant">Manual Holiday Mode</span>
                              <button
+                               disabled={availabilityBusy || !merchantSettingsOperationalWritesEnabled()}
                                onClick={async () => {
-                                 if (!currentShop) return;
-                                 const newStatus = !currentShop.is_active; // If we're toggling, newStatus is the opposite of currentShop.is_active
+                                 if (!currentShop || availabilityBusy || !merchantSettingsOperationalWritesEnabled()) return;
+                                 const newStatus = !currentShop.is_active;
 
-                                 const { success, error } = await syncShopAvailability({shopId:currentShop.id,isOpen:newStatus});
+                                 const { success, error, freshShop } = await syncShopAvailability({shopId:currentShop.id,isOpen:newStatus});
 
                                  if (success) {
+                                   const open = freshShop?.is_active === true;
                                    toast.success(
-                                     newStatus 
-                                       ? "Holiday Mode disabled. Your store is now accepting orders." 
+                                     open
+                                       ? "Holiday Mode disabled. Shop availability was updated; pickup ordering requires separate activation."
                                        : "Holiday Mode enabled. Your store is now temporarily closed.",
                                      { icon: <PauseCircle className="text-primary"/> }
                                    );
                                  } else {
-                                   toast.error("Failed to toggle Holiday Mode.");
+                                   toast.error(typeof error === "string" ? error : "Failed to toggle Holiday Mode.");
                                  }
                                }}
                                className={cn(
@@ -2737,15 +2825,17 @@ function App() {
                         </div>
                       </div>
 
-                      {/* Scheduled Holiday Range */}
+                      {/* Holiday Date Range — Not Active */}
                       <div className="flex flex-col gap-2 bg-surface-container-highest/20 p-3.5 rounded-xl border border-outline-variant/5">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Scheduled Holiday Range</label>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Holiday Date Range — Not Active</label>
                         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                            <input 
-                              type="date" 
+                              type="date"
+                              disabled={!merchantSettingsOperationalWritesEnabled()} 
                               className="bg-surface-container-low text-xs border border-outline-variant/20 rounded-lg px-3 py-2 focus:outline-none focus:border-primary/50 font-mono"
                               value={user?.user_metadata?.holiday_schedule?.start || ''} 
                               onChange={async (e) => {
+                                if(!merchantSettingsOperationalWritesEnabled()) return;
                                 const currentSchedule = user?.user_metadata?.holiday_schedule || {};
                                 const { data: updateRes, error } = await supabase.auth.updateUser({
                                   data: { holiday_schedule: { ...currentSchedule, start: e.target.value } }
@@ -2760,10 +2850,12 @@ function App() {
                            />
                            <span className="text-xs font-bold text-on-surface-variant text-center sm:text-left">to</span>
                            <input 
-                              type="date" 
+                              type="date"
+                              disabled={!merchantSettingsOperationalWritesEnabled()} 
                               className="bg-surface-container-low text-xs border border-outline-variant/20 rounded-lg px-3 py-2 focus:outline-none focus:border-primary/50 font-mono"
                               value={user?.user_metadata?.holiday_schedule?.end || ''} 
                               onChange={async (e) => {
+                                if(!merchantSettingsOperationalWritesEnabled()) return;
                                 const currentSchedule = user?.user_metadata?.holiday_schedule || {};
                                 const { data: updateRes, error } = await supabase.auth.updateUser({
                                   data: { holiday_schedule: { ...currentSchedule, end: e.target.value } }
@@ -2778,7 +2870,9 @@ function App() {
                            />
                            {(user?.user_metadata?.holiday_schedule?.start || user?.user_metadata?.holiday_schedule?.end) && (
                              <button 
+                               disabled={!merchantSettingsOperationalWritesEnabled()}
                                onClick={async () => {
+                                 if(!merchantSettingsOperationalWritesEnabled()) return;
                                  const { data: updateRes, error } = await supabase.auth.updateUser({
                                    data: { holiday_schedule: null }
                                  });
@@ -2800,7 +2894,9 @@ function App() {
                     <div className="space-y-4">
                       <div className="flex justify-end">
                         <button
+                          disabled={!merchantSettingsOperationalWritesEnabled()}
                           onClick={() => {
+                            if(!merchantSettingsOperationalWritesEnabled()) return;
                             const monday = operatingHours[0];
                             const newHours = operatingHours.map(d => 
                               ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(d.day) 
@@ -2820,6 +2916,7 @@ function App() {
                           <div className="flex items-center gap-3 w-32">
                              <input 
                                type="checkbox"
+                               disabled={!merchantSettingsOperationalWritesEnabled()}
                                checked={dayObj.active}
                                onChange={(e) => {
                                  const newHours = [...operatingHours];
@@ -2837,6 +2934,7 @@ function App() {
                             <div className="flex items-center gap-3 flex-1">
                               <input 
                                 type="time"
+                                  disabled={!merchantSettingsOperationalWritesEnabled()}
                                 value={dayObj.open}
                                 onChange={(e) => {
                                   const newHours = [...operatingHours];
@@ -2848,6 +2946,7 @@ function App() {
                               <span className="text-on-surface-variant text-xs font-bold">to</span>
                               <input 
                                 type="time"
+                                  disabled={!merchantSettingsOperationalWritesEnabled()}
                                 value={dayObj.close}
                                 onChange={(e) => {
                                   const newHours = [...operatingHours];
@@ -2866,7 +2965,9 @@ function App() {
                       ))}
                       <div className="flex justify-end pt-2">
                         <button 
+                          disabled={!merchantSettingsOperationalWritesEnabled()}
                           onClick={async () => {
+                            if(!merchantSettingsOperationalWritesEnabled()) return;
                             const { data: updateRes, error } = await supabase.auth.updateUser({
                               data: { weekly_operating_hours: operatingHours }
                             });
@@ -2879,7 +2980,7 @@ function App() {
                           }}
                           className="px-4 py-2 bg-primary text-on-primary rounded-xl text-xs font-bold shadow-sm"
                         >
-                          Save Hours
+                          Save Hours — Unavailable
                         </button>
                       </div>
                     </div>
@@ -2890,18 +2991,20 @@ function App() {
                     {settingsCategory === "delivery" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">Delivery & Logistics Settings</h3>
+                        <p role="status" className="text-xs text-on-surface-variant bg-surface-container-low border border-outline-variant/15 rounded-2xl p-3">{merchantSettingsS3DeliveryNotice()}</p>
 
                         {/* Location Sync & Boundary Alignment Indicator */}
                         {currentShop && (
                           <LocationSyncIndicator
+                            previewOnly={!merchantSettingsS3WritesEnabled()}
                             locationState={currentShopLocation}
                             syncAnalysis={currentShopLocationSync}
                             isLocating={isLocatingShopGPS}
                             isSaving={isSavingShopLocation}
-                            onDetectGPS={detectShopGPS}
-                            onAutoAlign={autoAlignShopCity}
-                            onSave={() => saveShopLocationSettings()}
-                            onOpenStorefrontMap={() => setActiveTab("storefront")}
+                            onDetectGPS={merchantSettingsS3WritesEnabled() ? detectShopGPS : undefined}
+                            onAutoAlign={merchantSettingsS3WritesEnabled() ? autoAlignShopCity : undefined}
+                            onSave={merchantSettingsS3WritesEnabled() ? () => saveShopLocationSettings() : undefined}
+                            onOpenStorefrontMap={merchantSettingsS3WritesEnabled() ? () => setActiveTab("storefront") : undefined}
                           />
                         )}
 
@@ -2913,7 +3016,7 @@ function App() {
                         <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Delivery Logistics</h3>
                       </div>
                       <span className="text-[10px] font-black uppercase tracking-widest text-primary bg-primary/10 px-2.5 py-1 rounded-full">
-                        Live Radius Engine
+                        Delivery Deferred
                       </span>
                     </div>
 
@@ -2924,18 +3027,19 @@ function App() {
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-sm text-on-surface">Enforce Maximum Delivery Radius</span>
                             {deliverySettings.radiusEnabled ? (
-                              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded">Active</span>
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded">Example Only</span>
                             ) : (
-                              <span className="text-[10px] font-black uppercase tracking-wider bg-surface-container-highest text-on-surface-variant/70 px-2 py-0.5 rounded">Disabled</span>
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-surface-container-highest text-on-surface-variant/70 px-2 py-0.5 rounded">Not Configured</span>
                             )}
                           </div>
                           <p className="text-xs text-on-surface-variant leading-relaxed">
-                            Restrict incoming orders to customers within a specific straight-line distance (KM) from your shop pin to preserve food freshness and delivery speeds.
+                            Example radius control only. A number shown here does not enable delivery, limit real customer ordering or verify a delivery zone.
                           </p>
                         </div>
                         <button
                           type="button"
-                          onClick={() => setDeliverySettings({ ...deliverySettings, radiusEnabled: !deliverySettings.radiusEnabled })}
+                          disabled={!merchantSettingsS3WritesEnabled()}
+                          onClick={() => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({ ...deliverySettings, radiusEnabled: !deliverySettings.radiusEnabled });}}
                           className={cn(
                             "w-12 h-6 rounded-full transition-all relative shrink-0",
                             deliverySettings.radiusEnabled ? "bg-primary" : "bg-surface-container-highest border border-outline-variant/30"
@@ -2959,25 +3063,27 @@ function App() {
                             <div className="flex items-center gap-2">
                               <input
                                 type="number"
+                           disabled={!merchantSettingsS3WritesEnabled()}
                                 min="1"
                                 max="50"
                                 value={deliverySettings.maxDistanceKm}
-                                onChange={(e) => setDeliverySettings({ ...deliverySettings, maxDistanceKm: Math.max(1, Number(e.target.value)) })}
+                                onChange={(e) => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({ ...deliverySettings, maxDistanceKm: Math.max(1, Number(e.target.value)) });}}
                                 className="w-16 text-right text-xs font-black text-primary font-mono bg-surface-container-high border border-outline-variant/20 rounded-lg px-2 py-1 focus:outline-none focus:border-primary"
                               />
                               <span className="text-xs font-bold text-on-surface-variant">KM</span>
                             </div>
                           </div>
                           <input 
-                            type="range" 
+                            type="range"
+                            disabled={!merchantSettingsS3WritesEnabled()} 
                             min="1" 
                             max="30" 
                             value={deliverySettings.maxDistanceKm}
-                            onChange={(e) => setDeliverySettings({ ...deliverySettings, maxDistanceKm: Number(e.target.value) })}
+                            onChange={(e) => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({ ...deliverySettings, maxDistanceKm: Number(e.target.value) });}}
                             className="w-full accent-primary h-2 bg-outline-variant/20 rounded-lg appearance-none cursor-pointer"
                           />
                           <p className="text-[11px] font-medium text-on-surface-variant/70 italic">
-                            Map view in Storefront Profile will display a {deliverySettings.maxDistanceKm} KM circular boundary overlay.
+                            Example: {deliverySettings.maxDistanceKm} KM shown here is not a live service or collection radius.
                           </p>
                         </div>
                       )}
@@ -2993,7 +3099,8 @@ function App() {
                             <button
                               key={type}
                               type="button"
-                              onClick={() => setDeliverySettings({...deliverySettings, type})}
+                              disabled={!merchantSettingsS3WritesEnabled()}
+                              onClick={() => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({...deliverySettings, type});}}
                               className={cn(
                                 "flex-1 px-4 py-2 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all",
                                 deliverySettings.type === type ? "bg-primary text-on-primary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-highest"
@@ -3007,24 +3114,26 @@ function App() {
 
                       <div className="space-y-3">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                           {deliverySettings.type === "fixed" ? "Base Delivery Fee (R)" : "Rate Per KM (R)"}
+                           {deliverySettings.type === "fixed" ? "Example Delivery Fee (R) — Not Charged" : "Example Rate Per KM (R) — Not Charged"}
                          </label>
                          <input 
-                           type="number" 
+                           type="number"
+                           disabled={!merchantSettingsS3WritesEnabled()} 
                            value={deliverySettings.baseFee}
-                           onChange={(e) => setDeliverySettings({...deliverySettings, baseFee: Number(e.target.value)})}
+                           onChange={(e) => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({...deliverySettings, baseFee: Number(e.target.value)});}}
                            className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
                          />
                       </div>
 
                       <div className="space-y-3">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                           Free Delivery Threshold (R)
+                           Example Free-Delivery Threshold — Not Active (R)
                          </label>
                          <input 
-                           type="number" 
+                           type="number"
+                           disabled={!merchantSettingsS3WritesEnabled()} 
                            value={deliverySettings.freeDeliveryOver}
-                           onChange={(e) => setDeliverySettings({...deliverySettings, freeDeliveryOver: Number(e.target.value)})}
+                           onChange={(e) => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({...deliverySettings, freeDeliveryOver: Number(e.target.value)});}}
                            className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
                            placeholder="e.g. 300 (0 for no free delivery)"
                          />
@@ -3032,12 +3141,13 @@ function App() {
 
                       <div className="space-y-3">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                           Minimum Order Amount (R)
+                           Example Delivery Minimum — Not Enforced (R)
                          </label>
                          <input 
-                           type="number" 
+                           type="number"
+                           disabled={!merchantSettingsS3WritesEnabled()} 
                            value={deliverySettings.minOrderAmount}
-                           onChange={(e) => setDeliverySettings({...deliverySettings, minOrderAmount: Number(e.target.value)})}
+                           onChange={(e) => {if(merchantSettingsS3WritesEnabled())setDeliverySettings({...deliverySettings, minOrderAmount: Number(e.target.value)});}}
                            className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
                            placeholder="e.g. 50"
                          />
@@ -3047,7 +3157,9 @@ function App() {
                     <div className="pt-4 border-t border-outline-variant/10 flex justify-end">
                       <button
                         type="button"
+                        disabled={!merchantSettingsS3WritesEnabled()}
                         onClick={async () => {
+                          if(!merchantSettingsS3WritesEnabled()) return;
                           if (!currentShop?.id) {
                             toast.error("No active shop found to save delivery settings.");
                             return;
@@ -3105,7 +3217,7 @@ function App() {
                         }}
                         className="px-6 py-2.5 bg-primary text-on-primary font-bold text-xs uppercase tracking-wider rounded-xl shadow-md active:scale-95 transition-all hover:bg-primary/90"
                       >
-                        Save Delivery Settings
+                        Save Delivery — Unavailable
                       </button>
                     </div>
 
@@ -3116,29 +3228,32 @@ function App() {
                     {settingsCategory === "hardware" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">Hardware & POS Integrations</h3>
+                        <p role="status" className="text-xs text-on-surface-variant bg-surface-container-low rounded-2xl border border-outline-variant/15 p-3">{merchantSettingsHardwareNotice()}</p>
                   {/* Direct Terminal Integration */}
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
                     <div className="flex items-center gap-2 border-b border-outline-variant/10 pb-4">
                       <CreditCard size={18} className="text-on-surface-variant" />
-                      <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Direct Terminal Integration</h3>
+                      <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Terminal Integration — Not Connected</h3>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="flex flex-col space-y-2">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                            Require Card Linking
+                            Card Terminal Verification — Unavailable
                          </label>
                          <label className="flex items-center gap-3 mt-2 cursor-pointer bg-surface-container-high p-3 rounded-xl border border-outline-variant/5">
                            <input
                              type="checkbox"
+                             disabled={!merchantSettingsOperationalWritesEnabled()}
                              checked={currentShop?.require_terminal_sync || false}
                              onChange={async (e) => {
+                               if(!merchantSettingsOperationalWritesEnabled()) return;
                                const newValue = e.target.checked;
                                setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, require_terminal_sync: newValue } : s));
                                try {
                                  const { error } = await supabase.from("shops").update({ require_terminal_sync: newValue }).eq("id", currentShop?.id);
                                  if (error) throw error;
-                                 toast.success(newValue ? "Terminal sync now required for card payments" : "Terminal sync requirement disabled");
+                                 toast.success(newValue ? "Terminal preference requested; provider verification still required" : "Terminal preference cleared; provider verification still required");
                                } catch {
                                  toast.error("Failed to update terminal sync requirement");
                                  setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, require_terminal_sync: !newValue } : s));
@@ -3146,17 +3261,19 @@ function App() {
                              }}
                              className="w-5 h-5 rounded accent-primary border-outline-variant/30 text-primary focus:ring-primary focus:ring-offset-surface-container-high"
                            />
-                           <span className="text-sm font-bold text-on-surface select-none">Require Card Number Match</span>
+                           <span className="text-sm font-bold text-on-surface select-none">Terminal Match — Not Verified</span>
                          </label>
                       </div>
 
                       <div className="flex flex-col space-y-2">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                            Terminal Provider
+                            Terminal Provider (Not Linked)
                          </label>
                          <select
+                           disabled={!merchantSettingsOperationalWritesEnabled()}
                            value={currentShop?.terminal_provider || ""}
                            onChange={async (e) => {
+                             if(!merchantSettingsOperationalWritesEnabled()) return;
                              const newValue = e.target.value;
                              setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, terminal_provider: newValue } : s));
                              try {
@@ -3176,17 +3293,20 @@ function App() {
 
                       <div className="flex flex-col space-y-2 md:col-span-2">
                          <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                            Terminal Serial Number
+                            Terminal Serial (Not Verified)
                          </label>
                          <input
                            type="text"
+                           disabled={!merchantSettingsOperationalWritesEnabled()}
                            placeholder="e.g. SN-12345678"
                            value={currentShop?.terminal_serial || ""}
                            onChange={(e) => {
+                             if(!merchantSettingsOperationalWritesEnabled()) return;
                              const newValue = e.target.value;
                              setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, terminal_serial: newValue } : s));
                            }}
                            onBlur={async (e) => {
+                             if(!merchantSettingsOperationalWritesEnabled()) return;
                              const newValue = e.target.value;
                              try {
                                await supabase.from("shops").update({ terminal_serial: newValue }).eq("id", currentShop?.id);
@@ -3203,17 +3323,20 @@ function App() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6 mt-6 border-t border-outline-variant/10">
                       <div className="text-left">
                          <p className="font-bold text-on-surface flex items-center gap-2">
-                           Automated Auto-Accept <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Fast</span>
+                           Automated Auto-Accept <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Not Active</span>
                          </p>
-                         <p className="text-xs text-on-surface-variant">Automatically accept incoming orders into your "Preparing" queue instantly without manual review.</p>
+                         <p className="text-xs text-on-surface-variant">Order auto-accept is not activated. No order is moved into Preparing from this Preview.</p>
                       </div>
                       <button
+                        type="button"
+                        disabled={!merchantSettingsOperationalWritesEnabled()}
                         onClick={() => {
+                          if(!merchantSettingsOperationalWritesEnabled()) return;
                           if (!autoAcceptOrders) {
                             setShowAutoAcceptModal(true);
                           } else {
                             setAutoAcceptOrders(false);
-                            toast.success("Auto-Accept disabled.");
+                            toast.success("Auto-accept preference updated; actual order processing remains server-controlled.");
                           }
                         }}
                         className={cn(
@@ -3234,15 +3357,18 @@ function App() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6 mt-6 border-t border-outline-variant/10">
                       <div className="text-left">
                          <p className="font-bold text-on-surface flex items-center gap-2">
-                           ESC/POS Receipt Auto-Print <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Beta</span>
+                           ESC/POS Receipt Auto-Print <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Not Connected</span>
                          </p>
-                         <p className="text-xs text-on-surface-variant">Automatically print the receipt when order is accepted. Requires connection to local ESC/POS network printer.</p>
+                         <p className="text-xs text-on-surface-variant">Receipt auto-print is not connected or verified in this Preview. No print job is sent.</p>
                       </div>
                       <button
+                        type="button"
+                        disabled={!merchantSettingsOperationalWritesEnabled()}
                         onClick={() => {
+                          if(!merchantSettingsOperationalWritesEnabled()) return;
                           const nextState = !autoPrint;
                           setAutoPrint(nextState);
-                          if (nextState) toast.success("Auto-print enabled. Please ensure your POS printer is connected.");
+                          if (nextState) toast("Print preference selected; receipt delivery must be verified separately.");
                         }}
                         className={cn(
                           "w-12 h-6 rounded-full transition-all relative shrink-0",
@@ -3265,12 +3391,13 @@ function App() {
                           Default Paper Width
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Select the width of your thermal printer paper roll (58mm or 80mm).
+                          Example paper widths (58mm or 80mm). No printer configuration is saved.
                         </p>
                       </div>
                       <div className="flex bg-surface-container-high p-1 rounded-xl border border-outline-variant/5 text-xs font-black uppercase">
                         <button
-                          onClick={() => setPrintingFormat("80mm")}
+                          disabled={!merchantSettingsOperationalWritesEnabled()}
+                          onClick={() => { if(merchantSettingsOperationalWritesEnabled()) setPrintingFormat("80mm"); }}
                           className={cn(
                             "px-3 py-1.5 rounded-lg transition-colors",
                             printingFormat === "80mm" ? "bg-zinc-800 text-white" : "text-on-surface-variant hover:bg-surface-container-highest"
@@ -3279,7 +3406,8 @@ function App() {
                           80mm
                         </button>
                         <button
-                          onClick={() => setPrintingFormat("58mm")}
+                          disabled={!merchantSettingsOperationalWritesEnabled()}
+                          onClick={() => { if(merchantSettingsOperationalWritesEnabled()) setPrintingFormat("58mm"); }}
                           className={cn(
                             "px-3 py-1.5 rounded-lg transition-colors",
                             printingFormat === "58mm" ? "bg-zinc-800 text-white" : "text-on-surface-variant hover:bg-surface-container-highest"
@@ -3295,12 +3423,12 @@ function App() {
                           Receipt Template Format
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Toggle between large-text Kitchen dispatch dockets vs customer stylized thermal receipts.
+                          Sample receipt layouts only; selecting a printer template is not available here.
                         </p>
                       </div>
                       <div className="flex bg-surface-container-high p-1 rounded-xl border border-outline-variant/5 text-xs font-black uppercase">
-                        <button className="px-3 py-1.5 bg-zinc-800 text-white rounded-lg">Standard</button>
-                        <button className="px-3 py-1.5 text-on-surface-variant hover:bg-surface-container-highest rounded-lg transition-colors">Kitchen</button>
+                        <button disabled={!merchantSettingsOperationalWritesEnabled()} className="px-3 py-1.5 bg-zinc-800 text-white rounded-lg">Standard</button>
+                        <button disabled={!merchantSettingsOperationalWritesEnabled()} className="px-3 py-1.5 text-on-surface-variant hover:bg-surface-container-highest rounded-lg transition-colors">Kitchen</button>
                       </div>
                     </div>
 
@@ -3311,16 +3439,17 @@ function App() {
                           Network IP
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Local IP address of your receipt printer on the WiFi network.
+                          Printer network address (example only). No device connection is verified.
                         </p>
                       </div>
                       <div className="flex items-center gap-2 w-full md:w-auto">
                         <input
+                           disabled={!merchantSettingsOperationalWritesEnabled()}
                            type="text"
                            placeholder="e.g. 192.168.1.100"
                            className="bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50 w-full md:w-48"
                         />
-                        <button onClick={() => toast.success("Attempting test print to network printer...")} className="bg-primary/10 text-primary px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap hover:bg-primary/20 transition-colors">Test Print</button>
+                        <button type="button" disabled={!merchantSettingsOperationalWritesEnabled()} title="Printer test unavailable until a verified device integration exists" className="bg-primary/10 text-primary px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Test Print — Unavailable</button>
                       </div>
                     </div>
 
@@ -3338,12 +3467,12 @@ function App() {
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Payouts & Banking</p>
-                        <p className="text-xs text-on-surface-variant">Manage your bank account for weekly payouts.</p>
+                        <p className="text-xs text-on-surface-variant">Bank payouts are not part of the current collection-only pilot.</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                        <span className="text-[10px] items-center font-bold uppercase tracking-wider text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full whitespace-nowrap hidden md:inline-flex">
-                         Verified
+                         Not Verified
                        </span>
                        <ChevronRight size={18} className="text-on-surface-variant/40" />
                     </div>
@@ -3357,12 +3486,12 @@ function App() {
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Staff & Managers</p>
-                        <p className="text-xs text-on-surface-variant">Add staff accounts and configure permission roles.</p>
+                        <p className="text-xs text-on-surface-variant">Staff permissions require an authorised server-side access review.</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                        <span className="text-[10px] items-center font-bold uppercase tracking-wider text-orange-600 bg-orange-500/10 px-2 py-0.5 rounded-full whitespace-nowrap hidden md:inline-flex">
-                         1 Active
+                         Access Not Verified
                        </span>
                        <ChevronRight size={18} className="text-on-surface-variant/40" />
                     </div>
@@ -3370,348 +3499,11 @@ function App() {
                       </div>
                     )}
 
-                    {settingsCategory === "billing" && (
-                      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-outline-variant/10 pb-4">
-                          <div className="text-left">
-                            <h3 className="font-headline font-bold text-lg text-on-surface">Billing & App Subscription</h3>
-                            <p className="text-xs text-on-surface-variant">Manage your subscription, set up future billing info, and view invoices.</p>
-                          </div>
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary uppercase tracking-wider self-start sm:self-auto">
-                            <Sparkles size={12} />
-                            Early Partner Benefit
-                          </span>
-                        </div>
-
-                        {/* Top Banner: Current Subscription Plan */}
-                        <div className="p-6 bg-surface-container-low border border-primary/20 rounded-2xl relative overflow-hidden shadow-sm shadow-primary/5 text-left">
-                          {/* Warm coral highlight corner decor */}
-                          <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-xl pointer-events-none" />
-
-                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                            <div className="space-y-2 text-left">
-                              <span className="text-[10px] uppercase font-black tracking-widest text-primary bg-primary/10 px-2.5 py-1 rounded-full">
-                                Current Plan
-                              </span>
-                              <h4 className="text-xl font-headline font-extrabold text-on-surface flex items-center gap-2 mt-1">
-                                Early Partner Plan
-                              </h4>
-                              <p className="text-sm text-on-surface-variant max-w-xl">
-                                Thank you for being a founding member of LocalEats. You have full access to our comprehensive merchant delivery tools <strong>completely free of charge</strong> during our initial beta phase.
-                              </p>
-                              <div className="flex flex-wrap gap-4 pt-2 text-xs font-medium text-on-surface-variant">
-                                <span className="flex items-center gap-1.5 text-emerald-600 bg-emerald-500/5 px-2.5 py-1 rounded-lg border border-emerald-500/10">
-                                  <Circle size={14} /> Active Status
-                                </span>
-                                <span className="flex items-center gap-1.5 text-primary bg-primary/5 px-2.5 py-1 rounded-lg border border-primary/10">
-                                  <Sparkles size={14} /> Unlimited Features Included
-                                </span>
-                              </div>
-                            </div>
-                            <div className="bg-surface-container-high/60 border border-outline-variant/10 rounded-2xl p-5 text-center shrink-0 min-w-[180px]">
-                              <p className="text-xs text-on-surface-variant/80 font-bold uppercase tracking-wider">Subscription Cost</p>
-                              <p className="text-3xl font-headline font-black text-on-surface mt-1">R0 <span className="text-xs font-bold text-on-surface-variant/60">/mo</span></p>
-                              <span className="text-[9px] px-2 py-0.5 bg-primary/10 text-primary font-bold uppercase rounded mt-2 inline-block">
-                                100% Lifetime Discount
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Middle Section: 2 Columns */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                          {/* Column A: Future Pricing / Plans & Billing Details */}
-                          <div className="space-y-6">
-
-                            {/* Card 1: Subscription Roadmap */}
-                            <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
-                              <h4 className="font-headline font-bold text-base text-on-surface flex items-center gap-2 text-left">
-                                <Zap size={18} className="text-primary" /> Future Subscription Tiers
-                              </h4>
-                              <p className="text-xs text-on-surface-variant leading-relaxed text-left">
-                                When LocalEats transitions out of beta, we will offer simple, predictable flat-rate subscriptions. Early partners are guaranteed a <strong>permanent 50% discount</strong> on whichever tier they choose.
-                              </p>
-
-                              <div className="space-y-3 pt-2">
-                                {/* Plan 1 */}
-                                <div className="p-3 bg-surface-container-high/40 rounded-xl border border-outline-variant/5 flex items-center justify-between">
-                                  <div className="text-left">
-                                    <p className="text-xs font-black text-on-surface">LocalEats Lite</p>
-                                    <p className="text-[10px] text-on-surface-variant">For small kitchens & takeaway stalls</p>
-                                    <span className="text-[9px] text-on-surface-variant/60 mt-0.5 block">Max 150 monthly orders • 1 staff manager</span>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-sm font-headline font-bold text-on-surface">R199 <span className="text-[9px] font-normal text-on-surface-variant">/mo</span></p>
-                                    <span className="text-[9px] font-bold text-primary">Your cost: R99/mo</span>
-                                  </div>
-                                </div>
-
-                                {/* Plan 2 */}
-                                <div className="p-3 bg-primary/5 rounded-xl border border-primary/10 flex items-center justify-between relative overflow-hidden">
-                                  <div className="absolute top-0 right-0 text-[8px] bg-primary text-on-primary font-black uppercase tracking-wider px-2 py-0.5 rounded-bl-lg">
-                                    Recommended
-                                  </div>
-                                  <div className="text-left">
-                                    <p className="text-xs font-black text-on-surface flex items-center gap-1">
-                                      LocalEats Growth
-                                    </p>
-                                    <p className="text-[10px] text-on-surface-variant">For full service restaurants & dark kitchens</p>
-                                    <span className="text-[9px] text-on-surface-variant/60 mt-0.5 block">Unlimited orders • Route Optimization • Analytics</span>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-sm font-headline font-bold text-on-surface">R499 <span className="text-[9px] font-normal text-on-surface-variant">/mo</span></p>
-                                    <span className="text-[9px] font-bold text-primary">Your cost: R249/mo</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Card 2: Legal/Company Billing Details */}
-                            <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
-                              <h4 className="font-headline font-bold text-base text-on-surface flex items-center gap-2 text-left">
-                                <Info size={18} className="text-on-surface-variant/60" /> Company Billing Details
-                              </h4>
-                              <p className="text-xs text-on-surface-variant leading-relaxed text-left">
-                                Enter your company's official registration details here to automatically populate tax-compliant PDF invoices.
-                              </p>
-
-                              <div className="space-y-3 text-left">
-                                <div>
-                                  <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Company Registered Name</label>
-                                  <input
-                                    type="text"
-                                    placeholder="e.g. Local Eats SA (Pty) Ltd"
-                                    value={billingDetails.companyName}
-                                    onChange={(e) => {
-                                      const next = { ...billingDetails, companyName: e.target.value };
-                                      setBillingDetails(next);
-                                    }}
-                                    className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                  />
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Tax / VAT Number</label>
-                                    <input
-                                      type="text"
-                                      placeholder="e.g. 4010123456"
-                                      value={billingDetails.taxNumber}
-                                      onChange={(e) => {
-                                        const next = { ...billingDetails, taxNumber: e.target.value };
-                                        setBillingDetails(next);
-                                      }}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Billing Email Address</label>
-                                    <input
-                                      type="email"
-                                      placeholder="e.g. billing@myshop.co.za"
-                                      value={billingDetails.billingEmail}
-                                      onChange={(e) => {
-                                        const next = { ...billingDetails, billingEmail: e.target.value };
-                                        setBillingDetails(next);
-                                      }}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-                                </div>
-
-                                <button
-                                  onClick={() => {
-                                    localStorage.setItem("localeats_billing_details", JSON.stringify(billingDetails));
-
-                                  }}
-                                  className="w-full bg-primary/10 text-primary py-2.5 rounded-xl text-xs font-black uppercase hover:bg-primary/20 transition-colors"
-                                >
-                                  Save Billing Info
-                                </button>
-                              </div>
-                            </div>
-
-                          </div>
-
-                          {/* Column B: Card Vault Setup & Invoice History */}
-                          <div className="space-y-6">
-
-                            {/* Card 1: Secure Card Vault */}
-                            <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
-                              <h4 className="font-headline font-bold text-base text-on-surface flex items-center justify-between text-left">
-                                <span className="flex items-center gap-2">
-                                  <CreditCard size={18} className="text-primary" />
-                                  Secure Credit Card Link
-                                </span>
-                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                                  <ShieldCheck size={10} /> PCI-DSS Secure
-                                </span>
-                              </h4>
-                              <p className="text-xs text-on-surface-variant leading-relaxed text-left">
-                                Link a payment card via our secure Yoco/Peach tokenization vault. You won't be charged anything during the free Beta period.
-                              </p>
-
-                              {billingDetails.isCardSaved ? (
-                                <div className="p-4 bg-surface-container-high/60 rounded-xl border border-emerald-500/20 flex items-center justify-between animate-in fade-in duration-300">
-                                  <div className="flex items-center gap-3 text-left">
-                                    <div className="w-10 h-7 bg-zinc-950 rounded-md flex items-center justify-center text-white text-[10px] font-black uppercase tracking-wider shadow border border-outline-variant/20">
-                                      {billingDetails.cardNumber.startsWith("4") ? "Visa" : "MC"}
-                                    </div>
-                                    <div className="text-left">
-                                      <p className="text-xs font-black text-on-surface">•••• •••• •••• {billingDetails.cardNumber.slice(-4) || "4242"}</p>
-                                      <p className="text-[9px] text-on-surface-variant">Expires: {billingDetails.expiryDate || "12/28"} • {billingDetails.cardholderName || "Store Owner"}</p>
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() => {
-                                      const cleared = {
-                                        ...billingDetails,
-                                        cardholderName: "",
-                                        cardNumber: "",
-                                        expiryDate: "",
-                                        cvv: "",
-                                        isCardSaved: false
-                                      };
-                                      setBillingDetails(cleared);
-                                      localStorage.setItem("localeats_billing_details", JSON.stringify(cleared));
-
-                                    }}
-                                    className="text-[10px] font-bold text-error/80 hover:text-error hover:bg-error/5 px-2.5 py-1.5 rounded-lg transition-all"
-                                  >
-                                    Remove Card
-                                  </button>
-                                </div>
-                              ) : (
-                                <div className="space-y-3 pt-1 text-left">
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Cardholder Name</label>
-                                    <input
-                                      type="text"
-                                      placeholder="e.g. Jane Doe"
-                                      value={billingDetails.cardholderName}
-                                      onChange={(e) => setBillingDetails({ ...billingDetails, cardholderName: e.target.value })}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Card Number</label>
-                                    <input
-                                      type="text"
-                                      placeholder="4000 1234 5678 9010"
-                                      maxLength={19}
-                                      value={billingDetails.cardNumber}
-                                      onChange={(e) => {
-                                        const cleanVal = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-                                        const formatted = cleanVal.match(/.{1,4}/g)?.join(' ') || cleanVal;
-                                        setBillingDetails({ ...billingDetails, cardNumber: formatted });
-                                      }}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-3 text-left">
-                                    <div>
-                                      <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Expiry Date (MM/YY)</label>
-                                      <input
-                                        type="text"
-                                        placeholder="12/28"
-                                        maxLength={5}
-                                        value={billingDetails.expiryDate}
-                                        onChange={(e) => {
-                                          let val = e.target.value.replace(/[^0-9/]/g, '');
-                                          if (val.length === 2 && !val.includes('/')) {
-                                            val = val + '/';
-                                          }
-                                          setBillingDetails({ ...billingDetails, expiryDate: val });
-                                        }}
-                                        className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">CVV / CVC</label>
-                                      <input
-                                        type="password"
-                                        placeholder="•••"
-                                        maxLength={4}
-                                        value={billingDetails.cvv}
-                                        onChange={(e) => setBillingDetails({ ...billingDetails, cvv: e.target.value.replace(/[^0-9]/g, '') })}
-                                        className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <button
-                                    onClick={() => {
-                                      if (!billingDetails.cardholderName || !billingDetails.cardNumber || !billingDetails.expiryDate || !billingDetails.cvv) {
-                                        toast.error("Please fill in all credit card fields first.");
-                                        return;
-                                      }
-                                      if (billingDetails.cardNumber.replace(/\s/g, '').length < 15) {
-                                        toast.error("Please enter a valid credit card number.");
-                                        return;
-                                      }
-
-                                      const updated = { ...billingDetails, isCardSaved: true };
-                                      setBillingDetails(updated);
-                                      localStorage.setItem("localeats_billing_details", JSON.stringify(updated));
-                                      toast.success("Card linked securely to Yoco vault! Rate plan R0 applied.");
-                                    }}
-                                    className="w-full bg-primary text-on-primary py-2.5 rounded-xl text-xs font-black uppercase hover:bg-opacity-90 shadow-sm transition-all flex items-center justify-center gap-2"
-                                  >
-                                    <ShieldCheck size={14} /> Securely Link Card
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Card 2: Invoice History */}
-                            <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
-                              <h4 className="font-headline font-bold text-base text-on-surface flex items-center gap-2 text-left">
-                                <Ticket size={18} className="text-on-surface-variant/60" /> Invoice & Statement History
-                              </h4>
-                              <p className="text-xs text-on-surface-variant leading-relaxed text-left">
-                                Access your generated monthly invoices. Since you are on our Early Partner Plan, your subscription fees are fully discounted.
-                              </p>
-
-                              <div className="divide-y divide-outline-variant/10">
-                                {[
-                                  { id: "INV-2026-003", date: "June 1, 2026", amount: "R 0.00", status: "Paid", detail: "Early Partner Beta Month" },
-                                  { id: "INV-2026-002", date: "May 1, 2026", amount: "R 0.00", status: "Paid", detail: "Early Partner Beta Month" },
-                                  { id: "INV-2026-001", date: "April 1, 2026", amount: "R 0.00", status: "Paid", detail: "Beta Launch Special" }
-                                ].map((inv) => (
-                                  <div
-                                    key={inv.id}
-                                    onClick={() => setSelectedInvoice(inv)}
-                                    className="py-3 flex items-center justify-between group cursor-pointer hover:bg-surface-container-high/40 px-2 rounded-xl transition-colors"
-                                  >
-                                    <div className="text-left">
-                                      <p className="text-xs font-black text-on-surface group-hover:text-primary transition-colors">{inv.id}</p>
-                                      <p className="text-[10px] text-on-surface-variant">{inv.date} • {inv.detail}</p>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                      <div className="text-right">
-                                        <p className="text-xs font-black text-on-surface">{inv.amount}</p>
-                                        <span className="text-[9px] font-bold text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase">
-                                          {inv.status}
-                                        </span>
-                                      </div>
-                                      <ChevronRight size={14} className="text-on-surface-variant/30 group-hover:text-primary transition-colors" />
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                          </div>
-
-                        </div>
-                      </div>
-                    )}
+                    {settingsCategory === "billing" && <SettingsBillingPreview />}
 
                     {settingsCategory === "preferences" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <p role="status" className="text-xs text-on-surface-variant rounded-2xl bg-surface-container-low border border-outline-variant/15 p-3">Preferences are design-only in this Preview. Sound, theme and push settings cannot be changed, and background notification delivery is not guaranteed.</p>
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-4">
@@ -3723,12 +3515,14 @@ function App() {
                             Sound Alerts
                           </p>
                           <p className="text-xs text-on-surface-variant">
-                            Play a sound when new orders arrive.
+                            Sound alerts are a local preference; no order alert is guaranteed while this Preview is locked.
                           </p>
                         </div>
                       </div>
                       <button
+                        disabled={!merchantSettingsS4ActionsEnabled()}
                         onClick={() => {
+                          if(!merchantSettingsS4ActionsEnabled())return;
                           const nextState = !soundAlerts;
                           setSoundAlerts(nextState);
                           if (nextState) {
@@ -3771,7 +3565,9 @@ function App() {
                               return (
                                 <button
                                   key={theme.id}
+                                  disabled={!merchantSettingsS4ActionsEnabled()}
                                   onClick={() => {
+                                    if(!merchantSettingsS4ActionsEnabled())return;
                                     setSoundStyle(theme.id);
                                     playNotificationSound(false, theme.id);
                                   }}
@@ -3814,17 +3610,21 @@ function App() {
                             <Volume1 size={16} className="text-on-surface-variant" />
                             <input
                               type="range"
+                              disabled={!merchantSettingsS4ActionsEnabled()}
                               min="0"
                               max="100"
                               value={soundVolume}
                               onChange={(e) => {
+                                if(!merchantSettingsS4ActionsEnabled())return;
                                 const v = parseInt(e.target.value);
                                 setSoundVolume(v);
                               }}
                               onMouseUp={() => {
+                                if(!merchantSettingsS4ActionsEnabled())return;
                                 playNotificationSound(false, soundStyle);
                               }}
                               onTouchEnd={() => {
+                                if(!merchantSettingsS4ActionsEnabled())return;
                                 playNotificationSound(false, soundStyle);
                               }}
                               className="flex-1 accent-primary h-1.5 rounded-lg appearance-none bg-outline-variant/40 cursor-pointer"
@@ -3846,12 +3646,14 @@ function App() {
                           Push Notifications
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Get browser alerts even when the app is closed.
+                          Browser push is not verified in Preview; notifications depend on permission, connectivity and the device.
                         </p>
                       </div>
                     </div>
                     <button
+                      disabled={!merchantSettingsS4ActionsEnabled()}
                       onClick={() => {
+                        if(!merchantSettingsS4ActionsEnabled())return;
                         if (!pushEnabled) {
                           requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
                         } else {
@@ -3887,7 +3689,8 @@ function App() {
                       </div>
                     </div>
                     <button
-                      onClick={() => setDarkMode(!darkMode)}
+                      disabled={!merchantSettingsS4ActionsEnabled()}
+                      onClick={() => { if(merchantSettingsS4ActionsEnabled())setDarkMode(!darkMode); }}
                       className={cn(
                         "w-12 h-6 rounded-full transition-all relative",
                         darkMode ? "bg-primary" : "bg-outline-variant",
@@ -3906,9 +3709,10 @@ function App() {
 
                     {settingsCategory === "account" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300 mt-8">
-                  <div className="w-full p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10"><LanguageSwitcher /></div>
+                  <div className="w-full p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10"><LanguageSwitcher previewOnly={!merchantSettingsS4ActionsEnabled()} /></div>
                   <button
-                    onClick={handleSignOut}
+                    onClick={() => { if(merchantSettingsS4ActionsEnabled()) void handleSignOut(); }}
+                    disabled={!merchantSettingsS4ActionsEnabled()}
                     className="w-full flex items-center justify-between p-5 bg-error/5 hover:bg-error/10 rounded-2xl transition-all border border-error/10 group"
                   >
                     <div className="flex items-center gap-4">
@@ -3918,7 +3722,7 @@ function App() {
                       <div className="text-left">
                         <p className="font-bold text-error">Sign Out</p>
                         <p className="text-xs text-error/60">
-                          Logout from your account.
+                          Unavailable from the read-only Settings Preview; use the authorised account flow.
                         </p>
                       </div>
                     </div>
@@ -3929,100 +3733,6 @@ function App() {
                   </div>
                 </div>
 
-                {selectedInvoice && (
-                  <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/70 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-surface-container rounded-2xl max-w-md w-full overflow-hidden border border-outline-variant/10 shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
-                      {/* Header */}
-                      <div className="p-4 border-b border-outline-variant/10 flex items-center justify-between bg-surface-container-high">
-                        <span className="text-xs font-black uppercase text-primary tracking-wider">Invoice Receipt</span>
-                        <button
-                          onClick={() => setSelectedInvoice(null)}
-                          className="p-1 rounded-full hover:bg-surface-container-highest text-on-surface-variant transition-colors"
-                        >
-                          <AlertTriangle size={16} />
-                        </button>
-                      </div>
-
-                      {/* Invoice body */}
-                      <div className="p-6 space-y-6 overflow-y-auto max-h-[80vh] text-left">
-                        {/* Brand Logo & Invoice Info */}
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h5 className="font-headline font-black text-xl text-primary leading-none">LocalEats</h5>
-                            <p className="text-[10px] text-on-surface-variant/80 mt-1">Founders Partner Network</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xs font-black text-on-surface">{selectedInvoice.id}</p>
-                            <p className="text-[9px] text-on-surface-variant">Date: {selectedInvoice.date}</p>
-                            <p className="text-[9px] text-on-surface-variant">Status: Paid</p>
-                          </div>
-                        </div>
-
-                        <div className="border-t border-dashed border-outline-variant/20 pt-4 grid grid-cols-2 gap-4 text-xs">
-                          <div>
-                            <p className="font-bold text-[10px] uppercase text-on-surface-variant/70">Provider</p>
-                            <p className="font-semibold text-on-surface mt-1">LocalEats Platform SA</p>
-                            <p className="text-[10px] text-on-surface-variant">Cape Town, South Africa</p>
-                          </div>
-                          <div>
-                            <p className="font-bold text-[10px] uppercase text-on-surface-variant/70">Billed To</p>
-                            <p className="font-semibold text-on-surface mt-1">{billingDetails.companyName || currentShop?.name || "Founding Merchant"}</p>
-                            {billingDetails.taxNumber && <p className="text-[10px] text-on-surface-variant">VAT: {billingDetails.taxNumber}</p>}
-                            <p className="text-[10px] text-on-surface-variant truncate">{billingDetails.billingEmail || user?.email || "No email set"}</p>
-                          </div>
-                        </div>
-
-                        {/* Line Items */}
-                        <div className="border-t border-dashed border-outline-variant/20 pt-4 space-y-3">
-                          <p className="font-bold text-[10px] uppercase text-on-surface-variant/70">Invoice Breakdown</p>
-
-                          <div className="space-y-2">
-                            <div className="flex justify-between text-xs">
-                              <span className="text-on-surface-variant">LocalEats Platform Subscription (June 2026)</span>
-                              <span className="font-bold text-on-surface">R 499.00</span>
-                            </div>
-                            <div className="flex justify-between text-xs text-primary font-medium">
-                              <span>Early Partner Loyalty Discount (100% Off)</span>
-                              <span>-R 499.00</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Total */}
-                        <div className="border-t border-dashed border-outline-variant/20 pt-4 flex justify-between items-center bg-primary/5 p-4 rounded-xl border border-primary/10">
-                          <div>
-                            <p className="text-xs font-extrabold text-on-surface">Total Charged</p>
-                            <p className="text-[9px] text-on-surface-variant">Zero subscription due for Early Partner</p>
-                          </div>
-                          <p className="text-2xl font-headline font-black text-on-surface">{selectedInvoice.amount}</p>
-                        </div>
-
-                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2 text-emerald-600">
-                          <Circle size={16} className="shrink-0" />
-                          <p className="text-[10px] font-bold leading-tight text-left">Paid in full. Your card ending in {billingDetails.cardNumber ? billingDetails.cardNumber.slice(-4) : "4242"} was not charged.</p>
-                        </div>
-                      </div>
-
-                      {/* Action Footer */}
-                      <div className="p-4 bg-surface-container-high border-t border-outline-variant/10 flex gap-2">
-                        <button
-                          onClick={() => {
-                            window.print();
-                          }}
-                          className="flex-1 bg-surface-container-highest border border-outline-variant/20 text-on-surface-variant py-2 rounded-xl text-xs font-black uppercase hover:bg-opacity-95 transition-all flex items-center justify-center gap-2"
-                        >
-                          Print Invoice
-                        </button>
-                        <button
-                          onClick={() => setSelectedInvoice(null)}
-                          className="flex-1 bg-primary text-on-primary py-2 rounded-xl text-xs font-black uppercase hover:bg-opacity-95 transition-all"
-                        >
-                          Close Receipt
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
             {activeTab === "storefront" && (
@@ -4041,16 +3751,7 @@ function App() {
                 {currentShop && (
                   <>
                     
-                    <ShopProfile
-                      shop={currentShop}
-                    onRefresh={fetchShops}
-                    user={user}
-                    setIsSaving={setIsSaving}
-                    setIsSaveSuccess={setIsSaveSuccess}
-                    isSaving={isSaving}
-                    isSuccess={isSaveSuccess}
-                    onFinished={() => setActiveTab("dashboard")}
-                  />
+                    <MerchantStorefrontPreview key={String(currentShop.id)} shop={currentShop} />
                   </>
                 )}
               </div>
@@ -4130,61 +3831,61 @@ function App() {
                     },
                     {
                       title: "Real-time Orders",
-                      desc: "Never miss a beat. Orders pop up instantly with sound alerts. Use Kitchen Mode for focus.",
+                      desc: "Order updates require a verified connection and may be delayed. Kitchen Mode focuses the display; alerts are not guaranteed in the background.",
                       icon: ReceiptText,
                       color: "text-green-500 bg-green-50",
                     },
                     {
                       title: "Marketing & Coupons",
-                      desc: "Grow your reach. Create discount codes and use AI to craft perfect campaigns.",
+                      desc: "Marketing campaigns and discount codes are design previews; distribution and redemption are not active.",
                       icon: Megaphone,
                       color: "text-purple-500 bg-purple-50",
                     },
                     {
                       title: "Insights",
-                      desc: "Understand your customers. View reviews and analyze performance trends.",
+                      desc: "Review verified shop-scoped figures where available; missing or unverified trends must not be treated as results.",
                       icon: TrendingUp,
                       color: "text-indigo-500 bg-indigo-50",
                     },
                     {
                       title: "Storefront",
-                      desc: "Customize how customers see your shop. Update your bio, location, and social links.",
+                      desc: "Shop profile changes are unavailable from Settings Preview. Customer-facing changes require an authorised workflow.",
                       icon: Store,
                       color: "text-pink-500 bg-pink-50",
                     },
                     {
                       title: "Delivery & Logistics",
-                      desc: "Set your delivery radius, monitor rider progress on the live map, and manage dispatching.",
+                      desc: "Delivery, live rider tracking and dispatch are deferred; the current Settings controls are examples only.",
                       icon: Truck,
                       color: "text-cyan-500 bg-cyan-50",
                     },
                     {
                       title: "Earnings & Payouts",
-                      desc: "Monitor your revenue in real-time and manage your weekly payout schedule securely.",
+                      desc: "Bank payouts and live settlement reports are not supported or verified in the collection-first pilot.",
                       icon: Wallet,
                       color: "text-emerald-500 bg-emerald-50",
                     },
                     {
                       title: "Customer Engagement",
-                      desc: "Respond to reviews, track repeat customers, and build loyalty with tailored rewards.",
+                      desc: "Verified customer data and outreach consent are required before using loyalty or engagement tools.",
                       icon: Heart,
                       color: "text-rose-500 bg-rose-50",
                     },
                     {
                       title: "Rider Network",
-                      desc: "Access a fleet of on-demand riders. Real-time GPS tracking ensures your food reaches customers hot and fresh.",
+                      desc: "Rider assignment and delivery tracking are not activated for the pickup-first pilot.",
                       icon: Bike,
                       color: "text-blue-600 bg-blue-50",
                     },
                     {
                       title: "QR Verification",
-                      desc: "The gold standard for security. QR codes ensure the right order goes to the right person every single time.",
+                      desc: "Order pickup verification must be checked against the authoritative API. Sample QR designs are not live order confirmation.",
                       icon: QrCode,
                       color: "text-amber-600 bg-amber-50",
                     },
                     {
                       title: "Growth Support",
-                      desc: "Get help when you need it. Our automated tools and community forum are here to help you grow your business.",
+                      desc: "Support and community features shown here may be planned or unavailable; verify access before relying on them.",
                       icon: HelpCircle,
                       color: "text-teal-600 bg-teal-50",
                     },
@@ -4196,7 +3897,7 @@ function App() {
                     },
                     {
                       title: "Community Forum",
-                      desc: "Connect with other vendors, share success stories, and get advice from the LocalEats community.",
+                      desc: "A merchant community forum is a future idea, not an active service in this Preview.",
                       icon: Users,
                       color: "text-indigo-600 bg-indigo-50",
                     },
@@ -4231,8 +3932,7 @@ function App() {
                     Pro Tip
                   </h4>
                   <p className="text-sm text-on-surface-variant">
-                    Enable <b>Sound Alerts</b> in Settings to ensure you hear
-                    every new order even when the tab is in the background.
+                    After launch, check notification permissions and test alerts on your device. Background delivery is not guaranteed; always verify order status.
                   </p>
                 </div>
 
@@ -4242,7 +3942,7 @@ function App() {
                     Safety & Trust
                   </h4>
                   <p className="text-sm text-on-surface-variant">
-                    All transactions are encrypted and secured. We use multi-factor verification for payouts and location data is only shared with active delivery participants.
+                    Do not enter payment-card or sensitive billing details in Preview. Payment settlement, payout verification and delivery-location privacy need a separate production security review.
                   </p>
                 </div>
 

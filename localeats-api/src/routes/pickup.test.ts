@@ -16,7 +16,7 @@ const id="550e8400-e29b-41d4-a716-446655440000";
 test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atomic persistence",async()=>{
   const originalFrom=supabaseAdmin.from,originalRpc=supabaseAdmin.rpc,originalVerify=authAdmin.verifyIdToken;
   const reads:Array<{table:string;filters:Array<[string,unknown]>}>=[],rpcCalls:Array<[string,Record<string,unknown>]> = [];
-  let persisted=false,unavailable=false,orderShop="shop-my-kota-ivory-park",orderCustomer="customer",subscription:Record<string,unknown>|undefined;
+  let persisted=false,unavailable=false,orderShop="shop-my-kota-ivory-park",orderCustomer="customer",paymentMethods=["cash","card_machine"],subscription:Record<string,unknown>|undefined;
   (authAdmin as any).verifyIdToken=async(token:string)=>{if(token==="expired") throw Error("expired");return {uid:token};};
   (supabaseAdmin as any).rpc=async(name:string,args:Record<string,unknown>)=>{
     rpcCalls.push([name,args]);
@@ -26,7 +26,7 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
   };
   (supabaseAdmin as any).from=(table:string)=>{
     const filters:Array<[string,unknown]>=[];reads.push({table,filters});
-    const result=()=>({data:["shops","shops_with_availability"].includes(table) ? {id:"shop-my-kota-ivory-park",owner_id:"merchant",name:"Shop",location:"Tembisa",is_active:true,effective_is_active:true,availability_revision:0,approval_status:"approved",archived_at:null,lat:-26,lng:28} :
+    const result=()=>({data:["shops","shops_with_availability"].includes(table) ? {id:"shop-my-kota-ivory-park",owner_id:"merchant",name:"Shop",location:"Tembisa",is_active:true,effective_is_active:true,availability_revision:0,approval_status:"approved",archived_at:null,lat:-26,lng:28,pickup_payment_methods:paymentMethods} :
       table==="menu_items" ? [{id:"item",shop_id:"shop-my-kota-ivory-park",name:"Meal",price:25,is_available:true}] :
       table==="pickup_order_events" ? [] : persisted ? {id,shop_id:orderShop,user_id:orderCustomer,delivery_type:"collection",create_intent_hash:"a".repeat(64)} : null,error:null});
     const query:any={select:()=>query,eq:(key:string,value:unknown)=>{filters.push([key,value]);return query;},
@@ -61,6 +61,13 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
     const quote=await call("/api/v1/orders/quote","customer",input);
     assert.equal(quote.status,200);assert.equal(quote.body.quote.total_minor,2500);assert.equal(quote.cache,"no-store");
     const consent={currency:"ZAR",total_minor:quote.body.quote.total_minor,pricing_fingerprint:quote.body.quote.pricing_fingerprint};
+    const cardInput={...input,payment_method:"card_machine"};
+    const cardQuote=await call("/api/v1/orders/quote","customer",cardInput);assert.equal(cardQuote.status,200);
+    paymentMethods=["cash"];
+    const beforeStaleCreate=rpcCalls.length;
+    const staleCreate=await call("/api/v1/orders","customer",{...cardInput,consent:{currency:"ZAR",total_minor:cardQuote.body.quote.total_minor,pricing_fingerprint:cardQuote.body.quote.pricing_fingerprint}});
+    assert.equal(staleCreate.status,409);assert.equal(staleCreate.body.code,"UNSUPPORTED_PAYMENT_METHOD");assert.equal(rpcCalls.length,beforeStaleCreate);
+    paymentMethods=["cash","card_machine"];
     // Every denied creation must stop before reads, pricing, replay or RPC persistence.
     for(const scenario of ["shop","customer","absent","disabled"]){
       const before=rpcCalls.length, beforeReads=reads.length;

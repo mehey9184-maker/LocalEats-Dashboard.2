@@ -36,6 +36,7 @@ type MerchantApiResponse = {
 export class MerchantApiError extends Error {
   status: number | null;
   code?: string;
+  expectedRevision?: number;
 
   constructor(message: string, status: number | null = null) {
     super(message);
@@ -71,6 +72,28 @@ const readJsonResponse = async (response: Response): Promise<MerchantApiResponse
 };
 
 export class MerchantApi {
+  static async setPickupPaymentMethods(shopId:string|number,methods:("cash"|"card_machine")[]):Promise<VerifiedMerchantShop> {
+    const uid=auth.currentUser?.uid;
+    const shop=await this.getMerchantShop();
+    if(!uid || !shop || String(shop.id)!==String(shopId)) throw new MerchantApiError("Shop ownership could not be verified.");
+    const expected=Array.isArray(shop.pickup_payment_methods) ? shop.pickup_payment_methods : null;
+    const response=await fetch(`${getApiUrl()}/api/v1/merchant/shop/pickup-payment-methods`,{method:"PATCH",headers:await getApiAuthHeaders(),body:JSON.stringify({
+      shop_id:String(shopId),pickup_payment_methods:methods,expected_payment_methods:expected,
+    })});
+    const data=await readJsonResponse(response);
+    if(!response.ok || data.success!==true){
+      const error=new MerchantApiError(typeof data.error==="string"?data.error:"Pickup payment settings were not saved.",response.status);
+      error.code=typeof data.code==="string"?data.code:undefined;
+      throw error;
+    }
+    const saved=data.shop;
+    if(auth.currentUser?.uid!==uid || !saved || String(saved.id)!==String(shopId) || saved.owner_id!==uid ||
+      !Array.isArray(saved.pickup_payment_methods) || saved.pickup_payment_methods.join(",")!==methods.join(","))
+      throw new MerchantApiError("Pickup payment settings were not confirmed. Refresh before retrying.");
+    requireOwnedShop(saved,uid);
+    return {...shop,...saved};
+  }
+
   static async setAvailability(shopId:string|number,open:boolean,confirmOutsideHours=false,expectedRevision?:number):Promise<VerifiedMerchantShop> {
     const uid=auth.currentUser?.uid;
     const shop=await this.getMerchantShop();
@@ -81,8 +104,9 @@ export class MerchantApi {
     const data=await readJsonResponse(response);
     if(!response.ok || data.success!==true){const error=new MerchantApiError(typeof data.error==="string"?data.error:"Availability was not saved.",response.status);error.code=typeof data.code==="string"?data.code:undefined;
       // Preserve the revision for the explicit outside-hours confirmation, never rebase a stale command.
-      (error as any).expectedRevision=revision;throw error;}
-    if(auth.currentUser?.uid!==uid || !data.shop || String(data.shop.id)!==String(shopId) || typeof data.shop.is_active!=="boolean") throw new MerchantApiError("Availability persistence was not confirmed. Refresh before retrying.");
+      error.expectedRevision=revision;throw error;}
+    const savedRevision=Number(data.shop?.availability_revision);
+    if(auth.currentUser?.uid!==uid || !data.shop || String(data.shop.id)!==String(shopId) || typeof data.shop.is_active!=="boolean" || !Number.isSafeInteger(savedRevision) || savedRevision<=revision) throw new MerchantApiError("Availability persistence was not confirmed. Refresh before retrying.");
     requireOwnedShop(data.shop,uid);
     return data.shop;
   }
@@ -103,7 +127,7 @@ export class MerchantApi {
     const headers = await getApiAuthHeaders();
     let response: Response;
     try {
-      response = await fetch(`${apiUrl}/api/v1/merchant/orders`, { method: "GET", headers });
+      response = await fetch(`${apiUrl}/api/v1/merchant/orders`, { method: "GET", headers, cache: "no-store" });
     } catch {
       throw new MerchantApiError("Unable to reach the LocalEats order service.");
     }

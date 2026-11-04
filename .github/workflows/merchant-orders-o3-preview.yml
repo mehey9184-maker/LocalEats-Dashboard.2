@@ -1,0 +1,37 @@
+name: Merchant Orders O3 Comms and Receipts Preview
+on:
+  push:
+    branches: [repair/merchant-orders-o3-comms-receipts-01]
+  pull_request:
+    branches: [repair/merchant-orders-o2-verified-actions-01]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-orders-o3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: O3/O2/O1 orders and H4/H3/H2/H1 trust regressions
+        run: node --experimental-strip-types --test tests/merchant-orders-o3-comms-receipts.test.mjs tests/merchant-orders-o2-confirmed-actions.test.mjs tests/merchant-orders-o1-trust.test.mjs tests/merchant-dashboard-h4-sast-dates.test.mjs tests/merchant-dashboard-h3-freshness.test.mjs tests/merchant-dashboard-h2-layout.test.mjs tests/merchant-dashboard-h1-trust.test.mjs
+      - name: Merchant activation, pickup and availability checks
+        run: |
+          node --experimental-strip-types --test tests/merchant-activation.test.mjs tests/merchant-pickup.test.mjs
+          npm run test:merchant-availability
+      - name: Pure helper ESLint
+        run: npx eslint src/services/merchantOrdersTrust.ts src/services/merchantDashboardLayout.ts src/components/DispatchAlertModal.tsx
+      - name: No new lint errors compared with owner-accepted Orders O2
+        run: node tests/merchant-dashboard-h1-lint-baseline.mjs
+        env:
+          MERCHANT_DASHBOARD_LINT_BASE: "28ad93ac54c3a04365c6042c479dfa527411bf83"
+      - name: Full Merchant Preview build
+        run: npm run build

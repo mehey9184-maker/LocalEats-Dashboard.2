@@ -1,6 +1,8 @@
 import {PickupOrderActions} from "./PickupOrderActions";
-import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled} from "../services/merchantPickupPolicy";
-import { OrderService } from '../services/OrderService';
+import {merchantPickupReadCurrent,type MerchantOrderReadState} from "../services/merchantDashboardFreshness";
+import {merchantOrderMoney,merchantOrderTotal,merchantReceiptLineAmount,safeOrderExportCsv,recordedDeliveryETA,safeReceiptHtml} from "../services/merchantOrdersTrust";
+import {summarizeKitchenQueue,merchantJohannesburgDayKey,merchantOrderHistoryInSastRange,merchantOrderCompletedOnSastDay,merchantJohannesburgClock} from "../services/merchantDashboardLayout";
+import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled,pickupItemLineTotal} from "../services/merchantPickupPolicy";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Clock,
@@ -16,18 +18,14 @@ import {
   ShoppingBag,
   ArrowRight,
   TrendingUp,
-  Store,
   Send,
-  Trash2,
   Bell,
   MapPin,
   Zap,
   Calendar,
   Eye,
   AlertTriangle,
-  Inbox,
   Volume2,
-  PauseCircle,
   ChevronRight,
   Activity,
   Wifi,
@@ -35,7 +33,6 @@ import {
   Copy,
   UtensilsCrossed,
   CreditCard,
-  LayoutGrid,
   FileDown,
   ReceiptText,
   ArrowUp,
@@ -48,7 +45,6 @@ import {
   Star,
   MessageCircle,
   Timer,
-  Edit2,
   Settings,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
@@ -64,13 +60,16 @@ import {
   type QueuedPrintJob,
 } from "../utils/escPosEngine";
 import { isRiderOnline } from "../utils/availabilityChecker";
-import { Order, Shop, OrderStatus, RiderProfile, Message, RiderConnection } from "../types";
+import { Order, Shop, OrderStatus, RiderProfile, RiderConnection } from "../types";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { Pagination } from "./Pagination";
 import { useAuthGuard } from "../hooks/useAuthGuard";
 import { AddressDisplay } from "./AddressDisplay";
 import { Skeleton } from "./ui/Skeleton";
-import { NoLinkedRiderModal } from "./NoLinkedRiderModal";
+import { OperationFeedback, type OperationFeedbackStatus } from "./ui/OperationFeedback";
+import { RollingOrderCount } from "./ui/RollingOrderCount";
+import { useMerchantPullToRefresh } from "../hooks/useMerchantPullToRefresh";
+import { merchantOrdersConfidence, merchantOrdersEmptyMessage } from "../services/merchantOrdersUXTrust";
 import { DispatchAlertModal } from "./DispatchAlertModal";
 import { format } from "date-fns";
 
@@ -99,12 +98,13 @@ function cn(...inputs: ClassValue[]) {
 
 export interface OrdersManagementProps {
   orders: Order[];
-  onUpdateStatus: (id: string, status: OrderStatus, message?: string, estimatedTime?: string) => Promise<void> | void;
+  ordersReadState?: MerchantOrderReadState;
+  ordersVerifiedAt?: number | null;
+  onUpdateStatus: (id: string, status: OrderStatus, message?: string) => Promise<void> | void;
   onDispatchToRider?: (id: string, riderId: string, riderName?: string, riderPhone?: string) => Promise<void> | void;
   onConvertOrderToPickup?: (id: string) => Promise<void> | void;
-  onDeleteAllOrders: () => void;
   loading: boolean;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
   kitchenMode: boolean;
   setKitchenMode: (val: boolean) => void;
   soundAlerts: boolean;
@@ -124,181 +124,29 @@ export interface OrdersManagementProps {
   clearPrintQueue?: () => void;
 }
 
-const ChatWindow = ({
-  orderId,
-  shopId,
-  userId,
-  onClose,
-}: {
-  orderId: string;
-  shopId: number;
-  userId: string;
-  onClose: () => void;
-}) => {
-  const { subscribeWithAuthGuard } = useAuthGuard();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState("");
-  const [loading, setLoading] = useState(true);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const fetchMessages = async () => {
-      const { data, error } = await supabase
-        .from("chat_messages")
-        .select("*")
-        .eq("order_id", orderId)
-        .order("created_at", { ascending: true });
-
-      if (!error && data) setMessages(data as Message[]);
-      setLoading(false);
-    };
-
-    fetchMessages();
-
-    // Real-time subscription
-    let activeChannel: RealtimeChannel | null = null;
-    let isMounted = true;
-    void subscribeWithAuthGuard(`chat:${orderId}`, (ch) => 
-      ch.on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_messages",
-          filter: `order_id=eq.${orderId}`,
-        },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message]);
-        },
-      )
-    ).then(ch => {
-      if (ch) {
-        if (isMounted) activeChannel = ch;
-        else void supabase.removeChannel(ch);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      if (activeChannel) void supabase.removeChannel(activeChannel);
-    };
-  }, [orderId, subscribeWithAuthGuard]);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
-
-  const sendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim()) return;
-
-    const message = {
-      order_id: orderId,
-      shop_id: shopId,
-      user_id: userId,
-      sender_id: shopId.toString(), // Shop is sender
-      sender_type: "shop",
-      content: newMessage.trim(),
-    };
-
-    await OrderService.sendChatMessage(message);
-    const error = null; // Polyfill for existing code below
-    if (error) toast.error("Failed to send message");
-    else setNewMessage("");
-  };
-
-  return (
-    <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl overflow-hidden flex flex-col h-[400px] shadow-xl mt-4">
-      <div className="p-4 bg-primary text-on-primary flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <MessageCircle size={18} />
-          <span className="font-bold text-sm">
-            Customer Chat - #LE-{orderId}
-          </span>
-        </div>
-        <button
-          onClick={onClose}
-          className="p-1 hover:bg-white/20 rounded-full transition-colors"
-        >
-          <X size={18} />
-        </button>
+// Chat requires a verified participant-scoped API, not direct browser table access.
+const ChatWindow = ({ orderId, onClose }: { orderId: string; onClose: () => void }) => (
+  <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl overflow-hidden flex flex-col h-[220px] shadow-xl mt-4">
+    <div className="p-4 bg-primary text-on-primary flex justify-between items-center">
+      <div className="flex items-center gap-2">
+        <MessageCircle size={18} />
+        <span className="font-bold text-sm">Customer Chat - #LE-{orderId}</span>
       </div>
-
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 space-y-4 bg-surface-container-lowest"
-      >
-        {loading ? (
-          <div className="flex justify-center p-4">
-            <RefreshCw className="animate-spin text-primary/40" size={24} />
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="text-center text-on-surface-variant/40 py-12">
-            <p className="text-xs italic">
-              No messages yet. Start the conversation!
-            </p>
-          </div>
-        ) : (
-          messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={cn(
-                "flex flex-col max-w-[80%]",
-                msg.sender_type === "shop"
-                  ? "ml-auto items-end"
-                  : "mr-auto items-start",
-              )}
-            >
-              <div
-                className={cn(
-                  "px-4 py-2 rounded-2xl text-sm shadow-sm",
-                  msg.sender_type === "shop"
-                    ? "bg-primary text-on-primary rounded-tr-none"
-                    : "bg-surface-container-high text-on-surface rounded-tl-none",
-                )}
-              >
-                {msg.content}
-              </div>
-              <span className="text-[9px] text-on-surface-variant/60 mt-1">
-                {format(new Date(msg.created_at), "HH:mm")}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-
-      <form
-        onSubmit={sendMessage}
-        className="p-3 bg-surface-container-low border-t border-outline-variant/10 flex gap-2"
-      >
-        <input
-          type="text"
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Type a message..."
-          className="flex-1 bg-surface-container-lowest border border-outline-variant/20 rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-        />
-        <button
-          type="submit"
-          className="p-2 bg-primary text-on-primary rounded-full hover:scale-105 transition-transform"
-        >
-          <Send size={18} />
-        </button>
-      </form>
+      <button type="button" onClick={onClose} aria-label="Close customer chat" className="p-1 hover:bg-white/20 rounded-full"><X size={18} /></button>
     </div>
-  );
-};
-
+    <div className="flex-1 p-5 flex flex-col justify-center space-y-2" role="status">
+      <p className="text-sm font-bold text-on-surface">In-app chat is unavailable in this Preview.</p>
+      <p className="text-xs text-on-surface-variant">Messages cannot yet be read or sent through a verified order-participant API. Use the order's Call or WhatsApp contact options for manual communication. External messages are not tracked here.</p>
+    </div>
+  </div>
+);
 
 
 export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   orders,
+  ordersReadState = "checking",
+  ordersVerifiedAt = null,
   onUpdateStatus,
-  onDispatchToRider,
-  onConvertOrderToPickup,
-  onDeleteAllOrders,
   loading,
   onRefresh,
   kitchenMode,
@@ -320,6 +168,14 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   clearPrintQueue,
 }) => {
   const { subscribeWithAuthGuard } = useAuthGuard();
+  const handleRiderNudge=async(riderId:string,message:string)=>{
+    try{
+      await sendRiderNudge(riderId,message);
+      toast.info("Rider nudge request saved. Device delivery is not confirmed.");
+    }catch{
+      toast.error("Rider nudge was not confirmed. Please retry from a connected session.");
+    }
+  };
   const [viewMode, setViewMode] = useState<"active" | "history">("active");
   
   const [printerDiagStatus, setPrinterDiagStatus] = useState<{
@@ -330,6 +186,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [customerSearch, setCustomerSearch] = useState("");
   const [phoneSearch, setPhoneSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [showOrderFilters, setShowOrderFilters] = useState(false);
   const [acceptingOrderId, setAcceptingOrderId] = useState<string | null>(null);
   const [orderNotes, setOrderNotes] = useState(""); // Added for Order Notes
   const [selectedPendingOrders, setSelectedPendingOrders] = useState<string[]>([]); // Added for Bulk Actions
@@ -337,13 +194,59 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [readyOrderId, setReadyOrderId] = useState<string | null>(null);
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+  const inFlightStatusRef = useRef<string | null>(null);
+  // The API confirms only the status action, not messages, ETAs, or rider dispatch.
+  const confirmOrderStatus = async (
+    orderId: string,
+    status: OrderStatus,
+    onConfirmed?: () => void,
+  ): Promise<boolean> => {
+    if (inFlightStatusRef.current !== null) return false;
+    if (orders.some(order => String(order.id)===String(orderId) && isPickupOrder(order))) {
+      toast.error("Use the dedicated customer-collection actions for pickup orders.");
+      return false;
+    }
+    inFlightStatusRef.current = orderId;
+    setUpdatingOrderId(orderId);
+    try {
+      await Promise.resolve(onUpdateStatus(orderId, status));
+      onConfirmed?.();
+      return true;
+    } catch {
+      // The parent workflow displays the actual error; retain the form for retry.
+      return false;
+    } finally {
+      inFlightStatusRef.current = null;
+      setUpdatingOrderId(null);
+    }
+  };
   const [chatOrderId, setChatOrderId] = useState<string | null>(null);
   const [showRiderPicker, setShowRiderPicker] = useState<string | null>(null);
   const [connectedRiders, setConnectedRiders] = useState<RiderConnection[]>([]);
-  const [ratingOrderId, setRatingOrderId] = useState<string | null>(null);
-  const [ratingValue, setRatingValue] = useState<number>(0);
   const [showMobileActions, setShowMobileActions] = useState(false);
-  const [unlinkedModalOrder, setUnlinkedModalOrder] = useState<Order | null>(null);
+  const [isRefreshingOrders, setIsRefreshingOrders] = useState(false);
+  const [orderRefreshFeedback, setOrderRefreshFeedback] = useState<OperationFeedbackStatus>("idle");
+  const [verifiedBeforeRefresh, setVerifiedBeforeRefresh] = useState<number | null>(null);
+  const handleRefreshOrders = async () => {
+    if (isRefreshingOrders) return;
+    setVerifiedBeforeRefresh(ordersVerifiedAt);
+    setIsRefreshingOrders(true);
+    setOrderRefreshFeedback("loading");
+    try {
+      await Promise.resolve(onRefresh());
+      // Resolving an API read is not proof of freshness: the parent may catch errors.
+      setOrderRefreshFeedback("unverified");
+    } catch {
+      setOrderRefreshFeedback("error");
+    } finally {
+      setIsRefreshingOrders(false);
+    }
+  };
+  const refreshedOrdersVerified = orderRefreshFeedback === "unverified" &&
+    ordersReadState === "confirmed" && ordersVerifiedAt !== null &&
+    (verifiedBeforeRefresh === null || ordersVerifiedAt > verifiedBeforeRefresh);
+  const orderRefreshStatus: OperationFeedbackStatus = refreshedOrdersVerified ? "success" : orderRefreshFeedback;
+  const { surfaceRef, pulling, armed } = useMerchantPullToRefresh(!loading && !isRefreshingOrders, handleRefreshOrders);
   const [dispatchAlertOrder, setDispatchAlertOrder] = useState<Order | null>(null);
   const [dispatchAlertType, setDispatchAlertType] = useState<"rider_dispatch" | "customer_status" | "rider_pairing">("customer_status");
 
@@ -392,11 +295,11 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
       try {
         localStorage.setItem(pendingSortStorageKey, JSON.stringify(updated));
+        toast.success(`Priority saved on this device: #${sourceId.slice(-4).toUpperCase()} moved to position #${toIndex + 1}`);
       } catch (e) {
         console.error("Failed to save pending order priorities", e);
+        toast.error("Priority order changed for this session, but was not saved on this device.");
       }
-
-      toast.success(`Priority updated: #${sourceId.slice(-4).toUpperCase()} moved to position #${toIndex + 1}`);
       return updated;
     });
   };
@@ -412,7 +315,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   };
 
   const renderRiderStatusBadge = (order: Order) => {
-    if (isPickupOrder(order)) return <PickupOrderActions order={order}/>;
+    if (isPickupOrder(order)) return <PickupOrderActions order={order} mode="summary"/>;
     if (!isOrderDelivery(order)) {
       return (
         <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 text-[8px] font-extrabold uppercase">
@@ -438,16 +341,12 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
           <button disabled={isPickupOrder(order)}
             onClick={(e) => {
               e.stopPropagation();
-              if (connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
-                setUnlinkedModalOrder(order);
-              } else {
-                setShowRiderPicker(order.id);
-              }
+              onTabChange("riders");
             }}
             className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-white text-[8px] font-black uppercase rounded-lg transition-transform active:scale-95 flex items-center gap-0.5 cursor-pointer shrink-0 shadow-xs"
           >
             <Rocket size={10} />
-            <span>Pair</span>
+            <span>Riders</span>
           </button>
         </div>
       );
@@ -479,13 +378,13 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
           onClick={(e) => {
             e.stopPropagation();
             if (order.rider_id) {
-              void sendRiderNudge(order.rider_id, "Order update: Please check your active delivery mission!");
+              void handleRiderNudge(order.rider_id, "Order update: Please check your active delivery mission!");
             } else {
               toast.error("No rider assigned to nudge");
             }
           }}
           className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-[8px] font-black uppercase tracking-wider rounded-lg transition-transform flex items-center gap-0.5 cursor-pointer shrink-0 shadow-xs"
-          title="Trigger silent push notification alert to rider"
+          title="Request a rider nudge; device delivery is not guaranteed"
         >
           <Zap size={10} className="fill-current" />
           <span>Nudge</span>
@@ -563,9 +462,11 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
   const currentShopId = currentShop?.id;
   const currentShopPhone = currentShop?.phone;
+  // No rider profile/location reads for shops serving only customer collection.
+  const hasDeliveryOrders = orders.some((order) => isOrderDelivery(order));
 
   useEffect(() => {
-    if (currentShopId) {
+    if (currentShopId && hasDeliveryOrders) {
       const fetchRiders = async () => {
         const shopId = currentShopId;
         const numericShopId = typeof shopId === "number" ? shopId : (parseInt(String(shopId).replace(/\D/g, ""), 10) || shopId);
@@ -728,48 +629,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
         if (activeChannel) void supabase.removeChannel(activeChannel);
       };
     }
-  }, [currentShopId, currentShopPhone, subscribeWithAuthGuard]);
-  const [customMessage, setCustomMessage] = useState(
-    "We have received your order and are starting to prepare it!",
-  );
-  const [estimatedTime, setEstimatedTime] = useState("20-30 mins");
-
-  const avgPrepTime = useMemo(() => {
-    const pendingCount = orders.filter(
-      (o) => o.status === "pending" || o.status === "preparing",
-    ).length;
-    // Base 12 mins + 1.5 mins per pending order, capped at 45
-    return Number(Math.min(12 + pendingCount * 1.5, 45)).toFixed(1);
-  }, [orders]);
-
-  const submitRiderRating = async (orderId: string, riderId: string, rating: number) => {
-    if(!rating) return;
-    try {
-      const existingOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
-      existingOverrides[orderId] = { ...existingOverrides[orderId], merchant_rating: rating, updated_at: new Date().toISOString() };
-      localStorage.setItem("localeats_order_overrides", JSON.stringify(existingOverrides));
-    } catch {
-      // ignore
-    }
-    try {
-      const { data: ratingsData } = await supabase
-        .from('orders')
-        .select('merchant_rating')
-        .eq('rider_id', riderId)
-        .not('merchant_rating', 'is', null);
-
-      const items = (ratingsData as unknown as { merchant_rating: number }[]) || [];
-      const currentRatings = items.map(i => i.merchant_rating || 0);
-      const newRatings = [...currentRatings, rating];
-      const avgRating = newRatings.reduce((a, b) => a + b, 0) / newRatings.length;
-
-      await OrderService.rateRider(orderId, riderId, rating, avgRating);
-    } catch (error) {
-      console.warn("Rating update warning (saved locally):", error);
-    }
-    setRatingOrderId(null);
-    setRatingValue(0);
-  };
+  }, [currentShopId, currentShopPhone, hasDeliveryOrders, subscribeWithAuthGuard]);
 
   const handleIframePrint = (order: Order, formatOption: "80mm" | "58mm", includeAddress: boolean) => {
     toast.info("Receipt Printing Requested");
@@ -783,7 +643,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
       const doc = iframe.contentWindow?.document || iframe.contentDocument;
       if (!doc) {
-        toast.error("Interactive printing is not available in full sandbox. Copying receipt text instead!");
+        toast.error("Browser printing is unavailable. You can copy the receipt text instead.");
         copyReceiptToClipboard(order);
         return;
       }
@@ -791,18 +651,18 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
       const formattedItems = safeGetOrderItems(order.items)
         .map((i) => {
           const isObj = typeof i === "object" && i !== null;
-          const p = isObj && "price" in i ? (i as { price: number }).price : (Number(order.total_price) || 0);
-          const q = isObj && "quantity" in i ? (i as { quantity: number }).quantity : 1;
+          const p = isObj && "price" in i ? (i as { price?: unknown }).price : null;
+          const q = isObj && "quantity" in i ? (i as { quantity?: unknown }).quantity : 1;
           const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
           return `
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-              <span>${q}x ${n}</span>
-              <span>R${Number(p * q).toFixed(2)}</span>
+              <span>${safeReceiptHtml(q)}x ${safeReceiptHtml(n)}</span>
+              <span>${safeReceiptHtml(merchantReceiptLineAmount(p, q))}</span>
             </div>
           `;
         })
         .join("") ||
-        `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${order.product_name}</span><span>R${Number(order.total_price || 0).toFixed(2)}</span></div>`;
+        `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>Amount unavailable</span></div>`;
 
       const widthOfText = formatOption === "58mm" ? "54mm" : "76mm";
       const printingPageSize = formatOption === "58mm" ? "58mm auto" : "80mm auto";
@@ -810,7 +670,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
       doc.write(`
         <html>
           <head>
-            <title>Receipt #LE-${order.id}</title>
+            <title>Receipt #LE-${safeReceiptHtml(order.id)}</title>
             <style>
               @page {
                 size: ${printingPageSize};
@@ -862,7 +722,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             <div class="header">
               <h3 style="margin: 0 0 4px 0; text-transform: uppercase; font-size: 16px; letter-spacing: 1px;">LOCALEATS</h3>
               <p style="margin: 2px 0; font-size: 11px;">EATS WITH LOCAL ROOTS</p>
-              <p style="margin: 4px 0 2px 0;">Order ID: #LE-${order.id}</p>
+              <p style="margin: 4px 0 2px 0;">Order ID: #LE-${safeReceiptHtml(order.id)}</p>
               <p style="margin: 2px 0;">${new Date(order.created_at).toLocaleString()}</p>
               <p style="margin: 2px 0; font-weight: bold; text-transform: uppercase;">Fulfillment: ${!isOrderDelivery(order) ? "COLLECTION" : "DELIVERY"}</p>
             </div>
@@ -872,14 +732,14 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             <div class="total">
               <div style="display: flex; justify-content: space-between;">
                 <span>GRAND TOTAL</span>
-                <span>R${Number(order.total_price || 0).toFixed(2)}</span>
+                <span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span>
               </div>
             </div>
             <div class="footer">
-              <p style="margin: 2px 0; font-weight: bold;">Customer: ${order.customer_name || "Guest"}</p>
-              ${order.phone ? `<p style="margin: 2px 0;">Phone: ${order.phone}</p>` : ""}
-              ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${order.address}, ${order.city}</p>` : ""}
-              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${order.notes}"</p>` : ""}
+              <p style="margin: 2px 0; font-weight: bold;">Customer: ${safeReceiptHtml(order.customer_name || "Guest")}</p>
+              ${order.phone ? `<p style="margin: 2px 0;">Phone: ${safeReceiptHtml(order.phone)}</p>` : ""}
+              ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${safeReceiptHtml(order.address)}, ${safeReceiptHtml(order.city)}</p>` : ""}
+              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${safeReceiptHtml(order.notes)}"</p>` : ""}
               <p style="margin: 12px 0 0 0; font-weight: bold; font-size: 12px;">THANK YOU FOR SUPPORTING LOCAL!</p>
             </div>
           </body>
@@ -916,7 +776,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
       const doc = iframe.contentWindow?.document || iframe.contentDocument;
       if (!doc) {
-        toast.error("Interactive printing is not available in full sandbox.");
+        toast.error("Browser printing is unavailable.");
         return;
       }
 
@@ -927,25 +787,25 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
         const formattedItems = safeGetOrderItems(order.items)
           .map((i) => {
             const isObj = typeof i === "object" && i !== null;
-            const p = isObj && "price" in i ? (i as { price: number }).price : (Number(order.total_price) || 0);
-            const q = isObj && "quantity" in i ? (i as { quantity: number }).quantity : 1;
+            const p = isObj && "price" in i ? (i as { price?: unknown }).price : null;
+            const q = isObj && "quantity" in i ? (i as { quantity?: unknown }).quantity : 1;
             const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
             return `
               <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <span>${q}x ${n}</span>
-                <span>R${Number(p * q).toFixed(2)}</span>
+                <span>${safeReceiptHtml(q)}x ${safeReceiptHtml(n)}</span>
+                <span>${safeReceiptHtml(merchantReceiptLineAmount(p, q))}</span>
               </div>
             `;
           })
           .join("") ||
-          `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${order.product_name}</span><span>R${Number(order.total_price || 0).toFixed(2)}</span></div>`;
+          `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>1x ${safeReceiptHtml(order.product_name)}</span><span>Amount unavailable</span></div>`;
 
         return `
           <div class="receipt">
             <div class="header">
               <h3 style="margin: 0 0 4px 0; text-transform: uppercase; font-size: 16px; letter-spacing: 1px;">LOCALEATS</h3>
               <p style="margin: 2px 0; font-size: 11px;">EATS WITH LOCAL ROOTS</p>
-              <p style="margin: 4px 0 2px 0;">Order ID: #LE-${order.id}</p>
+              <p style="margin: 4px 0 2px 0;">Order ID: #LE-${safeReceiptHtml(order.id)}</p>
               <p style="margin: 2px 0;">${new Date(order.created_at).toLocaleString()}</p>
               <p style="margin: 2px 0; font-weight: bold; text-transform: uppercase;">Fulfillment: ${!isOrderDelivery(order) ? "COLLECTION" : "DELIVERY"}</p>
             </div>
@@ -957,15 +817,15 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             <div class="total">
               <div style="display: flex; justify-content: space-between;">
                 <span>GRAND TOTAL</span>
-                <span>R${Number(order.total_price || 0).toFixed(2)}</span>
+                <span>${safeReceiptHtml(merchantOrderMoney(order.total_price))}</span>
               </div>
             </div>
 
             <div class="footer">
-              <p style="margin: 2px 0; font-weight: bold;">Customer: ${order.customer_name || "Guest"}</p>
-              ${order.phone ? `<p style="margin: 2px 0;">Phone: ${order.phone}</p>` : ""}
-              ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${order.address}, ${order.city}</p>` : ""}
-              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${order.notes}"</p>` : ""}
+              <p style="margin: 2px 0; font-weight: bold;">Customer: ${safeReceiptHtml(order.customer_name || "Guest")}</p>
+              ${order.phone ? `<p style="margin: 2px 0;">Phone: ${safeReceiptHtml(order.phone)}</p>` : ""}
+              ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${safeReceiptHtml(order.address)}, ${safeReceiptHtml(order.city)}</p>` : ""}
+              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${safeReceiptHtml(order.notes)}"</p>` : ""}
               <p style="margin: 12px 0 0 0; font-weight: bold; font-size: 12px;">THANK YOU FOR SUPPORTING LOCAL!</p>
             </div>
           </div>
@@ -1059,14 +919,20 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
   const copyReceiptToClipboard = (order: Order) => {
     const itemsText = safeGetOrderItems(order.items)
-      .map((i) => {
-        const isObj = typeof i === "object" && i !== null;
-        const p = isObj && "price" in i ? (i as { price: number }).price : (Number(order.total_price) || 0);
-        const q = isObj && "quantity" in i ? (i as { quantity: number }).quantity : 1;
-        const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
-        return `${q}x ${n.padEnd(22)} R${(p * q).toFixed(2)}`;
+      .map((item) => {
+        const entry = typeof item === "object" && item !== null
+          ? item as { name?: unknown; price?: unknown; quantity?: unknown }
+          : null;
+        const name = String(entry?.name ?? item);
+        const quantity = Number(entry?.quantity ?? 1);
+        const price = entry?.price == null ? NaN : Number(entry.price);
+        const validQuantity = Number.isFinite(quantity) && quantity > 0;
+        const lineTotal = validQuantity && Number.isFinite(price) && price >= 0
+          ? merchantOrderMoney(price * quantity)
+          : "Amount unavailable";
+        return `${validQuantity ? quantity : "?"}x ${name} ${lineTotal}`;
       })
-      .join("") || `1x ${order.product_name.padEnd(22)} R${(Number(order.total_price) || 0).toFixed(2)}`;
+      .join("\n") || `1x ${order.product_name} ${merchantOrderMoney(order.total_price)}`;
 
     const textReceipt = `
 ========================================
@@ -1077,7 +943,7 @@ Type: ${!isOrderDelivery(order) ? "COLLECTION" : "DELIVERY"}
 ----------------------------------------
 ${itemsText}
 ----------------------------------------
-TOTAL: R${Number(order.total_price || 0).toFixed(2)}
+TOTAL: ${merchantOrderMoney(order.total_price)}
 ========================================
 Customer: ${order.customer_name || "Guest"}
 Phone: ${order.phone || "N/A"}
@@ -1087,69 +953,61 @@ Notes: "${order.notes || "None"}"
     `.trim();
 
     navigator.clipboard.writeText(textReceipt)
-      .then(() => toast.success("Receipt copied as plain-text! Ready to send on WhatsApp."))
+      .then(() => toast.success("Receipt copied as plain text."))
       .catch(() => toast.error("Failed to copy receipt to clipboard"));
   };
 
-  const calculateDynamicETA = (order: Order) => {
-    if (!order.rider_id || !order.lat || !order.lng || order.delivery_status === "delivered") {
-       return order.estimated_delivery_time || "20-30 mins";
-    }
-
-    const assignedRider = connectedRiders.find((r) => r.rider_id === order.rider_id) as RiderConnection & { current_latitude?: number, current_longitude?: number };
-    if (!assignedRider || !assignedRider.current_latitude || !assignedRider.current_longitude) {
-       return order.estimated_delivery_time || "20-30 mins";
-    }
-
-    const R = 6371;
-    const dLat = (order.lat - assignedRider.current_latitude) * Math.PI / 180;
-    const dLon = (order.lng - assignedRider.current_longitude) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(assignedRider.current_latitude * Math.PI / 180) * Math.cos(order.lat * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-    const d = R * c;
-
-    const timeMinutes = Math.max(5, Math.round(d * 4)); // 15km/h avg
-
-    if (order.delivery_status === "finding_rider" || order.delivery_status === "accepted") {
-        return `${Math.round(timeMinutes + Number(avgPrepTime))} mins`;
-    }
-
-    return `${timeMinutes} mins`;
-  };
+  // Do not invent GPS tracking or travel-time estimates from an assumed speed.
+  const calculateDynamicETA=(order:Order)=>recordedDeliveryETA(order.estimated_delivery_time);
 
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [expandedNotesOrderIds, setExpandedNotesOrderIds] = useState<Record<string, boolean>>({});
-  const [kitchenNotes, setKitchenNotes] = useState<Record<string, string>>(() => {
-    try {
-      const saved = localStorage.getItem("le_kitchen_notes");
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
-
+  // Device-only notes must never bleed between shops on a shared browser.
+  const kitchenNotesShopId = currentShop?.id == null ? "" : String(currentShop.id);
+  const [scopedKitchenNotes, setScopedKitchenNotes] = useState<{
+    shopId: string;
+    notes: Record<string, string>;
+  }>({shopId: "", notes: {}});
+  const kitchenNotes = scopedKitchenNotes.shopId === kitchenNotesShopId
+    ? scopedKitchenNotes.notes : {};
   useEffect(() => {
-    localStorage.setItem("le_kitchen_notes", JSON.stringify(kitchenNotes));
-  }, [kitchenNotes]);
-
-  const getPastDateStr = (daysAgo: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() - daysAgo);
-    return d.toISOString().split("T")[0];
+    if (!kitchenNotesShopId) {
+      setScopedKitchenNotes({shopId: "", notes: {}});
+      return;
+    }
+    let notes: Record<string, string> = {};
+    try {
+      const saved = localStorage.getItem(`le_kitchen_notes_shop_${kitchenNotesShopId}`);
+      const parsed: unknown = saved ? JSON.parse(saved) : {};
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        notes = Object.fromEntries(Object.entries(parsed).filter(([id, value]) =>
+          id.length > 0 && typeof value === "string"
+        )) as Record<string, string>;
+      }
+    } catch {
+      notes = {};
+    }
+    setScopedKitchenNotes({shopId: kitchenNotesShopId, notes});
+  }, [kitchenNotesShopId]);
+  const saveDeviceKitchenNote = (orderId: string, note: string) => {
+    if (!kitchenNotesShopId || !note.trim()) return;
+    const notes = {...kitchenNotes, [orderId]: note.trim()};
+    try {
+      localStorage.setItem(`le_kitchen_notes_shop_${kitchenNotesShopId}`, JSON.stringify(notes));
+      setScopedKitchenNotes({shopId: kitchenNotesShopId, notes});
+    } catch {
+      toast.error("The private kitchen note could not be saved on this device.");
+    }
   };
+
+  const getPastDateStr = (daysAgo: number) =>
+    merchantJohannesburgDayKey(new Date(Date.now() - daysAgo * 86400000)) ?? "";
 
   const [recentlyChangedOrders, setRecentlyChangedOrders] = useState<
     Record<string, boolean>
   >({});
   const prevOrdersRef = useRef<Order[]>([]);
-  const [maxConcurrentOrders, setMaxConcurrentOrders] = useState(() => {
-    return Number(localStorage.getItem("maxConcurrentOrders")) || 10;
-  });
-
   useEffect(() => {
     if (prevOrdersRef.current.length > 0) {
       const changes: Record<string, boolean> = {};
@@ -1176,15 +1034,6 @@ Notes: "${order.notes || "None"}"
     prevOrdersRef.current = orders;
   }, [orders]);
 
-  useEffect(() => {
-    localStorage.setItem("maxConcurrentOrders", maxConcurrentOrders.toString());
-  }, [maxConcurrentOrders]);
-
-  const activeCount = orders.filter(
-    (o) => o.status !== "completed" && o.status !== "cancelled",
-  ).length;
-  const isLimitReached = activeCount >= maxConcurrentOrders;
-
   // Calculate customer loyalty
   const customerOrderCounts = orders.reduce(
     (acc: Record<string, number>, order) => {
@@ -1194,8 +1043,6 @@ Notes: "${order.notes || "None"}"
     {},
   );
 
-  const [alertsEnabled, setAlertsEnabled] = useState(true);
-  const [ordersPaused, setOrdersPaused] = useState(false);
   const [filterStatus, setFilterStatus] = useState<OrderStatus | "All">("All");
   const [orderTypeFilter, setOrderTypeFilter] = useState<"All" | "delivery" | "collection">("All");
   const [sortField, setSortField] = useState<
@@ -1205,6 +1052,25 @@ Notes: "${order.notes || "None"}"
 
   const [ordersPage, setOrdersPage] = useState(1);
   const ordersPerPage = 12;
+
+  const filtersApplied = filterStatus !== "All" || orderTypeFilter !== "All" ||
+    Boolean(startDate || endDate || searchTerm || customerSearch || phoneSearch);
+  const clearAllOrderFilters = () => {
+    setFilterStatus("All");
+    setOrderTypeFilter("All");
+    setStartDate("");
+    setEndDate("");
+    setSearchTerm("");
+    setCustomerSearch("");
+    setPhoneSearch("");
+  };
+  const ordersConfidence = merchantOrdersConfidence(ordersReadState, ordersVerifiedAt);
+  const unverifiedWithoutPreviousOrders = ordersConfidence === "unavailable" ||
+    (ordersConfidence === "checking" && ordersVerifiedAt === null);
+  const emptyOrderMessage = merchantOrdersEmptyMessage(ordersConfidence, viewMode, filtersApplied);
+  const lastVerifiedOrdersTime = typeof ordersVerifiedAt === "number" && Number.isFinite(ordersVerifiedAt)
+    ? new Date(ordersVerifiedAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" })
+    : null;
 
   const filterKey = `${searchTerm}_${customerSearch}_${phoneSearch}_${filterStatus}_${orderTypeFilter}_${startDate}_${endDate}_${viewMode}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
@@ -1224,33 +1090,19 @@ Notes: "${order.notes || "None"}"
 
     const filtered = baseOrders.filter((o) => {
       const matchesSearch =
-        o.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (o.product_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         o.id.toString().includes(searchTerm);
       const matchesCustomer =
         !customerSearch ||
         o.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
       const matchesPhone = !phoneSearch || o.phone?.includes(phoneSearch);
       const matchesFilter = filterStatus === "All" || o.status === filterStatus;
-      const matchesOrderType = orderTypeFilter === "All" || o.order_type === orderTypeFilter;
+      const matchesOrderType = orderTypeFilter === "All" || (orderTypeFilter === "collection" ? isPickupOrder(o) : isOrderDelivery(o));
 
-      let matchesDate = true;
-      // Active orders in the operational kitchen queue should not be hidden by historical date filters
-      if (viewMode === "history") {
-        const dateToCheck = o.completed_at || o.created_at;
-        if (dateToCheck) {
-          const d = new Date(dateToCheck);
-          if (!isNaN(d.getTime())) {
-            if (startDate) {
-              const s = new Date(startDate + "T00:00:00");
-              if (!isNaN(s.getTime()) && d < s) matchesDate = false;
-            }
-            if (endDate) {
-              const e = new Date(endDate + "T23:59:59.999");
-              if (!isNaN(e.getTime()) && d > e) matchesDate = false;
-            }
-          }
-        }
-      }
+      // History is filtered by the recorded order PLACED date in SAST, never by
+      // the viewer's timezone or a guessed paid/collected timestamp.
+      const matchesDate = viewMode !== "history" ||
+        merchantOrderHistoryInSastRange(o,startDate,endDate);
 
       return (
         matchesSearch &&
@@ -1309,31 +1161,20 @@ Notes: "${order.notes || "None"}"
   }, [displayedOrders, pendingOrderPriorityIds]);
 
   const fulfilledOrdersToday = useMemo(() => {
-    const now = new Date();
+    const today=merchantJohannesburgDayKey(new Date()) ?? "";
     return orders.filter((o) => {
-      const isFulfilled = o.status === "completed" || o.status === "cancelled";
-      let isToday = false;
-      if (o.created_at) {
-        const d = new Date(o.created_at);
-        if (!isNaN(d.getTime())) {
-          isToday =
-            d.getFullYear() === now.getFullYear() &&
-            d.getMonth() === now.getMonth() &&
-            d.getDate() === now.getDate();
-        }
-      }
-
+      const completedToday = merchantOrderCompletedOnSastDay(o,today);
       const matchesSearch =
-        o.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (o.product_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         o.id.toString().includes(searchTerm);
-      const matchesCustomer =
-        !customerSearch ||
+      const matchesCustomer = !customerSearch ||
         o.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
       const matchesPhone = !phoneSearch || o.phone?.includes(phoneSearch);
-
-      return isFulfilled && isToday && matchesSearch && matchesCustomer && matchesPhone;
+      const matchesFulfillment=orderTypeFilter === "All" ||
+        (orderTypeFilter === "collection" ? isPickupOrder(o) : isOrderDelivery(o));
+      return completedToday && matchesSearch && matchesCustomer && matchesPhone && matchesFulfillment;
     });
-  }, [orders, searchTerm, customerSearch, phoneSearch]);
+  }, [orders,searchTerm,customerSearch,phoneSearch,orderTypeFilter]);
 
   const startOrderIdx = (ordersPage - 1) * ordersPerPage;
   const paginatedOrders = useMemo(() => {
@@ -1352,46 +1193,25 @@ Notes: "${order.notes || "None"}"
   };
 
   const exportToCSV = () => {
-    const headers = [
-      "Order ID",
-      "Product Name",
-      "Total Price",
-      "Status",
-      "Date",
-      "Customer",
-      "Address",
-    ];
-    const csvContent = [
-      headers.join(","),
-      ...displayedOrders.map((o) =>
-        [
-          o.id,
-          `"${o.product_name.replace(/"/g, '""')}"`,
-          o.total_price,
-          o.status,
-          format(new Date(o.created_at), "yyyy-MM-dd HH:mm:ss"),
-          `"${o.customer_name.replace(/"/g, '""')}"`,
-          `"${o.address.replace(/"/g, '""')}, ${o.city.replace(/"/g, '""')}"`,
-        ].join(","),
-      ),
-    ].join("");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `accounting_orders_export_${format(new Date(), "yyyyMMdd_HHmmss")}.csv`,
-    );
-    link.style.visibility = "hidden";
+    if(displayedOrders.length===0){toast.info("No orders match these filters to export.");return;}
+    if(!window.confirm("Export filtered order data including customer contact details? Keep the spreadsheet private.")) return;
+    const csvContent=safeOrderExportCsv(displayedOrders);
+    const blob=new Blob(["\uFEFF",csvContent],{type:"text/csv;charset=utf-8;"});
+    const link=document.createElement("a");
+    const url=URL.createObjectURL(blob);
+    link.href=url;
+    link.download=`orders_export_${format(new Date(),"yyyyMMdd_HHmmss")}.csv`;
+    link.style.visibility="hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("Orders exported as Spreadsheet for Accounting!");
+    URL.revokeObjectURL(url);
+    toast.success("Filtered order records exported. Totals are not proof of payment.");
   };
 
   const exportToJSON = () => {
+    if (orders.length===0) { toast.info("No loaded orders to export."); return; }
+    if (!window.confirm("Export loaded order records including customer contact details? This is not a database backup. Keep the file private.")) return;
     const jsonContent = JSON.stringify(orders, null, 2);
     const blob = new Blob([jsonContent], { type: "application/json" });
     const link = document.createElement("a");
@@ -1399,13 +1219,14 @@ Notes: "${order.notes || "None"}"
     link.setAttribute("href", url);
     link.setAttribute(
       "download",
-      `orders_backup_${format(new Date(), "yyyyMMdd_HHmmss")}.json`,
+      `orders_export_${format(new Date(), "yyyyMMdd_HHmmss")}.json`,
     );
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("Orders backup file downloaded!");
+    URL.revokeObjectURL(url);
+    toast.info("Loaded order records exported as JSON. This is not a recoverable backup and may contain customer details.");
   };
 
   const orderStatuses: (OrderStatus | "All")[] = [
@@ -1433,7 +1254,7 @@ Notes: "${order.notes || "None"}"
     }
 
     if (!rider.is_online) {
-      // Show "Wake to Tip" button UI or similar
+      // Show "Nudge Rider" button UI or similar
       // Handled in the UI loop
       return;
     }
@@ -1470,12 +1291,14 @@ Notes: "${order.notes || "None"}"
                       initial={{ opacity: 0, scale: 0.9, y: 20 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.9, y: -20, transition: { duration: 0.2 } }}
-                      transition={{ 
-                        type: "spring", 
-                        stiffness: 260, 
+                      transition={{
+                        type: "spring",
+                        stiffness: 260,
                         damping: 20,
-                        delay: Math.min(i * 0.05, 0.5) 
+                        delay: Math.min(i * 0.05, 0.5),
+                        layout: { duration: 0.35, ease: [0.22, 1, 0.36, 1] },
                       }}
+                      whileTap={{ scale: 0.95 }}
                       key={order.id}
                       className={cn(
                         "group rounded-2xl p-4 sm:p-5 shadow-sm border transition-all duration-300 cursor-pointer space-y-4 relative bg-surface-container-lowest",
@@ -1498,7 +1321,7 @@ Notes: "${order.notes || "None"}"
                         )
                       }
                     >
-                    {isPickupOrder(order) && <PickupOrderActions order={order}/>}
+                    {isPickupOrder(order) && <PickupOrderActions order={order} mode="summary" />}
 
                       <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
                         <div className="relative flex items-start gap-3 w-full sm:w-auto">
@@ -1553,9 +1376,13 @@ Notes: "${order.notes || "None"}"
                             )}
                             <span className={cn(
                               "text-[10px] font-extrabold px-2.5 py-1 rounded-xl flex items-center gap-1 border",
-                              (order.payment_method === "cod" || order.payment_method === "Cash" || order.payment_method === "cash_on_delivery")
-                                ? "bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 border-rose-200/50"
-                                : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200/50"
+                              isPickupOrder(order)
+                                ? order.payment_status === "paid"
+                                  ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border-emerald-200/50"
+                                  : "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border-amber-200/50"
+                                : (order.payment_method === "cod" || order.payment_method === "Cash" || order.payment_method === "cash_on_delivery")
+                                  ? "bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 border-rose-200/50"
+                                  : "bg-surface-container-high text-on-surface-variant border-outline-variant/20"
                             )}>
                               <CreditCard size={11} fill="currentColor" />
                               {pickupPaymentLabel(order)}
@@ -1569,7 +1396,7 @@ Notes: "${order.notes || "None"}"
                           >
                             {order.customer_name ||
                               `Customer #${order.user_id.slice(0, 5)}`}
-                            {order.delivery_status === "picked_up" && (
+                            {isOrderDelivery(order) && order.delivery_status === "picked_up" && (
                                <motion.span 
                                  initial={{ opacity: 0 }}
                                  animate={{ opacity: 1 }}
@@ -1606,28 +1433,28 @@ Notes: "${order.notes || "None"}"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setDispatchAlertOrder(order);
-                                  setDispatchAlertType(order.rider_id ? "rider_dispatch" : "customer_status");
+                                  setDispatchAlertType(isPickupOrder(order) ? "customer_status" : (order.rider_id ? "rider_dispatch" : "customer_status"));
                                 }}
                                 className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300 font-extrabold bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-2 rounded-xl transition-colors border border-emerald-500/30 min-h-[40px] cursor-pointer"
                                 title="Open SMS & WhatsApp Dispatch Studio"
                               >
                                 <Send size={13} />
-                                <span>Dispatch Alert</span>
+                                <span>{isPickupOrder(order) ? "Message Customer" : "Dispatch Alert"}</span>
                               </button>
                             </div>
                           <div className="flex flex-col gap-1 text-xs text-on-surface-variant">
                             <div className="flex items-center gap-2">
                               <MapPin size={12} className="text-primary/60" />
-                              <AddressDisplay address={order.address} city={order.city} className="italic font-medium text-xs max-sm:text-xs" maxParts={2} />
+                              {isPickupOrder(order) ? <span>Customer collects at the shop</span> : <AddressDisplay address={order.address} city={order.city} className="italic font-medium text-xs max-sm:text-xs" maxParts={2} />}
                             </div>
-                            {order.lat && order.lng && (
+                            {isOrderDelivery(order) && order.lat && order.lng && (
                               <div className="ml-5 text-[9px] text-primary/60 font-mono">
                                 {order.lat.toFixed(5)}, {order.lng.toFixed(5)}
                               </div>
                             )}
                           </div>
                           <div className="flex items-center gap-2 mt-1">
-                            {order.estimated_delivery_time || calculateDynamicETA(order) ? (
+                            {isOrderDelivery(order) && calculateDynamicETA(order) ? (
                               <div className="flex items-center gap-2 text-xs text-amber-600 font-bold bg-amber-50 px-2 py-1 rounded-lg">
                                 <Timer size={12} />
                                 <span>ETA: {calculateDynamicETA(order)}</span>
@@ -1635,23 +1462,8 @@ Notes: "${order.notes || "None"}"
                             ) : (
                               <div className="flex items-center gap-2 text-xs text-zinc-500 font-bold bg-zinc-50 px-2 py-1 rounded-lg">
                                 <Timer size={12} />
-                                <span>ETA: 20-30 mins</span>
+                                <span>ETA unavailable</span>
                               </div>
-                            )}
-                            {order.status !== 'completed' && order.status !== 'cancelled' && (
-                              <button disabled={isPickupOrder(order)}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const newEta = prompt("Enter estimated delivery time (e.g. 20-30 mins):", order.estimated_delivery_time || "25 mins");
-                                  if (newEta !== null) {
-                                    onUpdateStatus(order.id, order.status, undefined, newEta);
-                                  }
-                                }}
-                                className="p-1 text-primary hover:bg-primary/5 rounded shadow-sm"
-                                title="Adjust ETA"
-                              >
-                                <Edit2 size={12} />
-                              </button>
                             )}
                           </div>
                         </div>
@@ -1674,7 +1486,7 @@ Notes: "${order.notes || "None"}"
                         <OrderStatusBadge status={order.status} />
                         <span className="text-[11px] font-semibold text-on-surface-variant mt-0 sm:mt-2 flex items-center gap-1">
                           <Clock size={14} />
-                          {format(new Date(order.created_at), "HH:mm")}
+                          {merchantJohannesburgClock(order.created_at)}
                         </span>
                       </div>
                     </div>
@@ -1690,7 +1502,7 @@ Notes: "${order.notes || "None"}"
                           {order.product_name}
                         </span>
                         <span className="text-on-surface font-semibold">
-                          R {Number(order.total_price || 0).toFixed(2)}
+                          {merchantOrderMoney(order.total_price)}
                         </span>
                       </div>
                     </div>
@@ -1701,6 +1513,7 @@ Notes: "${order.notes || "None"}"
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: "auto", opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
                           className="overflow-hidden border-t border-outline-variant/10 pt-6 mb-8 space-y-6"
                           onClick={(e) => e.stopPropagation()}
                         >
@@ -1726,56 +1539,27 @@ Notes: "${order.notes || "None"}"
                                 </thead>
                                 <tbody className="divide-y divide-outline-variant/10">
                                   {safeGetOrderItems(order.items).length > 0 ? (
-                                    safeGetOrderItems(order.items).map((item, idx) => (
-                                      <tr
-                                        key={idx}
-                                        className="hover:bg-surface-container-highest/30 transition-colors"
-                                      >
-                                        <td className="px-4 py-3 font-medium text-on-surface">
-                                          {typeof item === "object" &&
-                                          item !== null &&
-                                          "name" in item
-                                            ? ((item as unknown) as Record<string, unknown>).name as string
-                                            : String(item)}
-                                        </td>
-                                        <td className="px-4 py-3 text-center text-on-surface-variant">
-                                          {typeof item === "object" &&
-                                          item !== null &&
-                                          "quantity" in item
-                                            ? ((item as unknown) as Record<string, unknown>).quantity as number
-                                            : 1}
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-on-surface-variant">
-                                          R{" "}
-                                          {Number(
-                                            typeof item === "object" &&
-                                              item !== null &&
-                                              "price" in item
-                                              ? ((item as unknown) as Record<string, unknown>).price as number
-                                              : 0,
-                                          ).toFixed(2)}
-                                        </td>
-                                        <td className="px-4 py-3 text-right font-bold text-on-surface">
-                                          R{" "}
-                                          {(
-                                            Number(
-                                              typeof item === "object" &&
-                                                item !== null &&
-                                                "price" in item
-                                                ? ((item as unknown) as Record<string, unknown>).price as number
-                                                : 0,
-                                            ) *
-                                            Number(
-                                              typeof item === "object" &&
-                                                item !== null &&
-                                                "quantity" in item
-                                                ? ((item as unknown) as Record<string, unknown>).quantity as number
-                                                : 1,
-                                            )
-                                          ).toFixed(2)}
-                                        </td>
-                                      </tr>
-                                    ))
+                                    safeGetOrderItems(order.items).map((item, idx) => {
+                                      const fields: Record<string, unknown> =
+                                        typeof item === "object" && item !== null ? item as Record<string, unknown> : {};
+                                      const quantity = fields.quantity === undefined ? 1 : Number(fields.quantity);
+                                      const count = Number.isSafeInteger(quantity) && quantity > 0 ? quantity : null;
+                                      const rawUnitPrice = isPickupOrder(order) ? fields.unit_price : fields.price;
+                                      const unitPrice = merchantOrderTotal(rawUnitPrice);
+                                      // Use the API's saved pickup line snapshot, not today's menu price.
+                                      const lineTotal = isPickupOrder(order)
+                                        ? pickupItemLineTotal(item)
+                                        : unitPrice !== null && count !== null
+                                          ? merchantOrderTotal(unitPrice * count) : null;
+                                      return (
+                                        <tr key={idx} className="hover:bg-surface-container-highest/30 transition-colors">
+                                          <td className="px-4 py-3 font-medium text-on-surface">{String(fields.name ?? item)}</td>
+                                          <td className="px-4 py-3 text-center text-on-surface-variant">{count ?? "Unavailable"}</td>
+                                          <td className="px-4 py-3 text-right text-on-surface-variant">{unitPrice === null ? "Price unavailable" : merchantOrderMoney(unitPrice)}</td>
+                                          <td className="px-4 py-3 text-right font-bold text-on-surface">{lineTotal === null ? "Amount unavailable" : merchantOrderMoney(lineTotal)}</td>
+                                        </tr>
+                                      );
+                                    })
                                   ) : (
                                     <tr>
                                       <td className="px-4 py-3 font-medium text-on-surface">
@@ -1785,16 +1569,10 @@ Notes: "${order.notes || "None"}"
                                         1
                                       </td>
                                       <td className="px-4 py-3 text-right text-on-surface-variant">
-                                        R{" "}
-                                        {Number(order.total_price || 0).toFixed(
-                                          2,
-                                        )}
+                                        Amount unavailable
                                       </td>
                                       <td className="px-4 py-3 text-right font-bold text-on-surface">
-                                        R{" "}
-                                        {Number(order.total_price || 0).toFixed(
-                                          2,
-                                        )}
+                                        Amount unavailable
                                       </td>
                                     </tr>
                                   )}
@@ -1808,10 +1586,7 @@ Notes: "${order.notes || "None"}"
                                       Grand Total
                                     </td>
                                     <td className="px-4 py-3 text-right font-bold text-primary text-lg">
-                                      R{" "}
-                                      {Number(order.total_price || 0).toFixed(
-                                        2,
-                                      )}
+                                      {merchantOrderMoney(order.total_price)}
                                     </td>
                                   </tr>
                                 </tfoot>
@@ -1852,7 +1627,7 @@ Notes: "${order.notes || "None"}"
                               </span>
                               <div className="flex flex-col gap-2">
                                 <p className="text-sm font-semibold text-primary">
-                                  {order.payment_method || "Cash on Delivery"}
+                                  {pickupPaymentLabel(order)}
                                 </p>
                                 {order.terminal_masked_card && (
                                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 text-emerald-600 rounded border border-emerald-500/20 max-w-max">
@@ -1873,9 +1648,9 @@ Notes: "${order.notes || "None"}"
                             <div className="space-y-1 sm:col-span-2">
                               <div className="flex items-center justify-between">
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                                  Delivery Address
+                                  {isPickupOrder(order) ? "Collection at shop" : "Delivery Address"}
                                 </span>
-                                {order.lat && order.lng && (
+                                {isOrderDelivery(order) && order.lat && order.lng && (
                                   <a
                                     href={`https://www.google.com/maps/search/?api=1&query=${order.lat},${order.lng}`}
                                     target="_blank"
@@ -1886,8 +1661,8 @@ Notes: "${order.notes || "None"}"
                                   </a>
                                 )}
                               </div>
-                              <AddressDisplay address={order.address} city={order.city} className="text-sm font-semibold text-on-surface max-sm:text-xs" maxParts={3} />
-                              {order.lat && order.lng && (
+                              {isPickupOrder(order) ? <p className="text-sm font-semibold text-on-surface">Customer collects at this shop. No delivery address required.</p> : <AddressDisplay address={order.address} city={order.city} className="text-sm font-semibold text-on-surface max-sm:text-xs" maxParts={3} />}
+                              {isOrderDelivery(order) && order.lat && order.lng && (
                                 <p className="text-[10px] font-mono text-primary/70 mt-1 select-all bg-primary/5 p-1 rounded inline-block">
                                   GPS: {order.lat.toFixed(6)}, {order.lng.toFixed(6)}
                                 </p>
@@ -1906,7 +1681,7 @@ Notes: "${order.notes || "None"}"
                                 </p>
                               </div>
                             )}
-                            {(order.estimated_delivery_time || calculateDynamicETA(order)) && (
+                            {calculateDynamicETA(order) && (
                               <div className="space-y-1">
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
                                   Est. Delivery
@@ -1965,7 +1740,7 @@ Notes: "${order.notes || "None"}"
                               <div className="space-y-1 sm:col-span-2 bg-amber-500/[0.04] border border-amber-500/25 p-3.5 rounded-xl">
                                 <span className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                                   <UtensilsCrossed size={12} />
-                                  Internal Kitchen Instruction
+                                  Private note on this device
                                 </span>
                                 <p className="text-xs font-semibold text-on-surface mt-1 leading-relaxed">
                                   {kitchenNotes[order.id]}
@@ -2022,7 +1797,7 @@ Notes: "${order.notes || "None"}"
                                     </p>
                                     {order.rider_id &&
                                       order.delivery_status !== "delivered" && (
-                                        <button disabled={isPickupOrder(order)}
+                                        <button disabled title="Rider reassignment requires server authorization"
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             onUnassignRider(order.id);
@@ -2031,100 +1806,30 @@ Notes: "${order.notes || "None"}"
                                             isRiderTimeout ? "bg-red-500 text-white shadow hover:bg-red-600" : "bg-red-100 text-red-600 hover:bg-red-200"
                                           )}
                                         >
-                                          {isRiderTimeout ? "Unassign & Re-broadcast" : "Remove Rider"}
+                                          Rider reassignment unavailable
                                         </button>
                                       )}
                                   </div>
                                 </div>
                                 <div className="bg-surface-container p-3 rounded-xl border border-outline-variant/5">
                                   <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/50 block mb-1">
-                                    Live Track
+                                    Delivery Status
                                   </span>
                                   <div className="flex items-center justify-between">
                                     <p className="text-xs font-bold text-on-surface-variant">
                                       {order.delivery_status
-                                        ? "Active Protocol"
-                                        : "No Signal"}
+                                        ? "Status Recorded"
+                                        : "Status Unavailable"}
                                     </p>
-                                    {order.delivery_pin && (
-                                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded font-black tracking-widest border border-primary/20">
-                                        PIN: {order.delivery_pin}
-                                      </span>
-                                    )}
                                   </div>
                                 </div>
                               </div>
 
                               {order.delivery_status && (
-                                <div className="mt-4 space-y-2" onClick={(e) => e.stopPropagation()}>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                                      Update Delivery Status
-                                    </span>
-                                  </div>
-                                  <div className="flex gap-2 text-xs">
-                                    {["finding_rider", "picked_up", "delivered"].map(status => (
-                                      <button
-                                        key={status}
-                                        onClick={async (e) => {
-                                          e.stopPropagation();
-                                          try {
-                                            const existingOverrides = JSON.parse(localStorage.getItem("localeats_order_overrides") || "{}");
-                                            existingOverrides[order.id] = { ...existingOverrides[order.id], delivery_status: status, updated_at: new Date().toISOString() };
-                                            localStorage.setItem("localeats_order_overrides", JSON.stringify(existingOverrides));
-                                          } catch {
-                                            // ignore
-                                          }
-                                          try {
-      await OrderService.updateDeliveryStatus(order.id, status);
-    } catch (error) {
-      console.warn("Delivery status database sync warning (saved locally):", error);
-    }
-                                          toast.success(`Delivery status: ${status.replace("_", " ")}`);
-                                        }}
-                                        className={cn(
-                                          "px-3 py-1.5 rounded-lg font-bold border transition-colors flex-1 capitalize",
-                                          order.delivery_status === status ? "bg-primary text-white border-primary shadow-sm shadow-primary/20" : "bg-surface-container hover:bg-surface-container-high border-outline-variant/10 text-on-surface-variant"
-                                        )}
-                                      >
-                                        {status.replace("_", " ")}
-                                      </button>
-                                    ))}
-                                  </div>
-
-                                  {order.delivery_status === "picked_up" && (
-                                    <div className="w-full h-32 bg-stone-100 dark:bg-stone-900 rounded-xl overflow-hidden relative border border-outline-variant/10 mt-4 flex items-center justify-center">
-                                       <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] mix-blend-overlay"></div>
-
-                                       {/* Mock Map Route */}
-                                       <div className="absolute top-1/2 left-1/4 right-1/4 h-1 border-t-2 border-dashed border-primary/40 -translate-y-1/2"></div>
-
-                                       <div className="absolute left-1/4 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-full p-1 shadow-md z-10">
-                                         <Store size={14} className="text-secondary" />
-                                       </div>
-                                       <div className="absolute right-1/4 top-1/2 translate-x-1/2 -translate-y-1/2 bg-white rounded-full p-1 shadow-md z-10">
-                                          <MapPin size={14} className="text-primary" />
-                                       </div>
-
-                                       {/* Moving Rider */}
-                                       <motion.div 
-                                         animate={{ x: ["0%", "100%", "0%"] }}
-                                         transition={{ repeat: Infinity, duration: 15, ease: "linear" }}
-                                         className="absolute left-1/4 right-1/4 top-1/2 -translate-y-1/2 z-20 flex items-center justify-start pointer-events-none"
-                                       >
-                                         <div className="relative -ml-4 -mt-6">
-                                            <div className="bg-primary text-white rounded-full p-2 shadow-lg drop-shadow-md border-2 border-white">
-                                              <Bike size={16} />
-                                            </div>
-                                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                                               <span className="text-[9px] font-black uppercase text-primary tracking-widest bg-white/95 px-2 py-0.5 rounded shadow-sm border border-primary/10">
-                                                 Live ETA: 3 min
-                                               </span>
-                                            </div>
-                                         </div>
-                                       </motion.div>
-                                    </div>
-                                  )}
+                                <div className="mt-4 rounded-xl bg-surface-container p-3 border border-outline-variant/10" role="status">
+                                  <p className="text-[10px] font-extrabold uppercase text-on-surface-variant">Delivery status from order record</p>
+                                  <p className="mt-1 font-bold text-xs text-on-surface capitalize">{order.delivery_status.replaceAll("_"," ")}</p>
+                                  <p className="text-[10px] text-on-surface-variant mt-1">Changes must be confirmed through the authorized rider/order workflow. Live rider tracking is not available on this screen.</p>
                                 </div>
                               )}
 
@@ -2250,15 +1955,15 @@ Notes: "${order.notes || "None"}"
                                                     <button
                                                       onClick={(e) => {
                                                         e.stopPropagation();
-                                                        sendRiderNudge(
+                                                        void handleRiderNudge(
                                                           rider.rider_id!,
-                                                          "Urgent order available - Tip boost active!",
+                                                          "Order update: Please check the Rider app.",
                                                         );
                                                       }}
                                                       className="flex items-center gap-1 px-2 py-1 bg-amber-500 text-white text-[9px] font-black rounded-lg uppercase hover:scale-105 transition-transform"
                                                     >
                                                       <Zap size={10} />
-                                                      Wake to Tip
+                                                      Nudge Rider
                                                     </button>
                                                   ) : (
                                                     <button disabled={isPickupOrder(order)}
@@ -2305,7 +2010,7 @@ Notes: "${order.notes || "None"}"
                                         </div>
                                       </div>
                                     ) : (
-                                      <button disabled={isPickupOrder(order)}
+                                      <button disabled title="Rider assignment requires a server-authorized workflow"
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           if (connectedRiders.length > 0) {
@@ -2320,9 +2025,7 @@ Notes: "${order.notes || "None"}"
                                           size={16}
                                           className="group-hover:animate-bounce"
                                         />
-                                        {connectedRiders.length > 0
-                                          ? `Tag Rider (${connectedRiders.length} Online)`
-                                          : "Invoke Rider Dispatch (R 5.00)"}
+                                        Rider assignment unavailable
                                       </button>
                                     )}
                                   </div>
@@ -2342,64 +2045,20 @@ Notes: "${order.notes || "None"}"
                         <div className="flex items-center gap-3">
                           {order.status === "pending" && (
                             <div className="flex-1 flex flex-col gap-2">
-                              {isOrderDelivery(order) &&
-                                !order.delivery_status && (
-                                  <button disabled={isPickupOrder(order)}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onRequestRider(order.id);
-                                    }}
-                                    className={cn(
-                                      "w-full bg-orange-600 text-white font-black rounded-full shadow-lg hover:bg-orange-700 transition-all mb-2 flex items-center justify-center gap-2 border-2 border-orange-400/30 py-4",
-                                      kitchenMode ? "text-xl" : "text-sm",
-                                    )}
-                                  >
-                                    <Rocket
-                                      size={20}
-                                      className="animate-pulse"
-                                    />
-                                    REQUEST RIDER NOW
-                                  </button>
-                                )}
+                              
                               {acceptingOrderId === order.id ? (
                                 <motion.div
                                   initial={{ opacity: 0, y: 10 }}
                                   animate={{ opacity: 1, y: 0 }}
                                   className="space-y-2"
                                 >
-                                  <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Order Notes & Custom Message</label>
-                                  <input
-                                    type="text"
-                                    value={orderNotes}
-                                    onChange={(e) => setOrderNotes(e.target.value)}
-                                    className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
-                                    placeholder="Kitchen notes (e.g., no onions)..."
-                                    autoFocus
-                                  />
-                                  <input
-                                    type="text"
-                                    value={customMessage}
-                                    onChange={(e) =>
-                                      setCustomMessage(e.target.value)
-                                    }
-                                    className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
-                                    placeholder="Receipt message..."
-                                  />
+                                  <p className="text-xs text-on-surface-variant">This confirms order status only; no ETA or custom customer message is sent.</p>
                                   <div className="flex gap-2">
                                     <button disabled={isPickupOrder(order)}
-                                      onClick={() => {
-                                        const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
-                                        onUpdateStatus(
-                                          order.id,
-                                          "preparing",
-                                          finalMsg,
-                                        );
-                                        setAcceptingOrderId(null);
-                                        setOrderNotes("");
-                                      }}
+                                      onClick={() => { void confirmOrderStatus(order.id,"preparing",()=>{setAcceptingOrderId(null);setOrderNotes("");}); }}
                                       className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-full"
                                     >
-                                      Send & Accept
+                                      Confirm Accept
                                     </button>
                                     <button
                                       onClick={() => {
@@ -2414,18 +2073,11 @@ Notes: "${order.notes || "None"}"
                                 </motion.div>
                               ) : (
                                 <div className="space-y-2">
-                                  {isLimitReached && (
-                                    <div className="flex items-center gap-2 p-2 bg-error/10 text-error rounded-lg text-[10px] font-bold">
-                                      <AlertCircle size={12} />
-                                      ORDER LIMIT REACHED ({maxConcurrentOrders}
-                                      )
-                                    </div>
-                                  )}
                                   <button
                                     onClick={() =>
                                       setAcceptingOrderId(order.id)
                                     }
-                                    disabled={isPickupOrder(order) || (isLimitReached)}
+                                    disabled={isPickupOrder(order)}
                                     className={cn(
                                       "w-full bg-primary text-white font-bold rounded-full shadow-md hover:bg-primary-container transition-colors disabled:opacity-50 disabled:grayscale",
                                       kitchenMode
@@ -2442,25 +2094,7 @@ Notes: "${order.notes || "None"}"
                           {(order.status === "preparing" ||
                             order.status === "accepted") && (
                             <div className="flex-1 flex flex-col gap-2">
-                              {isOrderDelivery(order) &&
-                                !order.delivery_status && (
-                                  <button disabled={isPickupOrder(order)}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onRequestRider(order.id);
-                                    }}
-                                    className={cn(
-                                      "w-full bg-orange-600 text-white font-black rounded-full shadow-lg hover:bg-orange-700 transition-all mb-2 flex items-center justify-center gap-2 border-2 border-orange-400/30 py-4",
-                                      kitchenMode ? "text-xl" : "text-sm",
-                                    )}
-                                  >
-                                    <Rocket
-                                      size={20}
-                                      className="animate-pulse"
-                                    />
-                                    REQUEST RIDER NOW
-                                  </button>
-                                )}
+                              
                               {order.status === "accepted" && (
                                 preparingOrderId === order.id ? (
                                   <motion.div
@@ -2468,28 +2102,13 @@ Notes: "${order.notes || "None"}"
                                     animate={{ opacity: 1, y: 0 }}
                                     className="space-y-2 mb-2 p-3 bg-primary/5 rounded-xl border border-primary/10"
                                   >
-                                    <div className="flex flex-col gap-1">
-                                      <label className="text-[10px] font-bold text-on-surface-variant uppercase ml-1">
-                                        Update Est. Delivery Time
-                                      </label>
-                                      <input
-                                        type="text"
-                                        value={estimatedTime}
-                                        onChange={(e) => setEstimatedTime(e.target.value)}
-                                        className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none"
-                                        placeholder="e.g. 25 mins"
-                                        autoFocus
-                                      />
-                                    </div>
+                                    <p className="text-xs text-on-surface-variant">Status only. Estimated delivery time is not changed by this button.</p>
                                     <div className="flex gap-2">
                                       <button disabled={isPickupOrder(order)}
-                                        onClick={() => {
-                                          onUpdateStatus(order.id, "preparing", undefined, estimatedTime);
-                                          setPreparingOrderId(null);
-                                        }}
+                                        onClick={() => { void confirmOrderStatus(order.id,"preparing",()=>setPreparingOrderId(null)); }}
                                         className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-lg"
                                       >
-                                        Set Time & Start
+                                        Start Preparing
                                       </button>
                                       <button
                                         onClick={() => setPreparingOrderId(null)}
@@ -2519,35 +2138,11 @@ Notes: "${order.notes || "None"}"
                                   animate={{ opacity: 1, y: 0 }}
                                   className="space-y-2"
                                 >
-                                  <div className="flex flex-col gap-1">
-                                    <label className="text-[10px] font-bold text-on-surface-variant uppercase ml-1">
-                                      Est. Delivery Time
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={estimatedTime}
-                                      onChange={(e) =>
-                                        setEstimatedTime(e.target.value)
-                                      }
-                                      className="w-full px-4 py-2 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none"
-                                      placeholder="e.g. 20-30 mins"
-                                      autoFocus
-                                    />
-                                  </div>
+                                  <p className="text-xs text-on-surface-variant">Status only. Estimated delivery time is not changed by this button.</p>
                                   <div className="flex gap-2">
                                     <button
                                       disabled={isPickupOrder(order) || (updatingOrderId === order.id)}
-                                      onClick={async () => {
-                                        setUpdatingOrderId(order.id);
-                                        await onUpdateStatus(
-                                          order.id,
-                                          "ready",
-                                          undefined,
-                                          estimatedTime,
-                                        );
-                                        setUpdatingOrderId(null);
-                                        setReadyOrderId(null);
-                                      }}
+                                      onClick={() => { void confirmOrderStatus(order.id,"ready",()=>setReadyOrderId(null)); }}
                                       className="flex-1 py-2 bg-tertiary text-white text-xs font-bold rounded-full disabled:opacity-50"
                                     >
                                       {updatingOrderId === order.id ? "Updating..." : "Confirm & Ready"}
@@ -2578,29 +2173,13 @@ Notes: "${order.notes || "None"}"
                               )}
                             </div>
                           )}
-                          {order.status === "ready" && (
-                            <button disabled={isPickupOrder(order)}
-                              onClick={() =>
-                                onUpdateStatus(order.id, "completed")
-                              }
-                              className={cn(
-                                "flex-1 bg-tertiary text-white font-bold rounded-full hover:bg-tertiary-container transition-colors shadow-md",
-                                kitchenMode ? "py-5 text-lg" : "py-3 text-sm",
-                              )}
-                            >
-                              Mark as Completed
-                            </button>
-                          )}
+                          
                           <div className="flex gap-2">
                             {order.rider_id && order.status !== "completed" && (
                               <button
                                 onClick={() => {
-                                  const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
-                                  sendRiderNudge(
-                                    order.rider_id!,
-                                    nudgeMessage
-                                  );
-                                  toast.success("Rider nudged successfully!");
+                                  const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order update: Please check your delivery mission!";
+                                  void handleRiderNudge(order.rider_id!,nudgeMessage);
                                 }}
                                 className={cn(
                                   "bg-amber-100 text-amber-700 rounded-full hover:bg-amber-200 transition-all font-bold flex flex-1 items-center justify-center gap-2",
@@ -2640,22 +2219,7 @@ Notes: "${order.notes || "None"}"
                             >
                               <Printer size={kitchenMode ? 24 : 18} />
                             </button>
-                            {order.status !== "completed" &&
-                              order.status !== "cancelled" && (
-                                <button disabled={isPickupOrder(order)}
-                                  onClick={() => {
-                                    setCancellingOrder(order);
-                                    setCancelReasonPreset("Out of ingredients / Items unavailable");
-                                    setCustomCancelExplanation("Kitchen is temporarily out of key ingredients.");
-                                  }}
-                                  className={cn(
-                                    "ml-auto bg-error/10 text-error rounded-full hover:bg-error/20 transition-all font-bold tracking-widest uppercase text-[10px]",
-                                    kitchenMode ? "px-6 py-2" : "px-4 py-2",
-                                  )}
-                                >
-                                  Cancel Order
-                                </button>
-                              )}
+                            
                           </div>
                         </div>
 
@@ -2669,8 +2233,6 @@ Notes: "${order.notes || "None"}"
                             >
                               <ChatWindow
                                 orderId={order.id}
-                                shopId={order.shop_id}
-                                userId={order.user_id}
                                 onClose={() => setChatOrderId(null)}
                               />
                             </motion.div>
@@ -2691,43 +2253,9 @@ Notes: "${order.notes || "None"}"
                                       <span className="text-xs font-bold text-on-surface ml-2 pl-2 border-l border-outline-variant/20">{order.merchant_rating.toFixed(1)}</span>
                                   </div>
                                 ) : (
-                                  <div className="flex flex-col gap-2">
-                                     <button
-                                        onClick={() => {
-                                           if (ratingOrderId === order.id) {
-                                              setRatingOrderId(null);
-                                              setRatingValue(0);
-                                           } else {
-                                              setRatingOrderId(order.id);
-                                              setRatingValue(5);
-                                           }
-                                        }}
-                                        className="text-xs font-bold text-primary hover:text-primary-container decoration-dashed hover:underline transition-all"
-                                     >
-                                        Rate Rider Performance
-                                     </button>
-                                     {ratingOrderId === order.id && (
-                                        <div className="flex items-center gap-3 bg-surface-container-low p-2 rounded-xl w-fit border border-outline-variant/20">
-                                           <div className="flex items-center gap-1">
-                                             {[1, 2, 3, 4, 5].map((star) => (
-                                               <button
-                                                 key={star}
-                                                 onClick={() => setRatingValue(star)}
-                                                 className="p-1 hover:scale-110 transition-transform"
-                                               >
-                                                 <Star size={18} className={star <= ratingValue ? "fill-amber-500 text-amber-500" : "text-outline-variant"} />
-                                               </button>
-                                             ))}
-                                           </div>
-                                           <button
-                                              onClick={() => submitRiderRating(order.id, order.rider_id!, ratingValue)}
-                                              className="ml-2 text-[10px] bg-primary text-white font-bold px-3 py-1.5 rounded-lg hover:bg-primary-container"
-                                           >
-                                              Submit
-                                           </button>
-                                        </div>
-                                     )}
-                                  </div>
+                                  <p className="text-xs text-on-surface-variant" role="status">
+                                    Rider rating is unavailable until the authorized API supports saving it.
+                                  </p>
                                 )}
                               </div>
                            </div>
@@ -2754,253 +2282,159 @@ Notes: "${order.notes || "None"}"
   }
 
   return (
-    <div className="space-y-8">
+    <div ref={surfaceRef} className={cn("space-y-4 relative merchant-pull-surface", isRefreshingOrders && "orders-refresh-surface")}>
+      {pulling && (
+        <div role="status" aria-live="polite" className="pointer-events-none absolute inset-x-0 -top-10 flex items-center justify-center gap-2 text-xs font-bold text-primary">
+          <RefreshCw size={15} className={armed ? "rotate-180" : ""} aria-hidden="true" />
+          {armed ? "Release to refresh orders" : "Pull down to refresh orders"}
+        </div>
+      )}
       <p role="status" className="text-xs text-on-surface-variant mb-3">{pickupOrderingEnabled() ? "Pickup actions are API-authorized. Confirm actual payment before food handover and Collected. Historical delivery records remain available." : "Pickup order, payment and collection changes are disabled pending separately approved database activation. Existing management and historical delivery records remain available."}</p>
-      <section className="flex flex-col gap-6">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-          <div className="max-w-2xl space-y-1">
-            <span className="font-label text-[11px] font-bold uppercase tracking-[0.2em] text-primary mb-2 block">
-              Live Operations
-            </span>
-            <h2 className="font-headline text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
-              Orders Management
-            </h2>
-            <p className="text-sm text-on-surface-variant font-medium">
-              Streamline your kitchen workflow and monitor real-time fulfillment
-              across all delivery channels.
-            </p>
-          </div>
-          
-          <div className="hidden md:flex flex-wrap gap-3 justify-start md:justify-end shrink-0">
-            <button
-              onClick={() => {
-                console.log("Clearing all orders...");
-                onDeleteAllOrders();
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-error/10 text-error rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-error/20 transition-all cursor-pointer relative z-20"
-            >
-              <Trash2 size={16} className="md:w-[18px] md:h-[18px]" />
-              Clear All
-            </button>
-            <button
-              onClick={() => {
-                console.log("Refreshing orders...");
-                onRefresh();
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-on-primary rounded-full text-xs md:text-sm font-bold shadow-sm hover:scale-105 transition-all cursor-pointer relative z-20"
-            >
-              <Clock size={16} className="md:w-[18px] md:h-[18px]" />
-              Refresh
-            </button>
-            <button
-              onClick={exportToCSV}
-              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-            >
-              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              Spreadsheet
-            </button>
-            <button
-              onClick={exportToJSON}
-              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-            >
-              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              Backup Data
-            </button>
-          </div>
+      {!merchantPickupReadCurrent(ordersReadState, ordersVerifiedAt) && (
+        <div role="status" className="flex flex-wrap items-center gap-2 px-4 py-3 rounded-xl border border-amber-500/25 bg-amber-500/5 text-xs text-on-surface-variant">
+          <AlertTriangle size={15} className="text-amber-600" />
+          <span>Orders are not recently verified by the API. Refresh before confirming customer payment or handover.</span>
+          <button type="button" className="font-bold underline text-primary" onClick={() => { void handleRefreshOrders(); }}>Refresh Orders</button>
         </div>
-
-        <div className="hidden md:flex flex-wrap items-center gap-4">
-          <div className="hidden md:flex p-1.5 bg-surface-container-low rounded-full w-fit">
-            <button
-              onClick={() => setViewMode("active")}
-              className={cn(
-                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                viewMode === "active"
-                  ? "bg-surface-container-lowest shadow-sm text-primary"
-                  : "text-on-secondary-container hover:bg-surface-container-high",
-              )}
-            >
-              Current Orders
-            </button>
-            <button
-              onClick={() => setViewMode("history")}
-              className={cn(
-                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                viewMode === "history"
-                  ? "bg-surface-container-lowest shadow-sm text-primary"
-                  : "text-on-secondary-container hover:bg-surface-container-high",
-              )}
-            >
-              Order History
-            </button>
-          </div>
-
-          
-
-          <button
-            onClick={() => setKitchenMode(!kitchenMode)}
-            className={cn(
-              "hidden md:flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all border-2 ml-auto",
-              kitchenMode
-                ? "bg-primary text-on-primary border-primary"
-                : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
-            )}
-          >
-            <UtensilsCrossed size={18} />
-            Kitchen Mode {kitchenMode ? "ON" : "OFF"}
-          </button>
-        </div>
-
-        {/* MOBILE COMPACT ACTIONS CONSOLE */}
-          <div className="flex md:hidden flex-col gap-2.5 w-full bg-surface-container-lowest/40 dark:bg-zinc-900/40 p-3 rounded-2xl border border-outline-variant/5">
-            <div className="flex items-center gap-2 w-full justify-between">
-              {/* Core viewMode switch */}
-              <div className="flex p-1 bg-surface-container-low rounded-full flex-1">
-                <button
-                  onClick={() => setViewMode("active")}
-                  className={cn(
-                    "flex-1 py-2 text-center rounded-full text-xs font-black transition-all",
-                    viewMode === "active"
-                      ? "bg-white dark:bg-zinc-800 shadow-sm text-primary"
-                      : "text-on-surface-variant/70 hover:text-on-surface",
-                  )}
-                >
-                  Current
-                </button>
-                <button
-                  onClick={() => setViewMode("history")}
-                  className={cn(
-                    "flex-1 py-2 text-center rounded-full text-xs font-black transition-all",
-                    viewMode === "history"
-                      ? "bg-white dark:bg-zinc-800 shadow-sm text-primary"
-                      : "text-on-surface-variant/70 hover:text-on-surface",
-                  )}
-                >
-                  History
-                </button>
-              </div>
-
-              {/* Live refresh shortcut button */}
-              <button
-                onClick={() => {
-                  console.log("Refreshing orders...");
-                  onRefresh();
-                }}
-                className="w-10 h-10 bg-primary text-on-primary rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform"
-                title="Refresh Queue"
-              >
-                <Clock size={16} />
+      )}
+      {/* Compact workspace toolbar: put order cards ahead of secondary controls. */}
+      <section aria-label="Orders workspace" className="rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/80 p-3 md:p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-headline text-xl md:text-2xl font-bold tracking-tight text-on-surface">
+            Orders
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <div role="group" aria-label="Orders view" className="inline-flex items-center gap-1 rounded-full bg-surface-container-low p-1">
+              <button type="button" onClick={() => setViewMode("active")} aria-pressed={viewMode === "active"}
+                className={cn("merchant-tap-feedback px-3 py-1.5 rounded-full text-xs font-bold transition-colors", viewMode === "active" ? "bg-surface-container-lowest text-primary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-high")}>
+                Current Orders
               </button>
-
-              {/* More tools console toggle */}
-              <button
-                onClick={() => setShowMobileActions(!showMobileActions)}
-                className={cn(
-                  "w-10 h-10 rounded-full flex items-center justify-center transition-all border",
-                  showMobileActions
-                    ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
-                    : "bg-surface-container-high text-on-surface border-transparent"
-                )}
-                title="Toggle Extra Tools"
-              >
-                <Settings size={16} className={cn(showMobileActions && "animate-spin")} />
+              <button type="button" onClick={() => setViewMode("history")} aria-pressed={viewMode === "history"}
+                className={cn("merchant-tap-feedback px-3 py-1.5 rounded-full text-xs font-bold transition-colors", viewMode === "history" ? "bg-surface-container-lowest text-primary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-high")}>
+                History
               </button>
             </div>
-
-            {/* Collapsible secondary actions panel */}
-            <AnimatePresence>
-              {showMobileActions && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden flex flex-col gap-2 pt-2 border-t border-outline-variant/10"
-                >
-                  {/* Kitchen Mode row */}
-                  <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
-                    <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
-                      <UtensilsCrossed size={14} />
-                      Kitchen Mode {kitchenMode ? "(Active)" : "(Inactive)"}
-                    </span>
-                    <button
-                      onClick={() => setKitchenMode(!kitchenMode)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors",
-                        kitchenMode
-                          ? "bg-primary text-on-primary"
-                          : "bg-surface-container-high text-on-surface"
-                      )}
-                    >
-                      Toggle
-                    </button>
-                  </div>
-
-                  {/* Layout Mode row */}
-                  {viewMode === "active" && (
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
-                      <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
-                        <LayoutGrid size={14} />
-                        Layout: {true ? "Kanban Board" : "List View"}
-                      </span>
-                      <button
-                        onClick={() => setLayoutMode(true ? "list" : "kanban")}
-                        className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-primary text-on-primary cursor-pointer"
-                      >
-                        Switch
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Exports Row */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={exportToCSV}
-                      className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
-                    >
-                      <FileDown size={14} />
-                      Export Spreadsheet
-                    </button>
-                    <button
-                      onClick={exportToJSON}
-                      className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
-                    >
-                      <FileDown size={14} />
-                      Backup Data
-                    </button>
-                  </div>
-
-                  {/* Danger zone clear all */}
-                  <button
-                    onClick={() => {
-                      console.log("Clearing all orders...");
-                      onDeleteAllOrders();
-                      setShowMobileActions(false);
-                    }}
-                    className="flex items-center justify-center gap-2 py-2.5 bg-error/10 text-error rounded-xl text-xs font-bold"
-                  >
-                    <Trash2 size={14} />
-                    Clear All Orders (Reset)
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <button type="button" onClick={() => { void handleRefreshOrders(); }}
+              disabled={isRefreshingOrders} aria-busy={isRefreshingOrders}
+              className="merchant-tap-feedback inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-2 text-xs font-bold text-on-primary hover:opacity-90 focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-70 disabled:cursor-wait">
+              <RefreshCw size={15} className={isRefreshingOrders ? "animate-spin motion-reduce:animate-none" : ""} />
+              {isRefreshingOrders ? "Refreshing…" : "Refresh"}
+            </button>
+            <button type="button" aria-expanded={showMobileActions} aria-controls="orders-extra-tools"
+              onClick={() => setShowMobileActions(!showMobileActions)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high px-3 py-2 text-xs font-bold text-on-surface hover:bg-surface-container-highest">
+              <Settings size={15} /> Tools
+            </button>
           </div>
+        </div>
+        {showMobileActions && (
+          <div id="orders-extra-tools" className="flex flex-wrap items-center gap-2 border-t border-outline-variant/15 pt-3">
+            <button type="button" onClick={() => setKitchenMode(!kitchenMode)}
+              aria-pressed={kitchenMode}
+              className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold", kitchenMode ? "bg-primary text-on-primary" : "bg-surface-container-high text-on-surface")}>
+              <UtensilsCrossed size={15} /> Kitchen Mode {kitchenMode ? "ON" : "OFF"}
+            </button>
+            <button type="button" onClick={exportToCSV}
+              className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high px-3 py-2 text-xs font-bold text-on-surface">
+              <FileDown size={15} /> Spreadsheet
+            </button>
+            <button type="button" onClick={exportToJSON}
+              className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high px-3 py-2 text-xs font-bold text-on-surface">
+              <FileDown size={15} /> Export JSON
+            </button>
+          </div>
+        )}
+        <OperationFeedback
+          status={orderRefreshStatus}
+          message={orderRefreshStatus === "loading" ? "Checking orders…" :
+            orderRefreshStatus === "success" ? "Orders verified after refresh" :
+            orderRefreshStatus === "error" ? "Could not refresh orders" :
+            "Refresh finished; new order verification not confirmed"}
+          detail={orderRefreshStatus === "unverified" ? "The previous list may be out of date. Order actions still require current API verification." :
+            orderRefreshStatus === "error" ? "Check the connection, then retry." : undefined}
+          onRetry={orderRefreshStatus === "unverified" || orderRefreshStatus === "error" ? () => { void handleRefreshOrders(); } : undefined}
+        />
+        <div role="status" aria-live="polite"
+          className="flex flex-wrap items-center gap-2 text-xs font-medium text-on-surface-variant">
+          <span className={ordersConfidence === "verified" ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
+            {ordersConfidence === "verified" ? "Verified order list" :
+              ordersConfidence === "checking" ? "Checking latest orders…" :
+              ordersConfidence === "stale" ? "Previously verified list · latest status unavailable" :
+              "Orders not verified"}
+          </span>
+          {lastVerifiedOrdersTime && (
+            <span>Last checked {lastVerifiedOrdersTime} SAST</span>
+          )}
+        </div>
       </section>
 
       <div
         className={cn(
-          "grid grid-cols-1 gap-8 items-start",
+          "grid grid-cols-1 gap-5 items-start",
           !kitchenMode && "lg:grid-cols-12",
         )}
       >
         <div
           className={cn(
             kitchenMode ? "col-span-full" : "lg:col-span-8",
-            "space-y-6",
+            "space-y-3",
           )}
         >
-          <div className="flex flex-col gap-4">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-headline text-lg font-bold flex items-center gap-2">
+                {viewMode === "active" ? "Active Queue" : "Order History"}
+                <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">
+                  {unverifiedWithoutPreviousOrders ? "—" : displayedOrders.length} {filtersApplied ? "matching" : "orders"}
+                </span>
+              </h3>
+              <div className="flex flex-wrap items-center gap-2">
+                {filtersApplied && (
+                  <button type="button" onClick={clearAllOrderFilters}
+                    className="merchant-tap-feedback rounded-full px-3 py-1.5 text-xs font-bold text-primary bg-primary/10 hover:bg-primary/15 focus-visible:outline-2 focus-visible:outline-primary">
+                    <X size={13} className="inline-block mr-1" aria-hidden="true" /> Clear filters
+                  </button>
+                )}
+                <button type="button"
+                  aria-label="Search orders" aria-expanded={showSearch}
+                  onClick={() => setShowSearch(!showSearch)}
+                  className={cn(
+                    "p-2 rounded-full transition-colors",
+                    showSearch
+                      ? "bg-primary text-on-primary"
+                      : "hover:bg-surface-container-low text-on-surface-variant",
+                  )}
+                >
+                  <Search size={20} />
+                </button>
+                <button type="button" onClick={() => setShowOrderFilters(!showOrderFilters)}
+                  aria-expanded={showOrderFilters} aria-controls="orders-filter-panel"
+                  className={cn("merchant-tap-feedback inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors", showOrderFilters ? "border-primary bg-primary/10 text-primary" : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:border-primary/30")}>
+                  <SlidersHorizontal size={14} /> Filters &amp; sort
+                  {filtersApplied && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="Filters active" />}
+                </button>
+              </div>
+            </div>
+
+
+            {showOrderFilters && (
+              <div id="orders-filter-panel" className="space-y-3 rounded-2xl border border-outline-variant/15 bg-surface-container-lowest p-3">
+            <div className="flex flex-wrap gap-2 items-center" role="group" aria-label="Order fulfillment filter">
+              <span className="text-xs font-bold text-on-surface-variant">Fulfillment:</span>
+              {([
+                ["All", "All orders"],
+                ["collection", "Customer collection"],
+                ["delivery", "Delivery (later phase)"],
+              ] as const).map(([value, label]) => (
+                <button key={value} type="button" aria-pressed={orderTypeFilter === value}
+                  onClick={() => setOrderTypeFilter(value)}
+                  className={cn("px-3 py-2 rounded-xl border text-xs font-bold transition-colors",
+                    orderTypeFilter === value ? "bg-primary/10 text-primary border-primary" :
+                      "bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:border-primary/30")}>
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="flex flex-wrap items-center gap-4 mb-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
@@ -3046,17 +2480,10 @@ Notes: "${order.notes || "None"}"
               </div>
 
               <div className="flex flex-wrap items-center gap-2 mt-2">
-                {(filterStatus !== "All" || orderTypeFilter !== "All" || startDate || endDate || searchTerm || customerSearch || phoneSearch) && (
+                {filtersApplied && (
                   <button
-                    onClick={() => {
-                      setFilterStatus("All");
-                      setOrderTypeFilter("All");
-                      setStartDate("");
-                      setEndDate("");
-                      setSearchTerm("");
-                      setCustomerSearch("");
-                      setPhoneSearch("");
-                    }}
+                    type="button"
+                    onClick={clearAllOrderFilters}
                     className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black text-white bg-error shadow-lg shadow-error/20 hover:scale-105 active:scale-95 transition-all"
                   >
                     <RefreshCw size={12} />
@@ -3075,18 +2502,18 @@ Notes: "${order.notes || "None"}"
                 <div className="flex items-center gap-2 text-on-surface">
                   <Calendar size={18} className="text-primary shrink-0" />
                   <div>
-                    <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Filter by Date Range</h4>
-                    <p className="text-[10px] text-on-surface-variant font-semibold">Analyze and filter historic orders</p>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Filter by Order Placed Date</h4>
+                    <p className="text-[10px] text-on-surface-variant font-semibold">Dates use South African time · Not a payment or completion date</p>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5">
                   {[
                     { label: "All Time", start: "", end: "" },
-                    { label: "Today", start: new Date().toISOString().split("T")[0], end: new Date().toISOString().split("T")[0] },
+                    { label: "Today", start: (merchantJohannesburgDayKey(new Date()) ?? ""), end: (merchantJohannesburgDayKey(new Date()) ?? "") },
                     { label: "Yesterday", start: getPastDateStr(1), end: getPastDateStr(1) },
-                    { label: "7 Days", start: getPastDateStr(7), end: new Date().toISOString().split("T")[0] },
-                    { label: "30 Days", start: getPastDateStr(30), end: new Date().toISOString().split("T")[0] },
+                    { label: "7 Days", start: getPastDateStr(7), end: (merchantJohannesburgDayKey(new Date()) ?? "") },
+                    { label: "30 Days", start: getPastDateStr(30), end: (merchantJohannesburgDayKey(new Date()) ?? "") },
                   ].map((preset) => {
                     const isSelected = startDate === preset.start && endDate === preset.end;
                     return (
@@ -3132,27 +2559,6 @@ Notes: "${order.notes || "None"}"
               </motion.div>
             )}
 
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-headline text-xl font-bold flex items-center gap-2">
-                {viewMode === "active" ? "Active Queue" : "Order History"}
-                <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">
-                  {displayedOrders.length} Orders
-                </span>
-              </h3>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowSearch(!showSearch)}
-                  className={cn(
-                    "p-2 rounded-full transition-colors",
-                    showSearch
-                      ? "bg-primary text-on-primary"
-                      : "hover:bg-surface-container-low text-on-surface-variant",
-                  )}
-                >
-                  <Search size={20} />
-                </button>
-              </div>
-            </div>
 
             <div className="flex items-center gap-4 mb-2 overflow-x-auto pb-2 scrollbar-hide">
               <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">
@@ -3198,6 +2604,8 @@ Notes: "${order.notes || "None"}"
                 </button>
               ))}
             </div>
+              </div>
+            )}
           </div>
 
           <AnimatePresence>
@@ -3265,22 +2673,25 @@ Notes: "${order.notes || "None"}"
               </div>
               <div className="space-y-2">
                 <h4 className="font-headline text-2xl font-bold">
-                  {viewMode === "active" ? "All caught up!" : "No history yet"}
+                  {emptyOrderMessage.title}
                 </h4>
                 <p className="text-on-surface-variant max-w-xs mx-auto">
-                  {viewMode === "active"
-                    ? "Your kitchen is currently clear. New orders will appear here as they arrive."
-                    : "Completed orders will appear here once they are fulfilled."}
+                  {emptyOrderMessage.description}
                 </p>
               </div>
-              {viewMode === "active" && (
-                <button
-                  onClick={onRefresh}
-                  className="px-8 py-3 bg-surface-container-lowest text-primary font-bold rounded-full shadow-sm hover:scale-105 transition-all border border-primary/10"
-                >
-                  Check for New Orders
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {filtersApplied && (
+                  <button type="button" onClick={clearAllOrderFilters}
+                    className="px-5 py-2.5 bg-primary/10 text-primary font-bold rounded-full hover:bg-primary/15 border border-primary/20">
+                    Clear filters
+                  </button>
+                )}
+                <button type="button" disabled={isRefreshingOrders}
+                  onClick={() => { void handleRefreshOrders(); }}
+                  className="merchant-tap-feedback px-5 py-2.5 bg-surface-container-lowest text-primary font-bold rounded-full shadow-sm hover:bg-surface-container-high border border-primary/10 disabled:opacity-50">
+                  {isRefreshingOrders ? "Checking orders…" : "Refresh orders"}
                 </button>
-              )}
+              </div>
             </div>
           ) : viewMode === "active" && true ? (
             <div className="flex overflow-x-auto hide-scrollbar xl:grid xl:grid-cols-4 gap-6 items-start snap-x snap-mandatory pb-4 xl:pb-0">
@@ -3293,7 +2704,7 @@ Notes: "${order.notes || "None"}"
                       <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">New Orders</h3>
                       {pendingOrderPriorityIds.length > 0 && (
                         <span className="text-[8px] font-bold text-amber-600 dark:text-amber-400 block -mt-0.5 flex items-center gap-1">
-                          <SlidersHorizontal size={8} /> Prioritized
+                          <SlidersHorizontal size={8} /> Prioritized on this device
                         </span>
                       )}
                     </div>
@@ -3339,11 +2750,16 @@ Notes: "${order.notes || "None"}"
 
                     return (
                       <motion.div
+                        layout
                         layoutId={order.id}
                         initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
+                        animate={{ opacity: isDragging ? 0.86 : 1, scale: isDragging ? 1.05 : 1 }}
                         exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
-                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                        transition={{
+                          scale: { type: "spring", stiffness: 340, damping: 26 },
+                          opacity: { duration: 0.16 },
+                          layout: { duration: 0.35, ease: [0.22, 1, 0.36, 1] },
+                        }}
                         key={order.id}
                         draggable={true}
                         onDragStart={(e: any) => {
@@ -3381,7 +2797,7 @@ Notes: "${order.notes || "None"}"
                         className={cn(
                           "order-card bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300 space-y-2 cursor-grab active:cursor-grabbing",
                           isSelected ? "border-primary ring-2 ring-primary/30" : "",
-                          isDragging ? "opacity-40 scale-[0.98] border-dashed border-primary ring-2 ring-primary/20" : "",
+                          isDragging ? "border-dashed border-primary ring-2 ring-primary/20 shadow-xl z-10" : "",
                           isDragOver ? "border-primary bg-primary/[0.04] ring-2 ring-primary shadow-md -translate-y-1" : "",
                           !isDragging && !isDragOver && (
                             isFindingRider
@@ -3458,7 +2874,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
-                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {merchantJohannesburgClock(order.created_at)}
                           </span>
                         </div>
 
@@ -3468,11 +2884,12 @@ Notes: "${order.notes || "None"}"
                             const isObj = typeof item === "object" && item !== null;
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
-                            const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
+                            const fields = isObj ? (item as Record<string, unknown>) : {};
+                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : merchantOrderTotal(fields.price);
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : merchantOrderMoney(price)}</span>
                               </div>
                             );
                           })}
@@ -3486,39 +2903,19 @@ Notes: "${order.notes || "None"}"
                           )}>
                             {!isOrderDelivery(order) ? "collection" : "delivery"}
                           </span>
-                          <AddressDisplay address={order.address} city={order.city} className="text-[10px] max-sm:text-[9px] font-medium max-w-[170px]" maxParts={2} />
+                          {isPickupOrder(order) ? <span>Collect at shop</span> : <AddressDisplay address={order.address} city={order.city} className="text-[10px] max-sm:text-[9px] font-medium max-w-[170px]" maxParts={2} />}
                         </div>
 
                         {/* Action buttons with inline input forms */}
                         {acceptingOrderId === order.id ? (
                           <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
-                            <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Order Notes & Custom Message</label>
-                            <input
-                              type="text"
-                              value={orderNotes}
-                              onChange={(e) => setOrderNotes(e.target.value)}
-                              className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface mb-2"
-                              placeholder="Kitchen notes (e.g., no onions)..."
-                              autoFocus
-                            />
-                            <input
-                              type="text"
-                              value={customMessage}
-                              onChange={(e) => setCustomMessage(e.target.value)}
-                              className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
-                              placeholder="Receipt message..."
-                            />
+                            <p className="text-xs text-on-surface-variant">This confirms order status only; no ETA or custom customer message is sent.</p>
                             <div className="flex gap-2">
                               <button disabled={isPickupOrder(order)}
-                                onClick={() => {
-                                  const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
-                                  onUpdateStatus(order.id, "preparing", finalMsg);
-                                  setAcceptingOrderId(null);
-                                  setOrderNotes("");
-                                }}
+                                onClick={() => { void confirmOrderStatus(order.id,"preparing",()=>{setAcceptingOrderId(null);setOrderNotes("");}); }}
                                 className="flex-1 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer"
                               >
-                                Send & Accept
+                                Confirm Accept
                               </button>
                               <button
                                 onClick={() => {
@@ -3533,25 +2930,19 @@ Notes: "${order.notes || "None"}"
                           </div>
                         ) : (
                           <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
-                            <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
+                            <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                             <div className="flex flex-col items-stretch w-full gap-2">
-                              {isLimitReached && (
-                                <span className="text-[8px] font-bold text-error leading-none mb-0.5">LIMIT REACHED</span>
-                              )}
+                              {isPickupOrder(order) ? (
+                                <PickupOrderActions order={order} mode="actions"
+                                  readState={ordersReadState} verifiedAt={ordersVerifiedAt} />
+                              ) : (
                               <button
-                                disabled={isPickupOrder(order) || (isLimitReached)}
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  if (isOrderDelivery(order) && !order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
-                                    setUnlinkedModalOrder(order);
-                                    return;
-                                  }
-                                  await onUpdateStatus(order.id, "preparing", "Order accepted");
-                                }}
+                                                                disabled={updatingOrderId !== null} onClick={(e) => {e.stopPropagation();void confirmOrderStatus(order.id,"preparing");}}
                                 className="w-full mt-4 py-5 bg-emerald-600 text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none text-center block"
                               >
                                 Accept
                               </button>
+                              )}
                             </div>
                           </div>
                         )}
@@ -3667,7 +3058,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
-                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {merchantJohannesburgClock(order.created_at)}
                           </span>
                         </div>
 
@@ -3677,11 +3068,12 @@ Notes: "${order.notes || "None"}"
                             const isObj = typeof item === "object" && item !== null;
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
-                            const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
+                            const fields = isObj ? (item as Record<string, unknown>) : {};
+                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : merchantOrderTotal(fields.price);
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : merchantOrderMoney(price)}</span>
                               </div>
                             );
                           })}
@@ -3690,23 +3082,9 @@ Notes: "${order.notes || "None"}"
                         {/* Delivery Track Badge & Gated Dispatch Action */}
                         <div className="mt-2.5 space-y-1.5">
                           {isDelivery && order.status !== "dispatched" && (
-                            <button disabled={isPickupOrder(order)}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
-                                  setUnlinkedModalOrder(order);
-                                } else if (connectedRiders.length === 1 && onDispatchToRider) {
-                                  const r = connectedRiders[0];
-                                  void onDispatchToRider(order.id, r.rider_id || String(r.id), r.rider_name || undefined, r.rider_phone || undefined);
-                                } else {
-                                  setShowRiderPicker(order.id);
-                                }
-                              }}
-                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
-                            >
-                              <Rocket size={12} className="animate-pulse text-amber-200" />
-                              <span>Send Rider (Dispatch)</span>
-                            </button>
+                            <p role="status" className="w-full py-2 px-3 rounded-xl bg-surface-container border border-outline-variant/10 text-xs font-semibold text-on-surface-variant">
+                              Rider assignment is handled by the authorized rider workflow.
+                            </p>
                           )}
                           {isDelivery ? (
                             <div className="p-2 bg-surface-container-low rounded-xl border border-outline-variant/5 text-[9px] font-bold text-on-surface-variant flex items-center justify-between">
@@ -3720,21 +3098,10 @@ Notes: "${order.notes || "None"}"
                         {order.status === "accepted" ? (
                           preparingOrderId === order.id ? (
                             <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
-                              <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Prep Time (mins)</label>
-                              <input
-                                type="text"
-                                value={estimatedTime}
-                                onChange={(e) => setEstimatedTime(e.target.value)}
-                                className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
-                                placeholder="e.g. 25 mins"
-                                autoFocus
-                              />
+                              <p className="text-xs text-on-surface-variant">Status only. No preparation or delivery time is saved by this button.</p>
                               <div className="flex gap-2">
                                 <button disabled={isPickupOrder(order)}
-                                  onClick={() => {
-                                    onUpdateStatus(order.id, "preparing", undefined, estimatedTime);
-                                    setPreparingOrderId(null);
-                                  }}
+                                  onClick={() => { void confirmOrderStatus(order.id,"preparing",()=>setPreparingOrderId(null)); }}
                                   className="flex-1 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer"
                                 >
                                   Start Prep
@@ -3749,7 +3116,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           ) : (
                             <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
-                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
+                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
                               <button
                                 onClick={(e) => {
                                   setPreparingOrderId(order.id);
@@ -3769,21 +3136,10 @@ Notes: "${order.notes || "None"}"
                         ) : (
                           readyOrderId === order.id ? (
                             <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
-                              <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Est. Delivery Time</label>
-                              <input
-                                type="text"
-                                value={estimatedTime}
-                                onChange={(e) => setEstimatedTime(e.target.value)}
-                                className="w-full px-3 py-1.5 text-xs bg-surface-container-low border border-primary/20 rounded-lg focus:ring-1 focus:ring-primary outline-none text-on-surface"
-                                placeholder="e.g. 15-20 mins"
-                                autoFocus
-                              />
+                              <p className="text-xs text-on-surface-variant">Status only. No preparation or delivery time is saved by this button.</p>
                               <div className="flex gap-2">
                                 <button disabled={isPickupOrder(order)}
-                                  onClick={() => {
-                                    onUpdateStatus(order.id, "ready", undefined, estimatedTime);
-                                    setReadyOrderId(null);
-                                  }}
+                                  onClick={() => { void confirmOrderStatus(order.id,"ready",()=>setReadyOrderId(null)); }}
                                   className="flex-1 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer"
                                 >
                                   Confirm Ready
@@ -3798,8 +3154,12 @@ Notes: "${order.notes || "None"}"
                             </div>
                           ) : (
                             <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
-                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
-                              <button disabled={isPickupOrder(order)}
+                              <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
+                              {isPickupOrder(order) ? (
+                                <PickupOrderActions order={order} mode="actions"
+                                  readState={ordersReadState} verifiedAt={ordersVerifiedAt} />
+                              ) : (
+                              <button
                                 onClick={(e) => {
                                   setReadyOrderId(order.id);
                                   const card = e.currentTarget.closest(".order-card");
@@ -3813,6 +3173,7 @@ Notes: "${order.notes || "None"}"
                               >
                                 Mark Ready
                               </button>
+                              )}
                             </div>
                           )
                         )}
@@ -3929,7 +3290,7 @@ Notes: "${order.notes || "None"}"
                             </div>
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
-                            {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {merchantJohannesburgClock(order.created_at)}
                           </span>
                         </div>
 
@@ -3939,11 +3300,12 @@ Notes: "${order.notes || "None"}"
                             const isObj = typeof item === "object" && item !== null;
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
-                            const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
+                            const fields = isObj ? (item as Record<string, unknown>) : {};
+                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : merchantOrderTotal(fields.price);
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : merchantOrderMoney(price)}</span>
                               </div>
                             );
                           })}
@@ -3952,23 +3314,9 @@ Notes: "${order.notes || "None"}"
                         {/* Gated Dispatch Action & Rider details */}
                         {isOrderDelivery(order) && order.status !== "dispatched" && (
                           <div className="mt-2.5">
-                            <button disabled={isPickupOrder(order)}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!order.rider_id && connectedRiders.length === 0 && !currentShop?.linked_rider_id) {
-                                  setUnlinkedModalOrder(order);
-                                } else if (connectedRiders.length === 1 && onDispatchToRider) {
-                                  const r = connectedRiders[0];
-                                  void onDispatchToRider(order.id, r.rider_id || String(r.id), r.rider_name || undefined, r.rider_phone || undefined);
-                                } else {
-                                  setShowRiderPicker(order.id);
-                                }
-                              }}
-                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
-                            >
-                              <Rocket size={12} className="animate-pulse text-amber-200" />
-                              <span>Send Rider (Dispatch)</span>
-                            </button>
+                            <p role="status" className="w-full py-2 px-3 rounded-xl bg-surface-container border border-outline-variant/10 text-xs font-semibold text-on-surface-variant">
+                              Rider assignment is handled by the authorized rider workflow.
+                            </p>
                           </div>
                         )}
 
@@ -3976,9 +3324,8 @@ Notes: "${order.notes || "None"}"
                           <div className="mt-2">
                             <button
                               onClick={() => {
-                                const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
-                                sendRiderNudge(order.rider_id!, nudgeMessage);
-                                toast.success("Rider nudged successfully!");
+                                const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order update: Please check your delivery mission!";
+                                void handleRiderNudge(order.rider_id!,nudgeMessage);
                               }}
                               className="w-full py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                             >
@@ -3990,13 +3337,15 @@ Notes: "${order.notes || "None"}"
 
                         {/* Action buttons */}
                         <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
-                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
-                          <button disabled={isPickupOrder(order)}
-                            onClick={() => onUpdateStatus(order.id, "completed")}
-                            className="w-full mt-4 py-5 bg-blue-600 text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-blue-500 active:scale-95 transition-all cursor-pointer text-center block"
-                          >
-                            Complete
-                          </button>
+                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
+                          {isPickupOrder(order) ? (
+                            <PickupOrderActions order={order} mode="actions"
+                                  readState={ordersReadState} verifiedAt={ordersVerifiedAt} />
+                          ) : (
+                            <p role="status" className="text-xs text-on-surface-variant">
+                              Delivery completion is confirmed by the authorized rider workflow, not from this screen.
+                            </p>
+                          )}
                         </div>
 
                         {/* Quick Tag Toggles */}
@@ -4046,7 +3395,7 @@ Notes: "${order.notes || "None"}"
                 <div className="flex items-center justify-between px-2 pb-2 border-b border-outline-variant/10">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
-                    <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">Fulfilled</h3>
+                    <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">Completed Today</h3>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full bg-zinc-500/10 text-zinc-600 font-bold text-[10px]">
                     {fulfilledOrdersToday.length}
@@ -4096,7 +3445,7 @@ Notes: "${order.notes || "None"}"
                             "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md",
                             order.status === "completed" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
                           )}>
-                            {order.status}
+                            {isPickupOrder(order) && order.status === "completed" ? "Collected" : order.status}
                           </span>
                         </div>
 
@@ -4106,19 +3455,20 @@ Notes: "${order.notes || "None"}"
                             const isObj = typeof item === "object" && item !== null;
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
-                            const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
+                            const fields = isObj ? (item as Record<string, unknown>) : {};
+                            const price = isPickupOrder(order) ? pickupItemLineTotal(item) : merchantOrderTotal(fields.price);
                             return (
                               <div key={idx} className="flex justify-between">
                                 <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">{price === null ? "Price unavailable" : merchantOrderMoney(price)}</span>
                               </div>
                             );
                           })}
                         </div>
 
                         <div className="mt-3 pt-3 border-t border-outline-variant/5 flex items-center justify-between">
-                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
-                          <span className="text-[9px] font-bold text-zinc-500 font-mono uppercase">Done</span>
+                          <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: {merchantOrderMoney(order.total_price)}</div>
+                          <span className="text-[9px] font-bold text-zinc-500 font-mono uppercase">{isPickupOrder(order) ? pickupPaymentLabel(order) : "Completed (payment unverified here)"}</span>
                         </div>
 
                         {/* Quick Tag Toggles */}
@@ -4157,7 +3507,7 @@ Notes: "${order.notes || "None"}"
                     );
                   })}
                   {fulfilledOrdersToday.length === 0 && (
-                    <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None fulfilled today</div>
+                    <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">No time-confirmed completions today</div>
                   )}
                   </AnimatePresence>
                 </div>
@@ -4217,14 +3567,7 @@ Notes: "${order.notes || "None"}"
                         Play sound for new orders
                       </span>
                     </div>
-                                  <button
-                onClick={() => toast.info("Notification Center coming soon.")}
-                className="p-2 text-on-surface-variant hover:text-primary transition-colors relative"
-                title="Notification Center"
-              >
-                <Inbox size={18} className="md:w-5 md:h-5" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full border border-white"></span>
-              </button>
+
               <button
                 onClick={() => setSoundAlerts(!soundAlerts)}
                       className={cn(
@@ -4275,37 +3618,19 @@ Notes: "${order.notes || "None"}"
                   )}
                 </div>
 
-                <div className="p-4 bg-surface-container-low rounded-2xl space-y-3">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold">Order Limit</span>
-                    <span className="text-[10px] text-on-surface-variant">
-                      Max concurrent active orders
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="range"
-                      min="1"
-                      max="50"
-                      value={maxConcurrentOrders}
-                      onChange={(e) =>
-                        setMaxConcurrentOrders(Number(e.target.value))
-                      }
-                      className="flex-1 accent-primary"
-                    />
-                    <span className="bg-primary/10 text-primary px-3 py-1 rounded-lg text-sm font-bold min-w-[3rem] text-center">
-                      {maxConcurrentOrders}
-                    </span>
-                  </div>
-                </div>
               </div>
             </div>
 
             <div className="bg-surface-container-high rounded-3xl p-8 relative overflow-hidden">
               <div className="relative z-10">
-                <h4 className="font-headline text-lg font-bold text-on-surface mb-6">
+                <h4 className="font-headline text-lg font-bold text-on-surface mb-2">
                   Status Overview
                 </h4>
+                <p role="status" className="mb-5 text-xs text-on-surface-variant">
+                  {ordersConfidence === "verified" ? "Counts from the latest verified API list." :
+                    unverifiedWithoutPreviousOrders ? "Counts unavailable until order verification succeeds." :
+                    "Previous counts only — refresh to verify current orders."}
+                </p>
                 <div className="space-y-5">
                   {[
                     {
@@ -4322,7 +3647,7 @@ Notes: "${order.notes || "None"}"
                     },
                     {
                       label: "Ready for Pickup",
-                      count: orders.filter((o) => o.status === "ready").length,
+                      count: summarizeKitchenQueue(orders).readyForPickup,
                       color: "bg-tertiary",
                     },
                     {
@@ -4348,20 +3673,22 @@ Notes: "${order.notes || "None"}"
                         </span>
                       </div>
                       <span className="font-headline font-bold">
-                        {stat.count}
+                        {unverifiedWithoutPreviousOrders ? "—" : <RollingOrderCount value={stat.count} animate={ordersConfidence === "verified"} />}
                       </span>
                     </div>
                   ))}
                 </div>
                 <div className="mt-8 pt-8 border-t border-on-surface/5">
                   <div className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">
-                    Avg. Prep Time
+                    Preparing Orders
                   </div>
                   <div className="text-3xl font-headline font-extrabold text-primary">
-                    {avgPrepTime} min
+                    {unverifiedWithoutPreviousOrders ? "—" :
+                      <RollingOrderCount value={orders.filter(o=>o.status==="preparing").length} animate={ordersConfidence === "verified"} />}
                   </div>
                   <div className="text-xs text-on-surface-variant mt-1">
-                    Based on current load
+                    {ordersConfidence === "verified" ? "Preparing orders in the verified list" :
+                      "Not a confirmed current preparing count"}
                   </div>
                 </div>
               </div>
@@ -4373,82 +3700,9 @@ Notes: "${order.notes || "None"}"
                 Kitchen Hub
               </h4>
               <div className="space-y-3">
-                <button
-                  onClick={() => {
-                    setAlertsEnabled(!alertsEnabled);
-                    toast.success(
-                      `Order alerts ${!alertsEnabled ? "enabled" : "disabled"}`,
-                    );
-                  }}
-                  className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors group"
-                >
-                  <div className="flex items-center gap-3">
-                    <Bell
-                      size={20}
-                      className={
-                        alertsEnabled
-                          ? "text-primary"
-                          : "text-on-surface-variant/40"
-                      }
-                    />
-                    <span className="text-sm font-bold">New Order Alerts</span>
-                  </div>
-                  <div
-                    className={cn(
-                      "w-10 h-6 rounded-full relative transition-colors",
-                      alertsEnabled
-                        ? "bg-primary"
-                        : "bg-surface-container-highest",
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
-                        alertsEnabled ? "right-1" : "left-1",
-                      )}
-                    ></div>
-                  </div>
-                </button>
-                <button
-                  onClick={() => {
-                    setOrdersPaused(!ordersPaused);
-                    toast.warning(
-                      `Kitchen is now ${!ordersPaused ? "PAUSED" : "ACTIVE"}`,
-                    );
-                  }}
-                  className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <PauseCircle
-                      size={20}
-                      className={
-                        ordersPaused ? "text-error" : "text-on-surface-variant"
-                      }
-                    />
-                    <span className="text-sm font-bold">
-                      {ordersPaused ? "Resume Orders" : "Pause New Orders"}
-                    </span>
-                  </div>
-                  <ChevronRight
-                    size={20}
-                    className={cn(
-                      "text-on-surface-variant transition-transform",
-                      ordersPaused && "rotate-90",
-                    )}
-                  />
-                </button>
-                <button
-                  onClick={() => console.log("Opening printer settings...")}
-                  className="w-full flex items-center justify-between p-4 bg-surface-container-low rounded-2xl hover:bg-surface-container-high transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <Printer size={20} className="text-on-surface-variant" />
-                    <span className="text-sm font-bold">Printer Settings</span>
-                  </div>
-                  <span className="text-xs font-bold text-tertiary">
-                    Online
-                  </span>
-                </button>
+
+
+                <p className="text-xs text-on-surface-variant px-2 py-2">Printer connection is not verified. Open an order and use its Print options to check supported devices.</p>
               </div>
             </div>
           </div>
@@ -4542,13 +3796,18 @@ Notes: "${order.notes || "None"}"
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       const finalReason = cancelReasonPreset === "Other (Write custom message below)"
                         ? (customCancelExplanation.trim() || "Order cancelled by kitchen supervisor.")
                         : customCancelExplanation;
-                      void onUpdateStatus(cancellingOrder.id, "cancelled", finalReason);
-                      setCancellingOrder(null);
-                      toast.success("Order status updated to Cancelled");
+                      try {
+                        await Promise.resolve(onUpdateStatus(cancellingOrder.id, "cancelled", finalReason));
+                        setCancellingOrder(null);
+                        // The parent workflow owns server-confirmed status feedback.
+                        // Do not create a second success toast based on a local button click.
+                      } catch {
+                        toast.error("Cancellation was not confirmed. Please refresh the order status.");
+                      }
                     }}
                     className="flex-1 py-3 bg-error text-white font-black rounded-full text-xs hover:bg-error-container hover:shadow-lg shadow-error/10 transition-all active:scale-[0.98]"
                   >
@@ -4792,20 +4051,20 @@ Notes: "${order.notes || "None"}"
                         (printingOrder.items || []).map((item: unknown, idx: number) => {
                           const isObj = typeof item === "object" && item !== null;
                           const typedItem = item as Record<string, unknown>;
-                          const p = isObj && "price" in typedItem ? Number(typedItem.price) || 0 : (Number(printingOrder.total_price) || 0);
-                          const q = isObj && "quantity" in typedItem ? Number(typedItem.quantity) || 1 : 1;
+                          const p = isObj && "price" in typedItem ? typedItem.price : null;
+                          const q = isObj && "quantity" in typedItem ? typedItem.quantity : 1;
                           const n = isObj && "name" in typedItem ? String(typedItem.name) : String(item);
                           return (
                             <div key={idx} className="flex justify-between items-start gap-2">
-                              <span>{q}x {n}</span>
-                              <span className="shrink-0">R{(p * q).toFixed(2)}</span>
+                              <span>{String(q)}x {n}</span>
+                              <span className="shrink-0">{merchantReceiptLineAmount(p, q)}</span>
                             </div>
                           );
                         })
                       ) : (
                         <div className="flex justify-between items-start">
                           <span>1x {printingOrder.product_name}</span>
-                          <span className="shrink-0">R{Number(printingOrder.total_price || 0).toFixed(2)}</span>
+                          <span className="shrink-0">Amount unavailable</span>
                         </div>
                       )}
                     </div>
@@ -4813,7 +4072,7 @@ Notes: "${order.notes || "None"}"
                     <div className="border-t border-dashed border-stone-400 pt-2 my-2 mt-4 font-bold">
                       <div className="flex justify-between text-sm">
                         <span>GRAND TOTAL</span>
-                        <span>R{Number(printingOrder.total_price || 0).toFixed(2)}</span>
+                        <span>{merchantOrderMoney(printingOrder.total_price)}</span>
                       </div>
                     </div>
 
@@ -4897,14 +4156,14 @@ Notes: "${order.notes || "None"}"
                         {items.map((item, idx) => {
                           const name = typeof item === "string" ? item : item.name;
                           const quantity = typeof item === "string" ? 1 : item.quantity;
-                          const price = typeof item === "string" ? 0 : item.price;
+                          const price = typeof item === "string" ? null : item.price;
                           return (
                             <div key={idx} className="flex justify-between items-center p-3 bg-surface-container-high/40 rounded-xl border border-outline-variant/5">
                               <div className="flex items-center gap-2">
                                 <span className="w-5 h-5 bg-primary/10 text-primary text-[10px] font-black rounded-full flex items-center justify-center">x{quantity}</span>
                                 <span className="text-xs font-bold text-on-surface">{name}</span>
                               </div>
-                              <span className="text-xs font-black text-on-surface-variant">R {(price * quantity).toFixed(2)}</span>
+                              <span className="text-xs font-black text-on-surface-variant">{merchantReceiptLineAmount(price, quantity)}</span>
                             </div>
                           );
                         })}
@@ -4923,7 +4182,7 @@ Notes: "${order.notes || "None"}"
                     <div className="space-y-1.5 text-left">
                       <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70 flex items-center gap-1.5">
                         <UtensilsCrossed size={12} className="text-primary" />
-                        Internal Notes
+                        Private note (on this device only)
                       </span>
                       <textarea
                         value={orderNotes}
@@ -4935,17 +4194,7 @@ Notes: "${order.notes || "None"}"
                       />
                     </div>
 
-                    {/* Customer message */}
-                    <div className="space-y-1.5 text-left">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70">Customer Notification Receipt Message</span>
-                      <input
-                        type="text"
-                        value={customMessage}
-                        onChange={(e) => setCustomMessage(e.target.value)}
-                        className="w-full px-4 py-2.5 text-xs bg-surface-container-low border border-outline-variant/15 rounded-xl focus:ring-1 focus:ring-primary outline-none text-on-surface font-semibold placeholder:text-on-surface-variant/40"
-                        placeholder="Your order has been accepted and is being prepared with care!"
-                      />
-                    </div>
+                    <p className="text-xs text-on-surface-variant text-left" role="note">Accepting changes the order status only. No custom customer message or ETA is sent.</p>
                   </div>
 
                   {/* Modal Footer */}
@@ -4960,19 +4209,9 @@ Notes: "${order.notes || "None"}"
                       Cancel
                     </button>
                     <button
-                      onClick={() => {
-                        // Save kitchen notes locally
-                        if (orderNotes.trim()) {
-                          setKitchenNotes(prev => ({
-                            ...prev,
-                            [orderToAccept.id]: orderNotes.trim()
-                          }));
-                        }
-                        const finalMsg = orderNotes ? `Notes: ${orderNotes} | Msg: ${customMessage}` : customMessage;
-                        onUpdateStatus(orderToAccept.id, "preparing", finalMsg);
-                        setAcceptingOrderId(null);
-                        setOrderNotes("");
-                      }}
+                      disabled={isPickupOrder(orderToAccept) || updatingOrderId!==null}
+                      title={isPickupOrder(orderToAccept) ? "Use the dedicated pickup acceptance button" : "Accept through the order API"}
+                      onClick={() => {void confirmOrderStatus(orderToAccept.id,"preparing",()=>{if(orderNotes.trim())saveDeviceKitchenNote(orderToAccept.id,orderNotes);setAcceptingOrderId(null);setOrderNotes("");});}}
                       className="flex-1 py-3 bg-primary text-on-primary text-xs font-black uppercase tracking-wider rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all cursor-pointer text-center"
                     >
                       Accept & Start Preparing
@@ -4984,29 +4223,9 @@ Notes: "${order.notes || "None"}"
           })()}
         </AnimatePresence>
 
-        {/* Gated Dispatch - No Linked Rider Warning Modal */}
-        <NoLinkedRiderModal
-          isOpen={!!unlinkedModalOrder}
-          onClose={() => setUnlinkedModalOrder(null)}
-          order={unlinkedModalOrder}
-          connectedRiders={connectedRiders}
-          pairingCode={currentShop?.pairing_code || "LOCAL-EATS-PASS"}
-          onDispatchToRider={onDispatchToRider}
-          onAcceptOrder={async (orderId) => {
-            await onUpdateStatus(orderId, "preparing", "Order accepted & dispatched to rider");
-          }}
-          onPromptCustomerForPickup={async (orderId) => {
-            if (onConvertOrderToPickup) {
-              await onConvertOrderToPickup(orderId);
-            }
-          }}
-          onOpenPairingCenter={() => {
-            onTabChange("riders");
-          }}
-        />
-
         {/* SMS & WhatsApp Dispatch Studio Modal */}
         <DispatchAlertModal
+          key={dispatchAlertOrder?.id ? `${dispatchAlertOrder.id}-${dispatchAlertType}-${currentShop?.id ?? ""}` : "closed"}
           isOpen={!!dispatchAlertOrder}
           onClose={() => setDispatchAlertOrder(null)}
           order={dispatchAlertOrder}

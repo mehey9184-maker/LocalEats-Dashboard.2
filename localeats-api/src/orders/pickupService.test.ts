@@ -9,7 +9,7 @@ const raw=()=>({contract_version:"pickup-v1",idempotency_key:id,shop_id:"shop",i
   delivery_type:"collection",delivery_schedule_mode:"standard",payment_method:"cash",customer_details:{name:"Customer",phone:"+27712345678"},
   launch_location:{lat:-26,lng:28}});
 const repo=():OrderRepository=>({findOrderByIdempotencyKey:async()=>null,findShop:async()=>({id:"shop",name:"Shop",location:"Tembisa",is_active:true,
-  approval_status:"approved",archived_at:null,latitude:-26,longitude:28,lat:-26,lng:28}),
+  approval_status:"approved",archived_at:null,latitude:-26,longitude:28,lat:-26,lng:28,pickup_payment_methods:["cash","card_machine"]}),
   findMenuItems:async()=>[{id:"item",shop_id:"shop",name:"Meal",price:25,is_available:true}],insertOrder:async()=>{throw Error("not atomic");}});
 const rpc=(call:(name:string,args:Record<string,unknown>)=>Promise<unknown>):RpcClient=>({rpc:call} as unknown as RpcClient);
 async function request() {
@@ -27,6 +27,25 @@ test("pickup uses real menu, shop eligibility and at most 4km",async()=>{
   await assert.rejects(()=>pickupPricing(repository,"customer",{...request,location:{lat:-20,lng:28}}),/OUTSIDE_PICKUP_RADIUS/);
   repository.findShop=async()=>null;
   await assert.rejects(()=>pickupPricing(repository,"customer",request),/SHOP_NOT_FOUND/);
+});
+test("quote enforces cash-only, card-only, and both merchant settings server-side",async()=>{
+ const repository=repo(),request=parsePickupInput(raw(),false),shop=await repo().findShop("shop");assert.ok(shop);
+ repository.findShop=async()=>({...shop,pickup_payment_methods:["cash"]});
+ assert.equal((await pickupQuote(await pickupPricing(repository,"customer",request))).total_minor,2500);
+ await assert.rejects(()=>pickupPricing(repository,"customer",parsePickupInput({...raw(),payment_method:"card_machine"},false)),/UNSUPPORTED_PAYMENT_METHOD/);
+ repository.findShop=async()=>({...shop,pickup_payment_methods:["card_machine"]});
+ assert.equal((await pickupQuote(await pickupPricing(repository,"customer",parsePickupInput({...raw(),payment_method:"card_machine"},false)))).total_minor,2500);
+ await assert.rejects(()=>pickupPricing(repository,"customer",request),/UNSUPPORTED_PAYMENT_METHOD/);
+ repository.findShop=async()=>({...shop,pickup_payment_methods:["cash","card_machine"]});
+ await pickupPricing(repository,"customer",request);
+ await pickupPricing(repository,"customer",parsePickupInput({...raw(),payment_method:"card_machine"},false));
+});
+test("missing or malformed merchant payment settings fail closed",async()=>{
+ const repository=repo(),request=parsePickupInput(raw(),false),shop=await repo().findShop("shop");assert.ok(shop);
+ for(const methods of [null,[],["cash","cash"],["online"]]){
+  repository.findShop=async()=>({...shop,pickup_payment_methods:methods as string[]|null});
+  await assert.rejects(()=>pickupPricing(repository,"customer",request),/PAYMENT_METHOD_CONFIGURATION_UNAVAILABLE/);
+ }
 });
 test("creation replay precedes repricing and retains original intent after actual cash/card change",async()=>{
   const input=await request(), repository=repo();
@@ -108,10 +127,10 @@ test("R25 and two R25 pickup items quote and persist identical zero-fee menu tot
   const parsed=parsePickupInput(body,false),price=await pickupPricing(repository,"customer",parsed),quote=pickupQuote(price);
   assert.equal(quote.total_minor,quantity*2500);assert.equal(quote.subtotal_minor,quantity*2500);
   assert.equal(quote.service_fee_minor,0);assert.equal(quote.delivery_fee_minor,0);assert.equal(quote.discount_minor,0);
-  assert.deepEqual(await pickupReadQuote(repository as any,"customer",body),quote);
+  assert.deepEqual(await pickupReadQuote(repository as unknown as Parameters<typeof pickupReadQuote>[0],"customer",body),quote);
   let calls=0;
   const client=rpc(async(name,args)=>{
-   calls++;assert.equal(name,"pickup_create_order");const record=args.p_record as any;
+   calls++;assert.equal(name,"pickup_create_order");const record=args.p_record as {price:number;service_fee:number;total_price:number};
    assert.equal(record.price,quantity*25);assert.equal(record.service_fee,0);assert.equal(record.total_price,quote.total_minor/100);
    return {data:{order:{id,user_id:"customer",...record,delivery_type:"collection",payment_status:"unpaid"},replayed:false},error:null};
   });

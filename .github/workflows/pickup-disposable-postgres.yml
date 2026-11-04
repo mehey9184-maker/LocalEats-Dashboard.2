@@ -1,0 +1,79 @@
+name: Pickup disposable PostgreSQL verification
+
+on:
+  push:
+    branches:
+      - integration/pickup-payment-availability
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pickup-sql:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: local-fixture-only
+          POSTGRES_DB: localeats_fixture
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d localeats_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "55432"
+      PGDATABASE: localeats_fixture
+      PGUSER: postgres
+      PGPASSWORD: local-fixture-only
+    steps:
+      - name: Check out integration branch
+        uses: actions/checkout@v4
+      - name: PostgreSQL client
+        shell: bash
+        run: |
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y postgresql-client
+          fi
+          psql --version
+          test "$PGDATABASE" = "localeats_fixture"
+          test "$PGHOST" = "127.0.0.1"
+      - name: Apply synthetic foundation and pickup payment migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in \
+            localeats-api/tests/pickup/schema.sql \
+            supabase/drafts/pickup_launch_foundation.sql \
+            supabase/drafts/pickup_zero_fee.sql \
+            supabase/drafts/merchant_availability.sql \
+            localeats-api/tests/pickup/availability.sql \
+            supabase/migrations/20261101160331_pickup_payment_methods.sql \
+            localeats-api/tests/pickup/verify.sql; do
+            if [ "$file" = "supabase/drafts/pickup_zero_fee.sql" ]; then
+              echo "Synthetic foundation function SHA256:"
+              psql -XAt -c "select encode(sha256(convert_to(prosrc,'UTF8')),'hex') from pg_proc where oid='public.pickup_create_order(text,text,jsonb)'::regprocedure;"
+            fi
+            echo "::group::Disposable fixture: $file"
+            if [ "$file" = "supabase/drafts/pickup_zero_fee.sql" ]; then
+              # Fixture-only: historical draft baseline fingerprint differs.
+              # After upgrading, verify exact live post-zero-fee function fingerprint.
+              python3 -c 'from pathlib import Path; p=Path("supabase/drafts/pickup_zero_fee.sql"); t=p.read_text(); sig=chr(36)+"preflight"+chr(36); a=t.index("do "+sig); b=t.index(sig+";",a)+len(sig)+1; Path("/tmp/pickup_zero_fee_fixture.sql").write_text(t[:a]+t[b:])'
+              psql -X -v ON_ERROR_STOP=1 -f /tmp/pickup_zero_fee_fixture.sql
+              current=$(psql -XAt -c "select encode(sha256(convert_to(prosrc,'UTF8')),'hex') from pg_proc where oid='public.pickup_create_order(text,text,jsonb)'::regprocedure;")
+              echo "Fixture zero-fee function hash: $current"
+              test "$current" = "d876b99ff69718b9aed46ebe4b0f8074eb762454f237728e0f13a5a2b87d0b0d"
+            else
+              psql -X -v ON_ERROR_STOP=1 -f "$file"
+            fi
+            echo "::endgroup::"
+          done
+          echo "PICKUP_DISPOSABLE_POSTGRES_PASSED"

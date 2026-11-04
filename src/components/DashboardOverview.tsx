@@ -1,10 +1,19 @@
-import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
+﻿import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
+import {completedOrderValue,completedOrderTotal,completedDeliveryArea,safeOrderCsvCell} from "../services/merchantDashboardTrust";
+import {summarizeKitchenQueue,recentKitchenOrders,lowStockMenuItems,merchantDailyOrderCounts} from "../services/merchantDashboardLayout";
 import { FoodPlaceholder } from "../components/MenuManagement";
 import { isPlaceholderImage } from "../constants";
 import { updateFirestoreShop } from "../lib/firebase";
 import { syncShopAvailability } from "../utils/availabilityChecker";
+import {
+  isAvailabilityCommandPending,
+  shouldAcceptAvailabilityShop,
+  subscribeAvailabilityCommand,
+} from "../utils/merchantAvailabilityCommand";
 import { Skeleton } from "../components/ui/Skeleton";
-import { getSupportedCity } from "../utils";
+import { RollingOrderCount } from "./ui/RollingOrderCount";
+import { merchantOrdersConfidence } from "../services/merchantOrdersUXTrust";
+import { OperationFeedback, type OperationFeedbackStatus } from "./ui/OperationFeedback";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { RiderConnection } from "../types";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
@@ -17,24 +26,17 @@ import {
   Cell
 } from "recharts";
 import {
-  Lock,
-  Radio,
-  ChevronLeft,
-  Database,
   Loader2,
-  Navigation,
   Pizza,
-  Landmark,
   Rocket,
   CheckCircle,
-  CreditCard,
   MessageCircle,
   Phone,
   Download,
   UtensilsCrossed
 } from "lucide-react";
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
@@ -43,11 +45,9 @@ import {
   Users,
   CheckCircle2,
   AlertCircle,
-  Sparkles,
   Store,
   ChevronRight,
   Bike,
-  Plus,
   RefreshCw,
   Check,
   X,
@@ -62,6 +62,7 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { supabase } from "../lib/supabase";
 import { Order, Shop, User, MenuItem } from "../types";
+import type {MerchantOrderReadState} from "../services/merchantDashboardFreshness";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { useAuthGuard } from "../hooks/useAuthGuard";
 
@@ -72,6 +73,8 @@ function cn(...inputs: ClassValue[]) {
 export interface DashboardOverviewProps {
   orders: Order[];
   loading: boolean;
+  ordersReadState: MerchantOrderReadState;
+  ordersVerifiedAt: number|null;
   shops: Shop[];
   user: User | null;
   onRefresh: () => void | Promise<void>;
@@ -81,6 +84,7 @@ export interface DashboardOverviewProps {
   trialInfo: { daysRemaining: number; isExpired: boolean } | null;
   currentShop: Shop | undefined;
   darkMode: boolean;
+  previewOnly?: boolean;
 }
 
 const StatCard = React.memo(({
@@ -138,406 +142,6 @@ const StatCard = React.memo(({
 
 // --- Components ---
 
-interface ConnectionsSliderProps {
-  onNavigate: (tab: string) => void;
-}
-
-const ConnectionsSlider = ({
-  onNavigate,
-}: ConnectionsSliderProps) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [pingingDb, setPingingDb] = useState(false);
-  const [validatingGps, setValidatingGps] = useState(false);
-  const [autoAccept, setAutoAccept] = useState(() => {
-    const val = localStorage.getItem("localeats_auto_accept");
-    return val === null ? true : val === "true";
-  });
-
-  useEffect(() => {
-    const handleAutoAcceptChange = () => {
-      setAutoAccept(localStorage.getItem("localeats_auto_accept") === "true");
-    };
-    window.addEventListener("localeats_auto_accept_changed", handleAutoAcceptChange);
-    return () => window.removeEventListener("localeats_auto_accept_changed", handleAutoAcceptChange);
-  }, []);
-
-  const handleScroll = (direction: "left" | "right") => {
-    if (scrollRef.current) {
-      const scrollAmount = 350;
-      scrollRef.current.scrollBy({
-        left: direction === "left" ? -scrollAmount : scrollAmount,
-        behavior: "smooth"
-      });
-    }
-  };
-
-  const handlePingDatabase = () => {
-    setPingingDb(true);
-    setTimeout(() => {
-      setPingingDb(false);
-      toast.success("Your secure cloud connection is active and backed up!", {
-        description: "All menu customizations, active dispatches, and coupons are safe and synced instantly in real-time.",
-      });
-    }, 1200);
-  };
-
-  const handleValidateGps = () => {
-    setValidatingGps(true);
-    setTimeout(() => {
-      setValidatingGps(false);
-      toast.success("Google Maps dispatch system is active!", {
-        description: "Precise delivery locations are verified automatically for your riders.",
-      });
-    }, 1000);
-  };
-
-  const handleToggleAutoAccept = () => {
-    const newVal = !autoAccept;
-    setAutoAccept(newVal);
-    localStorage.setItem("localeats_auto_accept", String(newVal));
-    window.dispatchEvent(new Event("localeats_auto_accept_changed"));
-    if (newVal) {
-      toast.success("Automated Auto-Accept Enabled from Connection Hub!", {
-        description: "Incoming orders bypass manual review to save kitchen turnaround time.",
-      });
-    } else {
-      toast.info("Auto-Accept Disabled.", {
-        description: "Orders must now be manually approved from the pending list.",
-      });
-    }
-  };
-
-  const handleDemandCoach = () => {
-    toast.success("Demand Coach playbook loaded successfully!");
-  };
-
-  return (
-    <div className="bg-surface-container-low/70 border border-outline-variant/10 rounded-[2.5rem] p-6 md:p-8 mb-8 relative overflow-hidden shadow-xs">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-1.5 font-semibold">
-            <Radio size={14} className="text-primary animate-pulse" />
-            Integrations & Connection Slider
-          </span>
-          <h2 className="text-xl md:text-2xl font-headline font-black text-on-surface tracking-tight mt-1">
-            Recommending Connections
-          </h2>
-          <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-            Slide through recommended settings & connections to manage your digital kitchen optimally and unlock key advantages.
-          </p>
-        </div>
-
-        {/* Navigation buttons */}
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          <button
-            onClick={() => handleScroll("left")}
-            className="w-10 h-10 rounded-full border border-outline-variant/15 hover:bg-surface-container-high text-on-surface-variant flex items-center justify-center transition-colors cursor-pointer"
-            title="Slide left"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <button
-            onClick={() => handleScroll("right")}
-            className="w-10 h-10 rounded-full border border-outline-variant/15 hover:bg-surface-container-high text-on-surface-variant flex items-center justify-center transition-colors cursor-pointer"
-            title="Slide right"
-          >
-            <ChevronRight size={18} />
-          </button>
-        </div>
-      </div>
-
-      {/* Sliding row container */}
-      <div
-        ref={scrollRef}
-        className="flex overflow-x-auto gap-5 pb-2 snap-x snap-mandatory scrollbar-hide hide-scrollbar scroll-smooth"
-      >
-        {/* Card 1: Supabase */}
-        <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-[2rem] p-6 w-[88vw] sm:w-[330px] shrink-0 snap-center flex flex-col justify-between transition-all hover:border-primary/20 shadow-xs">
-          <div className="space-y-4">
-            <div className="flex items-start justify-between">
-              <div className="p-3 bg-blue-500/10 text-blue-500 rounded-2xl">
-                <Database size={22} />
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
-                  ● LIVE CONNECTION
-                </span>
-                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400">
-                  ✓ SAVED & SYNCED
-                </span>
-              </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-headline font-black text-on-surface">
-                Live Store Sync
-              </h3>
-              <p className="text-[10px] text-on-surface-variant/80 font-medium leading-relaxed mt-1">
-                Real-time automatic backup and synchronization linking your active shop menu across all customer and driver sessions.
-              </p>
-            </div>
-
-            <div className="space-y-2 border-t border-outline-variant/10 pt-3">
-              <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
-              <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
-                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                  <span className="text-emerald-500 text-xs font-bold">✓</span> Prevents loss of custom dishes & active menus
-                </li>
-                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                  <span className="text-emerald-500 text-xs font-bold">✓</span> Instantly syncs incoming orders and rider dispatches
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-5 pt-3 border-t border-outline-variant/5">
-            <div className="bg-blue-500/[0.03] p-2 rounded-xl border border-blue-500/10 mb-3 text-[9px] font-medium text-blue-600 dark:text-blue-400">
-              💡 Keep connection active to ensure instant sync across customer app.
-            </div>
-            <button
-              onClick={handlePingDatabase}
-              disabled={pingingDb}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              {pingingDb ? (
-                <>
-                  <Loader2 size={12} className="animate-spin" /> Verifying connection...
-                </>
-              ) : (
-                <>
-                  Verify Store Sync
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Card 2: Google Maps */}
-        <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-[2rem] p-6 w-[88vw] sm:w-[330px] shrink-0 snap-center flex flex-col justify-between transition-all hover:border-primary/20 shadow-xs">
-          <div className="space-y-4">
-            <div className="flex items-start justify-between">
-              <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-2xl">
-                <Navigation size={22} />
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
-                  ● ACTIVE MAPS
-                </span>
-                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400">
-                  ★ MAP PLATFORM
-                </span>
-              </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-headline font-black text-on-surface">
-                Google Maps Integration
-              </h3>
-              <p className="text-[10px] text-on-surface-variant/80 font-medium leading-relaxed mt-1">
-                Converts customer delivery addresses into precise coordinates for automatic rider route mapping.
-              </p>
-            </div>
-
-            <div className="space-y-2 border-t border-outline-variant/10 pt-3">
-              <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
-              <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
-                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                  <span className="text-emerald-500 text-xs font-bold">✓</span> Eliminates delivery guesswork or lost riders
-                </li>
-                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                  <span className="text-emerald-500 text-xs font-bold">✓</span> Enables accurate instant rider matching
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-5 pt-3 border-t border-outline-variant/5">
-            <div className="bg-emerald-500/[0.03] p-2 rounded-xl border border-emerald-500/10 mb-3 text-[9px] font-medium text-emerald-600 dark:text-emerald-400">
-              💡 Active mapping ensures drivers get precise directions directly to customer doorsteps.
-            </div>
-            <button
-              onClick={handleValidateGps}
-              disabled={validatingGps}
-              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              {validatingGps ? (
-                <>
-                  <Loader2 size={12} className="animate-spin" /> Verifying maps...
-                </>
-              ) : (
-                <>
-                  Verify Map Services
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Card 3: Automated Auto-Accept */}
-        <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-[2rem] p-6 w-[88vw] sm:w-[330px] shrink-0 snap-center flex flex-col justify-between transition-all hover:border-primary/20 shadow-xs">
-          <div className="space-y-4">
-            <div className="flex items-start justify-between">
-              <div className="p-3 bg-amber-500/10 text-amber-500 rounded-2xl">
-                <Zap size={22} className={autoAccept ? "animate-pulse" : ""} />
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className={cn(
-                  "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter",
-                  autoAccept ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400" : "bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-400"
-                )}>
-                  {autoAccept ? "● BYPASSED" : "● MANUAL MODE"}
-                </span>
-                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-400">
-                  ⚡ INSTANT FLOW
-                </span>
-              </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-headline font-black text-on-surface">
-                Automated Auto-Accept
-              </h3>
-              <p className="text-[10px] text-on-surface-variant/80 font-medium leading-relaxed mt-1">
-                Auto-accept simplifies your workflow by automatically approving incoming orders for faster kitchen prep.
-              </p>
-            </div>
-
-            <div className="space-y-2 border-t border-outline-variant/10 pt-3">
-              <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
-              <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
-                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                  <span className="text-emerald-500 text-xs font-bold">✓</span> Saves 5+ minutes of kitchen preparation time per order
-                </li>
-                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                  <span className="text-emerald-500 text-xs font-bold">✓</span> Enables hands-free kitchen operations
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-5 pt-3 border-t border-outline-variant/5">
-            <div className="bg-amber-500/[0.03] p-2 rounded-xl border border-amber-500/10 mb-3 text-[9px] font-medium text-amber-600 dark:text-amber-400">
-              💡 Highly recommended during busy hours to speed up customer deliveries.
-            </div>
-            <button
-              onClick={handleToggleAutoAccept}
-              className={cn(
-                "w-full py-2.5 active:scale-95 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer",
-                autoAccept 
-                  ? "bg-zinc-800 text-white hover:bg-zinc-700" 
-                  : "bg-primary text-on-primary hover:bg-primary/95 shadow-primary/25"
-              )}
-            >
-              {autoAccept ? "Disable Auto-Accept" : "Enable Auto-Accept"}
-            </button>
-          </div>
-        </div>
-
-        {/* Card 4: Local Rider Handshake */}
-        <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-[2rem] p-6 w-[88vw] sm:w-[330px] shrink-0 snap-center flex flex-col justify-between transition-all hover:border-primary/20 shadow-xs">
-          <div className="space-y-4">
-            <div className="flex items-start justify-between">
-              <div className="p-3 bg-blue-500/10 text-blue-500 rounded-2xl">
-                <Bike size={22} />
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-cyan-100 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-400">
-                  ✓ SECURE HANDOFF
-                </span>
-                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-violet-100 text-violet-800 dark:bg-violet-950/40 dark:text-violet-400">
-                  ● 24H PAIRING
-                </span>
-              </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-headline font-black text-on-surface">
-                Local Delivery Network
-              </h3>
-              <p className="text-[10px] text-on-surface-variant/80 font-medium leading-relaxed mt-1">
-                Link your own trusted local delivery drivers to dispatch pipelines and coordinate handoffs.
-              </p>
-            </div>
-
-            <div className="space-y-2 border-t border-outline-variant/10 pt-3">
-              <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
-              <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
-                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                  <span className="text-emerald-500 text-xs font-bold">✓</span> Save on expensive delivery app commission fees
-                </li>
-                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                  <span className="text-emerald-500 text-xs font-bold">✓</span> Match orders to nearby drivers in real-time
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-5 pt-3 border-t border-outline-variant/5">
-            <div className="bg-cyan-500/[0.03] p-2 rounded-xl border border-cyan-500/10 mb-3 text-[9px] font-medium text-cyan-600 dark:text-cyan-400">
-              💡 Perfect for shops and local restaurants that employ their own delivery drivers.
-            </div>
-            <button
-              onClick={() => {
-                onNavigate("riders");
-                toast.success("Rider pairing module loaded.");
-              }}
-              className="w-full py-2.5 bg-cyan-700 hover:bg-cyan-650 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              Manage Delivery Riders
-            </button>
-          </div>
-        </div>
-
-        {/* Card 5: AI Demand Coach */}
-        <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-[2rem] p-6 w-[88vw] sm:w-[330px] shrink-0 snap-center flex flex-col justify-between transition-all hover:border-primary/20 shadow-xs">
-          <div className="space-y-4">
-            <div className="flex items-start justify-between">
-              <div className="p-3 bg-pink-500/10 text-pink-500 rounded-2xl">
-                <Sparkles size={22} />
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-pink-100 text-pink-800 dark:bg-pink-950/40 dark:text-pink-400">
-                  ★ PREDICTIVE AI
-                </span>
-                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400">
-                  ● DYNAMIC SYNC
-                </span>
-              </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-headline font-black text-on-surface">
-              </h3>
-              <p className="text-[10px] text-on-surface-variant/80 font-medium leading-relaxed mt-1">
-              </p>
-            </div>
-
-            <div className="space-y-2 border-t border-outline-variant/10 pt-3">
-              <span className="text-[9px] uppercase font-black tracking-wider text-zinc-400 block">Advantages:</span>
-              <ul className="space-y-1.5 text-[10px] font-semibold text-on-surface-variant">
-                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                  <span className="text-emerald-500 text-xs font-bold">✓</span> Reduces raw food and ingredient waste by up to 25%
-                </li>
-                <li className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-                  <span className="text-emerald-500 text-xs font-bold">✓</span> Recommends custom promotions for rainy or cold days
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-5 pt-3 border-t border-outline-variant/5">
-            <div className="bg-pink-500/[0.03] p-2 rounded-xl border border-pink-500/10 mb-3 text-[9px] font-medium text-pink-600 dark:text-pink-400">
-            </div>
-            <button
-              onClick={handleDemandCoach}
-              className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-md shadow-primary/10 cursor-pointer hover:scale-[1.02]"
-            >
-              Get Live Recommendations
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- Components ---
-
 const OnboardingChecklist = ({
   shops,
   user,
@@ -551,13 +155,6 @@ const OnboardingChecklist = ({
   onEditProfile: () => void;
   hasMenu: boolean;
 }) => {
-  const [showBankModal, setShowBankModal] = useState(false);
-  const [bankName, setBankName] = useState("");
-  const [accountNumber, setAccountNumber] = useState("");
-  const [accountType, setAccountType] = useState("Savings");
-  const [branchCode, setBranchCode] = useState("");
-  const [payoutLinked, setPayoutLinked] = useState(() => localStorage.getItem("localeats_payout_linked") === "true");
-
   const userOwnedShops = useMemo(() => shops.filter((s) => isShopOwnedByUser(s, user)), [shops, user]);
   const hasShop = userOwnedShops.length > 0;
   const hasOperatingHours =
@@ -567,28 +164,13 @@ const OnboardingChecklist = ({
     { key: "shop", completed: hasShop, label: "Create Shop Profile", desc: "Required to start selling", icon: Store },
     { key: "hours", completed: hasOperatingHours, label: "Set Hours", desc: "Automate kitchen schedule", icon: Clock },
     { key: "menu", completed: hasMenu, label: "Upload Menu", desc: "Upload your tasty dishes", icon: Pizza },
-    { key: "payout", completed: payoutLinked, label: "Link Payouts & Bank", desc: "Receive direct deposits", icon: Landmark },
   ];
 
   const completedCount = tasks.filter((t) => t.completed).length;
   const progressPercent = Math.round((completedCount / tasks.length) * 100);
 
-  const handleLinkBank = () => {
-    if (!bankName.trim() || !accountNumber.trim()) {
-      toast.error("Please fill in your Bank Name and Account Number.");
-      return;
-    }
-    localStorage.setItem("localeats_payout_linked", "true");
-    localStorage.setItem("localeats_bank_name", bankName);
-    localStorage.setItem("localeats_account_number", accountNumber);
-    localStorage.setItem("localeats_account_type", accountType);
-    setPayoutLinked(true);
-    setShowBankModal(false);
-    toast.success("Bank account verified & linked for weekly payouts!");
-  };
-
   // If everything is completely set up, we can still show a subtle completed badge, but let's hide the checklist once completely done so the dashboard is super clean!
-  if (hasShop && hasOperatingHours && hasMenu && payoutLinked) return null;
+  if (hasShop && hasOperatingHours && hasMenu) return null;
 
   return (
     <motion.div
@@ -610,7 +192,7 @@ const OnboardingChecklist = ({
               Ready to Launch?
             </h2>
             <p className="text-xs md:text-sm text-on-surface-variant font-semibold mt-0.5">
-              Complete these steps to activate your digital storefront and start pocketing revenue.
+              Complete your shop profile, hours and menu. Availability and order eligibility are confirmed separately.
             </p>
           </div>
         </div>
@@ -654,9 +236,7 @@ const OnboardingChecklist = ({
             <button
               key={task.key}
               onClick={() => {
-                if (task.key === "payout") {
-                  setShowBankModal(true);
-                } else if (task.key === "hours") {
+                if (task.key === "hours") {
                   onEditProfile();
                 } else {
                   onNavigate(task.key === "shop" ? "storefront" : "menu");
@@ -704,102 +284,7 @@ const OnboardingChecklist = ({
         </p>
       )}
 
-      {/* Interactive Bank Payout Linking Modal */}
-      <AnimatePresence>
-        {showBankModal && (
-          <div role="dialog" aria-modal="true" className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-              animate={{ backdropFilter: "blur(4px)", backgroundColor: "rgba(0,0,0,0.4)" }}
-              exit={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-              className="absolute inset-0"
-              onClick={() => setShowBankModal(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-surface relative z-10 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-outline-variant/20 flex flex-col"
-            >
-              <div className="p-6 md:p-8 space-y-6">
-                <div>
-                  <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-500 mb-4">
-                    <Landmark size={24} />
-                  </div>
-                  <h2 className="text-xl md:text-2xl font-headline font-black text-on-surface">Link Payout Account</h2>
-                  <p className="text-xs text-on-surface-variant font-semibold mt-1">Configure your bank account for weekly LocalEats payouts.</p>
-                </div>
 
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider">Bank Name</label>
-                    <input
-                      type="text"
-                      value={bankName}
-                      onChange={(e) => setBankName(e.target.value)}
-                      placeholder="e.g. Standard Bank, FNB, Nedbank"
-                      className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 transition-all"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider">Account Number</label>
-                    <input
-                      type="text"
-                      value={accountNumber}
-                      onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
-                      placeholder="e.g. 1014589632"
-                      className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 transition-all font-mono"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider">Account Type</label>
-                      <select
-                        value={accountType}
-                        onChange={(e) => setAccountType(e.target.value)}
-                        className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 transition-all"
-                      >
-                        <option value="Savings">Savings</option>
-                        <option value="Cheque">Cheque/Current</option>
-                        <option value="Transmission">Transmission</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider">Branch Code</label>
-                      <input
-                        type="text"
-                        value={branchCode}
-                        onChange={(e) => setBranchCode(e.target.value.replace(/\D/g, ""))}
-                        placeholder="e.g. 250655"
-                        className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 transition-all font-mono"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="p-6 md:p-8 bg-surface-container-lowest border-t border-outline-variant/10 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowBankModal(false)}
-                  className="flex-1 py-3.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-black rounded-2xl text-xs uppercase tracking-wider transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLinkBank}
-                  className="flex-1 py-3.5 bg-primary text-on-primary font-black rounded-2xl text-xs uppercase tracking-wider shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all"
-                >
-                  Verify & Save
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 };
@@ -812,21 +297,13 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
   const suburbData = useMemo(() => {
     const counts: Record<string, { count: number; revenue: number }> = {};
 
+    // Delivery-area figures require a completed delivery, valid city and total.
     orders.forEach((o) => {
-      let suburb = "Local Zone";
-      if (o.city && o.city.trim().length > 1) {
-        suburb = o.city.trim();
-      } else if (o.address) {
-        const parts = o.address.split(",").map((p) => p.trim()).filter(Boolean);
-        if (parts.length > 0) suburb = parts[parts.length - 1];
-      }
-
-      const price = typeof o.total_price === "number" ? o.total_price : parseFloat(String(o.total_price || 0)) || 0;
-      if (!counts[suburb]) {
-        counts[suburb] = { count: 0, revenue: 0 };
-      }
-      counts[suburb].count += 1;
-      counts[suburb].revenue += price;
+      const area=completedDeliveryArea(o);
+      if(!area)return;
+      if(!counts[area.city])counts[area.city]={count:0,revenue:0};
+      counts[area.city].count+=1;
+      counts[area.city].revenue+=area.value;
     });
 
     const totalRev = Object.values(counts).reduce((acc, c) => acc + c.revenue, 0) || 1;
@@ -843,7 +320,7 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
       .slice(0, 6);
   }, [orders]);
 
-  const topSuburb = suburbData[0]?.suburb || "Tembisa East";
+  const topSuburb = suburbData[0]?.suburb || "";
 
   return (
     <div className="bg-surface-container-low rounded-[2rem] p-6 md:p-8 border border-outline-variant/5 space-y-6">
@@ -851,14 +328,14 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-headline font-bold text-on-surface">
-              Delivery Dispatch Trends by Area (Suburb)
+              Completed Delivery Orders by Area
             </h2>
             <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 px-2.5 py-0.5 rounded-full">
-              Zone Profitability
+              Completed Orders Only
             </span>
           </div>
           <p className="text-sm text-on-surface-variant font-medium mt-1">
-            Analyze profitable delivery zones, dispatch density, and average ticket size across suburbs.
+            Completed delivery order values by recorded city. This is not a profit or payout report.
           </p>
         </div>
 
@@ -872,7 +349,7 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
                 : "text-on-surface-variant hover:text-on-surface"
             )}
           >
-            Revenue (R)
+            Order Value (R)
           </button>
           <button
             onClick={() => setSuburbMetric("volume")}
@@ -883,7 +360,7 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
                 : "text-on-surface-variant hover:text-on-surface"
             )}
           >
-            Dispatches
+            Completed Orders
           </button>
           <button
             onClick={() => setSuburbMetric("avgTicket")}
@@ -902,9 +379,9 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
       {suburbData.length === 0 ? (
         <div className="py-12 px-4 text-center rounded-2xl bg-surface-container-high/30 border border-outline-variant/10">
           <MapPin size={32} className="mx-auto text-on-surface-variant/40 mb-3" />
-          <h3 className="font-bold text-sm text-on-surface">No Suburb Dispatches Recorded Yet</h3>
+          <h3 className="font-bold text-sm text-on-surface">No Completed Delivery Orders by Area</h3>
           <p className="text-xs text-on-surface-variant max-w-md mx-auto mt-1">
-            As your store receives and fulfills customer delivery orders across different suburbs, live zone profitability, order volume, and ticket metrics will automatically display here.
+            Only completed delivery orders with a recorded city and valid total appear here. Pickup orders are excluded.
           </p>
         </div>
       ) : (
@@ -932,8 +409,8 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
                       ? `R ${val.toLocaleString()}`
                       : suburbMetric === "avgTicket"
                       ? `R ${val.toLocaleString()} / order`
-                      : `${val} Dispatches`,
-                    suburbMetric === "revenue" ? "Total Revenue" : suburbMetric === "avgTicket" ? "Avg Order Value" : "Volume",
+                      : `${val} Completed Orders`,
+                    suburbMetric === "revenue" ? "Completed Order Value" : suburbMetric === "avgTicket" ? "Avg Completed Order Value" : "Completed Orders",
                   ]}
                 />
                 <Bar dataKey={suburbMetric === "revenue" ? "revenue" : suburbMetric === "volume" ? "orders" : "avgTicket"} radius={[10, 10, 0, 0]} isAnimationActive={false}>
@@ -966,7 +443,7 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
                     <span className="font-bold text-xs text-on-surface truncate">{item.suburb}</span>
                     {isTop ? (
                       <span className="text-[9px] font-black uppercase text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-md shrink-0">
-                        🏆 Top Zone
+                        Highest Order Value
                       </span>
                     ) : (
                       <span className="text-[9px] font-black text-on-surface-variant/50">
@@ -976,7 +453,7 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
                   </div>
                   <div className="flex items-baseline justify-between pt-1">
                     <div>
-                      <span className="text-[9px] font-black uppercase text-on-surface-variant/50 block">Revenue</span>
+                      <span className="text-[9px] font-black uppercase text-on-surface-variant/50 block">Order Value</span>
                       <span className="text-sm font-black text-on-surface">R {item.revenue.toLocaleString()}</span>
                     </div>
                     <div className="text-right">
@@ -997,6 +474,8 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
 export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   orders,
   loading,
+  ordersReadState,
+  ordersVerifiedAt,
   shops,
   user,
   onRefresh,
@@ -1006,9 +485,12 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   trialInfo,
   currentShop,
   darkMode,
+  previewOnly = false,
 }: {
   orders: Order[];
   loading: boolean;
+  ordersReadState: MerchantOrderReadState;
+  ordersVerifiedAt: number|null;
   shops: Shop[];
   user: User | null;
   onRefresh: () => void | Promise<void>;
@@ -1018,6 +500,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   trialInfo: { daysRemaining: number; isExpired: boolean } | null;
   currentShop: Shop | undefined;
   darkMode: boolean;
+  previewOnly?: boolean;
 }) => {
   const [followerCount, setFollowerCount] = useState<number | string>("--");
   const [followerTrend, setFollowerTrend] = useState<string>("0");
@@ -1026,7 +509,39 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   >([]);
   const [chartMetric, setChartMetric] = useState<"orders" | "revenue">("revenue");
   const [isStatusToggling, setIsStatusToggling] = useState(false);
+  useEffect(() => {
+    const syncBusy = () => setIsStatusToggling(isAvailabilityCommandPending(currentShop?.id));
+    syncBusy();
+    return subscribeAvailabilityCommand(syncBusy);
+  }, [currentShop?.id]);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isManualRefreshing,setIsManualRefreshing]=useState(false);
+  const [refreshFeedback,setRefreshFeedback]=useState<OperationFeedbackStatus>("idle");
+  const [verificationBeforeRefresh,setVerificationBeforeRefresh]=useState<number|null>(null);
+  const hasVerifiedOrders=ordersVerifiedAt!==null;
+  const canRollOrderCounts=merchantOrdersConfidence(ordersReadState,ordersVerifiedAt)==="verified";
+  const ordersStatusText=ordersReadState==="checking" ? "Checking current orders…" :
+    ordersReadState==="unavailable" ? (hasVerifiedOrders ? "Orders API unavailable · showing last confirmed list" : "Orders API unavailable · counts not verified") :
+    ordersVerifiedAt!==null ? `Orders checked at ${new Date(ordersVerifiedAt).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit"})}` : "Checking current orders…";
+  const refreshDashboard=async()=>{
+    if(isManualRefreshing)return;
+    setVerificationBeforeRefresh(ordersVerifiedAt);
+    setIsManualRefreshing(true);
+    setRefreshFeedback("loading");
+    try{
+      await Promise.resolve(onRefresh());
+      // The fetch returning does not itself prove that the Orders API succeeded.
+      setRefreshFeedback("unverified");
+    }catch{
+      setRefreshFeedback("error");
+    }finally{
+      setIsManualRefreshing(false);
+    }
+  };
+  const refreshWasVerified = refreshFeedback === "unverified" &&
+    ordersReadState === "confirmed" && ordersVerifiedAt !== null &&
+    (verificationBeforeRefresh === null || ordersVerifiedAt > verificationBeforeRefresh);
+  const refreshDisplayStatus:OperationFeedbackStatus = refreshWasVerified ? "success" : refreshFeedback;
   const [layoutMode, setLayoutMode] = useState<"compact" | "advanced">(() => {
     return (localStorage.getItem("localeats_dashboard_layout") as "compact" | "advanced") || "compact";
   });
@@ -1038,20 +553,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       return;
     }
     setIsSyncing(true);
-    toast.loading("Refreshing authoritative shop verification...", { id: "sync-verify" });
+    toast.loading("Refreshing shop information...", { id: "sync-verify" });
 
     try {
       await Promise.resolve(onRefresh());
-      if (currentShop) {
-        toast.success(`Authoritative shop verification refreshed for "${currentShop.name}" (#${currentShop.id}).`, {
-          id: "sync-verify",
-        });
-      } else {
-        toast.success("Authoritative shop verification refresh completed.", { id: "sync-verify" });
-      }
+      toast.info("Refresh finished. Check the order verification status before taking action.", { id: "sync-verify" });
     } catch (err) {
       console.error("Sync & Verify failed:", err);
-      toast.error("Could not refresh authoritative shop verification.", { id: "sync-verify" });
+      toast.error("Could not refresh shop information.", { id: "sync-verify" });
     } finally {
       setIsSyncing(false);
     }
@@ -1068,40 +577,26 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   };
 
   const startOfWeek = getStartOfWeek();
-  const weeklyOrders = orders.filter(
-    (o) => new Date(o.created_at) >= startOfWeek,
-  );
+  const weeklyOrders = orders.filter(o=>o.created_at && new Date(o.created_at) >= startOfWeek);
+  const completedWeeklyOrders = weeklyOrders.filter(o=>completedOrderValue(o)!==null);
+  const completedOrders = orders.filter(o=>completedOrderValue(o)!==null);
 
-  // Robust total sales calculation (Weekly)
-  const weeklySales = weeklyOrders.reduce((acc, curr) => {
-    const price =
-      typeof curr.total_price === "string"
-        ? parseFloat((curr.total_price as unknown as string).replace(/[^0-9.]/g, ""))
-        : Number(curr.total_price);
-    return acc + (isNaN(price) ? 0 : price);
-  }, 0);
+  // Completed order value is NOT proof of payment or a payout balance.
+  const weeklySales=completedOrderTotal(completedWeeklyOrders);
+  const totalSales=completedOrderTotal(completedOrders);
 
-  const totalSales = orders.reduce((acc, curr) => {
-    const price =
-      typeof curr.total_price === "string"
-        ? parseFloat((curr.total_price as unknown as string).replace(/[^0-9.]/g, ""))
-        : Number(curr.total_price);
-    return acc + (isNaN(price) ? 0 : price);
-  }, 0);
-
-  const orderCount = weeklyOrders.length;
   const hasMenu = menuItems.length > 0;
   const [timeframe, setTimeframe] = useState<"weekly" | "monthly">("monthly");
 
   const avgOrderValue = useMemo(() => {
-    if (orders.length === 0) return 0;
-    return totalSales / orders.length;
-  }, [orders, totalSales]);
+    if (completedOrders.length === 0) return 0;
+    return totalSales / completedOrders.length;
+  }, [completedOrders, totalSales]);
 
   const weeklyAvgOrderValue = useMemo(() => {
-    if (orderCount === 0) return 0;
-    return weeklySales / orderCount;
-  }, [weeklySales, orderCount]);
+    if (completedWeeklyOrders.length === 0) return 0;
+    return weeklySales / completedWeeklyOrders.length;
+  }, [weeklySales, completedWeeklyOrders]);
 
   const statusDistribution = useMemo(() => {
     const counts = {
@@ -1131,12 +626,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     })).filter(item => item.value > 0);
   }, [orders]);
 
-  const avgPrepTime = useMemo(() => {
-    const pendingCount = orders.filter(
-      (o) => o.status === "pending" || o.status === "preparing",
-    ).length;
-    return Number(Math.min(12 + pendingCount * 1.5, 45)).toFixed(1);
-  }, [orders]);
+  const preparingOrdersCount = orders.filter(o=>o.status==="preparing").length;
 
   const [connections, setConnections] = useState<RiderConnection[]>([]);
   const currentShopId = currentShop?.id;
@@ -1360,12 +850,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         const day = lastDays.find((d) => d.date === orderDate);
         if (day) {
           day.count++;
-          const price = typeof order.total_price === "string"
-            ? parseFloat((order.total_price as unknown as string).replace(/[^0-9.]/g, ""))
-            : Number(order.total_price || 0);
-          if (!isNaN(price)) {
-            day.revenue += price;
-          }
+          const price=completedOrderValue(order);
+          if(price!==null)day.revenue+=price;
         }
       } catch (e) {
         console.error("Error parsing order date:", e);
@@ -1391,19 +877,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       return;
     }
 
-    const headers = ["Order ID", "Product", "Price", "Status", "Date"];
-    const csvContent = [
-      headers.join(","),
-      ...weeklyOrders.map((o) =>
-        [
-          o.id,
-          `"${o.product_name}"`,
-          o.total_price,
-          o.status,
-          new Date(o.created_at).toLocaleDateString(),
-        ].join(","),
-      ),
-    ].join("");
+    const headers = ["Order ID", "Product", "Order Total (R)", "Status", "Date"];
+    const csvContent=[
+      headers.map(safeOrderCsvCell).join(","),
+      ...weeklyOrders.map(o=>[
+        o.id,o.product_name,o.total_price,o.status,
+        new Date(o.created_at).toLocaleDateString(),
+      ].map(safeOrderCsvCell).join(",")),
+    ].join("\r\n");
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -1420,109 +901,26 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     toast.success("Weekly report exported successfully!");
   };
 
-  const [showTestCheckout, setShowTestCheckout] = useState(false);
-  const [testOrderPayMethod, setTestOrderPayMethod] = useState("Cash");
-  const [cardName, setCardName] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [specialInstructions, setSpecialInstructions] = useState("");
-
-  const generateTestOrder = async () => {
-    if (!currentShop) return;
-
-    if (testOrderPayMethod === "Card Machine") {
-      if (!cardName.trim() || !cardNumber.trim() || cardNumber.length < 15) {
-        toast.error("Please provide valid Cardholder Name and Card Number.");
-        return;
-      }
-    }
-
-    const posOrder = {
-      shop_id: currentShop.id,
-      user_id: user?.id || null,
-      customer_name: "Walk-in / Phone Customer",
-      phone: "+27 00 000 0000",
-      email: "pos@localeats.co.za",
-      address: currentShop.address || "In-Store Pick Up",
-      city: currentShop.location ? getSupportedCity(currentShop.location) : "Tembisa",
-      lat: currentShop.lat ? currentShop.lat : -25.9964,
-      lng: currentShop.lng ? currentShop.lng : 28.2268,
-      product_name: "Store POS Order",
-      restaurant_name: currentShop.name,
-      total_price: 55,
-      price: 55,
-      delivery_fee: 0,
-      service_fee: 0,
-      status: "pending",
-      order_type: "pickup",
-      items: [
-        {
-          name: "Store POS Order",
-          price: 55,
-          quantity: 1,
-        },
-      ],
-      payment_method: testOrderPayMethod,
-      terminal_masked_card: testOrderPayMethod === "Card Machine" ? `**** **** **** ${cardNumber.slice(-4)}` : null,
-      terminal_sync_status: testOrderPayMethod === "Card Machine" ? "synced" : null,
-      created_at: new Date().toISOString(),
-      notes: specialInstructions.trim() || null,
-    };
-
-    let error = null;
-    try {
-      await OrderService.createOrder(posOrder);
-    } catch (err) {
-      error = err;
-    }
-    if (error) {
-      toast.error("Could not record manual order right now. Please try again.");
-    } else {
-      toast.success("Manual POS order logged successfully! View in Orders.");
-      setSpecialInstructions("");
-      setShowTestCheckout(false);
-      onRefresh();
-    }
-  };
-
-  const todayOrders = useMemo(() => {
-    const now = new Date();
-    return orders.filter((o) => {
-      if (!o.created_at) return false;
-      const d = new Date(o.created_at);
-      if (isNaN(d.getTime())) return false;
-      return (
-        d.getFullYear() === now.getFullYear() &&
-        d.getMonth() === now.getMonth() &&
-        d.getDate() === now.getDate()
-      );
-    });
-  }, [orders]);
-
-  const todayOrdersCount = todayOrders.length;
-
-  const yesterdayOrdersCount = useMemo(() => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split("T")[0];
-    return orders.filter(o => o.created_at && o.created_at.startsWith(yesterdayStr)).length;
-  }, [orders]);
+  // SAST day boundaries matter near midnight; refresh after each verified API poll.
+  const {today:todayOrdersCount,yesterday:yesterdayOrdersCount}=useMemo(
+    ()=>merchantDailyOrderCounts(orders),[orders,ordersVerifiedAt],
+  );
 
   const todayTrendIsPositive = todayOrdersCount >= yesterdayOrdersCount;
   const todayTrendText = yesterdayOrdersCount === 0
-    ? "First orders today"
+    ? (todayOrdersCount>0?"First orders today":"No orders yet today")
     : todayOrdersCount >= yesterdayOrdersCount
       ? `+${todayOrdersCount - yesterdayOrdersCount} vs yesterday`
       : `-${yesterdayOrdersCount - todayOrdersCount} vs yesterday`;
 
+  // H2: visible work comes from the same already-authorized merchant order records.
+  const kitchenQueue=useMemo(()=>summarizeKitchenQueue(orders),[orders]);
+  const latestKitchenOrders=useMemo(()=>recentKitchenOrders(orders,5),[orders]);
+  const lowStockItems=useMemo(()=>lowStockMenuItems(menuItems),[menuItems]);
+
   const activeMenuItemsCount = useMemo(() => {
     return menuItems.filter(item => item.is_available).length;
   }, [menuItems]);
-
-  const driverAvailability = useMemo(() => {
-    if (connectedRidersCount === 0) return { status: "Low", color: "text-amber-500 bg-amber-500/10 border-amber-500/20" };
-    if (connectedRidersCount <= 2) return { status: "Moderate", color: "text-blue-500 bg-blue-500/10 border-blue-500/20" };
-    return { status: "High", color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" };
-  }, [connectedRidersCount]);
 
   if (loading) {
     return (
@@ -1570,344 +968,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
   return (
     <div className="space-y-8 md:space-y-12">
-      {/* Storefront Ownership Sync & Repair Card */}
-      <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-emerald-500/10 text-emerald-600 rounded-2xl shrink-0">
-            <ShieldCheck size={24} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">
-                Sync & Verify Store Ownership
-              </h3>
-              {currentShop && (
-                <span className="text-[10px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 rounded-full">
-                  Linked: {currentShop.name} (#{currentShop.id})
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
-              Refreshes the API-verified shop already linked to your authenticated merchant account.
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={handleSyncAndVerify}
-          disabled={isSyncing}
-          className="px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shrink-0 w-full sm:w-auto"
-        >
-          <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
-          <span>{isSyncing ? "Verifying..." : "Sync & Verify"}</span>
-        </button>
-      </div>
-
-      {/* Bulk Storefront Status Switch */}
-      {shops.length > 0 && (
-        <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-primary/10 text-primary rounded-full shrink-0">
-              <Activity size={24} className={shops.some(s => s.is_active) ? "animate-pulse" : ""} />
-            </div>
-            <div>
-              <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">Bulk Storefront Switch</h3>
-              <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
-                Instantly toggle the online availability of all your registered storefronts with a single click.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={async () => {
-              const anyActive = shops.some(s => s.is_active);
-              const newStatus = !anyActive;
-
-              
-              toast.loading(`Setting all storefronts to ${newStatus ? "Online" : "Offline"}...`, { id: "bulk-status-toggle" });
-              
-              let error = null;
-              for (const s of shops) {
-                const res = await syncShopAvailability({
-                  shopId: s.id,
-                  isOpen: newStatus,
-                  supabase: supabase as any,
-                  updateFirestoreShop,
-                });
-                if (!res.success) error = res.error;
-              }
-
-              if (!error) {
-                toast.success(`All storefronts are now ${newStatus ? "Online & Live" : "Offline & Closed"}!`, { id: "bulk-status-toggle" });
-                onRefresh();
-              } else {
-                toast.error("Failed to update all storefronts. Please check your connection.", { id: "bulk-status-toggle" });
-              }
-            }}
-            className={cn(
-              "px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all duration-300 w-full md:w-auto shrink-0 shadow-md flex items-center justify-center gap-2",
-              shops.some(s => s.is_active)
-                ? "bg-primary text-white hover:bg-primary/90 shadow-primary/20"
-                : "bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20"
-            )}
-          >
-            {shops.some(s => s.is_active) ? "Set All Offline" : "Set All Online"}
-          </button>
-        </div>
-      )}
-
-      {/* "At a Glance" Top Status Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        {/* Today's Orders Card */}
-        <motion.div
-          whileHover={{ y: -4 }}
-          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
-        >
-          <div className="flex justify-between items-start">
-            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Today's Orders</p>
-            <div className="p-2 bg-orange-500/10 rounded-xl text-orange-500">
-              <ReceiptText size={18} />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              {todayOrdersCount}
-            </span>
-            <span className={cn(
-              "text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1",
-              todayTrendIsPositive ? "bg-emerald-500/15 text-emerald-500" : "bg-rose-500/15 text-rose-500"
-            )}>
-              {todayTrendIsPositive ? "↑" : "↓"} {todayTrendText}
-            </span>
-          </div>
-          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-orange-500 to-rose-500 opacity-80" />
-        </motion.div>
-
-        {/* Pending Payout Card */}
-        <motion.div
-          whileHover={{ y: -4 }}
-          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
-        >
-          <div className="flex justify-between items-start">
-            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Pending Payout</p>
-            <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
-              <Landmark size={18} />
-            </div>
-          </div>
-          <div className="mt-4">
-            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              R {weeklySales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-            <p className="text-[10px] text-on-surface/75 font-extrabold mt-1">
-              Next payout: Wednesday (Weekly)
-            </p>
-          </div>
-          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-80" />
-        </motion.div>
-
-        {/* Active Menu Items Card */}
-        <motion.div
-          whileHover={{ y: -4 }}
-          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
-        >
-          <div className="flex justify-between items-start">
-            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Active Menu Items</p>
-            <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500">
-              <Pizza size={18} />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              {activeMenuItemsCount}
-            </span>
-            <span className="text-[10px] text-on-surface/75 font-extrabold">
-              / {menuItems.length} listed
-            </span>
-          </div>
-          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-500 opacity-80" />
-        </motion.div>
-
-        {/* Driver Availability Card */}
-        <motion.div
-          whileHover={{ y: -4 }}
-          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
-        >
-          <div className="flex justify-between items-start">
-            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Driver Availability</p>
-            <div className="p-2 bg-primary/10 rounded-xl text-primary">
-              <Bike size={18} />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              {driverAvailability.status}
-            </span>
-            <span className={cn("text-[10px] font-extrabold px-2 py-0.5 rounded-full", driverAvailability.color)}>
-              {connectedRidersCount} riders online
-            </span>
-          </div>
-          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-primary to-orange-500" />
-        </motion.div>
-      </div>
-
-      <AnimatePresence>
-        {showTestCheckout && (
-          <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-              animate={{ backdropFilter: "blur(4px)", backgroundColor: "rgba(0,0,0,0.4)" }}
-              exit={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-              className="absolute inset-0"
-              onClick={() => setShowTestCheckout(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-surface relative z-10 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-outline-variant/20 flex flex-col max-h-[90vh]"
-            >
-              <div className="p-6 md:p-8 space-y-6 flex-1 overflow-y-auto">
-                <div>
-                  <h2 className="text-2xl font-headline font-black text-on-surface">New Phone / Walk-in Order</h2>
-                  <p className="text-xs text-on-surface-variant font-medium mt-1">Record a phone or walk-in customer order for kitchen dispatch and POS tracking.</p>
-                </div>
-
-                <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 space-y-2">
-                  <div className="flex justify-between text-sm font-bold text-on-surface">
-                    <span>Store POS Order</span>
-                    <span>R 55.00</span>
-                  </div>
-                  <div className="flex justify-between text-lg font-black text-on-surface pt-4 border-t border-outline-variant/10">
-                    <span>Total</span>
-                    <span className="text-primary">R 55.00</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="checkout_special_instructions" className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70">Special Instructions (Dietary / Delivery Notes)</label>
-                  <textarea
-                    id="checkout_special_instructions"
-                    value={specialInstructions}
-                    onChange={(e) => setSpecialInstructions(e.target.value)}
-                    placeholder="E.g. No onions, extra spicy, gluten free, leave at security..."
-                    className="w-full bg-surface-container-low border border-outline-variant/20 rounded-2xl p-4 text-xs font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all min-h-[80px] resize-y"
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70">Payment Method</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={() => setTestOrderPayMethod("Cash")}
-                      className={cn(
-                        "p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2",
-                        testOrderPayMethod === "Cash" ? "border-primary bg-primary/10 text-primary" : "border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-low"
-                      )}
-                    >
-                      <span className="text-lg">💵</span>
-                      <span className="text-xs font-bold">Cash</span>
-                    </button>
-                    <button
-                      onClick={() => setTestOrderPayMethod("Card Machine")}
-                      className={cn(
-                        "p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2",
-                        testOrderPayMethod === "Card Machine" ? "border-primary bg-primary/10 text-primary" : "border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-low"
-                      )}
-                    >
-                      <CreditCard size={20} />
-                      <span className="text-xs font-bold">Card Machine</span>
-                    </button>
-                  </div>
-                </div>
-
-                <AnimatePresence>
-                  {testOrderPayMethod === "Card Machine" && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="p-5 rounded-2xl bg-surface-container-lowest border-2 border-emerald-500/20 shadow-sm space-y-4 mt-2">
-                        <div className="flex items-center gap-2 text-emerald-600 mb-2">
-                          <Lock size={14} />
-                          <span className="text-xs font-black uppercase tracking-wider">Secure Payment Synchronization</span>
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Cardholder Name</label>
-                          <input
-                            type="text"
-                            value={cardName}
-                            onChange={(e) => setCardName(e.target.value)}
-                            placeholder="John Doe"
-                            className="w-full bg-surface border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all font-mono"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Masked Card Number</label>
-                          <input
-                            type="text"
-                            value={cardNumber}
-                            onChange={(e) => {
-                               const val = e.target.value.replace(/\D/g, "");
-                               let formatted = "";
-                               for (let i = 0; i < val.length; i++) {
-                                 if (i > 0 && i % 4 === 0) formatted += " ";
-                                 formatted += val[i];
-                               }
-                               setCardNumber(formatted.slice(0, 19));
-                            }}
-                            placeholder="**** **** **** 1234"
-                            className="w-full bg-surface border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all font-mono"
-                          />
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-              <div className="p-6 md:p-8 bg-surface-container-lowest border-t border-outline-variant/10">
-                <button
-                  onClick={generateTestOrder}
-                  className="w-full px-6 py-4 bg-primary text-on-primary font-black rounded-2xl shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest"
-                >
-                  Confirm & Place Order
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-      {currentShop && (!currentShop.phone || !currentShop.whatsapp) && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-primary/5 border border-primary/20 rounded-[2rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden group mb-4"
-        >
-          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 group-hover:rotate-12 transition-transform duration-700">
-             <MessageCircle size={120} />
-          </div>
-          <div className="flex items-center gap-6 relative z-10">
-            <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center text-primary shrink-0 shadow-lg shadow-primary/20">
-              <Phone size={32} />
-            </div>
-            <div className="space-y-1">
-              <h3 className="text-xl font-headline font-bold text-on-surface">
-                Complete Your Store Profile
-              </h3>
-              <p className="text-sm text-on-surface-variant max-w-md font-medium leading-relaxed">
-                Add your WhatsApp and Phone number so customers can contact you directly for order inquiries and support.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => onNavigate("storefront")}
-            className="w-full md:w-auto px-8 py-4 bg-primary text-on-primary rounded-2xl font-headline font-black text-sm uppercase tracking-widest shadow-xl shadow-primary/30 hover:scale-105 active:scale-95 transition-all relative z-10"
-          >
-            Update Profile
-          </button>
-        </motion.div>
-      )}
-
       <motion.section
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1918,14 +978,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               <h1 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
                 {greeting}, Chef!
               </h1>
-              {menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length > 0 && (
+              {lowStockItems.length > 0 && (
                 <button
                   onClick={() => onNavigate("menu")}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-error/10 hover:bg-error/20 border border-error/20 text-error rounded-full font-bold text-[10px] uppercase tracking-wider transition-all animate-bounce active:scale-95 cursor-pointer shadow-xs shrink-0"
+                  className="min-h-10 flex items-center gap-1.5 px-3 py-2 bg-error/10 hover:bg-error/20 border border-error/20 text-error rounded-full font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 cursor-pointer shadow-xs shrink-0 focus-visible:outline-2 focus-visible:outline-error"
                   title="Click to manage low stock menu items"
                 >
-                  <AlertTriangle size={12} className="animate-pulse" />
-                  <span>{menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length} Items Low Stock</span>
+                  <AlertTriangle size={12} aria-hidden="true" />
+                  <span>{lowStockItems.length} Items Low Stock</span>
                 </button>
               )}
             </div>
@@ -1937,22 +997,18 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
             {/* View layout mode switcher to adjust visual complexity & cognitive load */}
             
-            <button
-              onClick={() => onNavigate("orders")}
-              className="bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest text-sm px-6 py-3 rounded-2xl shadow-md hover:shadow-lg transition-all border-none"
-            >
-              + NEW WALK-IN ORDER
-            </button>
+
             <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/10 shadow-xs justify-center sm:justify-start">
               <button
                 type="button"
+                aria-pressed={layoutMode==="compact"}
                 onClick={() => {
                   setLayoutMode("compact");
                   localStorage.setItem("localeats_dashboard_layout", "compact");
                   toast.success("Switched to clean Minimalist view");
                 }}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer",
+                  "min-h-11 px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-2 focus-visible:outline-primary",
                   layoutMode === "compact"
                     ? "bg-primary text-white shadow-sm"
                     : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
@@ -1962,13 +1018,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               </button>
               <button
                 type="button"
+                aria-pressed={layoutMode==="advanced"}
                 onClick={() => {
                   setLayoutMode("advanced");
                   localStorage.setItem("localeats_dashboard_layout", "advanced");
                   toast.success("Switched to Advanced Analytics view");
                 }}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer",
+                  "min-h-11 px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-2 focus-visible:outline-primary",
                   layoutMode === "advanced"
                     ? "bg-primary text-white shadow-sm"
                     : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
@@ -1979,36 +1036,44 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             </div>
 
             <div className="flex gap-2 justify-end">
+
               <button
-                onClick={() => setShowTestCheckout(true)}
-                className="p-3 bg-primary/5 text-primary rounded-xl hover:bg-primary/10 transition-colors border border-primary/10 flex items-center gap-2 text-xs font-bold"
-                title="Create Manual POS Order"
-              >
-                <Plus size={18} />
-                <span className="hidden sm:inline">New POS Order</span>
-              </button>
-              <button
+                type="button"
                 onClick={exportWeeklyCSV}
-                className="p-3 bg-surface-container-low text-primary rounded-xl hover:bg-surface-container-high transition-colors shadow-sm flex items-center gap-2 text-xs font-bold"
+                aria-label="Download weekly orders CSV"
+                className="min-h-11 p-3 bg-surface-container-low text-primary rounded-xl hover:bg-surface-container-high transition-colors shadow-sm flex items-center gap-2 text-xs font-bold"
                 title="Download Weekly Report"
               >
                 <Download size={18} />
                 <span className="hidden sm:inline">Weekly Report</span>
               </button>
               <button
-                onClick={() => {
-                  onRefresh();
-                  console.log("Dashboard refreshed");
-                }}
-                className="p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm"
+                type="button"
+                onClick={()=>{void refreshDashboard();}}
+                disabled={isManualRefreshing}
+                aria-busy={isManualRefreshing}
+                aria-label={isManualRefreshing ? "Refreshing dashboard" : "Refresh dashboard data"}
+                className="merchant-tap-feedback min-w-11 min-h-11 inline-flex items-center justify-center p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm"
                 title="Refresh Dashboard"
               >
-                <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
+                <RefreshCw size={20} className={isManualRefreshing ? "animate-spin" : ""} />
               </button>
             </div>
           </div>
         </div>
       </motion.section>
+
+      <OperationFeedback
+        status={refreshDisplayStatus}
+        message={refreshDisplayStatus === "loading" ? "Refreshing dashboard…" :
+          refreshDisplayStatus === "success" ? "Orders verified after refresh" :
+          refreshDisplayStatus === "error" ? "Dashboard refresh failed" :
+          "Refresh finished; order status not newly verified"}
+        detail={refreshDisplayStatus === "unverified" ? "Keep previously loaded figures marked as unverified until the Orders API confirms a fresh read." :
+          refreshDisplayStatus === "error" ? "Check the connection and retry. Your previous information remains visible." : undefined}
+        onRetry={refreshDisplayStatus === "error" || refreshDisplayStatus === "unverified" ? () => { void refreshDashboard(); } : undefined}
+        className="max-w-2xl"
+      />
 
       {currentShop && (
         <motion.div
@@ -2070,7 +1135,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               {currentShop.updated_at ? (
                 <p className="text-[10px] font-mono font-black text-emerald-500 flex items-center gap-1.5 pt-1 uppercase tracking-widest">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Store Status: Synced & Saved ({new Date(currentShop.updated_at).toLocaleDateString()} {new Date(currentShop.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
+                  Shop record last updated ({new Date(currentShop.updated_at).toLocaleDateString()} {new Date(currentShop.updated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
                 </p>
               ) : (
                 <p className="text-[10px] font-mono font-black text-amber-500 flex items-center gap-1.5 pt-1 uppercase tracking-widest">
@@ -2087,32 +1152,27 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 Shop Status Control
               </span>
               <button
-                disabled={isStatusToggling}
+                disabled={previewOnly || isStatusToggling}
                 onClick={async () => {
-                  setIsStatusToggling(true);
+                  if (previewOnly || isStatusToggling) return;
                   const newStatus = !currentShop.is_active;
 
-                  // Optimistic update
-                  
-
-                  const { success, error } = await syncShopAvailability({
+                  const { success, error, freshShop } = await syncShopAvailability({
                     shopId: currentShop.id,
                     isOpen: newStatus,
                     supabase: supabase as any,
                     updateFirestoreShop,
                   });
 
-                  if (success) {
+                  if (success && shouldAcceptAvailabilityShop(currentShop, freshShop)) {
                     await Promise.resolve(onRefresh());
                     toast.success(
-                      `Storefront is now ${newStatus ? "Open & Live" : "Closed & Offline"}!`
+                      `Shop marked ${freshShop?.is_active ? "available" : "unavailable"}. Order eligibility is confirmed separately.`
                     );
                   } else {
-                    // Rollback
-                    
                     toast.error(typeof error === "string" ? error : "Failed to update storefront status");
+                    try { await Promise.resolve(onRefresh()); } catch { /* best-effort */ }
                   }
-                  setIsStatusToggling(false);
                 }}
                 className={cn(
                   "w-full px-6 py-3 rounded-2xl font-headline font-black text-xs uppercase tracking-widest transition-all duration-300 shadow-md flex items-center justify-center gap-2",
@@ -2126,20 +1186,382 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                     <Loader2 size={14} className="animate-spin" />
                     <span>Updating...</span>
                   </>
+                ) : previewOnly ? (
+                  <><ShieldCheck size={14} /><span>Status Change Unavailable</span></>
                 ) : currentShop.is_active ? (
                   <>
                     <X size={14} />
-                    <span>Go Offline</span>
+                    <span>Mark Unavailable</span>
                   </>
                 ) : (
                   <>
                     <Check size={14} />
-                    <span>Go Live Now</span>
+                    <span>Mark Available</span>
                   </>
                 )}
               </button>
             </div>
           </div>
+        </motion.div>
+      )}
+
+      {/* Actionable kitchen summary — read-only counts from current order records */}
+      <section aria-label="Kitchen queue" className="bg-surface-container-lowest border border-outline-variant/10 rounded-[2rem] p-4 md:p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-lg md:text-xl font-headline font-black text-on-surface">Kitchen Queue</h2>
+            <p className="text-xs text-on-surface-variant mt-1">Order statuses from your current shop records. Open Orders for authoritative actions.</p>
+            <p role="status" aria-live="polite" className={`text-xs font-bold mt-2 ${ordersReadState==="unavailable"?"text-amber-600 dark:text-amber-400":"text-on-surface-variant"}`}>{ordersStatusText}</p>
+          </div>
+          <button type="button" onClick={()=>onNavigate("orders")}
+            className="merchant-tap-feedback min-h-11 w-full sm:w-auto px-5 py-3 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-on-primary font-black text-xs uppercase tracking-wider rounded-xl focus-visible:outline-2 focus-visible:outline-primary">
+            <ReceiptText size={16} aria-hidden="true" />
+            Manage Orders
+          </button>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+          {[
+            {label:"New / Pending",count:kitchenQueue.pending,icon:ReceiptText,tone:"text-orange-600 bg-orange-500/10",urgent:true},
+            {label:"Preparing",count:kitchenQueue.preparing,icon:Clock,tone:"text-blue-600 bg-blue-500/10",urgent:false},
+            {label:"Ready for Pickup",count:kitchenQueue.readyForPickup,icon:CheckCircle2,tone:"text-emerald-600 bg-emerald-500/10",urgent:false},
+            {label:"Completed in list",count:kitchenQueue.completed,icon:Check,tone:"text-on-surface-variant bg-surface-container-high",urgent:false},
+          ].map(item=>(
+            <button key={item.label} type="button"
+              onClick={()=>onNavigate("orders")}
+              aria-label={hasVerifiedOrders ? `${item.count} ${item.label} orders. Open Orders.` : `${item.label} count not verified. Open Orders.`}
+              className="text-left min-h-[104px] rounded-2xl border border-outline-variant/10 bg-surface-container-low p-4 flex flex-col justify-between gap-3 hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-primary transition-colors">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-black text-on-surface-variant leading-tight">{item.label}</span>
+                <span className={`p-1.5 rounded-lg shrink-0 ${item.tone}`}><item.icon size={16} aria-hidden="true" /></span>
+              </div>
+              <span className={`text-2xl md:text-3xl font-headline font-black ${item.urgent&&item.count>0?"text-orange-600":"text-on-surface"}`}>
+                {hasVerifiedOrders ? <RollingOrderCount value={item.count} animate={canRollOrderCounts} /> : "—"}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* "At a Glance" Top Status Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {/* Today's Orders Card */}
+        <motion.div
+          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
+        >
+          <div className="flex justify-between items-start">
+            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Today's Orders</p>
+            <div className="p-2 bg-orange-500/10 rounded-xl text-orange-500">
+              <ReceiptText size={18} />
+            </div>
+          </div>
+          <div className="mt-4 flex items-baseline gap-2">
+            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
+              {hasVerifiedOrders ? <RollingOrderCount value={todayOrdersCount} animate={canRollOrderCounts} /> : "—"}
+            </span>
+            <span className={cn(
+              "text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1",
+              todayTrendIsPositive ? "bg-emerald-500/15 text-emerald-500" : "bg-rose-500/15 text-rose-500"
+            )}>
+              {hasVerifiedOrders ? `${todayTrendIsPositive?"↑":"↓"} ${todayTrendText}` : "Not verified"}
+            </span>
+          </div>
+          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-orange-500 to-rose-500 opacity-80" />
+        </motion.div>
+
+        {/* Completed Order Value Card — not a payout balance */}
+        <motion.div
+          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
+        >
+          <div className="flex justify-between items-start">
+            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Completed Order Value</p>
+            <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
+              <ReceiptText size={18} />
+            </div>
+          </div>
+          <div className="mt-4">
+            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
+              {hasVerifiedOrders ? `R ${weeklySales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+            </span>
+            <p className="text-[10px] text-on-surface/75 font-extrabold mt-1">
+              Completed orders this week · not a payout balance
+            </p>
+          </div>
+          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-80" />
+        </motion.div>
+
+        {/* Active Menu Items Card */}
+        <motion.div
+          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
+        >
+          <div className="flex justify-between items-start">
+            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Active Menu Items</p>
+            <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500">
+              <Pizza size={18} />
+            </div>
+          </div>
+          <div className="mt-4 flex items-baseline gap-2">
+            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
+              {activeMenuItemsCount}
+            </span>
+            <span className="text-[10px] text-on-surface/75 font-extrabold">
+              / {menuItems.length} listed
+            </span>
+          </div>
+          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-500 opacity-80" />
+        </motion.div>
+
+        {/* Driver Availability Card */}
+        <motion.div
+          className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
+        >
+          <div className="flex justify-between items-start">
+            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Rider Connections</p>
+            <div className="p-2 bg-primary/10 rounded-xl text-primary">
+              <Bike size={18} />
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
+              {connectedRidersCount}
+            </span>
+            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+              Linked riders · availability not confirmed
+            </span>
+          </div>
+          <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-primary to-orange-500" />
+        </motion.div>
+      </div>
+
+      {/* Low Stock Alerts Section */}
+      {lowStockItems.length > 0 && (
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-error/5 border border-error/20 rounded-[2rem] p-8"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-error/10 text-error rounded-2xl flex items-center justify-center">
+                <AlertCircle size={24} />
+              </div>
+              <div>
+                <h2 className="text-xl font-headline font-bold text-on-surface">
+                  Low Stock Alerts
+                </h2>
+                <p className="text-sm text-on-surface-variant">
+                  Available menu items with fewer than five units recorded. Check quantities in Menu.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => onNavigate("menu")}
+              className="merchant-tap-feedback px-6 py-2 bg-error text-white text-xs font-bold rounded-full hover:bg-error/90 transition-colors shadow-sm"
+            >
+              Review Menu
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {lowStockItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-4 group hover:border-error/30 transition-colors"
+                >
+                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-surface-container flex items-center justify-center">
+                    {!isPlaceholderImage(item.image_url) ? (
+                      <img
+                        src={item.image_url}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <FoodPlaceholder size={20} />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-sm text-on-surface truncate">
+                      {item.name}
+                    </h4>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex-1 h-1 bg-surface-container rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-error rounded-full"
+                          style={{
+                            width: `${(item.stock_quantity || 0) * 20}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-black text-error">
+                        {item.stock_quantity || 0} left
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </motion.section>
+      )}
+
+      {/* Recent Activity Feed */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="lg:col-span-8 bg-surface-container-lowest rounded-[2rem] p-8 border border-outline-variant/10 shadow-sm"
+        >
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-xl font-headline font-bold text-on-surface">
+              Recent Orders
+            </h2>
+            <button
+              onClick={() => onNavigate("orders")}
+              className="text-xs font-bold text-primary hover:underline"
+            >
+              View All Orders
+            </button>
+          </div>
+          <div className="space-y-6">
+            {latestKitchenOrders.map((order) => (
+              <button
+                key={order.id}
+                type="button"
+                className="w-full text-left flex items-center justify-between gap-3 group p-3 hover:bg-surface-container-high rounded-2xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-primary"
+                onClick={() => onNavigate("orders")}
+              >
+                <div className="flex items-center gap-4">
+                  <div
+                    className={cn(
+                      "w-11 h-11 rounded-full flex items-center justify-center border-2 border-transparent group-hover:border-primary/10 transition-all shadow-sm",
+                      order.status === "completed"
+? "bg-emerald-100/50 text-emerald-600 shadow-emerald-500/5"
+                        : order.status === "pending"
+                          ? "bg-primary/10 text-primary"
+                          : "bg-blue-100/50 text-blue-600 shadow-blue-500/5",
+                    )}
+                  >
+                    {order.status === "completed" ? (
+                      <CheckCircle2 size={18} />
+                    ) : (
+                      <Clock size={18} />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-on-surface leading-snug">
+                      Order <span className="text-primary font-mono tracking-tighter">#{order.id.toString().slice(-4)}</span>{" "}
+                      {order.status === "completed" ? "Completed" : order.status === "cancelled" ? "Cancelled" : order.status === "preparing" ? "Preparing" : order.status === "pending" ? "Pending" : String(order.status)}
+                    </p>
+                    <p className="text-[10px] md:text-xs text-on-surface-variant/80 font-medium mt-0.5">
+                      {order.product_name} •{" "}
+                      {Number.isFinite(Date.parse(order.created_at)) ? format(new Date(order.created_at), "h:mm a") : "Time unavailable"}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-black text-on-surface">
+                    {typeof order.total_price==="number" && Number.isFinite(order.total_price) && order.total_price>=0 ? `R ${order.total_price.toFixed(2)}` : "Total unavailable"}
+                  </p>
+                  <OrderStatusBadge status={order.status} className="mt-1" />
+                </div>
+                </button>
+              ))}
+            {latestKitchenOrders.length===0 && (
+              <div className="py-20 text-center space-y-6">
+                <div className="relative w-24 h-24 mx-auto">
+                   <div className="absolute inset-0 bg-primary/5 rounded-full animate-pulse-slow font-mono" />
+                   <div className="absolute inset-0 flex items-center justify-center opacity-20">
+                     <ReceiptText size={48} />
+                   </div>
+                </div>
+                <div className="max-w-xs mx-auto">
+                  <h3 className="font-bold text-on-surface">{hasVerifiedOrders ? "No Orders in Current List" : "Waiting for Confirmed Orders"}</h3>
+                  <p className="text-xs text-on-surface-variant mt-2 opacity-70">
+                    {hasVerifiedOrders ? "No confirmed order records were returned for this shop." : "Orders are not yet verified. Check your connection or refresh the Dashboard."}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </motion.section>
+
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+          className="lg:col-span-4 bg-surface-container-lowest rounded-[2rem] p-8 border border-outline-variant/10 shadow-sm"
+        >
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-xl font-headline font-bold text-on-surface">
+              Recent Followers
+            </h2>
+            <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
+              <Users size={16} />
+            </div>
+          </div>
+          <div className="space-y-6">
+            {recentFollowers.length > 0 ? (
+              recentFollowers.map((follower) => (
+                <div
+                  key={follower.id}
+                  className="flex items-center gap-4 group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xs">
+                    {follower.id.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-on-surface truncate">
+                      New Follower
+                    </p>
+                    <p className="text-[10px] text-on-surface-variant/60 font-medium">
+                      {format(new Date(follower.created_at), "MMM d, h:mm a")}
+                    </p>
+                  </div>
+                  <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                </div>
+              ))
+            ) : (
+              <div className="py-12 text-center space-y-4">
+                <div className="w-16 h-16 bg-surface-container rounded-full flex items-center justify-center mx-auto text-on-surface-variant/20">
+                  <Users size={32} />
+                </div>
+                <p className="text-on-surface-variant text-sm font-medium italic">
+                  No followers yet.
+                </p>
+                <p className="text-[10px] text-on-surface-variant/60 leading-tight">
+                  Share your shop link to get more followers!
+                </p>
+              </div>
+            )}
+          </div>
+        </motion.section>
+      </div>
+      {currentShop && (!currentShop.phone || !currentShop.whatsapp) && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-primary/5 border border-primary/20 rounded-[2rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden group mb-4"
+        >
+          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 group-hover:rotate-12 transition-transform duration-700">
+             <MessageCircle size={120} />
+          </div>
+          <div className="flex items-center gap-6 relative z-10">
+            <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center text-primary shrink-0 shadow-lg shadow-primary/20">
+              <Phone size={32} />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-xl font-headline font-bold text-on-surface">
+                Complete Your Store Profile
+              </h3>
+              <p className="text-sm text-on-surface-variant max-w-md font-medium leading-relaxed">
+                Add your WhatsApp and Phone number so customers can contact you directly for order inquiries and support.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigate("storefront")}
+            className="w-full md:w-auto px-8 py-4 bg-primary text-on-primary rounded-2xl font-headline font-black text-sm uppercase tracking-widest shadow-xl shadow-primary/30 hover:scale-105 active:scale-95 transition-all relative z-10"
+          >
+            Update Profile
+          </button>
         </motion.div>
       )}
 
@@ -2152,6 +1574,101 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       />
 
       
+
+      {layoutMode==="advanced" && (
+        <section aria-label="Advanced shop data tools" className="space-y-3">
+      {/* Storefront Ownership Sync & Repair Card */}
+      <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-emerald-500/10 text-emerald-600 rounded-2xl shrink-0">
+            <ShieldCheck size={24} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">
+                Refresh Shop Data
+              </h3>
+              {currentShop && (
+                <span className="text-[10px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 rounded-full">
+                  Linked: {currentShop.name} (#{currentShop.id})
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
+              Refreshes the linked shop, menu and order information from the API.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={handleSyncAndVerify}
+          disabled={isSyncing}
+          className="px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shrink-0 w-full sm:w-auto"
+        >
+          <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
+          <span>{isSyncing ? "Refreshing..." : "Refresh Data"}</span>
+        </button>
+      </div>
+
+        </section>
+      )}
+
+      {/* Bulk Storefront Status Switch */}
+      {shops.length > 1 && (
+        <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-primary/10 text-primary rounded-full shrink-0">
+              <Activity size={24} className={shops.some(s => s.is_active) ? "animate-pulse" : ""} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">Bulk Storefront Switch</h3>
+              <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
+                {previewOnly ? "Availability changes are disabled in Preview. The recorded shop status does not prove live ordering." : "Request an availability change for each linked shop. The API must confirm every update."}
+              </p>
+            </div>
+          </div>
+          <button
+            disabled={previewOnly || isStatusToggling}
+            onClick={async () => {
+              if (previewOnly || isStatusToggling) return;
+              const anyActive = shops.some(s => s.is_active);
+              const newStatus = !anyActive;
+
+              
+              toast.loading(`Setting all storefronts to ${newStatus ? "Online" : "Offline"}...`, { id: "bulk-status-toggle" });
+              
+              let error = null;
+              let confirmedOpen: boolean | null = null;
+              for (const s of shops) {
+                const res = await syncShopAvailability({
+                  shopId: s.id,
+                  isOpen: newStatus,
+                  supabase: supabase as any,
+                  updateFirestoreShop,
+                });
+                if (!res.success) error = res.error;
+                else confirmedOpen = res.freshShop?.is_active === true;
+              }
+
+              if (!error) {
+                toast.success(`Shop availability updates confirmed: ${confirmedOpen ? "available" : "unavailable"}. Pickup order eligibility is checked separately.`, { id: "bulk-status-toggle" });
+                onRefresh();
+              } else {
+                toast.error(typeof error === "string" ? error : "Failed to update all storefronts. Please check your connection.", { id: "bulk-status-toggle" });
+                try { await Promise.resolve(onRefresh()); } catch { /* best-effort */ }
+              }
+            }}
+            className={cn(
+              "px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all duration-300 w-full md:w-auto shrink-0 shadow-md flex items-center justify-center gap-2",
+              shops.some(s => s.is_active)
+                ? "bg-primary text-white hover:bg-primary/90 shadow-primary/20"
+                : "bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20"
+            )}
+          >
+            {previewOnly ? "Bulk Status Unavailable" : shops.some(s => s.is_active) ? "Set All Offline" : "Set All Online"}
+          </button>
+        </div>
+      )}
 
       {layoutMode === "advanced" && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
@@ -2187,9 +1704,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             transition={{ delay: 0.2 }}
           >
             <StatCard
-              title="Avg. Prep"
-              value={`${avgPrepTime}m`}
-              change="Active flow"
+              title="Preparing Orders"
+              value={preparingOrdersCount}
+              change="Current kitchen queue"
               icon={Clock}
               colorClass="bg-zinc-500/10 text-zinc-600 dark:text-zinc-400"
             />
@@ -2201,8 +1718,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           >
             <StatCard
               title="Subscription"
-              value={trialInfo ? (trialInfo.isExpired ? "Expired" : `${trialInfo.daysRemaining} Days`) : "Active Plan"}
-              change={trialInfo ? (trialInfo.isExpired ? "Action Needed" : "Free Trial") : "Professional"}
+              value={trialInfo ? (trialInfo.isExpired ? "Expired" : `${trialInfo.daysRemaining} Days`) : "Not confirmed"}
+              change={trialInfo ? (trialInfo.isExpired ? "Action Needed" : "Free Trial") : "No plan status"}
               icon={Zap}
               colorClass={trialInfo?.isExpired ? "bg-red-500/10 text-red-600 dark:text-red-400" : "bg-primary/10 text-primary"}
             />
@@ -2380,8 +1897,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           {[
             {
               id: "menu",
-              title: "Update Menu",
-              sub: "Modify items & pricing",
+              title: "View Menu",
+              sub: "Review current menu items",
               icon: UtensilsCrossed,
               color: "bg-primary-fixed text-primary",
             },
@@ -2401,8 +1918,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             },
             {
               id: "orders",
-              title: "Kitchen ",
-              sub: "System & app preferences",
+              title: "Orders & Kitchen",
+              sub: "Review incoming and active orders",
               icon: ReceiptText,
               color: "bg-zinc-100 text-zinc-600",
             },
@@ -2440,242 +1957,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       </div>
       )}
 
-      {/* Suburb Dispatch Trends & Zone Profitability Section */}
-      <DeliveryDispatchSuburbTrends orders={orders} darkMode={darkMode} />
+      {/* Completed delivery order values grouped by recorded city */}
+      {layoutMode === "advanced" && <DeliveryDispatchSuburbTrends orders={orders} darkMode={darkMode} />}
 
-      {/* Compact View Guidance Block */}
-      {layoutMode === "compact" && (
-        <div className="bg-surface-container-low border border-outline-variant/10 rounded-[2.5rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 mt-6 relative overflow-hidden">
-          <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
-            <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <Sparkles size={20} />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-on-surface">Compact View Active</h3>
-              <p className="text-xs text-on-surface-variant max-w-xl mt-0.5 leading-relaxed">
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => {
-              setLayoutMode("advanced");
-              localStorage.setItem("localeats_dashboard_layout", "advanced");
-              toast.success("Advanced layout mode unlocked with full telemetries.");
-            }}
-            className="w-full md:w-auto px-5 py-2.5 bg-primary text-white font-black text-xs uppercase tracking-wider rounded-xl hover:opacity-90 active:scale-95 transition-all shrink-0 cursor-pointer text-center shadow-md shadow-primary/20"
-          >
-            Unlock Full Analytics
-          </button>
-        </div>
-      )}
-
-      {/* Low Stock Alerts Section */}
-      {menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length > 0 && (
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-error/5 border border-error/20 rounded-[2rem] p-8"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-error/10 text-error rounded-2xl flex items-center justify-center">
-                <AlertCircle size={24} />
-              </div>
-              <div>
-                <h2 className="text-xl font-headline font-bold text-on-surface">
-                  Low Stock Alerts
-                </h2>
-                <p className="text-sm text-on-surface-variant">
-                  These items are running low and need restocking soon.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => onNavigate("menu")}
-              className="px-6 py-2 bg-error text-white text-xs font-bold rounded-full hover:bg-error/90 transition-colors shadow-sm"
-            >
-              Restock Now
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {menuItems
-              .filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5)
-              .map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-4 group hover:border-error/30 transition-colors"
-                >
-                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-surface-container flex items-center justify-center">
-                    {!isPlaceholderImage(item.image_url) ? (
-                      <img
-                        src={item.image_url}
-                        alt={item.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <FoodPlaceholder size={20} />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-sm text-on-surface truncate">
-                      {item.name}
-                    </h4>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex-1 h-1 bg-surface-container rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-error rounded-full"
-                          style={{
-                            width: `${(item.stock_quantity || 0) * 20}%`,
-                          }}
-                        />
-                      </div>
-                      <span className="text-[10px] font-black text-error">
-                        {item.stock_quantity || 0} left
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </motion.section>
-      )}
-
-      {/* Recent Activity Feed */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="lg:col-span-8 bg-surface-container-lowest rounded-[2rem] p-8 border border-outline-variant/10 shadow-sm"
-        >
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-xl font-headline font-bold text-on-surface">
-              Recent Activity
-            </h2>
-            <button
-              onClick={() => onNavigate("orders")}
-              className="text-xs font-bold text-primary hover:underline"
-            >
-              View All Activity
-            </button>
-          </div>
-          <div className="space-y-6">
-            {orders.slice(0, 5).map((order, i) => (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                key={order.id}
-                className="flex items-center justify-between group p-3 hover:bg-surface-container-high rounded-2xl transition-colors cursor-pointer"
-                onClick={() => onNavigate("orders")}
-              >
-                <div className="flex items-center gap-4">
-                  <div
-                    className={cn(
-                      "w-11 h-11 rounded-full flex items-center justify-center border-2 border-transparent group-hover:border-primary/10 transition-all shadow-sm",
-                      order.status === "completed"
-? "bg-emerald-100/50 text-emerald-600 shadow-emerald-500/5"
-                        : order.status === "pending"
-                          ? "bg-primary/10 text-primary"
-                          : "bg-blue-100/50 text-blue-600 shadow-blue-500/5",
-                    )}
-                  >
-                    {order.status === "completed" ? (
-                      <CheckCircle2 size={18} />
-                    ) : (
-                      <Clock size={18} />
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-on-surface leading-snug">
-                      Order <span className="text-primary font-mono tracking-tighter">#{order.id.toString().slice(-4)}</span>{" "}
-                      {order.status === "completed" ? "Completed" : order.status === "cancelled" ? "Cancelled" : "Received"}
-                    </p>
-                    <p className="text-[10px] md:text-xs text-on-surface-variant/80 font-medium mt-0.5">
-                      {order.product_name} •{" "}
-                      {format(new Date(order.created_at), "h:mm a")}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-black text-on-surface">
-                    R {Number(order.total_price || 0).toFixed(2)}
-                  </p>
-                  <OrderStatusBadge status={order.status} className="mt-1" />
-                </div>
-                </motion.div>
-              ))}
-            {orders.length === 0 && (
-              <div className="py-20 text-center space-y-6">
-                <div className="relative w-24 h-24 mx-auto">
-                   <div className="absolute inset-0 bg-primary/5 rounded-full animate-pulse-slow font-mono" />
-                   <div className="absolute inset-0 flex items-center justify-center opacity-20">
-                     <ReceiptText size={48} />
-                   </div>
-                </div>
-                <div className="max-w-xs mx-auto">
-                  <h3 className="font-bold text-on-surface">Awaiting Your First Order</h3>
-                  <p className="text-xs text-on-surface-variant mt-2 opacity-70">
-                    Your shop activity will appear here in real-time as customers place their orders.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </motion.section>
-
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          className="lg:col-span-4 bg-surface-container-lowest rounded-[2rem] p-8 border border-outline-variant/10 shadow-sm"
-        >
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-xl font-headline font-bold text-on-surface">
-              Recent Followers
-            </h2>
-            <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
-              <Users size={16} />
-            </div>
-          </div>
-          <div className="space-y-6">
-            {recentFollowers.length > 0 ? (
-              recentFollowers.map((follower) => (
-                <div
-                  key={follower.id}
-                  className="flex items-center gap-4 group"
-                >
-                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xs">
-                    {follower.id.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-on-surface truncate">
-                      New Follower
-                    </p>
-                    <p className="text-[10px] text-on-surface-variant/60 font-medium">
-                      {format(new Date(follower.created_at), "MMM d, h:mm a")}
-                    </p>
-                  </div>
-                  <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                </div>
-              ))
-            ) : (
-              <div className="py-12 text-center space-y-4">
-                <div className="w-16 h-16 bg-surface-container rounded-full flex items-center justify-center mx-auto text-on-surface-variant/20">
-                  <Users size={32} />
-                </div>
-                <p className="text-on-surface-variant text-sm font-medium italic">
-                  No followers yet.
-                </p>
-                <p className="text-[10px] text-on-surface-variant/60 leading-tight">
-                  Share your shop link to get more followers!
-                </p>
-              </div>
-            )}
-          </div>
-        </motion.section>
-      </div>
     </div>
   );
 });
