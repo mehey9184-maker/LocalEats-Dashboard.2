@@ -202,7 +202,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     const shopLocation = activeShop?.address || activeShop?.location || activeShop?.city || "Township";
     const featuredItemName = customFeaturedItem || storeMenuItems[0]?.name || "Kota Special";
     const featuredItemPrice = storeMenuItems.find((i) => i.name === featuredItemName)?.price;
-    const priceText = Number.isFinite(featuredItemPrice) ? `(listed R${featuredItemPrice})` : "";
+    const priceText = typeof featuredItemPrice === "number" && Number.isFinite(featuredItemPrice) ? `(listed R${featuredItemPrice})` : "";
 
     switch (selectedPreset) {
       case "opening":
@@ -243,7 +243,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // 4. Social Graphic Studio State
   const [socialTheme, setSocialTheme] = useState<SocialTheme>("coral");
-  const [socialTagline, setSocialTagline] = useState<string>("Best Kota & Township Meals");
+  const [socialTagline, setSocialTagline] = useState<string>("Local Kota & Township Meals");
   const [featuredSocialItemId, setFeaturedSocialItemId] = useState<string | number>("");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -350,7 +350,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     if (featuredSocialItem) {
       ctx.fillStyle = "#FFFFFF";
       ctx.font = "bold 26px system-ui, sans-serif";
-      ctx.fillText("🔥 FEATURED TODAY", 120, 420);
+      ctx.fillText("EXAMPLE MENU ITEM", 120, 420);
 
       ctx.font = "900 44px system-ui, sans-serif";
       ctx.fillStyle = textColor;
@@ -409,7 +409,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     ctx.font = "bold 24px system-ui, sans-serif";
     ctx.fillStyle = "#FFFFFF";
     const loc = activeShop?.address || activeShop?.location || activeShop?.city || "Township Store";
-    const phone = activeShop?.phone || activeShop?.whatsapp || "WhatsApp Available";
+    const phone = activeShop?.phone || activeShop?.whatsapp || "Contact not listed";
     ctx.fillText(`📍 ${loc.slice(0, 32)}`, 120, 955);
     ctx.fillText(`📞 ${phone}`, 680, 955);
   }, [socialTheme, socialTagline, featuredSocialItem, activeShop, qrDataUrl]);
@@ -1655,7 +1655,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                   </div>
 
                   <p className="text-[11px] text-on-surface-variant">
-                    Ready to post on Facebook, Instagram, WhatsApp Status, or TikTok!
+                    Sample layout only — not approved for publication or customer promotion.
                   </p>
                 </div>
               </div>
