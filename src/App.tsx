@@ -1,6 +1,7 @@
 ﻿import {pickupOrderingEnabled,pickupPaymentSettingsEnabled} from "./services/merchantPickupPolicy";
 import {merchantSettingsOperationalWritesEnabled,merchantSettingsOperationsNotice,merchantSettingsHardwareNotice} from "./services/merchantSettingsOperationalPreview";
 import {merchantSettingsS3WritesEnabled,merchantSettingsS3PickupNotice,merchantSettingsS3DeliveryNotice,pickupMethodRecordLabel} from "./services/merchantSettingsS3Trust";
+import {merchantSettingsS4ActionsEnabled,merchantSettingsS4Notice} from "./services/merchantSettingsS4Preview";
 import {isPickupOrder} from "./services/merchantPickupPolicy";
 import { checkPrinterConnectivity, printViaBluetooth, printViaUSB } from "./utils/escPosEngine";
 import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
@@ -2435,7 +2436,7 @@ function App() {
                     onSubmitCapture={(event) => { event.preventDefault(); event.stopPropagation(); }}
                     className="flex-1 w-full space-y-4 max-w-3xl pb-16 pointer-events-none">
                     <p role="status" className="text-xs text-on-surface-variant bg-surface-container-low rounded-2xl p-3 border border-outline-variant/15">
-                      Settings Preview is read-only. Navigate with the tabs on the left; saving account, operations, delivery, hardware, payment and billing changes is unavailable in this Preview.
+                      {merchantSettingsS4Notice()}
                     </p>
                     {settingsCategory === "pickup-payments" && currentShop && (
                       <section className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -2468,31 +2469,33 @@ function App() {
                     )}
                     {settingsCategory === "diagnostics" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h3 className="font-headline font-bold text-lg mb-2">Firestore Diagnostics</h3>
+                        <h3 className="font-headline font-bold text-lg mb-2">Shop Diagnostics — Preview</h3>
                         <ShopDiagnosticPanel currentShop={currentShop} />
                       </div>
                     )}
                     
                     {settingsCategory === "storefront" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h3 className="font-headline font-bold text-lg mb-2">Store Profile & Location Sync</h3>
+                        <h3 className="font-headline font-bold text-lg mb-2">Store Profile & Location — Preview</h3>
                         
                         {/* Real-time Location Sync Status Indicator */}
                         {currentShop && (
                           <LocationSyncIndicator
+                            previewOnly={!merchantSettingsS4ActionsEnabled()}
                             locationState={currentShopLocation}
                             syncAnalysis={currentShopLocationSync}
                             isLocating={isLocatingShopGPS}
                             isSaving={isSavingShopLocation}
-                            onDetectGPS={detectShopGPS}
-                            onAutoAlign={autoAlignShopCity}
-                            onSave={() => saveShopLocationSettings()}
-                            onOpenStorefrontMap={() => setActiveTab("storefront")}
+                            onDetectGPS={merchantSettingsS4ActionsEnabled() ? detectShopGPS : undefined}
+                            onAutoAlign={merchantSettingsS4ActionsEnabled() ? autoAlignShopCity : undefined}
+                            onSave={merchantSettingsS4ActionsEnabled() ? () => saveShopLocationSettings() : undefined}
+                            onOpenStorefrontMap={merchantSettingsS4ActionsEnabled() ? () => setActiveTab("storefront") : undefined}
                           />
                         )}
 
                         <button
-                          onClick={() => setActiveTab("storefront")}
+                          disabled={!merchantSettingsS4ActionsEnabled()}
+                          onClick={() => { if(merchantSettingsS4ActionsEnabled()) setActiveTab("storefront"); }}
                     className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-0 p-5 bg-primary/5 hover:bg-primary/10 rounded-2xl transition-all border border-primary/20 group shadow-sm shadow-primary/5"
                   >
                     <div className="flex items-center gap-4">
@@ -2504,13 +2507,13 @@ function App() {
                           Storefront Profile
                         </p>
                         <p className="text-xs text-on-surface-variant line-clamp-1 md:line-clamp-none">
-                          Update your shop name, logo, and cover photo.
+                          Profile changes are unavailable in read-only Preview.
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 self-end md:self-auto">
                       <span className="text-[10px] items-center font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap">
-                        New Location
+                        Read-only Preview
                       </span>
                       <ChevronRight
                         size={18}
@@ -2525,7 +2528,8 @@ function App() {
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">My Account</h3>
                   <button
-                    onClick={() => setIsEditingProfile(true)}
+                    disabled={!merchantSettingsS4ActionsEnabled()}
+                    onClick={() => { if(merchantSettingsS4ActionsEnabled()) setIsEditingProfile(true); }}
                     className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
                   >
                     <div className="flex items-center gap-4">
@@ -2537,7 +2541,7 @@ function App() {
                           Edit Profile
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Change your name, email, and photo.
+                          Profile editing is not available in this Preview.
                         </p>
                       </div>
                     </div>
@@ -2584,12 +2588,9 @@ function App() {
                     {settingsCategory === "account" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <button
-                    onClick={() =>
-                      toast.info("Staff Accounts coming soon!", {
-                        description:
-                          "You will be able to add staff members with limited access (e.g., cannot view revenue or delete menu items).",
-                      })
-                    }
+                    disabled={!merchantSettingsS4ActionsEnabled()}
+                    title="Staff accounts require a separate permissions review"
+                    onClick={() => { if(merchantSettingsS4ActionsEnabled()) toast.info("Staff accounts are not activated."); }}
                     className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
                   >
                     <div className="flex items-center gap-4">
@@ -2601,7 +2602,7 @@ function App() {
                           Staff Accounts
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Manage roles and permissions for your team.
+                          Staff access management is not activated or verified.
                         </p>
                       </div>
                     </div>
@@ -2615,10 +2616,8 @@ function App() {
 
                     {settingsCategory === "storefront" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <a
-                    href="https://rider.localeatssa.co.za/"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <div
+                    aria-disabled="true"
                     className="w-full flex items-center justify-between p-5 bg-blue-500/5 hover:bg-blue-500/10 rounded-2xl transition-all border border-blue-500/20 group shadow-sm shadow-blue-500/5"
                   >
                     <div className="flex items-center gap-4">
@@ -2630,18 +2629,17 @@ function App() {
                           Rider Marketplace
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Access the dedicated platform for deliveries and
-                          missions.
+                          Rider missions and delivery are deferred. This is not an active service or link.
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-black uppercase text-blue-500/60 bg-blue-500/10 px-2 py-0.5 rounded-md">
-                        External
+                        Not Active
                       </span>
                       <DollarSign size={18} className="text-blue-500" />
                     </div>
-                  </a>
+                  </div>
                       </div>
                     )}
 
@@ -3458,7 +3456,7 @@ function App() {
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Staff & Managers</p>
-                        <p className="text-xs text-on-surface-variant">Add staff accounts and configure permission roles.</p>
+                        <p className="text-xs text-on-surface-variant">Staff permissions require an authorised server-side access review.</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
