@@ -582,7 +582,7 @@ export const Marketing: React.FC<MarketingProps> = ({
         {/* Segment 1: Dashboard Summary */}
         <button
           onClick={() => setMainSegment("dashboard")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
             mainSegment === "dashboard"
               ? "bg-primary text-on-primary shadow-sm"
               : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -598,7 +598,7 @@ export const Marketing: React.FC<MarketingProps> = ({
           disabled={!publishingEnabled}
           title="Campaign building is unavailable before launch"
           onClick={() => { if(publishingEnabled) setMainSegment("campaign_builder"); }}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
             mainSegment === "campaign_builder"
               ? "bg-primary text-on-primary shadow-sm"
               : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -614,7 +614,7 @@ export const Marketing: React.FC<MarketingProps> = ({
           disabled={!publishingEnabled}
           title="Marketing tools are not activated in this Preview"
           onClick={() => { if(publishingEnabled) setMainSegment("tool_library"); }}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
             mainSegment === "tool_library"
               ? "bg-primary text-on-primary shadow-sm"
               : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -711,7 +711,7 @@ export const Marketing: React.FC<MarketingProps> = ({
               <div
                 aria-disabled={!publishingEnabled}
                 onClick={publishingEnabled ? () => handleLaunchQuickAction("flash_deals") : undefined}
-                className="p-4 rounded-2xl bg-orange-500/5 hover:bg-orange-500/10 border border-orange-500/20 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-4 rounded-2xl bg-orange-500/5 hover:bg-orange-500/10 border border-orange-500/20 transition-all cursor-not-allowed opacity-60 group flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -739,7 +739,7 @@ export const Marketing: React.FC<MarketingProps> = ({
               <div
                 aria-disabled={!publishingEnabled}
                 onClick={publishingEnabled ? () => handleLaunchQuickAction("direct_reach") : undefined}
-                className="p-4 rounded-2xl bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-4 rounded-2xl bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 transition-all cursor-not-allowed opacity-60 group flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -767,7 +767,7 @@ export const Marketing: React.FC<MarketingProps> = ({
               <div
                 aria-disabled={!publishingEnabled}
                 onClick={publishingEnabled ? () => handleLaunchQuickAction("table_tents") : undefined}
-                className="p-4 rounded-2xl bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/20 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-4 rounded-2xl bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/20 transition-all cursor-not-allowed opacity-60 group flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -795,7 +795,7 @@ export const Marketing: React.FC<MarketingProps> = ({
               <div
                 aria-disabled={!publishingEnabled}
                 onClick={publishingEnabled ? () => handleLaunchQuickAction("qr_stands") : undefined}
-                className="p-4 rounded-2xl bg-purple-500/5 hover:bg-purple-500/10 border border-purple-500/20 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-4 rounded-2xl bg-purple-500/5 hover:bg-purple-500/10 border border-purple-500/20 transition-all cursor-not-allowed opacity-60 group flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -851,7 +851,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                   disabled={!publishingEnabled}
                   title="Storefront sharing is locked until ordering is approved"
                   onClick={copyStoreUrl}
-                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-on-primary text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-on-primary text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {copiedLink ? <Check size={14} className="text-white" /> : <Copy size={14} />}
                   <span>{copiedLink ? "Copied!" : "Copy Link"}</span>
@@ -864,7 +864,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                   disabled={!publishingEnabled}
                   title="WhatsApp campaigns are not activated"
                   onClick={() => handleLaunchQuickAction("whatsapp")}
-                  className="p-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
+                  className="p-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <MessageSquare size={15} />
                   <span>Share on WhatsApp</span>
@@ -875,7 +875,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                   disabled={!publishingEnabled}
                   title="Publishing social posts is not activated"
                   onClick={() => handleLaunchQuickAction("social_studio")}
-                  className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer"
+                  className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Palette size={15} className="text-primary" />
                   <span>Create Social Post</span>
@@ -886,7 +886,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                   disabled={!publishingEnabled}
                   title="Vouchers are not activated"
                   onClick={() => { if(publishingEnabled) setMainSegment("campaign_builder"); }}
-                  className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer"
+                  className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Ticket size={15} className="text-primary" />
                   <span>Create Voucher</span>
@@ -923,7 +923,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                   disabled={!publishingEnabled}
                   title="Order-link printing is not activated"
                   onClick={() => handleLaunchQuickAction("qr_stands")}
-                  className="py-2 px-3 rounded-xl bg-primary text-on-primary text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
+                  className="py-2 px-3 rounded-xl bg-primary text-on-primary text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Printer size={13} />
                   <span>Print Stand</span>
