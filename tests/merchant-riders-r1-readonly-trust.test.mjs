@@ -42,13 +42,17 @@ test("Rider contacts, device locations and local cash records are not loaded on 
  assert.match(riders,/!previewOnly && connections\.length === 0/);
  assert.match(riders,/const \[settledCodOrders, setSettledCodOrders\] = useState<string\[\]>\(\(\) => \{\s*if \(previewOnly\) return \[\]/);
  for(const name of ["cashTrustEnabled","allowExternalRiders","autoLookForRider"]){
-   assert.match(riders,new RegExp("const \\\\["+name+", set[A-Za-z]+\\\\] = useState\\\\(\\\\(\\\\) => \\\\{\\\\s*if \\\\(previewOnly\\\\) return false"));
+   const at=riders.indexOf("const ["+name+", ");
+   assert.ok(at>=0,"Missing cache state: "+name);
+   assert.ok(riders.slice(at,at+230).includes("if (previewOnly) return false;"),"Cache access not protected: "+name);
  }
  assert.match(riders,/const fetchAndCacheRiders = useCallback\(async \(forceRefresh = false\) => \{\s*if \(previewOnly\) \{ setLoading\(false\); return; \}/);
  assert.match(riders,/useEffect\(\(\) => \{\s*if \(previewOnly\) return;\s*fetchConnections\(\)/);
  assert.match(riders,/\[fetchConnections, currentShop\?\.id, selectedTrackId, previewOnly\]/);
  for(const name of ["dbCashTrust","dbAllowExternal","dbAutoLookForRider"]){
-   assert.match(riders,new RegExp("if \\\\(previewOnly\\\\) return;\\\\s*if \\\\("+name+" !== undefined\\\\)"));
+   const at=riders.indexOf("if ("+name+" !== undefined)");
+   assert.ok(at>=0,"Missing cache effect: "+name);
+   assert.ok(riders.slice(Math.max(0,at-80),at).includes("if (previewOnly) return;"),"Cache effect not protected: "+name);
  }
 });
 
