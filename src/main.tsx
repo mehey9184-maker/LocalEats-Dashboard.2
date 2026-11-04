@@ -30,38 +30,9 @@ try {
   const handleGlobalCrash = (source: string, error: unknown) => {
     console.error(`[Crash Monitor] App error logged via ${source}:`, error);
 
-    // Track consecutive crashes in sessionStorage
-    const consecutiveCrashes = Number(sessionStorage.getItem("localeats_crash_count") || "0");
-    const nextCrashCount = consecutiveCrashes + 1;
-    sessionStorage.setItem("localeats_crash_count", nextCrashCount.toString());
-
-    // Clean any orphaned service workers
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.getRegistrations().then((registrations) => {
-        for (const r of registrations) {
-          r.unregister();
-        }
-      }).catch(() => {});
-    }
-
-    // Single graceful recovery attempt only
-    if (nextCrashCount === 1) {
-      console.warn("[Crash Recovery] Single automatic cache refresh attempt triggered.");
-      try {
-        localStorage.removeItem("le_shops");
-        localStorage.removeItem("le_orders");
-        localStorage.removeItem("le_menu");
-      } catch (err) {
-        console.error("Local storage cleanup error:", err);
-      }
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
-    } else {
-      // STOP - Do NOT reload, do NOT manipulate React-managed DOM nodes.
-      // Allow React's ErrorBoundary to render the fallback interface safely.
-      console.warn("[Crash Recovery] Recovery ceiling reached (attempt limit = 1). Retaining stable React ErrorBoundary fallback.");
-    }
+    // Never destroy offline assets or user data on a single script error.
+    // The existing React ErrorBoundary owns visible recovery; do not force
+    // reloads that can erase in-progress work and cause startup flicker.
   };
 
   // Register unhandled error listeners
@@ -134,14 +105,6 @@ try {
     handleGlobalCrash("unhandled promise rejection", event.reason);
   });
 
-  // Safe timeout to clear crash counts if stable for > 8 seconds
-  setTimeout(() => {
-    try {
-      sessionStorage.removeItem("localeats_crash_count");
-    } catch {
-      // Fail-silent, optional non-blocking
-    }
-  }, 8000);
 
 } catch (err) {
   console.error("Critical self-healing initializer failure:", err);
