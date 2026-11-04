@@ -35,6 +35,11 @@ test("F1/S5: new Storefront read-only map remains intact; legacy writer never mo
   assert.match(app, /<MerchantStorefrontPreview key=\{String\(currentShop\.id\)\} shop=\{currentShop\}/);
   assert.doesNotMatch(app, /<ShopProfile\b/);
   assert.match(legacyStorefront, /supabase/); // Guard against accidentally remounting it.
+  assert.match(legacyStorefront, /previewOnly = true/);
+  assert.match(legacyStorefront, /form\.inert = true/);
+  assert.ok((legacyStorefront.match(/if\(previewOnly\)return/g) || []).length >= 5);
+  assert.match(legacyStorefront, /onDetectGPS=\{previewOnly \? undefined : handleUpdateLocation\}/);
+  assert.match(legacyStorefront, /disabled=\{previewOnly\}/);
   assert.match(safeStorefront, /sessionStorage\.setItem\(storageKey/);
   assert.match(safeStorefront, /Test pin only:/);
   assert.match(app, /settingsPreviewPanelRef/);
