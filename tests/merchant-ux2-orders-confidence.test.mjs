@@ -41,7 +41,7 @@ test("UX2: rendered queue has a visible reset even when advanced filters are col
 test("UX2: status overview and empty screen never report false current zeros", () => {
   assert.match(orders, /merchantOrdersConfidence\(ordersReadState, ordersVerifiedAt\)/);
   assert.match(orders, /merchantOrdersEmptyMessage\(ordersConfidence, viewMode, filtersApplied\)/);
-  assert.match(orders, /unverifiedWithoutPreviousOrders \? "—" : stat.count/);
+  assert.match(orders, /unverifiedWithoutPreviousOrders \? "—" : <RollingOrderCount value=\{stat.count\} animate=\{ordersConfidence === "verified"\}/);
   assert.match(orders, /unverifiedWithoutPreviousOrders \? "—" : displayedOrders.length/);
   assert.match(orders, /emptyOrderMessage.title/);
   assert.match(orders, /emptyOrderMessage.description/);
