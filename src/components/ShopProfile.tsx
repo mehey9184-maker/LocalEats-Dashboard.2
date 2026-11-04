@@ -21,6 +21,7 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { supabase } from "../lib/supabase";
 import { updateFirestoreShop } from "../lib/firebase";
+import { merchantStorefrontPreviewNotice } from "../services/merchantStorefrontPreviewPolicy";
 import { Shop, User } from "../types";
 import { LeafletMap } from "./LeafletMap";
 import { LocationSyncIndicator } from "./LocationSyncIndicator";
@@ -47,6 +48,7 @@ export interface ShopProfileProps {
   isSaving?: boolean;
   isSuccess?: boolean;
   onFinished?: () => void;
+  previewOnly?: boolean;
 }
 
 export const ShopProfile: React.FC<ShopProfileProps> = ({
@@ -58,6 +60,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
   isSaving = false,
   isSuccess = false,
   onFinished,
+  previewOnly = false,
 }: {
   shop: Shop;
   onRefresh: () => void;
@@ -67,7 +70,16 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
   isSaving?: boolean;
   isSuccess?: boolean;
   onFinished?: () => void;
+  previewOnly?: boolean;
 }) => {
+  const profileFormRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (!previewOnly) return;
+    const form = profileFormRef.current;
+    if (!form) return;
+    form.inert = true;
+    return () => { form.inert = false; };
+  }, [previewOnly]);
   const [uploadingType, setUploadingType] = useState<"logo" | null>(null);
   const [showMapPinConfirm, setShowMapPinConfirm] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -200,6 +212,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
   }, [formData.lat, formData.lng, formData.city, shop?.delivery_radius_km, shop?.delivery_radius_enabled]);
 
   const handleUpdateLocation = () => {
+    if(previewOnly)return;
     setIsLocating(true);
     if (!navigator.geolocation) {
       toast.error("Geolocation is not supported by your browser");
@@ -274,6 +287,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(previewOnly)return; // Stop every backend/cache update.
 
     const phoneCleaned = formData.phone.replace(/[\s-]/g, "");
     const whatsappCleaned = (formData.whatsapp || "").replace(/[\s-]/g, "");
@@ -468,6 +482,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
     e: React.ChangeEvent<HTMLInputElement>,
     type: "logo",
   ) => {
+    if(previewOnly)return; // No image uploads in Preview.
     if (!user) {
       toast.error("Not authenticated");
       return;
@@ -513,7 +528,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
             Storefront Profile
           </h2>
           <p className="text-xs md:text-sm text-on-surface-variant font-medium">
-            Customize how your shop appears to customers.
+            {previewOnly ? "Inspect the recorded shop details. Customer visibility and ordering are not verified in Preview." : "Customize how your shop appears to customers."}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -531,12 +546,15 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                 shop.is_active ? "bg-emerald-500 animate-pulse" : "bg-error",
               )}
             />
-            {shop.is_active ? "Live on App" : "Hidden"}
+            {previewOnly ? (shop.is_active ? "Recorded available" : "Recorded unavailable") : (shop.is_active ? "Live on App" : "Hidden")}
           </div>
         </div>
       </header>
 
+      {previewOnly && <p role="status" className="rounded-2xl bg-surface-container-low border border-outline-variant/15 p-4 text-xs text-on-surface-variant">{merchantStorefrontPreviewNotice()}</p>}
       <form
+        ref={profileFormRef}
+        aria-disabled={previewOnly}
         onSubmit={handleUpdate}
         className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8"
       >
@@ -638,7 +656,8 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                 </label>
                 <button
                   type="button"
-                  onClick={() => setShowMapPinConfirm(true)}
+                  disabled={previewOnly}
+                  onClick={() => {if(!previewOnly)setShowMapPinConfirm(true);}}
                   className="text-[10px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 px-2 py-1 rounded-full transition-colors flex items-center gap-1"
                 >
                   <MapPin size={12} />
@@ -672,6 +691,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                   deliveryRadiusKm={shop?.delivery_radius_km || 10}
                   deliveryRadiusEnabled={shop?.delivery_radius_enabled ?? true}
                   onLocationSelect={(lat, lng) => {
+                    if(previewOnly)return;
                     setFormData((prev) => ({ ...prev, lat, lng }));
                     const controller = new AbortController();
                     const timeout = setTimeout(() => controller.abort(), 3000);
@@ -702,8 +722,10 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    if(previewOnly)return;
                     setShowMapPinConfirm(true);
                   }}
+                  disabled={previewOnly}
                   className="absolute bottom-4 right-4 z-[40] bg-surface-container-lowest/90 backdrop-blur-md px-4 py-2 rounded-full shadow-md hover:scale-105 hover:bg-surface-container-lowest transition-all cursor-pointer flex items-center gap-2 border border-outline-variant/20"
                 >
                   <MapPin size={14} className="text-primary" />
@@ -716,6 +738,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
               {/* Real-time Location Sync Status Indicator */}
               <div className="pt-2">
                 <LocationSyncIndicator
+                  previewOnly={previewOnly}
                   locationState={{
                     lat: formData.lat || -25.9964,
                     lng: formData.lng || 28.2268,
@@ -726,8 +749,8 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                   }}
                   syncAnalysis={syncAnalysis}
                   isLocating={isLocating}
-                  onDetectGPS={handleUpdateLocation}
-                  onAutoAlign={() => {
+                  onDetectGPS={previewOnly ? undefined : handleUpdateLocation}
+                  onAutoAlign={previewOnly ? undefined : () => {
                     setFormData((prev) => ({
                       ...prev,
                       city: syncAnalysis.closestHubName,
@@ -844,7 +867,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
               Operating Hours
             </h3>
             <p className="text-xs text-on-surface-variant">
-              Set when your store is open for receiving and preparing customer orders.
+              {previewOnly ? "Recorded hours only. They do not activate or confirm pickup ordering." : "Set when your store is open for receiving and preparing customer orders."}
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
@@ -881,7 +904,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
           {/* Live Preview Card */}
           <div className="bg-surface-container-lowest p-6 rounded-[2rem] border border-outline-variant/10 shadow-sm overflow-hidden hidden lg:block">
             <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 mb-4 ml-1">
-              Live App Preview
+              Shop Card Preview
             </h3>
             <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-surface-container-low mb-4 shadow-inner">
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-primary/10" />
@@ -912,7 +935,9 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                 </div>
                 <button
                   type="button"
+                  disabled={previewOnly}
                   onClick={async () => {
+                    if(previewOnly)return;
                     try {
                       const { error } = await supabase
                         .from("shop_followers")
@@ -926,13 +951,12 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                   }}
                   className="px-3 py-1 bg-primary text-white text-[10px] font-bold rounded-full shadow-lg hover:bg-primary/90 transition-colors"
                 >
-                  Follow
+                  {previewOnly ? "Follow Unavailable" : "Follow"}
                 </button>
               </div>
             </div>
             <p className="text-[10px] text-on-surface-variant text-center italic leading-tight">
-              This is how your shop card appears to customers in the LocalEats
-              app.
+              {previewOnly ? "Shop card example only. Customer discovery and live checkout are not verified." : "This is how your shop card appears to customers in the LocalEats app."}
             </p>
           </div>
 
@@ -983,7 +1007,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                       className="hidden"
                       accept="image/*"
                       onChange={(e) => handleImageUpload(e, "logo")}
-                      disabled={!!uploadingType}
+                      disabled={previewOnly || !!uploadingType}
                     />
                   </label>
                 </div>
@@ -993,7 +1017,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
 
           <button
             type="submit"
-            disabled={isSaving || isSuccess}
+            disabled={previewOnly || isSaving || isSuccess}
             className={cn(
               "w-full py-3 md:py-4 text-on-primary font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2",
               isSuccess
@@ -1016,7 +1040,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
             ) : (
               <>
                 <CheckCircle2 size={18} />
-                Save Changes
+                {previewOnly ? "Save Unavailable" : "Save Changes"}
               </>
             )}
           </button>
@@ -1059,7 +1083,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                 </button>
                 <button
                   onClick={handleUpdateLocation}
-                  disabled={isLocating}
+                  disabled={previewOnly || isLocating}
                   className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-on-primary bg-primary hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {isLocating ? (
