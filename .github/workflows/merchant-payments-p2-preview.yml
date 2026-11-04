@@ -1,0 +1,37 @@
+name: Merchant Payments P2 Subscription Clarity Preview
+on:
+  push:
+    branches: [repair/merchant-payments-p2-plan-clarity-01]
+  pull_request:
+    branches: [repair/merchant-payments-p1-readonly-trust-01]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-payments-p2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Payments P2/P1, Marketing K4-K1, Menu M3-M1, Orders O6-O1 and Home H4-H1 regressions
+        run: node --experimental-strip-types --test tests/merchant-payments-p2-plan-clarity.test.mjs tests/merchant-payments-p1-readonly-trust.test.mjs tests/merchant-marketing-k4-final-guard.test.mjs tests/merchant-marketing-k3-preview-copy.test.mjs tests/merchant-marketing-k2-readonly-tools.test.mjs tests/merchant-marketing-k1-preview-trust.test.mjs tests/merchant-menu-m3-large-menu-images.test.mjs tests/merchant-menu-m2-usability.test.mjs tests/merchant-menu-m1-trust.test.mjs tests/merchant-orders-o6-final-pickup-safety.test.mjs tests/merchant-orders-o5-pickup-history.test.mjs tests/merchant-orders-o4-pickup-first.test.mjs tests/merchant-orders-o3-comms-receipts.test.mjs tests/merchant-orders-o2-confirmed-actions.test.mjs tests/merchant-orders-o1-trust.test.mjs tests/merchant-dashboard-h4-sast-dates.test.mjs tests/merchant-dashboard-h3-freshness.test.mjs tests/merchant-dashboard-h2-layout.test.mjs tests/merchant-dashboard-h1-trust.test.mjs
+      - name: Merchant activation, pickup and availability checks
+        run: |
+          node --experimental-strip-types --test tests/merchant-activation.test.mjs tests/merchant-pickup.test.mjs
+          npm run test:merchant-availability
+      - name: Pure helper ESLint
+        run: npx eslint src/services/merchantSubscriptionsPreview.ts src/services/merchantPaymentsTrust.ts src/components/marketing/ReadOnlyMarketingPreview.tsx src/services/merchantMarketingTrust.ts src/services/merchantMenuPolicy.ts src/services/merchantOrdersTrust.ts src/services/merchantDashboardLayout.ts src/components/DispatchAlertModal.tsx
+      - name: No new lint errors compared with owner-accepted Payments P1
+        run: node tests/merchant-dashboard-h1-lint-baseline.mjs
+        env:
+          MERCHANT_DASHBOARD_LINT_BASE: "093aca201a9c35e214e2bcf457b737b50eb285bd"
+      - name: Full Merchant Preview build
+        run: npm run build

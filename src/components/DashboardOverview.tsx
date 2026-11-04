@@ -11,6 +11,9 @@ import {
   subscribeAvailabilityCommand,
 } from "../utils/merchantAvailabilityCommand";
 import { Skeleton } from "../components/ui/Skeleton";
+import { RollingOrderCount } from "./ui/RollingOrderCount";
+import { merchantOrdersConfidence } from "../services/merchantOrdersUXTrust";
+import { OperationFeedback, type OperationFeedbackStatus } from "./ui/OperationFeedback";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { RiderConnection } from "../types";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
@@ -81,6 +84,7 @@ export interface DashboardOverviewProps {
   trialInfo: { daysRemaining: number; isExpired: boolean } | null;
   currentShop: Shop | undefined;
   darkMode: boolean;
+  previewOnly?: boolean;
 }
 
 const StatCard = React.memo(({
@@ -481,6 +485,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   trialInfo,
   currentShop,
   darkMode,
+  previewOnly = false,
 }: {
   orders: Order[];
   loading: boolean;
@@ -495,6 +500,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   trialInfo: { daysRemaining: number; isExpired: boolean } | null;
   currentShop: Shop | undefined;
   darkMode: boolean;
+  previewOnly?: boolean;
 }) => {
   const [followerCount, setFollowerCount] = useState<number | string>("--");
   const [followerTrend, setFollowerTrend] = useState<string>("0");
@@ -510,17 +516,32 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   }, [currentShop?.id]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isManualRefreshing,setIsManualRefreshing]=useState(false);
+  const [refreshFeedback,setRefreshFeedback]=useState<OperationFeedbackStatus>("idle");
+  const [verificationBeforeRefresh,setVerificationBeforeRefresh]=useState<number|null>(null);
   const hasVerifiedOrders=ordersVerifiedAt!==null;
+  const canRollOrderCounts=merchantOrdersConfidence(ordersReadState,ordersVerifiedAt)==="verified";
   const ordersStatusText=ordersReadState==="checking" ? "Checking current orders…" :
     ordersReadState==="unavailable" ? (hasVerifiedOrders ? "Orders API unavailable · showing last confirmed list" : "Orders API unavailable · counts not verified") :
     ordersVerifiedAt!==null ? `Orders checked at ${new Date(ordersVerifiedAt).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit"})}` : "Checking current orders…";
   const refreshDashboard=async()=>{
     if(isManualRefreshing)return;
+    setVerificationBeforeRefresh(ordersVerifiedAt);
     setIsManualRefreshing(true);
-    try{await Promise.resolve(onRefresh());}
-    catch{toast.error("Dashboard refresh could not be completed. Check your connection.");}
-    finally{setIsManualRefreshing(false);}
+    setRefreshFeedback("loading");
+    try{
+      await Promise.resolve(onRefresh());
+      // The fetch returning does not itself prove that the Orders API succeeded.
+      setRefreshFeedback("unverified");
+    }catch{
+      setRefreshFeedback("error");
+    }finally{
+      setIsManualRefreshing(false);
+    }
   };
+  const refreshWasVerified = refreshFeedback === "unverified" &&
+    ordersReadState === "confirmed" && ordersVerifiedAt !== null &&
+    (verificationBeforeRefresh === null || ordersVerifiedAt > verificationBeforeRefresh);
+  const refreshDisplayStatus:OperationFeedbackStatus = refreshWasVerified ? "success" : refreshFeedback;
   const [layoutMode, setLayoutMode] = useState<"compact" | "advanced">(() => {
     return (localStorage.getItem("localeats_dashboard_layout") as "compact" | "advanced") || "compact";
   });
@@ -1032,7 +1053,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 disabled={isManualRefreshing}
                 aria-busy={isManualRefreshing}
                 aria-label={isManualRefreshing ? "Refreshing dashboard" : "Refresh dashboard data"}
-                className="min-w-11 min-h-11 inline-flex items-center justify-center p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm"
+                className="merchant-tap-feedback min-w-11 min-h-11 inline-flex items-center justify-center p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm"
                 title="Refresh Dashboard"
               >
                 <RefreshCw size={20} className={isManualRefreshing ? "animate-spin" : ""} />
@@ -1041,6 +1062,18 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           </div>
         </div>
       </motion.section>
+
+      <OperationFeedback
+        status={refreshDisplayStatus}
+        message={refreshDisplayStatus === "loading" ? "Refreshing dashboard…" :
+          refreshDisplayStatus === "success" ? "Orders verified after refresh" :
+          refreshDisplayStatus === "error" ? "Dashboard refresh failed" :
+          "Refresh finished; order status not newly verified"}
+        detail={refreshDisplayStatus === "unverified" ? "Keep previously loaded figures marked as unverified until the Orders API confirms a fresh read." :
+          refreshDisplayStatus === "error" ? "Check the connection and retry. Your previous information remains visible." : undefined}
+        onRetry={refreshDisplayStatus === "error" || refreshDisplayStatus === "unverified" ? () => { void refreshDashboard(); } : undefined}
+        className="max-w-2xl"
+      />
 
       {currentShop && (
         <motion.div
@@ -1119,9 +1152,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 Shop Status Control
               </span>
               <button
-                disabled={isStatusToggling}
+                disabled={previewOnly || isStatusToggling}
                 onClick={async () => {
-                  if (isStatusToggling) return;
+                  if (previewOnly || isStatusToggling) return;
                   const newStatus = !currentShop.is_active;
 
                   const { success, error, freshShop } = await syncShopAvailability({
@@ -1153,6 +1186,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                     <Loader2 size={14} className="animate-spin" />
                     <span>Updating...</span>
                   </>
+                ) : previewOnly ? (
+                  <><ShieldCheck size={14} /><span>Status Change Unavailable</span></>
                 ) : currentShop.is_active ? (
                   <>
                     <X size={14} />
@@ -1179,7 +1214,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             <p role="status" aria-live="polite" className={`text-xs font-bold mt-2 ${ordersReadState==="unavailable"?"text-amber-600 dark:text-amber-400":"text-on-surface-variant"}`}>{ordersStatusText}</p>
           </div>
           <button type="button" onClick={()=>onNavigate("orders")}
-            className="min-h-11 w-full sm:w-auto px-5 py-3 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-on-primary font-black text-xs uppercase tracking-wider rounded-xl focus-visible:outline-2 focus-visible:outline-primary">
+            className="merchant-tap-feedback min-h-11 w-full sm:w-auto px-5 py-3 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-on-primary font-black text-xs uppercase tracking-wider rounded-xl focus-visible:outline-2 focus-visible:outline-primary">
             <ReceiptText size={16} aria-hidden="true" />
             Manage Orders
           </button>
@@ -1200,7 +1235,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 <span className={`p-1.5 rounded-lg shrink-0 ${item.tone}`}><item.icon size={16} aria-hidden="true" /></span>
               </div>
               <span className={`text-2xl md:text-3xl font-headline font-black ${item.urgent&&item.count>0?"text-orange-600":"text-on-surface"}`}>
-                {hasVerifiedOrders?item.count:"—"}
+                {hasVerifiedOrders ? <RollingOrderCount value={item.count} animate={canRollOrderCounts} /> : "—"}
               </span>
             </button>
           ))}
@@ -1221,7 +1256,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           </div>
           <div className="mt-4 flex items-baseline gap-2">
             <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              {hasVerifiedOrders?todayOrdersCount:"—"}
+              {hasVerifiedOrders ? <RollingOrderCount value={todayOrdersCount} animate={canRollOrderCounts} /> : "—"}
             </span>
             <span className={cn(
               "text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1",
@@ -1320,7 +1355,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             </div>
             <button
               onClick={() => onNavigate("menu")}
-              className="px-6 py-2 bg-error text-white text-xs font-bold rounded-full hover:bg-error/90 transition-colors shadow-sm"
+              className="merchant-tap-feedback px-6 py-2 bg-error text-white text-xs font-bold rounded-full hover:bg-error/90 transition-colors shadow-sm"
             >
               Review Menu
             </button>
@@ -1588,14 +1623,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             <div>
               <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">Bulk Storefront Switch</h3>
               <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
-                Request an availability change for each linked shop. The API must confirm every update.
+                {previewOnly ? "Availability changes are disabled in Preview. The recorded shop status does not prove live ordering." : "Request an availability change for each linked shop. The API must confirm every update."}
               </p>
             </div>
           </div>
           <button
-            disabled={isStatusToggling}
+            disabled={previewOnly || isStatusToggling}
             onClick={async () => {
-              if (isStatusToggling) return;
+              if (previewOnly || isStatusToggling) return;
               const anyActive = shops.some(s => s.is_active);
               const newStatus = !anyActive;
 
@@ -1630,7 +1665,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 : "bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20"
             )}
           >
-            {shops.some(s => s.is_active) ? "Set All Offline" : "Set All Online"}
+            {previewOnly ? "Bulk Status Unavailable" : shops.some(s => s.is_active) ? "Set All Offline" : "Set All Online"}
           </button>
         </div>
       )}
