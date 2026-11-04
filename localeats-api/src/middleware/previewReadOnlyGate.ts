@@ -9,7 +9,7 @@ import type {RequestHandler} from "express";
  * Do not rely on this guard as a substitute for isolated staging credentials.
  */
 export const previewReadOnlyGate:RequestHandler=(req,res,next)=>{
-  if(process.env.VERCEL_ENV !== "preview") { next(); return; }
+  if(process.env.VERCEL_ENV !== "preview" && process.env.LOCALEATS_PREVIEW_READ_ONLY !== "true") { next(); return; }
   const method=req.method.toUpperCase();
   if(!["POST","PUT","PATCH","DELETE"].includes(method)) {next();return;}
   res.status(503).set("Cache-Control","no-store").json({
