@@ -3,7 +3,8 @@
 Status: 2026-11-05. This PR combines separate **unmerged** draft changes #56 and #59 for a cross-app Preview test. This document does not authorize Production releases, real orders, payments or riders.
 
 ## What was verified in code
-- Customer transactions remain disabled by the existing strict flags; this integration does not add or change a write route or launch switch.
+- Customer transactions remain disabled by the existing strict flags; this integration does not add or change a launch switch.
+- **Additional Preview-only API guard:** if `VERCEL_ENV=preview`, `POST`, `PUT`, `PATCH` and `DELETE` are rejected by `previewReadOnlyGate` before API routes. Production/local runtime remains unchanged. This protects manual browser testing from making unintended live-database writes when Preview and Production share credentials, but **it does not substitute for separate staging credentials**. It also blocks Preview POST /quote by design. The guard is regression-tested over real localhost HTTP without any Supabase access.
 - Merchant reads use an authoritative Firebase-authenticated LocalEats API. The API checks merchant-owned shop IDs and returns the newest 250 historical records **plus** older unfinished orders, deduplicated and shop-scoped. Paged reads fail closed rather than imply a complete list when data may be missing.
 - A shop/account switch clears the old in-memory order list **before the browser paints** and cancels adoption of old requests (privacy/correctness fix to #56).
 - Foreground, reconnect and manual Retry call one deduplicated read. A failed same-shop refresh keeps prior verified rows with an explicit stale-warning; it does not invent success or silently clear unfinished orders.
