@@ -709,7 +709,8 @@ export const Marketing: React.FC<MarketingProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* Booster 1: Lunch Rush */}
               <div
-                onClick={() => handleLaunchQuickAction("flash_deals")}
+                aria-disabled={!publishingEnabled}
+                onClick={publishingEnabled ? () => handleLaunchQuickAction("flash_deals") : undefined}
                 className="p-4 rounded-2xl bg-orange-500/5 hover:bg-orange-500/10 border border-orange-500/20 transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div>
@@ -736,7 +737,8 @@ export const Marketing: React.FC<MarketingProps> = ({
 
               {/* Booster 2: Win Back Diners */}
               <div
-                onClick={() => handleLaunchQuickAction("direct_reach")}
+                aria-disabled={!publishingEnabled}
+                onClick={publishingEnabled ? () => handleLaunchQuickAction("direct_reach") : undefined}
                 className="p-4 rounded-2xl bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div>
@@ -763,7 +765,8 @@ export const Marketing: React.FC<MarketingProps> = ({
 
               {/* Booster 3: Table Tents */}
               <div
-                onClick={() => handleLaunchQuickAction("table_tents")}
+                aria-disabled={!publishingEnabled}
+                onClick={publishingEnabled ? () => handleLaunchQuickAction("table_tents") : undefined}
                 className="p-4 rounded-2xl bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/20 transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div>
@@ -790,7 +793,8 @@ export const Marketing: React.FC<MarketingProps> = ({
 
               {/* Booster 4: Counter Flyer */}
               <div
-                onClick={() => handleLaunchQuickAction("qr_stands")}
+                aria-disabled={!publishingEnabled}
+                onClick={publishingEnabled ? () => handleLaunchQuickAction("qr_stands") : undefined}
                 className="p-4 rounded-2xl bg-purple-500/5 hover:bg-purple-500/10 border border-purple-500/20 transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div>
@@ -843,6 +847,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                   className="flex-1 bg-transparent border-none text-xs font-mono text-on-surface px-2 outline-none"
                 />
                 <button
+                  type="button"
+                  disabled={!publishingEnabled}
+                  title="Storefront sharing is locked until ordering is approved"
                   onClick={copyStoreUrl}
                   className="px-4 py-2 bg-primary hover:bg-primary/90 text-on-primary text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
                 >
@@ -853,6 +860,9 @@ export const Marketing: React.FC<MarketingProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
                 <button
+                  type="button"
+                  disabled={!publishingEnabled}
+                  title="WhatsApp campaigns are not activated"
                   onClick={() => handleLaunchQuickAction("whatsapp")}
                   className="p-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
                 >
@@ -861,6 +871,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                 </button>
 
                 <button
+                  type="button"
+                  disabled={!publishingEnabled}
+                  title="Publishing social posts is not activated"
                   onClick={() => handleLaunchQuickAction("social_studio")}
                   className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer"
                 >
@@ -869,7 +882,10 @@ export const Marketing: React.FC<MarketingProps> = ({
                 </button>
 
                 <button
-                  onClick={() => setMainSegment("campaign_builder")}
+                  type="button"
+                  disabled={!publishingEnabled}
+                  title="Vouchers are not activated"
+                  onClick={() => { if(publishingEnabled) setMainSegment("campaign_builder"); }}
                   className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer"
                 >
                   <Ticket size={15} className="text-primary" />
@@ -894,15 +910,18 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <p className="text-[11px] text-on-surface-variant">QR Preview Only — Not for Distribution</p>
               </div>
               <div className="w-full grid grid-cols-2 gap-2">
-                <a
-                  href={qrDataUrl}
-                  download={`QR_${activeShop?.name || "Store"}.png`}
-                  className="py-2 px-3 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-[11px] font-bold flex items-center justify-center gap-1 border border-outline-variant/20 cursor-pointer"
+                <span
+                  title="QR export is unavailable before launch"
+                  aria-disabled="true"
+                  className="py-2 px-3 rounded-xl bg-surface-container-high text-on-surface-variant text-[11px] font-bold flex items-center justify-center gap-1 border border-outline-variant/20 opacity-50 cursor-not-allowed"
                 >
                   <Download size={13} />
                   <span>PNG</span>
-                </a>
+                </span>
                 <button
+                  type="button"
+                  disabled={!publishingEnabled}
+                  title="Order-link printing is not activated"
                   onClick={() => handleLaunchQuickAction("qr_stands")}
                   className="py-2 px-3 rounded-xl bg-primary text-on-primary text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
                 >
