@@ -24,7 +24,7 @@ Official:
 
 GitHub workflow `.github/workflows/merchant-backup-restore-rehearsal.yml`:
 
-1. Starts a **disposable** PostgreSQL 17 container, with synthetic roles and no production secrets.
+1. Starts a **disposable** PostgreSQL 16 container, with synthetic roles and no production secrets. The connected Production server uses PostgreSQL 17, so an isolated version-compatible real-data restore remains an independent requirement.
 2. Creates 20 fictional shops, 150 fictional orders distributed over 15 minutes (10/minute), 150 immutable order events and 150 synthetic notification-outbox jobs.
 3. Creates a unique order idempotency index, foreign keys, a trigger, and a restrictive RLS policy.
 4. Takes a compressed `pg_dump` of the synthetic `public` schema into a runner-local, permission-restricted temporary directory.
