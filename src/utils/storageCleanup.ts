@@ -30,6 +30,8 @@ export const cleanLocalStorageCache = (): StorageCleanupResult => {
 
   // Specific legacy or temporary keys that should be safely removed on app launch
   const staleKeyPrefixes = [
+    // Retire unscoped private order snapshots from older Dashboard versions.
+    "localeats_cached_orders",
     "le_shops",
     "le_orders",
     "le_menu",
