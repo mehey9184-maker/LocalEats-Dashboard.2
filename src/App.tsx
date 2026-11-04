@@ -1,4 +1,5 @@
 ﻿import {pickupOrderingEnabled,pickupPaymentSettingsEnabled} from "./services/merchantPickupPolicy";
+import {merchantSettingsOperationalWritesEnabled,merchantSettingsOperationsNotice,merchantSettingsHardwareNotice} from "./services/merchantSettingsOperationalPreview";
 import {isPickupOrder} from "./services/merchantPickupPolicy";
 import { checkPrinterConnectivity, printViaBluetooth, printViaUSB } from "./utils/escPosEngine";
 import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
@@ -2645,6 +2646,7 @@ function App() {
                     {settingsCategory === "operations" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">Operations Center</h3>
+                        <p role="status" className="text-xs text-on-surface-variant bg-surface-container-low rounded-2xl border border-outline-variant/15 p-3">{merchantSettingsOperationsNotice()}</p>
                   {/* Order Operations Section */}
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
                     <div className="flex items-center gap-2 border-b border-outline-variant/10 pb-4">
@@ -2656,7 +2658,7 @@ function App() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Store Status</p>
-                        <p className="text-xs text-on-surface-variant">Are you currently accepting new orders?</p>
+                        <p className="text-xs text-on-surface-variant">Shop open/closed setting only; real pickup ordering is not active in this Preview.</p>
                       </div>
                       <div className="flex bg-surface-container-high p-1 rounded-xl border border-outline-variant/10">
                          {(["open", "busy", "closed"] as const).map((statusOption) => {
@@ -2669,9 +2671,9 @@ function App() {
                            return (
                              <button
                                key={statusOption}
-                               disabled={availabilityBusy}
+                               disabled={availabilityBusy || !merchantSettingsOperationalWritesEnabled()}
                                onClick={() => {
-                                 if (!currentShop || availabilityBusy) return;
+                                 if (!currentShop || availabilityBusy || !merchantSettingsOperationalWritesEnabled()) return;
                                    const isActive = statusOption === "open" || statusOption === "busy";
                                    void syncShopAvailability({
                                      shopId: currentShop.id,
@@ -2714,11 +2716,12 @@ function App() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Default Prep Time</p>
-                        <p className="text-xs text-on-surface-variant">Estimated minutes to prepare an average order.</p>
+                        <p className="text-xs text-on-surface-variant">Preparation-time example only. No customer order promise is set from this Preview.</p>
                       </div>
                       <div className="flex items-center gap-3">
                          <input 
-                           type="range" 
+                           type="range"
+                           disabled={!merchantSettingsOperationalWritesEnabled()} 
                            min="5" 
                            max="60" 
                            step="5"
@@ -2737,7 +2740,7 @@ function App() {
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-2">
                           <MapPin size={18} className="text-on-surface-variant" />
-                          <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Operating Hours</h3>
+                          <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Operating Hours (Preview)</h3>
                         </div>
                         <div className="flex flex-wrap items-center gap-4">
                            {/* Auto Schedule Store Hours Toggle */}
@@ -2745,7 +2748,7 @@ function App() {
                              <div className="flex flex-col">
                                <span className="text-xs font-bold text-on-surface">Auto-Schedule Opening</span>
                                <span className="text-[9px] text-on-surface-variant font-medium">
-                                 {"Server-managed in South African time; manual close takes priority"}
+                                 {"Schedule status requires server verification. Editing is unavailable in Preview."}
                                </span>
                              </div>
                              <button
@@ -2762,9 +2765,9 @@ function App() {
                            <div className="flex items-center gap-2">
                              <span className="text-xs font-bold text-on-surface-variant">Manual Holiday Mode</span>
                              <button
-                               disabled={availabilityBusy}
+                               disabled={availabilityBusy || !merchantSettingsOperationalWritesEnabled()}
                                onClick={async () => {
-                                 if (!currentShop || availabilityBusy) return;
+                                 if (!currentShop || availabilityBusy || !merchantSettingsOperationalWritesEnabled()) return;
                                  const newStatus = !currentShop.is_active;
 
                                  const { success, error, freshShop } = await syncShopAvailability({shopId:currentShop.id,isOpen:newStatus});
@@ -2773,7 +2776,7 @@ function App() {
                                    const open = freshShop?.is_active === true;
                                    toast.success(
                                      open
-                                       ? "Holiday Mode disabled. Your store is now accepting orders."
+                                       ? "Holiday Mode disabled. Shop availability was updated; pickup ordering requires separate activation."
                                        : "Holiday Mode enabled. Your store is now temporarily closed.",
                                      { icon: <PauseCircle className="text-primary"/> }
                                    );
@@ -2792,15 +2795,17 @@ function App() {
                         </div>
                       </div>
 
-                      {/* Scheduled Holiday Range */}
+                      {/* Holiday Date Range — Not Active */}
                       <div className="flex flex-col gap-2 bg-surface-container-highest/20 p-3.5 rounded-xl border border-outline-variant/5">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Scheduled Holiday Range</label>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Holiday Date Range — Not Active</label>
                         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                            <input 
-                              type="date" 
+                              type="date"
+                              disabled={!merchantSettingsOperationalWritesEnabled()} 
                               className="bg-surface-container-low text-xs border border-outline-variant/20 rounded-lg px-3 py-2 focus:outline-none focus:border-primary/50 font-mono"
                               value={user?.user_metadata?.holiday_schedule?.start || ''} 
                               onChange={async (e) => {
+                                if(!merchantSettingsOperationalWritesEnabled()) return;
                                 const currentSchedule = user?.user_metadata?.holiday_schedule || {};
                                 const { data: updateRes, error } = await supabase.auth.updateUser({
                                   data: { holiday_schedule: { ...currentSchedule, start: e.target.value } }
@@ -2815,10 +2820,12 @@ function App() {
                            />
                            <span className="text-xs font-bold text-on-surface-variant text-center sm:text-left">to</span>
                            <input 
-                              type="date" 
+                              type="date"
+                              disabled={!merchantSettingsOperationalWritesEnabled()} 
                               className="bg-surface-container-low text-xs border border-outline-variant/20 rounded-lg px-3 py-2 focus:outline-none focus:border-primary/50 font-mono"
                               value={user?.user_metadata?.holiday_schedule?.end || ''} 
                               onChange={async (e) => {
+                                if(!merchantSettingsOperationalWritesEnabled()) return;
                                 const currentSchedule = user?.user_metadata?.holiday_schedule || {};
                                 const { data: updateRes, error } = await supabase.auth.updateUser({
                                   data: { holiday_schedule: { ...currentSchedule, end: e.target.value } }
@@ -2833,7 +2840,9 @@ function App() {
                            />
                            {(user?.user_metadata?.holiday_schedule?.start || user?.user_metadata?.holiday_schedule?.end) && (
                              <button 
+                               disabled={!merchantSettingsOperationalWritesEnabled()}
                                onClick={async () => {
+                                 if(!merchantSettingsOperationalWritesEnabled()) return;
                                  const { data: updateRes, error } = await supabase.auth.updateUser({
                                    data: { holiday_schedule: null }
                                  });
@@ -2855,7 +2864,9 @@ function App() {
                     <div className="space-y-4">
                       <div className="flex justify-end">
                         <button
+                          disabled={!merchantSettingsOperationalWritesEnabled()}
                           onClick={() => {
+                            if(!merchantSettingsOperationalWritesEnabled()) return;
                             const monday = operatingHours[0];
                             const newHours = operatingHours.map(d => 
                               ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(d.day) 
@@ -2875,6 +2886,7 @@ function App() {
                           <div className="flex items-center gap-3 w-32">
                              <input 
                                type="checkbox"
+                               disabled={!merchantSettingsOperationalWritesEnabled()}
                                checked={dayObj.active}
                                onChange={(e) => {
                                  const newHours = [...operatingHours];
@@ -2892,6 +2904,7 @@ function App() {
                             <div className="flex items-center gap-3 flex-1">
                               <input 
                                 type="time"
+                                  disabled={!merchantSettingsOperationalWritesEnabled()}
                                 value={dayObj.open}
                                 onChange={(e) => {
                                   const newHours = [...operatingHours];
@@ -2903,6 +2916,7 @@ function App() {
                               <span className="text-on-surface-variant text-xs font-bold">to</span>
                               <input 
                                 type="time"
+                                  disabled={!merchantSettingsOperationalWritesEnabled()}
                                 value={dayObj.close}
                                 onChange={(e) => {
                                   const newHours = [...operatingHours];
@@ -2921,7 +2935,9 @@ function App() {
                       ))}
                       <div className="flex justify-end pt-2">
                         <button 
+                          disabled={!merchantSettingsOperationalWritesEnabled()}
                           onClick={async () => {
+                            if(!merchantSettingsOperationalWritesEnabled()) return;
                             const { data: updateRes, error } = await supabase.auth.updateUser({
                               data: { weekly_operating_hours: operatingHours }
                             });
@@ -2934,7 +2950,7 @@ function App() {
                           }}
                           className="px-4 py-2 bg-primary text-on-primary rounded-xl text-xs font-bold shadow-sm"
                         >
-                          Save Hours
+                          Save Hours — Unavailable
                         </button>
                       </div>
                     </div>
