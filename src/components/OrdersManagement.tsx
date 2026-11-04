@@ -3607,9 +3607,14 @@ Notes: "${order.notes || "None"}"
 
             <div className="bg-surface-container-high rounded-3xl p-8 relative overflow-hidden">
               <div className="relative z-10">
-                <h4 className="font-headline text-lg font-bold text-on-surface mb-6">
+                <h4 className="font-headline text-lg font-bold text-on-surface mb-2">
                   Status Overview
                 </h4>
+                <p role="status" className="mb-5 text-xs text-on-surface-variant">
+                  {ordersConfidence === "verified" ? "Counts from the latest verified API list." :
+                    unverifiedWithoutPreviousOrders ? "Counts unavailable until order verification succeeds." :
+                    "Previous counts only — refresh to verify current orders."}
+                </p>
                 <div className="space-y-5">
                   {[
                     {
@@ -3652,7 +3657,7 @@ Notes: "${order.notes || "None"}"
                         </span>
                       </div>
                       <span className="font-headline font-bold">
-                        {stat.count}
+                        {unverifiedWithoutPreviousOrders ? "—" : stat.count}
                       </span>
                     </div>
                   ))}
@@ -3662,10 +3667,11 @@ Notes: "${order.notes || "None"}"
                     Preparing Orders
                   </div>
                   <div className="text-3xl font-headline font-extrabold text-primary">
-                    {orders.filter(o=>o.status==="preparing").length}
+                    {unverifiedWithoutPreviousOrders ? "—" : orders.filter(o=>o.status==="preparing").length}
                   </div>
                   <div className="text-xs text-on-surface-variant mt-1">
-                    Orders currently marked preparing
+                    {ordersConfidence === "verified" ? "Preparing orders in the verified list" :
+                      "Not a confirmed current preparing count"}
                   </div>
                 </div>
               </div>
