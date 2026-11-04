@@ -183,6 +183,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [customerSearch, setCustomerSearch] = useState("");
   const [phoneSearch, setPhoneSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [showOrderFilters, setShowOrderFilters] = useState(false);
   const [acceptingOrderId, setAcceptingOrderId] = useState<string | null>(null);
   const [orderNotes, setOrderNotes] = useState(""); // Added for Order Notes
   const [selectedPendingOrders, setSelectedPendingOrders] = useState<string[]>([]); // Added for Bulk Actions
@@ -2233,7 +2234,7 @@ Notes: "${order.notes || "None"}"
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       <p role="status" className="text-xs text-on-surface-variant mb-3">{pickupOrderingEnabled() ? "Pickup actions are API-authorized. Confirm actual payment before food handover and Collected. Historical delivery records remain available." : "Pickup order, payment and collection changes are disabled pending separately approved database activation. Existing management and historical delivery records remain available."}</p>
       {!merchantPickupReadCurrent(ordersReadState, ordersVerifiedAt) && (
         <div role="status" className="flex flex-wrap items-center gap-2 px-4 py-3 rounded-xl border border-amber-500/25 bg-amber-500/5 text-xs text-on-surface-variant">
@@ -2242,232 +2243,98 @@ Notes: "${order.notes || "None"}"
           <button type="button" className="font-bold underline text-primary" onClick={onRefresh}>Refresh Orders</button>
         </div>
       )}
-      <section className="flex flex-col gap-6">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-          <div className="max-w-2xl space-y-1">
-            <span className="font-label text-[11px] font-bold uppercase tracking-[0.2em] text-primary mb-2 block">
-              Live Operations
-            </span>
-            <h2 className="font-headline text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
-              Orders Management
-            </h2>
-            <p className="text-sm text-on-surface-variant font-medium">
-              Prepare customer collections and review the latest verified order
-              status. Delivery workflows are reserved for a later phase.
-            </p>
-          </div>
-          
-          <div className="hidden md:flex flex-wrap gap-3 justify-start md:justify-end shrink-0">
-
-            <button
-              onClick={() => {
-                console.log("Refreshing orders...");
-                onRefresh();
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-on-primary rounded-full text-xs md:text-sm font-bold shadow-sm hover:scale-105 transition-all cursor-pointer relative z-20"
-            >
-              <Clock size={16} className="md:w-[18px] md:h-[18px]" />
-              Refresh
-            </button>
-            <button
-              onClick={exportToCSV}
-              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-            >
-              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              Spreadsheet
-            </button>
-            <button
-              onClick={exportToJSON}
-              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-            >
-              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              Export JSON
-            </button>
-          </div>
-        </div>
-
-        <div className="hidden md:flex flex-wrap items-center gap-4">
-          <div className="hidden md:flex p-1.5 bg-surface-container-low rounded-full w-fit">
-            <button
-              onClick={() => setViewMode("active")}
-              className={cn(
-                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                viewMode === "active"
-                  ? "bg-surface-container-lowest shadow-sm text-primary"
-                  : "text-on-secondary-container hover:bg-surface-container-high",
-              )}
-            >
-              Current Orders
-            </button>
-            <button
-              onClick={() => setViewMode("history")}
-              className={cn(
-                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                viewMode === "history"
-                  ? "bg-surface-container-lowest shadow-sm text-primary"
-                  : "text-on-secondary-container hover:bg-surface-container-high",
-              )}
-            >
-              Order History
-            </button>
-          </div>
-
-          
-
-          <button
-            onClick={() => setKitchenMode(!kitchenMode)}
-            className={cn(
-              "hidden md:flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all border-2 ml-auto",
-              kitchenMode
-                ? "bg-primary text-on-primary border-primary"
-                : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
-            )}
-          >
-            <UtensilsCrossed size={18} />
-            Kitchen Mode {kitchenMode ? "ON" : "OFF"}
-          </button>
-        </div>
-
-        {/* MOBILE COMPACT ACTIONS CONSOLE */}
-          <div className="flex md:hidden flex-col gap-2.5 w-full bg-surface-container-lowest/40 dark:bg-zinc-900/40 p-3 rounded-2xl border border-outline-variant/5">
-            <div className="flex items-center gap-2 w-full justify-between">
-              {/* Core viewMode switch */}
-              <div className="flex p-1 bg-surface-container-low rounded-full flex-1">
-                <button
-                  onClick={() => setViewMode("active")}
-                  className={cn(
-                    "flex-1 py-2 text-center rounded-full text-xs font-black transition-all",
-                    viewMode === "active"
-                      ? "bg-white dark:bg-zinc-800 shadow-sm text-primary"
-                      : "text-on-surface-variant/70 hover:text-on-surface",
-                  )}
-                >
-                  Current
-                </button>
-                <button
-                  onClick={() => setViewMode("history")}
-                  className={cn(
-                    "flex-1 py-2 text-center rounded-full text-xs font-black transition-all",
-                    viewMode === "history"
-                      ? "bg-white dark:bg-zinc-800 shadow-sm text-primary"
-                      : "text-on-surface-variant/70 hover:text-on-surface",
-                  )}
-                >
-                  History
-                </button>
-              </div>
-
-              {/* Live refresh shortcut button */}
-              <button
-                onClick={() => {
-                  console.log("Refreshing orders...");
-                  onRefresh();
-                }}
-                className="w-10 h-10 bg-primary text-on-primary rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform"
-                title="Refresh Queue"
-              >
-                <Clock size={16} />
+      {/* Compact workspace toolbar: put order cards ahead of secondary controls. */}
+      <section aria-label="Orders workspace" className="rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/80 p-3 md:p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-headline text-xl md:text-2xl font-bold tracking-tight text-on-surface">
+            Orders
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <div role="group" aria-label="Orders view" className="inline-flex items-center gap-1 rounded-full bg-surface-container-low p-1">
+              <button type="button" onClick={() => setViewMode("active")} aria-pressed={viewMode === "active"}
+                className={cn("px-3 py-1.5 rounded-full text-xs font-bold transition-colors", viewMode === "active" ? "bg-surface-container-lowest text-primary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-high")}>
+                Current Orders
               </button>
-
-              {/* More tools console toggle */}
-              <button
-                onClick={() => setShowMobileActions(!showMobileActions)}
-                className={cn(
-                  "w-10 h-10 rounded-full flex items-center justify-center transition-all border",
-                  showMobileActions
-                    ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
-                    : "bg-surface-container-high text-on-surface border-transparent"
-                )}
-                title="Toggle Extra Tools"
-              >
-                <Settings size={16} className={cn(showMobileActions && "animate-spin")} />
+              <button type="button" onClick={() => setViewMode("history")} aria-pressed={viewMode === "history"}
+                className={cn("px-3 py-1.5 rounded-full text-xs font-bold transition-colors", viewMode === "history" ? "bg-surface-container-lowest text-primary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-high")}>
+                History
               </button>
             </div>
-
-            {/* Collapsible secondary actions panel */}
-            <AnimatePresence>
-              {showMobileActions && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden flex flex-col gap-2 pt-2 border-t border-outline-variant/10"
-                >
-                  {/* Kitchen Mode row */}
-                  <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
-                    <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
-                      <UtensilsCrossed size={14} />
-                      Kitchen Mode {kitchenMode ? "(Active)" : "(Inactive)"}
-                    </span>
-                    <button
-                      onClick={() => setKitchenMode(!kitchenMode)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors",
-                        kitchenMode
-                          ? "bg-primary text-on-primary"
-                          : "bg-surface-container-high text-on-surface"
-                      )}
-                    >
-                      Toggle
-                    </button>
-                  </div>
-
-                  {/* Layout Mode row */}
-                  {viewMode === "active" && (
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
-                      <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
-                        <LayoutGrid size={14} />
-                        Layout: {true ? "Kanban Board" : "List View"}
-                      </span>
-                      <button
-                        onClick={() => setLayoutMode(true ? "list" : "kanban")}
-                        className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-primary text-on-primary cursor-pointer"
-                      >
-                        Switch
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Exports Row */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={exportToCSV}
-                      className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
-                    >
-                      <FileDown size={14} />
-                      Export Spreadsheet
-                    </button>
-                    <button
-                      onClick={exportToJSON}
-                      className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
-                    >
-                      <FileDown size={14} />
-                      Export JSON
-                    </button>
-                  </div>
-
-                  {/* Danger zone clear all */}
-      
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <button type="button" onClick={onRefresh}
+              className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-2 text-xs font-bold text-on-primary hover:opacity-90 focus-visible:outline-2 focus-visible:outline-primary">
+              <RefreshCw size={15} /> Refresh
+            </button>
+            <button type="button" aria-expanded={showMobileActions} aria-controls="orders-extra-tools"
+              onClick={() => setShowMobileActions(!showMobileActions)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high px-3 py-2 text-xs font-bold text-on-surface hover:bg-surface-container-highest">
+              <Settings size={15} /> Tools
+            </button>
           </div>
+        </div>
+        {showMobileActions && (
+          <div id="orders-extra-tools" className="flex flex-wrap items-center gap-2 border-t border-outline-variant/15 pt-3">
+            <button type="button" onClick={() => setKitchenMode(!kitchenMode)}
+              aria-pressed={kitchenMode}
+              className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold", kitchenMode ? "bg-primary text-on-primary" : "bg-surface-container-high text-on-surface")}>
+              <UtensilsCrossed size={15} /> Kitchen Mode {kitchenMode ? "ON" : "OFF"}
+            </button>
+            <button type="button" onClick={exportToCSV}
+              className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high px-3 py-2 text-xs font-bold text-on-surface">
+              <FileDown size={15} /> Spreadsheet
+            </button>
+            <button type="button" onClick={exportToJSON}
+              className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high px-3 py-2 text-xs font-bold text-on-surface">
+              <FileDown size={15} /> Export JSON
+            </button>
+          </div>
+        )}
       </section>
 
       <div
         className={cn(
-          "grid grid-cols-1 gap-8 items-start",
+          "grid grid-cols-1 gap-5 items-start",
           !kitchenMode && "lg:grid-cols-12",
         )}
       >
         <div
           className={cn(
             kitchenMode ? "col-span-full" : "lg:col-span-8",
-            "space-y-6",
+            "space-y-3",
           )}
         >
-          <div className="flex flex-col gap-4">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-headline text-lg font-bold flex items-center gap-2">
+                {viewMode === "active" ? "Active Queue" : "Order History"}
+                <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">
+                  {displayedOrders.length} Orders
+                </span>
+              </h3>
+              <div className="flex items-center gap-2">
+                <button type="button"
+                  aria-label="Search orders" aria-expanded={showSearch}
+                  onClick={() => setShowSearch(!showSearch)}
+                  className={cn(
+                    "p-2 rounded-full transition-colors",
+                    showSearch
+                      ? "bg-primary text-on-primary"
+                      : "hover:bg-surface-container-low text-on-surface-variant",
+                  )}
+                >
+                  <Search size={20} />
+                </button>
+                <button type="button" onClick={() => setShowOrderFilters(!showOrderFilters)}
+                  aria-expanded={showOrderFilters} aria-controls="orders-filter-panel"
+                  className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors", showOrderFilters ? "border-primary bg-primary/10 text-primary" : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:border-primary/30")}>
+                  <SlidersHorizontal size={14} /> Filters &amp; sort
+                  {(filterStatus !== "All" || orderTypeFilter !== "All" || startDate || endDate || searchTerm || customerSearch || phoneSearch) && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="Filters active" />}
+                </button>
+              </div>
+            </div>
+
+
+            {showOrderFilters && (
+              <div id="orders-filter-panel" className="space-y-3 rounded-2xl border border-outline-variant/15 bg-surface-container-lowest p-3">
             <div className="flex flex-wrap gap-2 items-center" role="group" aria-label="Order fulfillment filter">
               <span className="text-xs font-bold text-on-surface-variant">Fulfillment:</span>
               {([
@@ -2615,27 +2482,6 @@ Notes: "${order.notes || "None"}"
               </motion.div>
             )}
 
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-headline text-xl font-bold flex items-center gap-2">
-                {viewMode === "active" ? "Active Queue" : "Order History"}
-                <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">
-                  {displayedOrders.length} Orders
-                </span>
-              </h3>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowSearch(!showSearch)}
-                  className={cn(
-                    "p-2 rounded-full transition-colors",
-                    showSearch
-                      ? "bg-primary text-on-primary"
-                      : "hover:bg-surface-container-low text-on-surface-variant",
-                  )}
-                >
-                  <Search size={20} />
-                </button>
-              </div>
-            </div>
 
             <div className="flex items-center gap-4 mb-2 overflow-x-auto pb-2 scrollbar-hide">
               <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">
@@ -2681,6 +2527,8 @@ Notes: "${order.notes || "None"}"
                 </button>
               ))}
             </div>
+              </div>
+            )}
           </div>
 
           <AnimatePresence>
