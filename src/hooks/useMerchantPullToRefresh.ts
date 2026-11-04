@@ -16,7 +16,9 @@ export function useMerchantPullToRefresh(
 ) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const callback = useRef(onRefresh);
-  callback.current = onRefresh;
+  useEffect(() => {
+    callback.current = onRefresh;
+  }, [onRefresh]);
   const [pulling, setPulling] = useState(false);
   const [armed, setArmed] = useState(false);
 
