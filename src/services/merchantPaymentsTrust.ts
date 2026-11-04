@@ -39,3 +39,65 @@ export function pickupPaymentRecordStatus(value:unknown):string {
   return "Payment status unavailable";
 }
 export function merchantPaymentWritesUnavailable():boolean {return true;}
+
+/** These are local presentation-only filters, not payment or cash settlement changes. */
+export type MerchantPaymentStatusFilter="all"|"paid"|"unpaid"|"unknown";
+export const MERCHANT_PAYMENT_BATCH_SIZE=24;
+
+export function merchantPaymentRecordTimestamp(value:unknown):number|null {
+ if(typeof value!=="string")return null;
+ const raw=value.trim();
+ // Don't guess the timezone of an API timestamp when none was supplied.
+ const match=/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/i.exec(raw);
+ if(!match)return null;
+ const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]);
+ const hour=Number(match[4]),minute=Number(match[5]),second=Number(match[6]??0);
+ const zone=match[7];
+ if(year<1||year>9999||month<1||month>12||day<1||
+   day>new Date(Date.UTC(year,month,0)).getUTCDate()||
+   hour>23||minute>59||second>59)return null;
+ if(zone.toUpperCase()!=="Z"){
+   const offsetHour=Number(zone.slice(1,3)),offsetMin=Number(zone.slice(4,6));
+   if(offsetHour>14||offsetMin>59||(offsetHour===14&&offsetMin!==0))return null;
+ }
+ const result=Date.parse(raw.replace(" ","T"));
+ return Number.isFinite(result)?result:null;
+}
+export function merchantPaymentDateLabel(value:unknown):string {
+ const time=merchantPaymentRecordTimestamp(value);
+ if(time===null)return "Order date unavailable";
+ return new Intl.DateTimeFormat("en-ZA",{
+   timeZone:"Africa/Johannesburg",day:"2-digit",month:"short",year:"numeric",
+   hour:"2-digit",minute:"2-digit",hour12:false,
+ }).format(new Date(time));
+}
+export function merchantPaymentFilteredRecords(
+ rows:readonly MerchantPickupPaymentRecord[],search:string,status:MerchantPaymentStatusFilter,
+):MerchantPickupPaymentRecord[] {
+ const query=search.trim().toLocaleLowerCase("en-ZA");
+ return rows
+  .map((row,index)=>({row,index,date:merchantPaymentRecordTimestamp(row.created_at)}))
+  .filter(({row})=>{
+   const value=row.payment_status;
+   const statusMatch=status==="all"||
+     (status==="unknown"?value!=="paid"&&value!=="unpaid":value===status);
+   if(!statusMatch)return false;
+   if(!query)return true;
+   const id=typeof row.id==="string"?row.id:"";
+   const name=typeof row.customer_name==="string"?row.customer_name:"";
+   return id.toLocaleLowerCase("en-ZA").includes(query)||
+     name.toLocaleLowerCase("en-ZA").includes(query);
+  })
+  .sort((a,b)=>{
+   if(a.date===null&&b.date===null)return a.index-b.index;
+   if(a.date===null)return 1;
+   if(b.date===null)return -1;
+   return (b.date-a.date)||(a.index-b.index);
+  })
+  .map(({row})=>row);
+}
+export function merchantPaymentNextVisibleCount(current:number,total:number):number {
+ const shown=Number.isSafeInteger(current)&&current>0?current:0;
+ const max=Number.isSafeInteger(total)&&total>0?total:0;
+ return Math.min(max,shown+MERCHANT_PAYMENT_BATCH_SIZE);
+}
