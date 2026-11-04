@@ -5,6 +5,7 @@ import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
 import React, {
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useMemo,
   useCallback,
@@ -1078,10 +1079,12 @@ function App() {
     state:"unverified"|"fresh"|"failed";lastSuccessAt:number|null;
   }>({state:"unverified",lastSuccessAt:null});
 
-  useEffect(()=>{
+  // Invalidate and clear prior shop/account orders before the browser paints.
+  // A stale inbox can stay visible only during a failed refresh of the SAME scope.
+  useLayoutEffect(()=>{
     orderReadCoordinator.current.activate(orderReadScope);
+    setOrders([]);
     setOrderReadStatus({state:"unverified",lastSuccessAt:null});
-    if(!orderReadScope)setOrders([]);
     return ()=>orderReadCoordinator.current.activate(null);
   },[orderReadScope]);
 
