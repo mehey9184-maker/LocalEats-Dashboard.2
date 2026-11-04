@@ -37,6 +37,8 @@ jobs:
         run: |
           npm run build --prefix localeats-api
           npm run build
+      - name: Prove Preview cannot write to a shared live database
+        run: node --test localeats-api/dist/middleware/previewReadOnlyGate.test.js
       - name: Offline 30-minute merchant and customer-ready notification recovery simulation
         run: node --experimental-strip-types --test tests/merchant-offline-recovery-30min-p1.test.mjs
       - name: Shop switch privacy and merchant UI regressions
