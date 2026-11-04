@@ -203,6 +203,7 @@ export const CustomerReEngagement: React.FC<CustomerReEngagementProps> = ({
   };
 
   const handleSendWhatsApp = (customer: CustomerProfile) => {
+    if(previewOnly) return;
     const phone = sanitizeWhatsAppPhone(customer.phone);
     if (!phone) {
       toast.error(`No valid phone number found for ${customer.name}`);
@@ -217,6 +218,7 @@ export const CustomerReEngagement: React.FC<CustomerReEngagementProps> = ({
   };
 
   const handleCopyPhone = (customer: CustomerProfile) => {
+    if(previewOnly) return;
     navigator.clipboard.writeText(customer.phone);
     setCopiedId(customer.id);
     toast.success(`Copied phone: ${customer.phone}`);
