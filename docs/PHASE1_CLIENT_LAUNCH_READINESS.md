@@ -1,0 +1,28 @@
+# LocalEats — First customers: Phase 1 integrated recovery gate
+
+Status: 2026-11-05. This PR combines separate **unmerged** draft changes #56 and #59 for a cross-app Preview test. This document does not authorize Production releases, real orders, payments or riders.
+
+## What was verified in code
+- Customer transactions remain disabled by the existing strict flags; this integration does not add or change a write route or launch switch.
+- Merchant reads use an authoritative Firebase-authenticated LocalEats API. The API checks merchant-owned shop IDs and returns the newest 250 historical records **plus** older unfinished orders, deduplicated and shop-scoped. Paged reads fail closed rather than imply a complete list when data may be missing.
+- A shop/account switch clears the old in-memory order list **before the browser paints** and cancels adoption of old requests (privacy/correctness fix to #56).
+- Foreground, reconnect and manual Retry call one deduplicated read. A failed same-shop refresh keeps prior verified rows with an explicit stale-warning; it does not invent success or silently clear unfinished orders.
+- The 30-minute **synthetic** run has 20 shops, 5,000 fictional registered IDs and 300 attempted orders spread across the shops at 10/minute for 30 minutes. The test also seeds 270 older completed orders plus one older unfinished order for one shop to force the former 250-history truncation case. It models API outage and reconnect, multi-shop isolation, and no browser-side order mutations.
+- The pickup push service uses server-only RPC lease/fence checks, classifies invalid FCM tokens as permanent, and can retry transient failures on a **later eligible authenticated request** after backoff. The test uses fake RPC/FCM and a virtual 30-minute clock, **not** actual Firebase delivery.
+
+## Significant remaining gaps before real customers
+1. **Real backup missing:** PR #58 tested synthetic export and restore, but no encrypted Production Supabase export with an independently verified restore has yet happened. Don't activate real trading.
+2. **Production security vulnerability:** PR #57 proposes a tested but NOT APPLIED lockdown to public rider notification privileges. Treat its cutover as critical before enabling rider functionality. Independently review signup `raw_user_meta_data.role` and other RLS/privileged function warnings.
+3. **Real notification dependability:** Pickup outbox is driven by relevant requests and sends at most one per call. **There is no always-on retry worker**. FCM acceptance is not device delivery and cannot be relied upon for merchant order discovery. Building a paid cron/worker without a cost/security gate is not approved. Confirm the merchant UI can recover via Orders API even if push never arrives. Add a sustainable queue drain/alert before commercial launch.
+4. **Real staging load test missing:** previous 27,000-orders/180-days and current 30-minute scenarios use disposable fakes. A separately authorized, provider-compliant staging HTTP/Postgres test and latency/visibility measurements are still required.
+5. **API pagination race:** orders can change while multi-page reads occur, so the current order list is eventually reconciled on polling/reconnect, not a transactionally consistent snapshot. Consider keyset/snapshot pagination if staging reveals lost or duplicated rows under concurrent order state transitions.
+6. **Commercial hosting/legal compliance:** Vercel Hobby is not appropriate for a commercial service. Budget and adopt a plan whose terms support business use before charging customers. Evaluate Supabase free limits and backup RPO/RTO, South African privacy/data handling, accessibility and support workflows.
+7. **Operational acceptance:** customer preview original UI/My-Kota card/cart/no-write checkout; merchant Orders and Storefront works on real phones; offline/reconnect, merchant kitchen overload limits, confirmed order/status/payment handover, rider lock, refunds and support channels require owner signoff.
+
+## Practical manual Preview acceptance
+1. Log into the *integrated Merchant Preview* with a test merchant. Open Orders. Switch tabs, return, and verify refresh without blinking/flicker.
+2. Disconnect for 30 minutes (no need to keep browser open). Create **no real Production orders**. Reconnect and verify a fresh authoritative inbox; if the API is down, a warning must explain that the list could be stale.
+3. Switch between two shops owned by the merchant (if available). The previous shop's orders must disappear immediately; its old result must not reappear even if the new shop API request fails.
+4. No paid, rider dispatch, pickup order creation, database migration or device notification activation is permitted as part of this Preview acceptance.
+
+**No Production merge yet.** Combine only after all CI and UI checks pass, the security and backup gates are resolved, and the owner explicitly signs off on the actual launch activation. A developer can merge a safe, reviewed read-only feature independently of switching on orders, but must not misrepresent it as a completed commercial launch.
