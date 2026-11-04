@@ -1931,6 +1931,7 @@ export const RiderManagement = ({
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <button
                 type="button"
+                data-rider-preview-safe="true"
                 onClick={() => setStatusFilter("all")}
                 className={cn(
                   "p-4 rounded-2xl border transition-all flex items-center gap-3 text-left cursor-pointer",
@@ -1992,6 +1993,7 @@ export const RiderManagement = ({
 
               <button
                 type="button"
+                data-rider-preview-safe="true"
                 onClick={() => setActiveSubTab("missions")}
                 className="p-4 rounded-2xl border transition-all flex items-center gap-3 text-left cursor-pointer bg-surface-container-low border-outline-variant/10 hover:border-primary/40 group"
               >
@@ -2198,6 +2200,7 @@ export const RiderManagement = ({
                 <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/50" />
                 <input
                   type="text"
+                  data-rider-preview-safe="true"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search rider name, phone, or code..."
@@ -2205,6 +2208,7 @@ export const RiderManagement = ({
                 />
                 {searchQuery && (
                   <button
+                    data-rider-preview-safe="true"
                     onClick={() => setSearchQuery("")}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40 hover:text-on-surface"
                   >
@@ -2216,14 +2220,15 @@ export const RiderManagement = ({
               {/* Status Filter Chips */}
               <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none shrink-0">
                 {[
-                  { id: "all", label: `All (${connections.length})` },
-                  { id: "online", label: `🟢 Online (${connections.filter(c => c.is_online).length})` },
-                  { id: "offline", label: `⚪ Offline (${connections.filter(c => !c.is_online).length})` },
-                  { id: "in_house", label: `🏠 Staff (${connections.filter(c => c.connection_code === "IN-HOUSE").length})` },
-                  { id: "paired", label: `🔑 Paired (${connections.filter(c => c.connection_code !== "IN-HOUSE").length})` },
+                  { id: "all", label: previewOnly ? "All (—)" : `All (${connections.length})` },
+                  { id: "online", label: previewOnly ? "🟢 Online (—)" : `🟢 Online (${connections.filter(c => c.is_online).length})` },
+                  { id: "offline", label: previewOnly ? "⚪ Offline (—)" : `⚪ Offline (${connections.filter(c => !c.is_online).length})` },
+                  { id: "in_house", label: previewOnly ? "🏠 Staff (—)" : `🏠 Staff (${connections.filter(c => c.connection_code === "IN-HOUSE").length})` },
+                  { id: "paired", label: previewOnly ? "🔑 Paired (—)" : `🔑 Paired (${connections.filter(c => c.connection_code !== "IN-HOUSE").length})` },
                 ].map((chip) => (
                   <button
                     key={chip.id}
+                    data-rider-preview-safe="true"
                     onClick={() => setStatusFilter(chip.id as "all" | "online" | "offline" | "in_house" | "paired")}
                     className={cn(
                       "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap",
@@ -2300,7 +2305,8 @@ export const RiderManagement = ({
                     )}
                     {connections.length === 0 && (
                       <button
-                        onClick={() => setShowInHouseModal(true)}
+                        disabled={previewOnly}
+                        onClick={() => { if(!previewOnly)setShowInHouseModal(true); }}
                         className="px-4 py-2 bg-primary text-on-primary text-xs font-bold rounded-xl shadow-xs hover:bg-primary/90 transition-all cursor-pointer flex items-center gap-1.5"
                       >
                         <Plus size={13} />
@@ -3130,6 +3136,7 @@ export const RiderManagement = ({
                     </p>
                   </div>
                   <button
+                    disabled={previewOnly}
                     onClick={toggleAllowExternalRiders}
                     className={cn(
                       "w-12 h-6 rounded-full transition-all relative cursor-pointer border shrink-0",
@@ -3151,6 +3158,7 @@ export const RiderManagement = ({
                     </p>
                   </div>
                   <button
+                    disabled={previewOnly}
                     onClick={toggleAutoLookForRider}
                     className={cn(
                       "w-12 h-6 rounded-full transition-all relative cursor-pointer border shrink-0",
@@ -3182,6 +3190,7 @@ export const RiderManagement = ({
                     Display Banner on Storefront
                   </span>
                   <button
+                    disabled={previewOnly}
                     onClick={toggleCashTrust}
                     className={cn(
                       "w-12 h-6 rounded-full transition-all relative cursor-pointer border shrink-0",
