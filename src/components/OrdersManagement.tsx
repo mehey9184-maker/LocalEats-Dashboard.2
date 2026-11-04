@@ -67,6 +67,10 @@ import { Pagination } from "./Pagination";
 import { useAuthGuard } from "../hooks/useAuthGuard";
 import { AddressDisplay } from "./AddressDisplay";
 import { Skeleton } from "./ui/Skeleton";
+import { OperationFeedback, type OperationFeedbackStatus } from "./ui/OperationFeedback";
+import { RollingOrderCount } from "./ui/RollingOrderCount";
+import { useMerchantPullToRefresh } from "../hooks/useMerchantPullToRefresh";
+import { merchantOrdersConfidence, merchantOrdersEmptyMessage } from "../services/merchantOrdersUXTrust";
 import { DispatchAlertModal } from "./DispatchAlertModal";
 import { format } from "date-fns";
 
@@ -101,7 +105,7 @@ export interface OrdersManagementProps {
   onDispatchToRider?: (id: string, riderId: string, riderName?: string, riderPhone?: string) => Promise<void> | void;
   onConvertOrderToPickup?: (id: string) => Promise<void> | void;
   loading: boolean;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
   kitchenMode: boolean;
   setKitchenMode: (val: boolean) => void;
   soundAlerts: boolean;
@@ -183,6 +187,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [customerSearch, setCustomerSearch] = useState("");
   const [phoneSearch, setPhoneSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [showOrderFilters, setShowOrderFilters] = useState(false);
   const [acceptingOrderId, setAcceptingOrderId] = useState<string | null>(null);
   const [orderNotes, setOrderNotes] = useState(""); // Added for Order Notes
   const [selectedPendingOrders, setSelectedPendingOrders] = useState<string[]>([]); // Added for Bulk Actions
@@ -220,6 +225,29 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [showRiderPicker, setShowRiderPicker] = useState<string | null>(null);
   const [connectedRiders, setConnectedRiders] = useState<RiderConnection[]>([]);
   const [showMobileActions, setShowMobileActions] = useState(false);
+  const [isRefreshingOrders, setIsRefreshingOrders] = useState(false);
+  const [orderRefreshFeedback, setOrderRefreshFeedback] = useState<OperationFeedbackStatus>("idle");
+  const [verifiedBeforeRefresh, setVerifiedBeforeRefresh] = useState<number | null>(null);
+  const handleRefreshOrders = async () => {
+    if (isRefreshingOrders) return;
+    setVerifiedBeforeRefresh(ordersVerifiedAt);
+    setIsRefreshingOrders(true);
+    setOrderRefreshFeedback("loading");
+    try {
+      await Promise.resolve(onRefresh());
+      // Resolving an API read is not proof of freshness: the parent may catch errors.
+      setOrderRefreshFeedback("unverified");
+    } catch {
+      setOrderRefreshFeedback("error");
+    } finally {
+      setIsRefreshingOrders(false);
+    }
+  };
+  const refreshedOrdersVerified = orderRefreshFeedback === "unverified" &&
+    ordersReadState === "confirmed" && ordersVerifiedAt !== null &&
+    (verifiedBeforeRefresh === null || ordersVerifiedAt > verifiedBeforeRefresh);
+  const orderRefreshStatus: OperationFeedbackStatus = refreshedOrdersVerified ? "success" : orderRefreshFeedback;
+  const { surfaceRef, pulling, armed } = useMerchantPullToRefresh(!loading && !isRefreshingOrders, handleRefreshOrders);
   const [dispatchAlertOrder, setDispatchAlertOrder] = useState<Order | null>(null);
   const [dispatchAlertType, setDispatchAlertType] = useState<"rider_dispatch" | "customer_status" | "rider_pairing">("customer_status");
 
@@ -268,11 +296,11 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 
       try {
         localStorage.setItem(pendingSortStorageKey, JSON.stringify(updated));
+        toast.success(`Priority saved on this device: #${sourceId.slice(-4).toUpperCase()} moved to position #${toIndex + 1}`);
       } catch (e) {
         console.error("Failed to save pending order priorities", e);
+        toast.error("Priority order changed for this session, but was not saved on this device.");
       }
-
-      toast.success(`Priority updated: #${sourceId.slice(-4).toUpperCase()} moved to position #${toIndex + 1}`);
       return updated;
     });
   };
@@ -1026,6 +1054,25 @@ Notes: "${order.notes || "None"}"
   const [ordersPage, setOrdersPage] = useState(1);
   const ordersPerPage = 12;
 
+  const filtersApplied = filterStatus !== "All" || orderTypeFilter !== "All" ||
+    Boolean(startDate || endDate || searchTerm || customerSearch || phoneSearch);
+  const clearAllOrderFilters = () => {
+    setFilterStatus("All");
+    setOrderTypeFilter("All");
+    setStartDate("");
+    setEndDate("");
+    setSearchTerm("");
+    setCustomerSearch("");
+    setPhoneSearch("");
+  };
+  const ordersConfidence = merchantOrdersConfidence(ordersReadState, ordersVerifiedAt);
+  const unverifiedWithoutPreviousOrders = ordersConfidence === "unavailable" ||
+    (ordersConfidence === "checking" && ordersVerifiedAt === null);
+  const emptyOrderMessage = merchantOrdersEmptyMessage(ordersConfidence, viewMode, filtersApplied);
+  const lastVerifiedOrdersTime = typeof ordersVerifiedAt === "number" && Number.isFinite(ordersVerifiedAt)
+    ? new Date(ordersVerifiedAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" })
+    : null;
+
   const filterKey = `${searchTerm}_${customerSearch}_${phoneSearch}_${filterStatus}_${orderTypeFilter}_${startDate}_${endDate}_${viewMode}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   if (prevFilterKey !== filterKey) {
@@ -1245,12 +1292,14 @@ Notes: "${order.notes || "None"}"
                       initial={{ opacity: 0, scale: 0.9, y: 20 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.9, y: -20, transition: { duration: 0.2 } }}
-                      transition={{ 
-                        type: "spring", 
-                        stiffness: 260, 
+                      transition={{
+                        type: "spring",
+                        stiffness: 260,
                         damping: 20,
-                        delay: Math.min(i * 0.05, 0.5) 
+                        delay: Math.min(i * 0.05, 0.5),
+                        layout: { duration: 0.35, ease: [0.22, 1, 0.36, 1] },
                       }}
+                      whileTap={{ scale: 0.95 }}
                       key={order.id}
                       className={cn(
                         "group rounded-2xl p-4 sm:p-5 shadow-sm border transition-all duration-300 cursor-pointer space-y-4 relative bg-surface-container-lowest",
@@ -1465,6 +1514,7 @@ Notes: "${order.notes || "None"}"
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: "auto", opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
                           className="overflow-hidden border-t border-outline-variant/10 pt-6 mb-8 space-y-6"
                           onClick={(e) => e.stopPropagation()}
                         >
@@ -2233,241 +2283,143 @@ Notes: "${order.notes || "None"}"
   }
 
   return (
-    <div className="space-y-8">
+    <div ref={surfaceRef} className={cn("space-y-4 relative merchant-pull-surface", isRefreshingOrders && "orders-refresh-surface")}>
+      {pulling && (
+        <div role="status" aria-live="polite" className="pointer-events-none absolute inset-x-0 -top-10 flex items-center justify-center gap-2 text-xs font-bold text-primary">
+          <RefreshCw size={15} className={armed ? "rotate-180" : ""} aria-hidden="true" />
+          {armed ? "Release to refresh orders" : "Pull down to refresh orders"}
+        </div>
+      )}
       <p role="status" className="text-xs text-on-surface-variant mb-3">{pickupOrderingEnabled() ? "Pickup actions are API-authorized. Confirm actual payment before food handover and Collected. Historical delivery records remain available." : "Pickup order, payment and collection changes are disabled pending separately approved database activation. Existing management and historical delivery records remain available."}</p>
       {!merchantPickupReadCurrent(ordersReadState, ordersVerifiedAt) && (
         <div role="status" className="flex flex-wrap items-center gap-2 px-4 py-3 rounded-xl border border-amber-500/25 bg-amber-500/5 text-xs text-on-surface-variant">
           <AlertTriangle size={15} className="text-amber-600" />
           <span>Orders are not recently verified by the API. Refresh before confirming customer payment or handover.</span>
-          <button type="button" className="font-bold underline text-primary" onClick={onRefresh}>Refresh Orders</button>
+          <button type="button" className="font-bold underline text-primary" onClick={() => { void handleRefreshOrders(); }}>Refresh Orders</button>
         </div>
       )}
-      <section className="flex flex-col gap-6">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-          <div className="max-w-2xl space-y-1">
-            <span className="font-label text-[11px] font-bold uppercase tracking-[0.2em] text-primary mb-2 block">
-              Live Operations
-            </span>
-            <h2 className="font-headline text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
-              Orders Management
-            </h2>
-            <p className="text-sm text-on-surface-variant font-medium">
-              Prepare customer collections and review the latest verified order
-              status. Delivery workflows are reserved for a later phase.
-            </p>
-          </div>
-          
-          <div className="hidden md:flex flex-wrap gap-3 justify-start md:justify-end shrink-0">
-
-            <button
-              onClick={() => {
-                console.log("Refreshing orders...");
-                onRefresh();
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-on-primary rounded-full text-xs md:text-sm font-bold shadow-sm hover:scale-105 transition-all cursor-pointer relative z-20"
-            >
-              <Clock size={16} className="md:w-[18px] md:h-[18px]" />
-              Refresh
-            </button>
-            <button
-              onClick={exportToCSV}
-              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-            >
-              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              Spreadsheet
-            </button>
-            <button
-              onClick={exportToJSON}
-              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-            >
-              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              Export JSON
-            </button>
-          </div>
-        </div>
-
-        <div className="hidden md:flex flex-wrap items-center gap-4">
-          <div className="hidden md:flex p-1.5 bg-surface-container-low rounded-full w-fit">
-            <button
-              onClick={() => setViewMode("active")}
-              className={cn(
-                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                viewMode === "active"
-                  ? "bg-surface-container-lowest shadow-sm text-primary"
-                  : "text-on-secondary-container hover:bg-surface-container-high",
-              )}
-            >
-              Current Orders
-            </button>
-            <button
-              onClick={() => setViewMode("history")}
-              className={cn(
-                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                viewMode === "history"
-                  ? "bg-surface-container-lowest shadow-sm text-primary"
-                  : "text-on-secondary-container hover:bg-surface-container-high",
-              )}
-            >
-              Order History
-            </button>
-          </div>
-
-          
-
-          <button
-            onClick={() => setKitchenMode(!kitchenMode)}
-            className={cn(
-              "hidden md:flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all border-2 ml-auto",
-              kitchenMode
-                ? "bg-primary text-on-primary border-primary"
-                : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
-            )}
-          >
-            <UtensilsCrossed size={18} />
-            Kitchen Mode {kitchenMode ? "ON" : "OFF"}
-          </button>
-        </div>
-
-        {/* MOBILE COMPACT ACTIONS CONSOLE */}
-          <div className="flex md:hidden flex-col gap-2.5 w-full bg-surface-container-lowest/40 dark:bg-zinc-900/40 p-3 rounded-2xl border border-outline-variant/5">
-            <div className="flex items-center gap-2 w-full justify-between">
-              {/* Core viewMode switch */}
-              <div className="flex p-1 bg-surface-container-low rounded-full flex-1">
-                <button
-                  onClick={() => setViewMode("active")}
-                  className={cn(
-                    "flex-1 py-2 text-center rounded-full text-xs font-black transition-all",
-                    viewMode === "active"
-                      ? "bg-white dark:bg-zinc-800 shadow-sm text-primary"
-                      : "text-on-surface-variant/70 hover:text-on-surface",
-                  )}
-                >
-                  Current
-                </button>
-                <button
-                  onClick={() => setViewMode("history")}
-                  className={cn(
-                    "flex-1 py-2 text-center rounded-full text-xs font-black transition-all",
-                    viewMode === "history"
-                      ? "bg-white dark:bg-zinc-800 shadow-sm text-primary"
-                      : "text-on-surface-variant/70 hover:text-on-surface",
-                  )}
-                >
-                  History
-                </button>
-              </div>
-
-              {/* Live refresh shortcut button */}
-              <button
-                onClick={() => {
-                  console.log("Refreshing orders...");
-                  onRefresh();
-                }}
-                className="w-10 h-10 bg-primary text-on-primary rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform"
-                title="Refresh Queue"
-              >
-                <Clock size={16} />
+      {/* Compact workspace toolbar: put order cards ahead of secondary controls. */}
+      <section aria-label="Orders workspace" className="rounded-2xl border border-outline-variant/15 bg-surface-container-lowest/80 p-3 md:p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-headline text-xl md:text-2xl font-bold tracking-tight text-on-surface">
+            Orders
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <div role="group" aria-label="Orders view" className="inline-flex items-center gap-1 rounded-full bg-surface-container-low p-1">
+              <button type="button" onClick={() => setViewMode("active")} aria-pressed={viewMode === "active"}
+                className={cn("merchant-tap-feedback px-3 py-1.5 rounded-full text-xs font-bold transition-colors", viewMode === "active" ? "bg-surface-container-lowest text-primary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-high")}>
+                Current Orders
               </button>
-
-              {/* More tools console toggle */}
-              <button
-                onClick={() => setShowMobileActions(!showMobileActions)}
-                className={cn(
-                  "w-10 h-10 rounded-full flex items-center justify-center transition-all border",
-                  showMobileActions
-                    ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
-                    : "bg-surface-container-high text-on-surface border-transparent"
-                )}
-                title="Toggle Extra Tools"
-              >
-                <Settings size={16} className={cn(showMobileActions && "animate-spin")} />
+              <button type="button" onClick={() => setViewMode("history")} aria-pressed={viewMode === "history"}
+                className={cn("merchant-tap-feedback px-3 py-1.5 rounded-full text-xs font-bold transition-colors", viewMode === "history" ? "bg-surface-container-lowest text-primary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-high")}>
+                History
               </button>
             </div>
-
-            {/* Collapsible secondary actions panel */}
-            <AnimatePresence>
-              {showMobileActions && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden flex flex-col gap-2 pt-2 border-t border-outline-variant/10"
-                >
-                  {/* Kitchen Mode row */}
-                  <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
-                    <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
-                      <UtensilsCrossed size={14} />
-                      Kitchen Mode {kitchenMode ? "(Active)" : "(Inactive)"}
-                    </span>
-                    <button
-                      onClick={() => setKitchenMode(!kitchenMode)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors",
-                        kitchenMode
-                          ? "bg-primary text-on-primary"
-                          : "bg-surface-container-high text-on-surface"
-                      )}
-                    >
-                      Toggle
-                    </button>
-                  </div>
-
-                  {/* Layout Mode row */}
-                  {viewMode === "active" && (
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
-                      <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
-                        <LayoutGrid size={14} />
-                        Layout: {true ? "Kanban Board" : "List View"}
-                      </span>
-                      <button
-                        onClick={() => setLayoutMode(true ? "list" : "kanban")}
-                        className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-primary text-on-primary cursor-pointer"
-                      >
-                        Switch
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Exports Row */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={exportToCSV}
-                      className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
-                    >
-                      <FileDown size={14} />
-                      Export Spreadsheet
-                    </button>
-                    <button
-                      onClick={exportToJSON}
-                      className="flex items-center justify-center gap-1.5 py-2.5 bg-surface-container-high text-on-surface rounded-xl text-xs font-bold shadow-sm"
-                    >
-                      <FileDown size={14} />
-                      Export JSON
-                    </button>
-                  </div>
-
-                  {/* Danger zone clear all */}
-      
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <button type="button" onClick={() => { void handleRefreshOrders(); }}
+              disabled={isRefreshingOrders} aria-busy={isRefreshingOrders}
+              className="merchant-tap-feedback inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-2 text-xs font-bold text-on-primary hover:opacity-90 focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-70 disabled:cursor-wait">
+              <RefreshCw size={15} className={isRefreshingOrders ? "animate-spin motion-reduce:animate-none" : ""} />
+              {isRefreshingOrders ? "Refreshing…" : "Refresh"}
+            </button>
+            <button type="button" aria-expanded={showMobileActions} aria-controls="orders-extra-tools"
+              onClick={() => setShowMobileActions(!showMobileActions)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high px-3 py-2 text-xs font-bold text-on-surface hover:bg-surface-container-highest">
+              <Settings size={15} /> Tools
+            </button>
           </div>
+        </div>
+        {showMobileActions && (
+          <div id="orders-extra-tools" className="flex flex-wrap items-center gap-2 border-t border-outline-variant/15 pt-3">
+            <button type="button" onClick={() => setKitchenMode(!kitchenMode)}
+              aria-pressed={kitchenMode}
+              className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold", kitchenMode ? "bg-primary text-on-primary" : "bg-surface-container-high text-on-surface")}>
+              <UtensilsCrossed size={15} /> Kitchen Mode {kitchenMode ? "ON" : "OFF"}
+            </button>
+            <button type="button" onClick={exportToCSV}
+              className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high px-3 py-2 text-xs font-bold text-on-surface">
+              <FileDown size={15} /> Spreadsheet
+            </button>
+            <button type="button" onClick={exportToJSON}
+              className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high px-3 py-2 text-xs font-bold text-on-surface">
+              <FileDown size={15} /> Export JSON
+            </button>
+          </div>
+        )}
+        <OperationFeedback
+          status={orderRefreshStatus}
+          message={orderRefreshStatus === "loading" ? "Checking orders…" :
+            orderRefreshStatus === "success" ? "Orders verified after refresh" :
+            orderRefreshStatus === "error" ? "Could not refresh orders" :
+            "Refresh finished; new order verification not confirmed"}
+          detail={orderRefreshStatus === "unverified" ? "The previous list may be out of date. Order actions still require current API verification." :
+            orderRefreshStatus === "error" ? "Check the connection, then retry." : undefined}
+          onRetry={orderRefreshStatus === "unverified" || orderRefreshStatus === "error" ? () => { void handleRefreshOrders(); } : undefined}
+        />
+        <div role="status" aria-live="polite"
+          className="flex flex-wrap items-center gap-2 text-xs font-medium text-on-surface-variant">
+          <span className={ordersConfidence === "verified" ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
+            {ordersConfidence === "verified" ? "Verified order list" :
+              ordersConfidence === "checking" ? "Checking latest orders…" :
+              ordersConfidence === "stale" ? "Previously verified list · latest status unavailable" :
+              "Orders not verified"}
+          </span>
+          {lastVerifiedOrdersTime && (
+            <span>Last checked {lastVerifiedOrdersTime} SAST</span>
+          )}
+        </div>
       </section>
 
       <div
         className={cn(
-          "grid grid-cols-1 gap-8 items-start",
+          "grid grid-cols-1 gap-5 items-start",
           !kitchenMode && "lg:grid-cols-12",
         )}
       >
         <div
           className={cn(
             kitchenMode ? "col-span-full" : "lg:col-span-8",
-            "space-y-6",
+            "space-y-3",
           )}
         >
-          <div className="flex flex-col gap-4">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-headline text-lg font-bold flex items-center gap-2">
+                {viewMode === "active" ? "Active Queue" : "Order History"}
+                <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">
+                  {unverifiedWithoutPreviousOrders ? "—" : displayedOrders.length} {filtersApplied ? "matching" : "orders"}
+                </span>
+              </h3>
+              <div className="flex flex-wrap items-center gap-2">
+                {filtersApplied && (
+                  <button type="button" onClick={clearAllOrderFilters}
+                    className="merchant-tap-feedback rounded-full px-3 py-1.5 text-xs font-bold text-primary bg-primary/10 hover:bg-primary/15 focus-visible:outline-2 focus-visible:outline-primary">
+                    <X size={13} className="inline-block mr-1" aria-hidden="true" /> Clear filters
+                  </button>
+                )}
+                <button type="button"
+                  aria-label="Search orders" aria-expanded={showSearch}
+                  onClick={() => setShowSearch(!showSearch)}
+                  className={cn(
+                    "p-2 rounded-full transition-colors",
+                    showSearch
+                      ? "bg-primary text-on-primary"
+                      : "hover:bg-surface-container-low text-on-surface-variant",
+                  )}
+                >
+                  <Search size={20} />
+                </button>
+                <button type="button" onClick={() => setShowOrderFilters(!showOrderFilters)}
+                  aria-expanded={showOrderFilters} aria-controls="orders-filter-panel"
+                  className={cn("merchant-tap-feedback inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors", showOrderFilters ? "border-primary bg-primary/10 text-primary" : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:border-primary/30")}>
+                  <SlidersHorizontal size={14} /> Filters &amp; sort
+                  {filtersApplied && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="Filters active" />}
+                </button>
+              </div>
+            </div>
+
+
+            {showOrderFilters && (
+              <div id="orders-filter-panel" className="space-y-3 rounded-2xl border border-outline-variant/15 bg-surface-container-lowest p-3">
             <div className="flex flex-wrap gap-2 items-center" role="group" aria-label="Order fulfillment filter">
               <span className="text-xs font-bold text-on-surface-variant">Fulfillment:</span>
               {([
@@ -2529,17 +2481,10 @@ Notes: "${order.notes || "None"}"
               </div>
 
               <div className="flex flex-wrap items-center gap-2 mt-2">
-                {(filterStatus !== "All" || orderTypeFilter !== "All" || startDate || endDate || searchTerm || customerSearch || phoneSearch) && (
+                {filtersApplied && (
                   <button
-                    onClick={() => {
-                      setFilterStatus("All");
-                      setOrderTypeFilter("All");
-                      setStartDate("");
-                      setEndDate("");
-                      setSearchTerm("");
-                      setCustomerSearch("");
-                      setPhoneSearch("");
-                    }}
+                    type="button"
+                    onClick={clearAllOrderFilters}
                     className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black text-white bg-error shadow-lg shadow-error/20 hover:scale-105 active:scale-95 transition-all"
                   >
                     <RefreshCw size={12} />
@@ -2615,27 +2560,6 @@ Notes: "${order.notes || "None"}"
               </motion.div>
             )}
 
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-headline text-xl font-bold flex items-center gap-2">
-                {viewMode === "active" ? "Active Queue" : "Order History"}
-                <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">
-                  {displayedOrders.length} Orders
-                </span>
-              </h3>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowSearch(!showSearch)}
-                  className={cn(
-                    "p-2 rounded-full transition-colors",
-                    showSearch
-                      ? "bg-primary text-on-primary"
-                      : "hover:bg-surface-container-low text-on-surface-variant",
-                  )}
-                >
-                  <Search size={20} />
-                </button>
-              </div>
-            </div>
 
             <div className="flex items-center gap-4 mb-2 overflow-x-auto pb-2 scrollbar-hide">
               <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">
@@ -2681,6 +2605,8 @@ Notes: "${order.notes || "None"}"
                 </button>
               ))}
             </div>
+              </div>
+            )}
           </div>
 
           <AnimatePresence>
@@ -2748,22 +2674,25 @@ Notes: "${order.notes || "None"}"
               </div>
               <div className="space-y-2">
                 <h4 className="font-headline text-2xl font-bold">
-                  {viewMode === "active" ? "All caught up!" : "No history yet"}
+                  {emptyOrderMessage.title}
                 </h4>
                 <p className="text-on-surface-variant max-w-xs mx-auto">
-                  {viewMode === "active"
-                    ? "Your kitchen is currently clear. New orders will appear here as they arrive."
-                    : "Completed and cancelled orders appear here. The date filter uses when each order was placed."}
+                  {emptyOrderMessage.description}
                 </p>
               </div>
-              {viewMode === "active" && (
-                <button
-                  onClick={onRefresh}
-                  className="px-8 py-3 bg-surface-container-lowest text-primary font-bold rounded-full shadow-sm hover:scale-105 transition-all border border-primary/10"
-                >
-                  Check for New Orders
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {filtersApplied && (
+                  <button type="button" onClick={clearAllOrderFilters}
+                    className="px-5 py-2.5 bg-primary/10 text-primary font-bold rounded-full hover:bg-primary/15 border border-primary/20">
+                    Clear filters
+                  </button>
+                )}
+                <button type="button" disabled={isRefreshingOrders}
+                  onClick={() => { void handleRefreshOrders(); }}
+                  className="merchant-tap-feedback px-5 py-2.5 bg-surface-container-lowest text-primary font-bold rounded-full shadow-sm hover:bg-surface-container-high border border-primary/10 disabled:opacity-50">
+                  {isRefreshingOrders ? "Checking orders…" : "Refresh orders"}
                 </button>
-              )}
+              </div>
             </div>
           ) : viewMode === "active" && true ? (
             <div className="flex overflow-x-auto hide-scrollbar xl:grid xl:grid-cols-4 gap-6 items-start snap-x snap-mandatory pb-4 xl:pb-0">
@@ -2776,7 +2705,7 @@ Notes: "${order.notes || "None"}"
                       <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">New Orders</h3>
                       {pendingOrderPriorityIds.length > 0 && (
                         <span className="text-[8px] font-bold text-amber-600 dark:text-amber-400 block -mt-0.5 flex items-center gap-1">
-                          <SlidersHorizontal size={8} /> Prioritized
+                          <SlidersHorizontal size={8} /> Prioritized on this device
                         </span>
                       )}
                     </div>
@@ -2822,11 +2751,16 @@ Notes: "${order.notes || "None"}"
 
                     return (
                       <motion.div
+                        layout
                         layoutId={order.id}
                         initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
+                        animate={{ opacity: isDragging ? 0.86 : 1, scale: isDragging ? 1.05 : 1 }}
                         exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
-                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                        transition={{
+                          scale: { type: "spring", stiffness: 340, damping: 26 },
+                          opacity: { duration: 0.16 },
+                          layout: { duration: 0.35, ease: [0.22, 1, 0.36, 1] },
+                        }}
                         key={order.id}
                         draggable={true}
                         onDragStart={(e: any) => {
@@ -2864,7 +2798,7 @@ Notes: "${order.notes || "None"}"
                         className={cn(
                           "order-card bg-white dark:bg-zinc-900 border rounded-2xl p-4 shadow-xs relative overflow-hidden group transition-all duration-300 space-y-2 cursor-grab active:cursor-grabbing",
                           isSelected ? "border-primary ring-2 ring-primary/30" : "",
-                          isDragging ? "opacity-40 scale-[0.98] border-dashed border-primary ring-2 ring-primary/20" : "",
+                          isDragging ? "border-dashed border-primary ring-2 ring-primary/20 shadow-xl z-10" : "",
                           isDragOver ? "border-primary bg-primary/[0.04] ring-2 ring-primary shadow-md -translate-y-1" : "",
                           !isDragging && !isDragOver && (
                             isFindingRider
@@ -3690,9 +3624,14 @@ Notes: "${order.notes || "None"}"
 
             <div className="bg-surface-container-high rounded-3xl p-8 relative overflow-hidden">
               <div className="relative z-10">
-                <h4 className="font-headline text-lg font-bold text-on-surface mb-6">
+                <h4 className="font-headline text-lg font-bold text-on-surface mb-2">
                   Status Overview
                 </h4>
+                <p role="status" className="mb-5 text-xs text-on-surface-variant">
+                  {ordersConfidence === "verified" ? "Counts from the latest verified API list." :
+                    unverifiedWithoutPreviousOrders ? "Counts unavailable until order verification succeeds." :
+                    "Previous counts only — refresh to verify current orders."}
+                </p>
                 <div className="space-y-5">
                   {[
                     {
@@ -3735,7 +3674,7 @@ Notes: "${order.notes || "None"}"
                         </span>
                       </div>
                       <span className="font-headline font-bold">
-                        {stat.count}
+                        {unverifiedWithoutPreviousOrders ? "—" : <RollingOrderCount value={stat.count} animate={ordersConfidence === "verified"} />}
                       </span>
                     </div>
                   ))}
@@ -3745,10 +3684,12 @@ Notes: "${order.notes || "None"}"
                     Preparing Orders
                   </div>
                   <div className="text-3xl font-headline font-extrabold text-primary">
-                    {orders.filter(o=>o.status==="preparing").length}
+                    {unverifiedWithoutPreviousOrders ? "—" :
+                      <RollingOrderCount value={orders.filter(o=>o.status==="preparing").length} animate={ordersConfidence === "verified"} />}
                   </div>
                   <div className="text-xs text-on-surface-variant mt-1">
-                    Orders currently marked preparing
+                    {ordersConfidence === "verified" ? "Preparing orders in the verified list" :
+                      "Not a confirmed current preparing count"}
                   </div>
                 </div>
               </div>

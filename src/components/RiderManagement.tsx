@@ -46,6 +46,7 @@ import { supabase, getFreshChannel } from "../lib/supabase";
 import { cn } from "../lib/utils";
 import { Shop, Order, RiderProfile } from "../types";
 import { QRScanner } from "./QRScanner";
+import { merchantRiderPreviewNotice } from "../services/merchantRiderPreviewPolicy";
 
 // --- Leaflet Map Config & Helpers ---
 const MapViewRefocus = ({ center, zoom }: { center: [number, number]; zoom: number }) => {
@@ -307,14 +308,16 @@ export const RiderManagement = ({
   orders,
   onRequestRider,
   sendRiderNudge,
+  previewOnly = false,
 }: {
   currentShop: Shop;
   orders: Order[];
   onRequestRider: (id: string, riderId?: string, riderName?: string, riderPhone?: string) => void;
   sendRiderNudge: (riderId: string, message: string) => Promise<void>;
+  previewOnly?: boolean;
 }) => {
   const [connections, setConnections] = useState<RiderConnection[]>(() => {
-    if (typeof window === "undefined") return [];
+    if (previewOnly || typeof window === "undefined") return [];
     const shopId = currentShop?.id || 1;
     const localKey1 = `localeats_local_conns_${shopId}`;
     const localKey2 = `localeats_rider_conns_${shopId}`;
@@ -336,7 +339,7 @@ export const RiderManagement = ({
     }
   });
   const [dbSyncedSet, setDbSyncedSet] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState<boolean>(() => connections.length === 0);
+  const [loading, setLoading] = useState<boolean>(() => !previewOnly && connections.length === 0);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [showTrafficLayer, setShowTrafficLayer] = useState(false);
   const [mapCenterOverride, setMapCenterOverride] = useState<[number, number] | null>(null);
@@ -349,6 +352,7 @@ export const RiderManagement = ({
   const [isBroadcasting, setIsBroadcasting] = useState(false);
 
   const handleSendBroadcast = async () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     if (!broadcastText.trim()) {
       toast.error("Please enter a broadcast announcement.");
       return;
@@ -462,6 +466,7 @@ export const RiderManagement = ({
 
   // PDF Summary Report Generator for Rider Performance & COD Handovers
   const generateRiderPerformanceReport = useCallback(() => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     try {
       const doc = new jsPDF();
       const shopName = currentShop?.name || "LocalEats Vendor";
@@ -579,28 +584,32 @@ export const RiderManagement = ({
       console.error("PDF generation error:", err);
       toast.error("Failed to generate PDF report.");
     }
-  }, [currentShop?.name, connections, orders]);
+  }, [currentShop?.name, connections, orders, previewOnly]);
 
   const dbCashTrust = currentShop.cash_trust_enabled;
   const dbAllowExternal = currentShop.allow_external_riders;
   const dbAutoLookForRider = currentShop.auto_look_for_rider;
 
   const [cashTrustEnabled, setCashTrustEnabled] = useState(() => {
+    if (previewOnly) return false;
     const localVal = localStorage.getItem(`localeats_cash_trust_${currentShop.id}`) === "true";
     return dbCashTrust !== undefined ? !!dbCashTrust : localVal;
   });
 
   const [allowExternalRiders, setAllowExternalRiders] = useState(() => {
+    if (previewOnly) return false;
     const localVal = localStorage.getItem(`localeats_allow_external_${currentShop.id}`) !== "false";
     return dbAllowExternal !== undefined ? !!dbAllowExternal : localVal;
   });
 
   const [autoLookForRider, setAutoLookForRider] = useState(() => {
+    if (previewOnly) return false;
     const localVal = localStorage.getItem(`localeats_auto_look_${currentShop.id}`) !== "false";
     return dbAutoLookForRider !== undefined ? !!dbAutoLookForRider : localVal;
   });
 
   const [settledCodOrders, setSettledCodOrders] = useState<string[]>(() => {
+    if (previewOnly) return [];
     try {
       return JSON.parse(localStorage.getItem("localeats_settled_cod_orders") || "[]") as string[];
     } catch {
@@ -609,6 +618,7 @@ export const RiderManagement = ({
   });
 
   const handleSettleRiderCash = (riderId: string, riderName: string) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const matchingOrders = orders.filter(
       (o) =>
         (o.rider_id === riderId || o.rider_name === riderName) &&
@@ -635,6 +645,7 @@ export const RiderManagement = ({
   };
 
   const handleSettleAllCash = () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const unsettledCashOrders = orders.filter(
       (o) =>
         (o.status === "completed" || (o.status as string) === "delivered" || o.delivery_status === "delivered") &&
@@ -676,33 +687,37 @@ export const RiderManagement = ({
   }, [orders, settledCodOrders]);
 
   useEffect(() => {
+    if (previewOnly) return;
     if (dbCashTrust !== undefined) {
       setCashTrustEnabled(!!dbCashTrust);
     } else {
       const localVal = localStorage.getItem(`localeats_cash_trust_${currentShop.id}`) === "true";
       setCashTrustEnabled(localVal);
     }
-  }, [currentShop.id, dbCashTrust]);
+  }, [currentShop.id, dbCashTrust, previewOnly]);
 
   useEffect(() => {
+    if (previewOnly) return;
     if (dbAllowExternal !== undefined) {
       setAllowExternalRiders(!!dbAllowExternal);
     } else {
       const localVal = localStorage.getItem(`localeats_allow_external_${currentShop.id}`) !== "false";
       setAllowExternalRiders(localVal);
     }
-  }, [currentShop.id, dbAllowExternal]);
+  }, [currentShop.id, dbAllowExternal, previewOnly]);
 
   useEffect(() => {
+    if (previewOnly) return;
     if (dbAutoLookForRider !== undefined) {
       setAutoLookForRider(!!dbAutoLookForRider);
     } else {
       const localVal = localStorage.getItem(`localeats_auto_look_${currentShop.id}`) !== "false";
       setAutoLookForRider(localVal);
     }
-  }, [currentShop.id, dbAutoLookForRider]);
+  }, [currentShop.id, dbAutoLookForRider, previewOnly]);
 
   const toggleCashTrust = async () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const newValue = !cashTrustEnabled;
     setCashTrustEnabled(newValue);
     localStorage.setItem(`localeats_cash_trust_${currentShop.id}`, String(newValue));
@@ -724,6 +739,7 @@ export const RiderManagement = ({
   };
 
   const toggleAllowExternalRiders = async () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const newValue = !allowExternalRiders;
     setAllowExternalRiders(newValue);
     localStorage.setItem(`localeats_allow_external_${currentShop.id}`, String(newValue));
@@ -745,6 +761,7 @@ export const RiderManagement = ({
   };
 
   const toggleAutoLookForRider = async () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const newValue = !autoLookForRider;
     setAutoLookForRider(newValue);
     localStorage.setItem(`localeats_auto_look_${currentShop.id}`, String(newValue));
@@ -796,6 +813,7 @@ export const RiderManagement = ({
   ), [orders]);
 
   const fetchAndCacheRiders = useCallback(async (forceRefresh = false) => {
+    if (previewOnly) { setLoading(false); return; }
     const shopId = currentShop?.id || 1;
     const cacheKey = `localeats_rider_conns_cache_${shopId}`;
     const cacheTimeKey = `localeats_rider_conns_cache_time_${shopId}`;
@@ -983,13 +1001,14 @@ export const RiderManagement = ({
     } finally {
       setLoading(false);
     }
-  }, [currentShop?.id, currentShop?.name]);
+  }, [currentShop?.id, currentShop?.name, previewOnly]);
 
   const fetchConnections = useCallback((forceRefresh = false) => {
     return fetchAndCacheRiders(forceRefresh);
   }, [fetchAndCacheRiders]);
 
   useEffect(() => {
+    if (previewOnly) return;
     fetchConnections();
 
     const shopId = currentShop?.id || 1;
@@ -1049,9 +1068,10 @@ export const RiderManagement = ({
       void supabase.removeChannel(channel);
       if (profileSub) void supabase.removeChannel(profileSub);
     };
-  }, [fetchConnections, currentShop?.id, selectedTrackId]);
+  }, [fetchConnections, currentShop?.id, selectedTrackId, previewOnly]);
 
   const generateCode = async () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const shopId = currentShop?.id || 1;
 
     const linkedRidersCount = connections.filter((c) => Boolean(c.rider_id) || c.connection_code === "IN-HOUSE").length;
@@ -1138,6 +1158,7 @@ export const RiderManagement = ({
   };
 
   const addInHouseRider = async () => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     if (!inHouseName.trim() || !inHousePhone.trim()) {
       toast.error("Please fill in Driver Name and Phone Number");
       return;
@@ -1200,6 +1221,7 @@ export const RiderManagement = ({
   };
 
   const deleteConnection = async (id: string, connectionCode?: string, riderId?: string) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const shopId = currentShop?.id || 1;
     const numericShopId = typeof shopId === "number" ? shopId : (parseInt(String(shopId).replace(/\D/g, ""), 10) || shopId);
 
@@ -1277,6 +1299,7 @@ export const RiderManagement = ({
   };
 
   const invalidateAndRegenerate = async (connId?: string, oldCode?: string) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const shopId = currentShop?.id || 1;
     const numericShopId = typeof shopId === "number" ? shopId : (parseInt(String(shopId).replace(/\D/g, ""), 10) || shopId);
 
@@ -1358,6 +1381,7 @@ export const RiderManagement = ({
   };
 
   const syncCodeToSupabase = async (conn: RiderConnection) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const shopId = currentShop?.id || 1;
     try {
       const { error } = await supabase.from("rider_connections").insert({
@@ -1381,6 +1405,7 @@ export const RiderManagement = ({
   };
 
   const claimPairingCode = async (connId: string, connCode: string, customName?: string, customPhone?: string) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const shopId = currentShop?.id || 1;
     const riderName = customName?.trim() || `Express Rider (${connCode})`;
     const riderPhone = customPhone?.trim() || `+27 82 555 ${Math.floor(1000 + Math.random() * 9000)}`;
@@ -1449,6 +1474,7 @@ export const RiderManagement = ({
 
   // Toggle single rider online / ready status
   const toggleRiderOnlineStatus = async (conn: RiderConnection, targetStatus?: boolean) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const newStatus = targetStatus !== undefined ? targetStatus : !conn.is_online;
     const shopId = currentShop?.id || 1;
     const isNowOnline = newStatus;
@@ -1530,6 +1556,7 @@ export const RiderManagement = ({
 
   // Turn all fleet riders online/ready or offline
   const toggleAllRidersOnline = async (targetStatus = true) => {
+    if (previewOnly) return; // No rider writes, messages, cash settlements or exports in Preview.
     const shopId = currentShop?.id || 1;
     const eligibleConns = connections.filter((c) => c.rider_id || c.connection_code === "IN-HOUSE");
 
@@ -1621,7 +1648,38 @@ export const RiderManagement = ({
   ).length, [connections]);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6"
+      onClickCapture={(event) => {
+        if (!previewOnly) return;
+        const target = event.target as Element;
+        if (!target.closest('[data-rider-preview-safe="true"]')) {
+          event.preventDefault(); event.stopPropagation();
+        }
+      }}
+      onChangeCapture={(event) => {
+        if (!previewOnly) return;
+        const target = event.target as Element;
+        if (!target.closest('[data-rider-preview-safe="true"]')) {
+          event.preventDefault(); event.stopPropagation();
+        }
+      }}
+      onKeyDownCapture={(event) => {
+        if (!previewOnly || (event.key !== "Enter" && event.key !== " ")) return;
+        const target = event.target as Element;
+        if (!target.closest('[data-rider-preview-safe="true"]')) {
+          event.preventDefault(); event.stopPropagation();
+        }
+      }}
+      onSubmitCapture={(event) => {
+        if (!previewOnly) return;
+        event.preventDefault(); event.stopPropagation();
+      }}
+    >
+      {previewOnly && (
+        <p role="status" className="rounded-2xl bg-surface-container-low border border-outline-variant/15 px-4 py-3 text-xs text-on-surface-variant">
+          {merchantRiderPreviewNotice()}
+        </p>
+      )}
       {/* Visual Header */}
       <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-outline-variant/10 pb-4">
         <div className="space-y-1">
@@ -1630,42 +1688,46 @@ export const RiderManagement = ({
               Fleet Command Center
             </h2>
             <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-wider">
-              Live Fleet
+              {previewOnly ? "Preview Only" : "Live Fleet"}
             </span>
           </div>
           <p className="text-xs text-on-surface-variant font-medium">
-            Real-time driver roster, active mission tracking, instant COD settlements, and pairing dispatch.
+            {previewOnly ? "Fleet layout only: no rider data, pairing, dispatch, financial settlement or tracking is verified." : "Real-time driver roster, active mission tracking, instant COD settlements, and pairing dispatch."}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <button
+            disabled={previewOnly}
             onClick={() => {
+              if (previewOnly) return;
               if (!activeCode) {
                 void generateCode();
               }
               setShowPairModal(true);
             }}
             className="px-4 py-2.5 bg-primary hover:bg-primary/90 text-on-primary font-black rounded-2xl shadow-sm transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer"
-            title="Pair a new driver using 6-digit code or QR"
+            title={previewOnly ? "Rider pairing is unavailable in Preview" : "Pair a new driver using 6-digit code or QR"}
           >
             <Plus size={16} />
-            <span>Pair New Rider</span>
+            <span>{previewOnly ? "Pairing Unavailable" : "Pair New Rider"}</span>
           </button>
 
           <button
-            onClick={() => setShowBroadcastModal(true)}
+            disabled={previewOnly}
+            onClick={() => { if (!previewOnly) setShowBroadcastModal(true); }}
             className="px-3.5 py-2.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-black rounded-2xl shadow-xs transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider cursor-pointer border border-outline-variant/20"
-            title="Broadcast instant alert to online drivers"
+            title={previewOnly ? "Rider messaging is unavailable in Preview" : "Broadcast instant alert to online drivers"}
           >
             <Megaphone size={15} className="text-amber-500" />
-            <span>Broadcast</span>
+            <span>{previewOnly ? "Broadcast Unavailable" : "Broadcast"}</span>
           </button>
 
           <button
+            disabled={previewOnly}
             onClick={generateRiderPerformanceReport}
             className="p-2.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-black rounded-2xl shadow-xs transition-all flex items-center justify-center text-xs uppercase tracking-wider cursor-pointer border border-outline-variant/20"
-            title="Export Rider Performance & COD Summary (PDF)"
+            title={previewOnly ? "Financial export unavailable without a verified settlement ledger" : "Export Rider Performance & COD Summary (PDF)"}
           >
             <Download size={16} className="text-on-surface-variant" />
           </button>
@@ -1676,7 +1738,7 @@ export const RiderManagement = ({
       <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-outline-variant/10 scrollbar-none">
         {[
           { id: "network", label: "Rider Fleet", icon: Bike, count: activeConnectionsCount },
-          { id: "missions", label: "Live Deliveries", icon: Compass, count: activeMissions.length },
+          { id: "missions", label: previewOnly ? "Deliveries (Deferred)" : "Live Deliveries", icon: Compass, count: activeMissions.length },
           { id: "controls", label: "Dispatch Settings", icon: Settings },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -1684,6 +1746,8 @@ export const RiderManagement = ({
           return (
             <button
               key={tab.id}
+              data-rider-preview-safe="true"
+              aria-pressed={isActive}
               onClick={() => setActiveSubTab(tab.id as "missions" | "network" | "health" | "ratings" | "controls")}
               className={cn(
                 "flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-black transition-all cursor-pointer whitespace-nowrap border uppercase tracking-wider",
@@ -1715,12 +1779,13 @@ export const RiderManagement = ({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-headline font-bold text-on-surface">Transit Operations</h3>
-                <p className="text-xs text-on-surface-variant">Live delivery tracking and dispatch retries</p>
+                <p className="text-xs text-on-surface-variant">{previewOnly ? "Delivery and tracking are deferred. Missions are not loaded in Preview." : "Live delivery tracking and dispatch retries"}</p>
               </div>
               <button 
-                onClick={() => void fetchConnections()}
+                disabled={previewOnly}
+                onClick={() => { if(!previewOnly)void fetchConnections(); }}
                 className="p-2 hover:bg-on-surface/5 rounded-xl border border-outline-variant/10 text-on-surface-variant hover:text-on-surface transition-colors"
-                title="Force Refresh Coordinates"
+                title={previewOnly ? "Live GPS refresh is unavailable in Preview" : "Force Refresh Coordinates"}
               >
                 <RefreshCw size={15} />
               </button>
@@ -1732,9 +1797,9 @@ export const RiderManagement = ({
                   <Compass size={24} className="animate-pulse" />
                 </div>
                 <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-on-surface uppercase tracking-tight">No Active Missions</h4>
+                  <h4 className="text-sm font-bold text-on-surface uppercase tracking-tight">{previewOnly ? "Missions Unavailable" : "No Active Missions"}</h4>
                   <p className="text-xs text-on-surface-variant leading-relaxed font-medium">
-                    All orders are fully delivered or awaiting pickup. Launch an order from your store front to track live driver transit routes.
+                    {previewOnly ? "Rider missions are not loaded in Preview. No live transit, order status or delivery conclusion is available." : "All orders are fully delivered or awaiting pickup. Launch an order from your store front to track live driver transit routes."}
                   </p>
                 </div>
               </div>
@@ -1868,6 +1933,7 @@ export const RiderManagement = ({
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <button
                 type="button"
+                data-rider-preview-safe="true"
                 onClick={() => setStatusFilter("all")}
                 className={cn(
                   "p-4 rounded-2xl border transition-all flex items-center gap-3 text-left cursor-pointer",
@@ -1881,12 +1947,14 @@ export const RiderManagement = ({
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase text-on-surface-variant/60 tracking-wider">Total Fleet</p>
-                  <p className="text-lg font-headline font-black text-on-surface">{connections.length} Riders</p>
+                  <p className="text-lg font-headline font-black text-on-surface">{previewOnly ? "— Riders" : `${connections.length} Riders`}</p>
                 </div>
               </button>
 
               <button
                 type="button"
+                data-rider-preview-safe="true"
+                aria-pressed={statusFilter === "online"}
                 onClick={() => setStatusFilter(statusFilter === "online" ? "all" : "online")}
                 className={cn(
                   "p-4 rounded-2xl border transition-all flex flex-col justify-between text-left cursor-pointer relative overflow-hidden",
@@ -1908,7 +1976,7 @@ export const RiderManagement = ({
                       "text-lg font-headline font-black",
                       connections.filter((c) => c.is_online).length > 0 ? "text-emerald-600" : "text-amber-600"
                     )}>
-                      {connections.filter((c) => c.is_online).length} Ready
+                      {previewOnly ? "— Unverified" : `${connections.filter((c) => c.is_online).length} Ready`}
                     </p>
                   </div>
                 </div>
@@ -1917,18 +1985,22 @@ export const RiderManagement = ({
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (previewOnly) return;
                       const allOnline = connections.every((c) => c.is_online);
                       void toggleAllRidersOnline(!allOnline);
                     }}
-                    className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-600/10 hover:bg-emerald-600 text-emerald-700 hover:text-white transition-colors"
+                    title={previewOnly ? "Fleet status changes require live delivery activation" : "Change rider fleet availability"}
+                    aria-disabled={previewOnly}
+                    className={cn("text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-600/10 text-emerald-700 transition-colors", previewOnly ? "opacity-60 cursor-not-allowed" : "hover:bg-emerald-600 hover:text-white cursor-pointer")}
                   >
-                    {connections.every((c) => c.is_online) && connections.length > 0 ? "Set All Offline" : "Turn All Online"}
+                    {previewOnly ? "Fleet Status Unavailable" : connections.every((c) => c.is_online) && connections.length > 0 ? "Set All Offline" : "Turn All Online"}
                   </span>
                 </div>
               </button>
 
               <button
                 type="button"
+                data-rider-preview-safe="true"
                 onClick={() => setActiveSubTab("missions")}
                 className="p-4 rounded-2xl border transition-all flex items-center gap-3 text-left cursor-pointer bg-surface-container-low border-outline-variant/10 hover:border-primary/40 group"
               >
@@ -1943,7 +2015,7 @@ export const RiderManagement = ({
                     )}
                   </div>
                   <p className="text-lg font-headline font-black text-on-surface">
-                    {activeMissions.length} In Transit
+                    {previewOnly ? "— Unavailable" : `${activeMissions.length} In Transit`}
                   </p>
                 </div>
               </button>
@@ -1957,7 +2029,7 @@ export const RiderManagement = ({
                     <div>
                       <p className="text-[9px] font-black uppercase text-on-surface-variant/60 tracking-wider">Fleet COD Cash</p>
                       <p className="text-base font-headline font-black text-emerald-600">
-                        R {totalUnsettledCashAmount.toFixed(2)}
+                        {previewOnly ? "Unverified" : `R ${totalUnsettledCashAmount.toFixed(2)}`}
                       </p>
                     </div>
                   </div>
@@ -1971,7 +2043,7 @@ export const RiderManagement = ({
                     title="Settle all outstanding cash collections into store register"
                   >
                     <Check size={12} />
-                    <span>Settle All (R {totalUnsettledCashAmount.toFixed(2)})</span>
+                    <span>Settle All ({previewOnly ? "Unverified" : `R ${totalUnsettledCashAmount.toFixed(2)}`})</span>
                   </button>
                 )}
               </div>
@@ -1984,13 +2056,15 @@ export const RiderManagement = ({
                   <Sparkles size={14} className="text-primary" /> Fleet Handshake
                 </span>
                 <span className="text-xs text-on-surface-variant font-medium">
-                  • Link riders with 6-digit codes or register in-house staff
+                  {previewOnly ? "• Pairing and staff registration are not active" : "• Link riders with 6-digit codes or register in-house staff"}
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setShowQRScanner(true)}
+                  disabled={previewOnly}
+                  onClick={() => {if(!previewOnly)setShowQRScanner(true);}}
+                  title={previewOnly ? "QR pairing requires delivery activation" : "Scan rider pairing QR"}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-container-high text-on-surface rounded-xl font-bold text-xs cursor-pointer border border-outline-variant/20 transition-all"
                 >
                   <Camera size={14} className="text-primary" />
@@ -1998,7 +2072,9 @@ export const RiderManagement = ({
                 </button>
 
                 <button
-                  onClick={() => setShowInHouseModal(true)}
+                  disabled={previewOnly}
+                  onClick={() => {if(!previewOnly)setShowInHouseModal(true);}}
+                  title={previewOnly ? "Staff registration requires an authorised rider workflow" : "Add rider staff"}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 rounded-xl font-bold text-xs cursor-pointer border border-indigo-500/20 transition-all"
                 >
                   <Users size={14} />
@@ -2133,13 +2209,15 @@ export const RiderManagement = ({
                 <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/50" />
                 <input
                   type="text"
+                  data-rider-preview-safe="true"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search rider name, phone, or code..."
+                  placeholder={previewOnly ? "Search layout (rider records unavailable)" : "Search rider name, phone, or code..."}
                   className="w-full pl-10 pr-8 py-2 text-xs bg-surface text-on-surface placeholder:text-on-surface-variant/50 border border-outline-variant/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
                 />
                 {searchQuery && (
                   <button
+                    data-rider-preview-safe="true"
                     onClick={() => setSearchQuery("")}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40 hover:text-on-surface"
                   >
@@ -2151,14 +2229,16 @@ export const RiderManagement = ({
               {/* Status Filter Chips */}
               <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none shrink-0">
                 {[
-                  { id: "all", label: `All (${connections.length})` },
-                  { id: "online", label: `🟢 Online (${connections.filter(c => c.is_online).length})` },
-                  { id: "offline", label: `⚪ Offline (${connections.filter(c => !c.is_online).length})` },
-                  { id: "in_house", label: `🏠 Staff (${connections.filter(c => c.connection_code === "IN-HOUSE").length})` },
-                  { id: "paired", label: `🔑 Paired (${connections.filter(c => c.connection_code !== "IN-HOUSE").length})` },
+                  { id: "all", label: previewOnly ? "All (—)" : `All (${connections.length})` },
+                  { id: "online", label: previewOnly ? "🟢 Online (—)" : `🟢 Online (${connections.filter(c => c.is_online).length})` },
+                  { id: "offline", label: previewOnly ? "⚪ Offline (—)" : `⚪ Offline (${connections.filter(c => !c.is_online).length})` },
+                  { id: "in_house", label: previewOnly ? "🏠 Staff (—)" : `🏠 Staff (${connections.filter(c => c.connection_code === "IN-HOUSE").length})` },
+                  { id: "paired", label: previewOnly ? "🔑 Paired (—)" : `🔑 Paired (${connections.filter(c => c.connection_code !== "IN-HOUSE").length})` },
                 ].map((chip) => (
                   <button
                     key={chip.id}
+                    data-rider-preview-safe="true"
+                    aria-pressed={statusFilter === chip.id}
                     onClick={() => setStatusFilter(chip.id as "all" | "online" | "offline" | "in_house" | "paired")}
                     className={cn(
                       "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap",
@@ -2179,7 +2259,7 @@ export const RiderManagement = ({
                 <h4 className="text-xs font-black uppercase text-on-surface-variant tracking-wider flex items-center gap-2">
                   <span>Rider Roster</span>
                   <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                    {filteredConnections.length} shown
+                    {previewOnly ? "Records unavailable" : `${filteredConnections.length} shown`}
                   </span>
                 </h4>
                 {availableCodesCount > 0 && (
@@ -2200,14 +2280,18 @@ export const RiderManagement = ({
                   </div>
                   <div className="space-y-1">
                     <h4 className="text-sm font-bold text-on-surface uppercase tracking-tight">
-                      {statusFilter === "online" && connections.length > 0
+                      {previewOnly
+                        ? "Rider Data Unavailable"
+                        : statusFilter === "online" && connections.length > 0
                         ? "No Riders Online & Ready"
                         : connections.length === 0
                         ? "No Riders Connected Yet"
                         : "No Matching Riders"}
                     </h4>
                     <p className="text-xs text-on-surface-variant font-medium leading-relaxed">
-                      {statusFilter === "online" && connections.length > 0
+                      {previewOnly
+                        ? (searchQuery.trim() || statusFilter !== "all" ? "Filters are for reviewing this layout only; no rider records are loaded. Clear filters to return to the default view." : "Rider records are not loaded in Preview. This does not mean your shop has no riders.")
+                        : statusFilter === "online" && connections.length > 0
                         ? "None of your riders are currently marked as online for order dispatch. You can activate all riders with one tap."
                         : connections.length === 0
                         ? "Generate a pairing code or add an in-house driver above to activate your delivery network."
@@ -2225,21 +2309,23 @@ export const RiderManagement = ({
                         <span>Turn Fleet Online</span>
                       </button>
                     )}
-                    {statusFilter !== "all" && (
+                    {(statusFilter !== "all" || (previewOnly && searchQuery.trim().length > 0)) && (
                       <button
+                        data-rider-preview-safe="true"
                         onClick={() => { setSearchQuery(""); setStatusFilter("all"); }}
                         className="px-4 py-2 bg-surface text-on-surface text-xs font-bold rounded-xl border border-outline-variant/20 hover:bg-on-surface/5 transition-all cursor-pointer"
                       >
-                        View All Riders ({connections.length})
+                        {previewOnly ? "Clear filters" : `View All Riders (${connections.length})`}
                       </button>
                     )}
                     {connections.length === 0 && (
                       <button
-                        onClick={() => setShowInHouseModal(true)}
+                        disabled={previewOnly}
+                        onClick={() => { if(!previewOnly)setShowInHouseModal(true); }}
                         className="px-4 py-2 bg-primary text-on-primary text-xs font-bold rounded-xl shadow-xs hover:bg-primary/90 transition-all cursor-pointer flex items-center gap-1.5"
                       >
                         <Plus size={13} />
-                        <span>Add In-House Staff</span>
+                        <span>{previewOnly ? "Staff Registration Unavailable" : "Add In-House Staff"}</span>
                       </button>
                     )}
                   </div>
@@ -2885,7 +2971,7 @@ export const RiderManagement = ({
                   <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                     <Award size={12} /> Top 5% Fleet Quality
                   </span>
-                  <span className="text-on-surface-variant/60">{connections.length} Riders Active</span>
+                  <span className="text-on-surface-variant/60">{previewOnly ? "— Riders" : `${connections.length} Riders`} Active</span>
                 </div>
               </div>
 
@@ -2966,7 +3052,7 @@ export const RiderManagement = ({
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-bold bg-primary/10 text-primary px-2.5 py-1 rounded-xl">
-                    {connections.length} Riders Rated
+                    {previewOnly ? "— Riders" : `${connections.length} Riders`} Rated
                   </span>
                 </div>
               </div>
@@ -3053,7 +3139,7 @@ export const RiderManagement = ({
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-headline font-black text-on-surface">Store Rider Dispatch</h3>
-                <p className="text-xs text-on-surface-variant">Configure independent fleet access permissions</p>
+                <p className="text-xs text-on-surface-variant">{previewOnly ? "Dispatch, permission changes and delivery are unavailable in Preview." : "Configure independent fleet access permissions"}</p>
               </div>
 
               <div className="bg-surface-container-low rounded-3xl p-5 border border-outline-variant/10 shadow-sm space-y-4">
@@ -3061,10 +3147,11 @@ export const RiderManagement = ({
                   <div className="space-y-1">
                     <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Allow External Pool Riders</h4>
                     <p className="text-[11px] text-on-surface-variant font-medium leading-relaxed">
-                      Enable verified public or independent riders on the network to view and accept your orders when your in-house fleet is busy.
+                      {previewOnly ? "External riders cannot be activated or assigned from this Preview." : "Enable verified public or independent riders on the network to view and accept your orders when your in-house fleet is busy."}
                     </p>
                   </div>
                   <button
+                    disabled={previewOnly}
                     onClick={toggleAllowExternalRiders}
                     className={cn(
                       "w-12 h-6 rounded-full transition-all relative cursor-pointer border shrink-0",
@@ -3082,10 +3169,11 @@ export const RiderManagement = ({
                   <div className="space-y-1">
                     <h4 className="text-xs font-black uppercase tracking-wider text-on-surface">Auto-Dispatch to Paired Riders</h4>
                     <p className="text-[11px] text-on-surface-variant font-medium leading-relaxed">
-                      Automatically dispatch the order to your active paired riders the moment you accept an order.
+                      {previewOnly ? "Automatic rider dispatch is unavailable; no orders are sent from this Preview." : "Automatically dispatch the order to your active paired riders the moment you accept an order."}
                     </p>
                   </div>
                   <button
+                    disabled={previewOnly}
                     onClick={toggleAutoLookForRider}
                     className={cn(
                       "w-12 h-6 rounded-full transition-all relative cursor-pointer border shrink-0",
@@ -3104,11 +3192,11 @@ export const RiderManagement = ({
               <div className="bg-gradient-to-br from-primary/[0.02] via-surface-container-low to-primary/[0.05] rounded-3xl p-6 border-2 border-primary/5 space-y-4 shadow-sm">
                 <div className="space-y-2">
                   <span className="inline-flex items-center gap-1 text-[9px] font-black bg-primary/10 text-primary px-2.5 py-0.5 rounded-full tracking-wider uppercase">
-                    ★ Premium Trust Booster
+                    {previewOnly ? "Preview Only — Not a Plan Benefit" : "★ Premium Trust Booster"}
                   </span>
                   <h4 className="text-sm font-headline font-black text-on-surface">No Rider? Cash-on-Arrival Banner</h4>
                   <p className="text-[11px] text-on-surface-variant font-medium leading-relaxed">
-                    Build instant user checkout trust. Let customers know they can choose standard Cash on Delivery with full safety guarantees, and we'll route in-house or paired partners to collect it safely.
+                    {previewOnly ? "Delivery and rider cash collection are deferred. No COD guarantee, banner, dispatch or checkout feature is activated." : "Build instant user checkout trust. Let customers know they can choose standard Cash on Delivery with full safety guarantees, and we'll route in-house or paired partners to collect it safely."}
                   </p>
                 </div>
 
@@ -3117,6 +3205,7 @@ export const RiderManagement = ({
                     Display Banner on Storefront
                   </span>
                   <button
+                    disabled={previewOnly}
                     onClick={toggleCashTrust}
                     className={cn(
                       "w-12 h-6 rounded-full transition-all relative cursor-pointer border shrink-0",
@@ -3136,7 +3225,7 @@ export const RiderManagement = ({
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-headline font-black text-on-surface">Rider Cash-on-Hand</h3>
-                <p className="text-xs text-on-surface-variant">COD outstanding balances and warning caps</p>
+                <p className="text-xs text-on-surface-variant">{previewOnly ? "Reconciliation requires verified cash and delivery records." : "COD outstanding balances and warning caps"}</p>
               </div>
 
               {riderCashBalances.length === 0 ? (
@@ -3144,9 +3233,9 @@ export const RiderManagement = ({
                   <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center mx-auto text-on-surface-variant/30">
                     <Wallet size={18} />
                   </div>
-                  <h4 className="text-xs font-bold text-on-surface uppercase tracking-tight">No Cash Collections</h4>
+                  <h4 className="text-xs font-bold text-on-surface uppercase tracking-tight">{previewOnly ? "Cash Records Unavailable" : "No Cash Collections"}</h4>
                   <p className="text-[11px] text-on-surface-variant leading-relaxed font-medium">
-                    All Cash-on-Delivery orders are fully reconciled. No drivers currently carry active storefront cash.
+                    {previewOnly ? "COD and cash settlements are not loaded or verified in Preview; no reconciliation conclusion is possible." : "All Cash-on-Delivery orders are fully reconciled. No drivers currently carry active storefront cash."}
                   </p>
                 </div>
               ) : (

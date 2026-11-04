@@ -90,10 +90,10 @@ import {
 import { LocalEatsLogo } from "./components/LocalEatsLogo";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
 import { DashboardOverview } from "./components/DashboardOverview";
-import { ShopProfile } from "./components/ShopProfile";
+import { MerchantStorefrontPreview } from "./components/MerchantStorefrontPreview";
+import { merchantStorefrontPreviewOnly, merchantStorefrontWritesEnabled } from "./services/merchantStorefrontPreviewPolicy";
 import { OrdersManagement } from "./components/OrdersManagement";
 import { MenuManagement } from "./components/MenuManagement";
-import { RiderManagement } from "./components/RiderManagement";
 import { Coupons } from "./components/Coupons";
 import { Marketing } from "./components/Marketing";
 import { Insights } from "./components/Insights";
@@ -515,7 +515,8 @@ function App() {
   // A legacy creation-date-based 30-day countdown cannot start a three-month trial.
   const trialInfo = null;
 
-  const [settingsCategory, setSettingsCategory] = useState<string>("account");
+  const [settingsCategory, setSettingsCategory] = useState<string>("storefront");
+  const [settingsAdvancedExpanded, setSettingsAdvancedExpanded] = useState(false);
   const [pickupPaymentChoice, setPickupPaymentChoice] = useState<"cash" | "card_machine" | "both">("cash");
   const [savingPickupPayments, setSavingPickupPayments] = useState(false);
   const [pickupPaymentError, setPickupPaymentError] = useState("");
@@ -1535,6 +1536,7 @@ function App() {
   }
 
   const handleSaveProfile = async (data: ProfileData) => {
+    if (!merchantStorefrontWritesEnabled()) { toast.info("Profile saving is unavailable in Merchant Preview."); return; }
     setIsSaving(true);
     setIsSaveSuccess(false);
     try {
@@ -1613,6 +1615,17 @@ function App() {
   }
 
   if (user && merchantShopGate.status === "no-shop") {
+    if (merchantStorefrontPreviewOnly()) {
+      return (
+        <div className="min-h-screen bg-surface px-4 py-10 text-on-surface flex items-center justify-center">
+          <section className="max-w-xl w-full rounded-[2rem] bg-surface-container-lowest border border-outline-variant/20 p-8 text-center space-y-4">
+            <h2 className="font-headline text-2xl font-black">Shop Onboarding — Preview Only</h2>
+            <p className="text-sm text-on-surface-variant">No verified shop is selected. Shop registration and uploads are unavailable in this Preview. No shop or database record is created.</p>
+            <button type="button" onClick={() => void handleSignOut()} className="rounded-xl px-5 py-3 bg-surface-container-high text-on-surface text-sm font-bold">Sign Out</button>
+          </section>
+        </div>
+      );
+    }
     return (
       <CreateShopOnboarding
         onCreated={handleCreatedMerchantShop}
@@ -1655,7 +1668,7 @@ function App() {
     );
   }
 
-  if (isEditingProfile) {
+  if (isEditingProfile && !merchantStorefrontPreviewOnly()) {
     console.log("[Render] editing-profile", { isSessionChecking, isAuthReady, loading, userId: user?.id });
     return (
       <>
@@ -2219,9 +2232,10 @@ function App() {
              Store Offline - Not Receiving Orders
            </div>
            <button
-             disabled={availabilityBusy}
+             disabled={availabilityBusy || merchantStorefrontPreviewOnly()}
+             title={merchantStorefrontPreviewOnly() ? "Shop availability changes are unavailable in Merchant Preview" : "Mark shop available"}
              onClick={async () => {
-                if (availabilityBusy) return;
+                if (availabilityBusy || merchantStorefrontPreviewOnly()) return;
                 const newStatus = true;
 
                 const { success, error, freshShop } = await syncShopAvailability({
@@ -2250,7 +2264,7 @@ function App() {
              }}
              className="px-4 py-1 bg-white text-error rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-zinc-100 transition-colors ml-2 shadow-xs cursor-pointer active:scale-95 border border-white"
            >
-             Mark Shop Available
+             {merchantStorefrontPreviewOnly() ? "Status Change Unavailable" : "Mark Shop Available"}
            </button>
         </div>
       )}
@@ -2265,6 +2279,7 @@ function App() {
             <React.Suspense fallback={<DashboardSkeleton />}>
               {activeTab === "dashboard" && (
                 <DashboardOverview
+                  previewOnly={merchantStorefrontPreviewOnly()}
                   orders={orders}
                   loading={loading}
                   ordersReadState={ordersReadState}
@@ -2276,7 +2291,7 @@ function App() {
                     await fetchShops();
                     await Promise.all([fetchOrders(), fetchAllMenuItems()]);
                   }}
-                  onEditProfile={() => setIsEditingProfile(true)}
+                  onEditProfile={() => { if (merchantStorefrontPreviewOnly()) toast.info("Profile editing is unavailable in Merchant Preview."); else setIsEditingProfile(true); }}
                   menuItems={menuItems}
                   trialInfo={trialInfo}
                   currentShop={currentShop}
@@ -2351,19 +2366,18 @@ function App() {
                 />
               )}
               {activeTab === "riders" && (
-                currentShop ? (
-                  <RiderManagement
-                    currentShop={currentShop}
-                    orders={orders}
-                    onRequestRider={requestRider}
-                    sendRiderNudge={sendRiderNudge}
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
-                    <p className="text-on-surface-variant font-medium">Create a shop first to manage riders.</p>
-                    <button onClick={() => setActiveTab("storefront")} className="px-4 py-2 bg-primary text-white rounded-xl">Go to Storefront</button>
+                <section aria-labelledby="riders-coming-soon-title" className="min-h-[60vh] flex items-center justify-center px-4">
+                  <div className="w-full max-w-lg rounded-3xl border border-outline-variant/20 bg-surface-container-low p-8 md:p-12 text-center shadow-sm">
+                    <div aria-hidden="true" className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      <Bike size={30} />
+                    </div>
+                    <p className="mb-2 text-xs font-black uppercase tracking-widest text-primary">Riders</p>
+                    <h1 id="riders-coming-soon-title" className="font-headline text-3xl font-black text-on-surface">Coming Soon</h1>
+                    <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
+                      Rider management is not available yet. Pairing, dispatch, and deliveries are disabled.
+                    </p>
                   </div>
-                )
+                </section>
               )}
               {activeTab === "payments" && (
                 currentShop ? (
@@ -2393,24 +2407,31 @@ function App() {
                     </h2>
                   </div>
                   <p className="text-sm text-on-surface-variant font-medium">
-                    Manage your account and storefront preferences.
+                    Storefront, account and basic preferences first. Less-used settings are under More settings.
                   </p>
+                  <div className="pt-3">
+                    <button type="button" onClick={() => setActiveTab("storefront")}
+                      className="merchant-tap-feedback inline-flex items-center gap-2 rounded-xl bg-primary text-on-primary px-4 py-2.5 font-bold text-sm shadow-sm focus-visible:outline-2 focus-visible:outline-primary">
+                      <Store size={17} aria-hidden="true" /> Open Storefront &amp; Test Location <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                    <p className="mt-2 text-xs text-on-surface-variant">Opens a safe view of the original location map. Test pin changes do not edit the registered shop or change Customer App discovery.</p>
+                  </div>
                 </header>
 
                 <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-start px-4 md:px-0">
                   {/* Sidebar */}
                   <nav className="w-full md:w-56 shrink-0 flex md:flex-col gap-2 overflow-x-auto pb-4 md:pb-0 hide-scrollbar border-b md:border-b-0 border-outline-variant/10 md:pr-4">
                      {[
-                       { id: "account", label: "Account & Staff", icon: UserIcon },
                        { id: "storefront", label: "Storefront", icon: Store },
+                       { id: "account", label: "Account", icon: UserIcon },
+                       { id: "preferences", label: "Preferences", icon: Settings },
                        { id: "pickup-payments", label: "Pickup payments", icon: CreditCard },
                        { id: "operations", label: "Operations", icon: Sliders },
                        { id: "delivery", label: "Delivery", icon: Truck },
                        { id: "hardware", label: "Printing & Hardware", icon: Printer },
                        { id: "billing", label: "Billing & Subscription", icon: Wallet },
-                       { id: "preferences", label: "Preferences", icon: Settings },
                        { id: "diagnostics", label: "Database Diagnostics", icon: Activity },
-                     ].map(category => (
+                     ].filter(category => settingsAdvancedExpanded || ["storefront", "account", "preferences"].includes(category.id)).map(category => (
                        <button
                          key={category.id}
                          onClick={() => setSettingsCategory(category.id)}
@@ -2427,6 +2448,13 @@ function App() {
                          {category.label}
                        </button>
                      ))}
+                     <button type="button" onClick={() => setSettingsAdvancedExpanded(value => !value)}
+                       aria-expanded={settingsAdvancedExpanded}
+                       className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-on-surface-variant hover:bg-surface-container-high border border-outline-variant/15 focus-visible:outline-2 focus-visible:outline-primary">
+                       <Sliders size={17} aria-hidden="true" />
+                       {settingsAdvancedExpanded ? "Fewer settings" : "More settings"}
+                       <ChevronRight size={15} aria-hidden="true" className={settingsAdvancedExpanded ? "-rotate-90" : "rotate-90"} />
+                     </button>
                   </nav>
 
                   {/* Settings Content Panels */}
@@ -3723,16 +3751,7 @@ function App() {
                 {currentShop && (
                   <>
                     
-                    <ShopProfile
-                      shop={currentShop}
-                    onRefresh={fetchShops}
-                    user={user}
-                    setIsSaving={setIsSaving}
-                    setIsSaveSuccess={setIsSaveSuccess}
-                    isSaving={isSaving}
-                    isSuccess={isSaveSuccess}
-                    onFinished={() => setActiveTab("dashboard")}
-                  />
+                    <MerchantStorefrontPreview key={String(currentShop.id)} shop={currentShop} />
                   </>
                 )}
               </div>
