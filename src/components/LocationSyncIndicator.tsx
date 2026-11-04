@@ -30,6 +30,7 @@ interface LocationSyncIndicatorProps {
   onOpenStorefrontMap?: () => void;
   className?: string;
   compact?: boolean;
+  previewOnly?: boolean;
 }
 
 export const LocationSyncIndicator: React.FC<LocationSyncIndicatorProps> = ({
@@ -43,6 +44,7 @@ export const LocationSyncIndicator: React.FC<LocationSyncIndicatorProps> = ({
   onOpenStorefrontMap,
   className = "",
   compact = false,
+  previewOnly = false,
 }) => {
   const [showDetails, setShowDetails] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -55,6 +57,13 @@ export const LocationSyncIndicator: React.FC<LocationSyncIndicatorProps> = ({
   };
 
   const getStatusBadge = () => {
+    if(previewOnly)return {
+      bg: "bg-surface-container-highest text-on-surface-variant/80 border-outline-variant/20",
+      dot: "bg-outline-variant/50",
+      icon: Info,
+      title: "Location Preview — Not Verified",
+      tag: "Not Activated",
+    };
     switch (syncAnalysis.status) {
       case "synced":
         return {
@@ -154,7 +163,7 @@ export const LocationSyncIndicator: React.FC<LocationSyncIndicatorProps> = ({
               </span>
             </div>
             <p className="text-xs text-on-surface-variant line-clamp-1">
-              Verifies GPS coordinates match your selected storefront area filter
+              {previewOnly ? "Stored location information is not proof of live delivery or GPS verification" : "Verifies GPS coordinates match your selected storefront area filter"}
             </p>
           </div>
         </div>
@@ -178,8 +187,8 @@ export const LocationSyncIndicator: React.FC<LocationSyncIndicatorProps> = ({
 
           <button
             type="button"
-            onClick={handleVerify}
-            disabled={isVerifying}
+            onClick={() => { if(!previewOnly) handleVerify(); }}
+            disabled={previewOnly || isVerifying}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface-variant text-xs font-bold transition-all border border-outline-variant/10"
             title="Re-verify sync diagnostics"
           >
@@ -213,8 +222,8 @@ export const LocationSyncIndicator: React.FC<LocationSyncIndicatorProps> = ({
             )}
           />
           <div className="space-y-1 flex-1">
-            <p className="font-medium">{syncAnalysis.message}</p>
-            {syncAnalysis.recommendation && (
+            <p className="font-medium">{previewOnly ? "Shop location and area are shown for design inspection only. GPS sync and customer coverage have not been verified for launch." : syncAnalysis.message}</p>
+            {!previewOnly && syncAnalysis.recommendation && (
               <p className="text-[11px] font-bold text-primary flex items-center gap-1.5 pt-1">
                 <Sparkles size={13} className="shrink-0" />
                 <span>{syncAnalysis.recommendation}</span>
@@ -247,7 +256,7 @@ export const LocationSyncIndicator: React.FC<LocationSyncIndicatorProps> = ({
           <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant/70 block">
             Stored Area Filter
           </span>
-          <p className="text-xs font-bold text-on-surface truncate">{locationState.city || "Tembisa"}</p>
+          <p className="text-xs font-bold text-on-surface truncate">{previewOnly ? (locationState.city || "Area unavailable") : (locationState.city || "Tembisa")}</p>
         </div>
 
         <div className="p-3 bg-surface-container rounded-xl border border-outline-variant/10 space-y-1">
@@ -273,7 +282,7 @@ export const LocationSyncIndicator: React.FC<LocationSyncIndicatorProps> = ({
             Delivery Radius
           </span>
           <p className="text-xs font-bold text-on-surface truncate">
-            {locationState.deliveryRadiusEnabled ? `${locationState.deliveryRadiusKm} KM Active` : "Disabled (Open)"}
+            {previewOnly ? "Not active in Preview" : locationState.deliveryRadiusEnabled ? `${locationState.deliveryRadiusKm} KM Active` : "Disabled (Open)"}
           </p>
         </div>
       </div>
@@ -282,17 +291,18 @@ export const LocationSyncIndicator: React.FC<LocationSyncIndicatorProps> = ({
       <div className="border-t border-outline-variant/10 pt-3">
         <button
           type="button"
-          onClick={() => setShowDetails(!showDetails)}
+          disabled={previewOnly}
+          onClick={() => { if(!previewOnly) setShowDetails(!showDetails); }}
           className="w-full flex items-center justify-between text-xs font-bold text-on-surface-variant hover:text-on-surface py-1 transition-colors"
         >
           <span className="flex items-center gap-2">
             <Layers size={14} className="text-primary" />
-            <span>Why do certain neighboring areas still appear in orders or search?</span>
+            <span>{previewOnly ? "Area coverage details unavailable in Preview" : "Why do certain neighboring areas still appear in orders or search?"}</span>
           </span>
           {showDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
 
-        {showDetails && (
+        {!previewOnly && showDetails && (
           <div className="mt-3 p-4 bg-surface-container-high rounded-xl border border-outline-variant/10 space-y-3 text-xs text-on-surface-variant animate-in fade-in duration-200">
             <p className="leading-relaxed">
               LocalEats uses a <strong className="text-on-surface">Zero-Guesswork GPS Location Engine</strong>. Customer storefront visibility and rider missions are calculated using both your shop's numerical pin and your <strong className="text-on-surface">{locationState.deliveryRadiusKm} KM delivery boundary</strong>.
