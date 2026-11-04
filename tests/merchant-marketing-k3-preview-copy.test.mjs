@@ -89,7 +89,7 @@ test("Customer Reach preview never exposes or pretends to count customers",()=>{
  assert.match(customers,/previewOnly \? "—" : metrics\.repeatDiners/);
  assert.match(customers,/previewOnly \? "—" : metrics\.activePast14Days/);
  assert.match(customers,/Customer Contacts Not Loaded/);
- assert.match(customers,/no contact records are loaded and customer messaging is not available/);
+ assert.match(customers,/No contact records are loaded and customer messaging is not available/);
  assert.match(customers,/const handleSendWhatsApp = \(customer: CustomerProfile\) => \{\s*if\(previewOnly\) return;/);
  assert.match(customers,/const handleCopyPhone = \(customer: CustomerProfile\) => \{\s*if\(previewOnly\) return;/);
 });
