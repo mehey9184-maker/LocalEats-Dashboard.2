@@ -18,7 +18,7 @@ test("Preview HTTP requests cannot mutate database via any API verb, but can rea
     if(!addr||typeof addr==="string")throw Error("Missing local test port");
     const url="http://127.0.0.1:"+addr.port+"/synthetic";
     for(const method of ["POST","PUT","PATCH","DELETE"]){
-      const response=await fetch(url,{method});
+      const response: Awaited<ReturnType<typeof fetch>> = await fetch(url,{method});
       assert.equal(response.status,503,method+" should be blocked in Preview");
       assert.equal(response.headers.get("cache-control"),"no-store");
       const body=await response.json() as {code?:string;success?:boolean};
@@ -26,13 +26,13 @@ test("Preview HTTP requests cannot mutate database via any API verb, but can rea
       assert.equal(body.success,false);
     }
     for(const method of ["GET","HEAD","OPTIONS"]){
-      const response=await fetch(url,{method});
+      const response: Awaited<ReturnType<typeof fetch>> = await fetch(url,{method});
       assert.equal(response.status,200,method+" should remain read-only available");
     }
     // Despite being GET, the legacy notifications handler runs outbox RPC
     // updates and FCM sends; it is intentionally disabled on Preview.
     for(const method of ["GET","HEAD"]){
-      const response=await fetch("http://127.0.0.1:"+addr.port+"/api/v1/notifications",{method});
+      const response: Awaited<ReturnType<typeof fetch>> = await fetch("http://127.0.0.1:"+addr.port+"/api/v1/notifications",{method});
       assert.equal(response.status,503,"Side-effectful notification "+method+" must be blocked");
       assert.equal(response.headers.get("cache-control"),"no-store");
     }
