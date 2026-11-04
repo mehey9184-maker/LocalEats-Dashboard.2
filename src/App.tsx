@@ -2436,7 +2436,7 @@ function App() {
                     onSubmitCapture={(event) => { event.preventDefault(); event.stopPropagation(); }}
                     className="flex-1 w-full space-y-4 max-w-3xl pb-16 pointer-events-none">
                     <p role="status" className="text-xs text-on-surface-variant bg-surface-container-low rounded-2xl p-3 border border-outline-variant/15">
-                      {merchantSettingsS4Notice()}
+                      Settings Preview is read-only. {merchantSettingsS4Notice()}
                     </p>
                     {settingsCategory === "pickup-payments" && currentShop && (
                       <section className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
