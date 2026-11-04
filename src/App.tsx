@@ -2538,7 +2538,7 @@ function App() {
                           Storefront Profile
                         </p>
                         <p className="text-xs text-on-surface-variant line-clamp-1 md:line-clamp-none">
-                          Open using “View Storefront Preview” at the top of Settings. Editing stays disabled.
+                          Profile changes are unavailable in read-only Preview. Use “View Storefront Preview” at the top of Settings to inspect the profile.
                         </p>
                       </div>
                     </div>
