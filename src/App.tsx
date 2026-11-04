@@ -2410,6 +2410,19 @@ function App() {
                       Settings
                     </h2>
                   </div>
+                  {merchantStorefrontPreviewOnly() && currentShop && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("storefront")}
+                      aria-label="Open read-only Storefront Preview"
+                      className="inline-flex items-center gap-2 self-start px-4 py-3 min-h-11 rounded-xl text-sm font-bold text-primary bg-primary/5 hover:bg-primary/10 border border-primary/15 transition-colors"
+                      title="Inspect your shop profile. Editing, uploads, following and availability changes stay disabled."
+                    >
+                      <Store size={18} />
+                      View Storefront Preview
+                      <ChevronRight size={16} />
+                    </button>
+                  )}
                   <p className="text-sm text-on-surface-variant font-medium">
                     Manage your account and storefront preferences.
                   </p>
@@ -2445,17 +2458,6 @@ function App() {
                          {category.label}
                        </button>
                      ))}
-                     {merchantStorefrontPreviewOnly() && currentShop && settingsCategory === "storefront" && (
-                       <button
-                         type="button"
-                         onClick={() => setActiveTab("storefront")}
-                         className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-colors text-primary bg-primary/5 hover:bg-primary/10 border border-primary/15"
-                         title="Inspect shop profile without saving or changing availability"
-                       >
-                         <Store size={18} />
-                         View Storefront Preview
-                       </button>
-                     )}
                   </nav>
 
                   {/* Settings Content Panels */}
@@ -2536,7 +2538,7 @@ function App() {
                           Storefront Profile
                         </p>
                         <p className="text-xs text-on-surface-variant line-clamp-1 md:line-clamp-none">
-                          Profile changes are unavailable in read-only Preview.
+                          Open using “View Storefront Preview” at the top of Settings. Editing stays disabled.
                         </p>
                       </div>
                     </div>
