@@ -11,6 +11,9 @@ test("Storefront Preview hard-disabled without public feature activation flags",
  assert.match(merchantStorefrontPreviewNotice(),/Saving shop details, changing availability, following, image uploads/);
  assert.match(app,/import \{ merchantStorefrontPreviewOnly, merchantStorefrontWritesEnabled \} from "\.\/services\/merchantStorefrontPreviewPolicy"/);
  assert.match(app,/<ShopProfile[\s\S]*?previewOnly=\{merchantStorefrontPreviewOnly\(\)\}/);
+ assert.match(app,/merchantStorefrontPreviewOnly\(\) && currentShop && settingsCategory === "storefront"/);
+ assert.match(app,/onClick=\{\(\) => setActiveTab\("storefront"\)\}/);
+ assert.match(app,/View Storefront Preview/);
 });
 
 test("Profile renders original layout and card but form is inert, not a live storefront or checkout claim",()=>{
