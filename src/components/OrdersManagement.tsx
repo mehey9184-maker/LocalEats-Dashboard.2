@@ -1,5 +1,5 @@
 import {PickupOrderActions} from "./PickupOrderActions";
-import {isPickupOrder,pickupPaymentLabel} from "../services/merchantPickupPolicy";
+import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
@@ -2755,7 +2755,7 @@ Notes: "${order.notes || "None"}"
 
   return (
     <div className="space-y-8">
-      <p role="status" className="text-xs text-on-surface-variant mb-3">Pickup order, payment and collection changes are disabled pending separately approved database activation. Existing management and historical delivery records remain available.</p>
+      <p role="status" className="text-xs text-on-surface-variant mb-3">{pickupOrderingEnabled() ? "Pickup actions are API-authorized. Confirm actual payment before food handover and Collected. Historical delivery records remain available." : "Pickup order, payment and collection changes are disabled pending separately approved database activation. Existing management and historical delivery records remain available."}</p>
       <section className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
           <div className="max-w-2xl space-y-1">

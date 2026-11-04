@@ -161,6 +161,7 @@ test("delivery radius is verified from server shop coordinates", () => {
           name: "Shop",
           is_active: true,
           approval_status: "approved",
+          archived_at: null,
           latitude: -25.983,
           longitude: 28.208,
           lat: null,

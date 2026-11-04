@@ -11,8 +11,8 @@ test("mounted Firebase-authenticated pickup quote, CORS and write gate use no pe
  let verified=0,reads=0;
  (authAdmin as any).verifyIdToken=async(token:string)=>{assert.equal(token,"offline-test");verified++;return {uid:"customer-test"};};
  (supabaseAdmin as any).from=(table:string)=>{
-  assert.ok(["shops","menu_items"].includes(table));reads++;
-  const data=table==="shops" ? {id:"s",name:"Shop",location:"Ivory Park",archived_at:null,is_active:true,approval_status:"approved",lat:-25.98,lng:28.2,latitude:null,longitude:null}
+  assert.ok(["shops_with_availability","menu_items"].includes(table));reads++;
+  const data=table==="shops_with_availability" ? {id:"s",name:"Shop",location:"Ivory Park",archived_at:null,is_active:true,effective_is_active:true,availability_revision:0,approval_status:"approved",lat:-25.98,lng:28.2,latitude:null,longitude:null}
    : [{id:"m",shop_id:"s",name:"Kota",price:32.5,is_available:true}];
   const query:any={select(){return this;},eq(){return this;},in(){return this;},maybeSingle(){return Promise.resolve({data,error:null});},then(resolve:any){return Promise.resolve({data,error:null}).then(resolve);}};
   return query;
@@ -27,7 +27,7 @@ test("mounted Firebase-authenticated pickup quote, CORS and write gate use no pe
   assert.equal(preflight.status,204);assert.equal(preflight.headers.get("access-control-allow-origin"),"https://www.localeatssa.co.za");
   const badOrigin=await fetch(base+"/health",{headers:{origin:"https://www.localeatssa.co.za.attacker.test"}});assert.equal(badOrigin.status,403);
   const result=await fetch(base+"/api/v1/orders/quote",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer fb-offline-test",origin:"https://www.localeatssa.co.za"},body:JSON.stringify({contract_version:"pickup-v1",idempotency_key:"11111111-1111-4111-8111-111111111111",shop_id:"s",items:[{menu_item_id:"m",quantity:2}],delivery_type:"collection",delivery_schedule_mode:"standard",payment_method:"cash",customer_details:{name:"Test",phone:"0712345678"},launch_location:{lat:-25.98,lng:28.2}})});
-  assert.equal(result.status,200);assert.equal((await result.json()).quote.total_minor,6750);assert.equal(verified,1);assert.equal(reads,2);
+  assert.equal(result.status,200);assert.equal((await result.json()).quote.total_minor,6500);assert.equal(verified,1);assert.equal(reads,2);
   const writes=await fetch(base+"/api/v1/orders",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});
   assert.equal(writes.status,503);assert.equal((await writes.json()).code,"PICKUP_WRITES_DISABLED");assert.equal(reads,2);
  } finally {

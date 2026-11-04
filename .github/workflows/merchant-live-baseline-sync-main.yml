@@ -1,0 +1,41 @@
+name: Merchant Live Baseline Sync Release Gate
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'localeats-api/**'
+      - 'tests/**'
+      - 'vercel.json'
+      - '.github/workflows/merchant-live-baseline-sync-main.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-live-baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Merchant pickup and availability safety checks
+        run: |
+          npm run test:merchant-pickup
+          node --test tests/merchant-availability.test.cjs
+      - name: Merchant build
+        run: npm run build
+      - name: API install
+        run: npm ci --no-audit --no-fund
+        working-directory: localeats-api
+      - name: API unit and authority regressions (no external writes)
+        run: npm test
+        working-directory: localeats-api
+        env:
+          PICKUP_WRITES_ENABLED: 'false'
+          RIDER_ACTIVATION_ENABLED: 'false'

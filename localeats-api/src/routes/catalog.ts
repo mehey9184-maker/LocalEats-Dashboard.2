@@ -1,9 +1,10 @@
+import {effectiveShop} from "../orders/shopAvailability.js";
 import { Router, Request, Response } from "express";
 import {calculateDistanceKm} from "../orders/orderContract.js";
 import {isPickupPilotShop} from "../orders/pickupRead.js";
 import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 
-const PUBLIC_SHOP_FIELDS = "id,name,description,location,category,logo_url,rating,opening_time,closing_time,is_active,latitude,longitude,lat,lng,story";
+const PUBLIC_SHOP_FIELDS = "effective_is_active,availability_revision,availability_override_until,id,name,description,location,category,logo_url,rating,opening_time,closing_time,is_active,latitude,longitude,lat,lng,story";
 const PUBLIC_MENU_FIELDS = "id,shop_id,name,price,description,image_url,category,is_available,popularity_score,customizations,created_at";
 
 export interface CatalogRepository {
@@ -19,23 +20,23 @@ export class SupabaseCatalogRepository implements CatalogRepository {
   }
   async getApprovedShops(): Promise<any[]> {
     const { data, error } = await this.supabase
-      .from("shops")
+      .from("shops_with_availability")
       .select(PUBLIC_SHOP_FIELDS)
       .eq("approval_status", "approved")
       .is("archived_at", null);
     if (error) throw error;
-    return data || [];
+    return (data || []).map(effectiveShop);
   }
   async getApprovedShopById(shopId: string): Promise<any | null> {
     const { data, error } = await this.supabase
-      .from("shops")
+      .from("shops_with_availability")
       .select(PUBLIC_SHOP_FIELDS)
       .eq("id", shopId)
       .eq("approval_status", "approved")
       .is("archived_at", null)
       .maybeSingle();
     if (error) throw error;
-    return data || null;
+    return data ? effectiveShop(data) : null;
   }
   async getMenuByShopId(shopId: string): Promise<any[]> {
     const { data, error } = await this.supabase

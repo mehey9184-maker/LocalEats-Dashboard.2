@@ -33,7 +33,7 @@ test('independent payment and real handover required; no Collected-to-paid infer
 test('all pickup writes stop before transport and original entry is retained',()=>{
  let sent=false;assert.throws(()=>{pickupMutationsDisabled();sent=true;});assert.equal(sent,false);
  const service=readFileSync(new URL('../src/services/MerchantApi.ts',import.meta.url),'utf8');
- const start=service.indexOf('static async transitionPickupOrder');
+ const start=service.indexOf('private static async sendPickupCommand');
  assert.ok(service.indexOf('pickupMutationsDisabled();',start)<service.indexOf('await fetch(',start));
  const entry=readFileSync(new URL('../src/main.tsx',import.meta.url),'utf8');assert.match(entry,/import App from '.\/App.tsx'/);assert.doesNotMatch(entry,/PickupMerchantApp/);
  const workflow=readFileSync(new URL('../src/hooks/useOrderWorkflow.ts',import.meta.url),'utf8');assert.match(workflow,/Pickup orders cannot enter Rider dispatch/);
@@ -61,4 +61,15 @@ test('historical payment method and completion never prove payment',()=>{
  for(const payment_method of ['online','card','cod','cash'])assert.equal(pickupPaymentLabel({payment_method,status:'completed'}),'Payment status unavailable');
  assert.equal(pickupPaymentLabel({payment_status:'paid',payment_method:'cash'}),'Paid');
  assert.equal(pickupPaymentLabel({payment_status:'unpaid',payment_method:'online'}),'Unpaid');
+});
+
+import {pickupAmountLabel} from '../src/services/merchantPickupPolicy.ts';
+test('pickup payable display uses server total and fee without deriving tax or payment',()=>{
+ const persisted={...order,total_price:25,service_fee:0,payment_method:'card_machine'};
+ assert.equal(pickupAmountLabel(mapApiOrder(persisted)),'Pay at shop: R 25.00 · Pickup service fee: R 0.00');
+ assert.equal(pickupAmountLabel({...persisted,total_price:50}),'Pay at shop: R 50.00 · Pickup service fee: R 0.00');
+ assert.equal(pickupAmountLabel({...persisted,total_price:27.5,service_fee:2.5}),'Pay at shop: R 27.50 · Pickup service fee: R 2.50');
+ assert.equal(pickupPaymentLabel(persisted),'Unpaid · pay at shop');
+ assert.match(pickupAmountLabel({...persisted,service_fee:undefined}),/unavailable/);
+ assert.throws(()=>pickupAmountLabel({...persisted,total_price:NaN}));
 });

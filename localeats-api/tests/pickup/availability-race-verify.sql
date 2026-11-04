@@ -1,0 +1,1 @@
+do $$ begin if exists(select 1 from public.orders where idempotency_key='550e8400-e29b-41d4-a716-000000000060') then raise exception 'Unexpected closed-shop order';end if;end $$; update public.shops set is_active=true where id='shop';

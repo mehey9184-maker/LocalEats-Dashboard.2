@@ -3,6 +3,8 @@ export type DeliveryStatus = 'finding_rider' | 'accepted' | 'picked_up' | 'deliv
 export type UserVehicle = 'Road' | 'MTB' | 'E-Bike' | 'Motor';
 
 export interface Shop {
+  availability_override_until?: string | null;
+  availability_revision?: number;
   id: string | number;
   name: string;
   logo_url?: string | null;

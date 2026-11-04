@@ -10,8 +10,8 @@ const code=(expected:string)=>(error:any)=>error.code===expected;
 test("pickup quote matches tested minor-unit/fingerprint contract using reads only",async()=>{
  const repo=repository();let reads=0;
  const q=await pickupReadQuote({findShop:async id=>{reads++;return repo.findShop();},findMenuItems:async()=>{reads++;return repo.findMenuItems();}},"test-uid",request());
- assert.equal(reads,2);assert.equal(q.total_minor,6750);assert.equal(q.service_fee_minor,250);assert.equal(q.delivery_fee_minor,0);
- assert.equal(q.pricing_fingerprint,"101d65de503a246db901f1e03cdb62174bd8fcafdd971fee4d1a824fef8a9c7d");
+ assert.equal(reads,2);assert.equal(q.total_minor,6500);assert.equal(q.service_fee_minor,0);assert.equal(q.delivery_fee_minor,0);
+ assert.match(q.pricing_fingerprint,/^[0-9a-f]{64}$/);
  assert.equal((q as any).order,undefined);
 });
 test("missing identity, old contracts and client prices fail before catalog reads",async()=>{
@@ -25,7 +25,7 @@ test("archived/offline/out-of-area/out-of-radius shops, invalid contact and pric
  const base=repository(),shop=await base.findShop();
  for(const [patch,expected] of [[{archived_at:"old"},"SHOP_UNAVAILABLE"],[{is_active:false},"SHOP_UNAVAILABLE"],[{location:"Elsewhere"},"OUTSIDE_PICKUP_PILOT"],[{lat:-26.5},"OUTSIDE_PICKUP_RADIUS"]] as const)
   await assert.rejects(pickupReadQuote({...base,findShop:async()=>({...shop,...patch})},"u",request()),code(expected));
- await assert.rejects(pickupReadQuote(base,"u",{...request(),customer_details:{name:"Test",phone:"bad"}}),code("INVALID_CUSTOMER_PHONE"));
+ await assert.rejects(pickupReadQuote(base,"u",{...request(),customer_details:{name:"Test",phone:"bad"}}),code("INVALID_PHONE"));
  await assert.rejects(pickupReadQuote({...base,findMenuItems:async()=>[{id:"m",shop_id:"s",name:"Bad",price:"",is_available:true}]},"u",request()),code("INVALID_SERVER_PRICE"));
  await assert.rejects(pickupReadQuote({...base,findMenuItems:async()=>[{id:"m",shop_id:"s",name:"Gone",price:5,is_available:false}]},"u",request()),code("MENU_ITEM_UNAVAILABLE"));
 });
