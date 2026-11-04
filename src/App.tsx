@@ -93,8 +93,6 @@ import { DashboardOverview } from "./components/DashboardOverview";
 import { ShopProfile } from "./components/ShopProfile";
 import { OrdersManagement } from "./components/OrdersManagement";
 import { MenuManagement } from "./components/MenuManagement";
-import { RiderManagement } from "./components/RiderManagement";
-import { merchantRiderPreviewOnly } from "./services/merchantRiderPreviewPolicy";
 import { Coupons } from "./components/Coupons";
 import { Marketing } from "./components/Marketing";
 import { Insights } from "./components/Insights";
@@ -2352,20 +2350,18 @@ function App() {
                 />
               )}
               {activeTab === "riders" && (
-                currentShop ? (
-                  <RiderManagement
-                    currentShop={currentShop}
-                    previewOnly={merchantRiderPreviewOnly()}
-                    orders={merchantRiderPreviewOnly() ? [] : orders}
-                    onRequestRider={merchantRiderPreviewOnly() ? () => {} : requestRider}
-                    sendRiderNudge={merchantRiderPreviewOnly() ? async () => {} : sendRiderNudge}
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
-                    <p className="text-on-surface-variant font-medium">Rider information is unavailable until a verified shop is selected. This does not mean there are no riders.</p>
-                    <button disabled={merchantRiderPreviewOnly()} onClick={() => { if(!merchantRiderPreviewOnly())setActiveTab("storefront"); }} className="px-4 py-2 bg-primary text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed">Storefront unavailable in Preview</button>
+                <section aria-labelledby="riders-coming-soon-title" className="min-h-[60vh] flex items-center justify-center px-4">
+                  <div className="w-full max-w-lg rounded-3xl border border-outline-variant/20 bg-surface-container-low p-8 md:p-12 text-center shadow-sm">
+                    <div aria-hidden="true" className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      <Bike size={30} />
+                    </div>
+                    <p className="mb-2 text-xs font-black uppercase tracking-widest text-primary">Riders</p>
+                    <h1 id="riders-coming-soon-title" className="font-headline text-3xl font-black text-on-surface">Coming Soon</h1>
+                    <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
+                      Rider management is not available yet. Pairing, dispatch, and deliveries are disabled.
+                    </p>
                   </div>
-                )
+                </section>
               )}
               {activeTab === "payments" && (
                 currentShop ? (
