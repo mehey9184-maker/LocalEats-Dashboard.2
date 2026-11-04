@@ -42,8 +42,8 @@ test("Clear filters works for status or search-only and keeps customer/rider dat
  assert.match(rider,/data-rider-preview-safe="true"\s*onClick=\{\(\) => \{ setSearchQuery\(""\); setStatusFilter\("all"\); \}\}/);
  assert.match(rider,/previewOnly \? "Clear filters"/);
  assert.match(rider,/Rider records are not loaded in Preview/);
- assert.match(app,/orders=\{merchantRiderPreviewOnly\(\) \? \[\] : orders\}/);
- assert.match(app,/sendRiderNudge=\{merchantRiderPreviewOnly\(\) \? async \(\) => \{\} : sendRiderNudge\}/);
+ assert.doesNotMatch(app,/<RiderManagement\b/);
+ assert.match(app,/Rider management is not available yet/);
 });
 
 test("R2 clearly describes unavailable pairing, communication, staff and GPS without changes",()=>{
