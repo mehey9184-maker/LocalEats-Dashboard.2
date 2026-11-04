@@ -28,13 +28,13 @@ test("Riders R1 does not activate rider workflows or report invented zeros",()=>
  assert.match(riders,/Cash and COD are not|COD and cash settlements are not loaded or verified/);
 });
 
-test("App passes no real Orders or dispatch callbacks to the read-only Riders page",()=>{
- assert.match(app,/import \{ merchantRiderPreviewOnly \} from "\.\/services\/merchantRiderPreviewPolicy"/);
- assert.match(app,/<RiderManagement[\s\S]*?previewOnly=\{merchantRiderPreviewOnly\(\)\}/);
- assert.match(app,/orders=\{merchantRiderPreviewOnly\(\) \? \[\] : orders\}/);
- assert.match(app,/onRequestRider=\{merchantRiderPreviewOnly\(\) \? \(\) => \{\} : requestRider\}/);
- assert.match(app,/sendRiderNudge=\{merchantRiderPreviewOnly\(\) \? async \(\) => \{\} : sendRiderNudge\}/);
- assert.match(app,/Storefront unavailable in Preview/);
+test("App keeps the Riders navigation while mounting only the Coming Soon page",()=>{
+ assert.match(app,/\{ id: "riders", label: "Riders", icon: Bike \}/);
+ assert.match(app,/activeTab === "riders" && \(/);
+ assert.match(app,/id="riders-coming-soon-title"/);
+ assert.match(app,/>Coming Soon<\/h1>/);
+ assert.doesNotMatch(app,/<RiderManagement\b/);
+ assert.doesNotMatch(app,/import \{ RiderManagement \}/);
 });
 
 test("Rider contacts, device locations and local cash records are not loaded on initial render",()=>{
