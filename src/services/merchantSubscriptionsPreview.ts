@@ -8,34 +8,34 @@ export const PROPOSED_MERCHANT_PLANS=[
     id:"plus",label:"Plus",monthlyPriceZar:199,
     headline:"Essential shop operations",
     proposedBenefits:[
-      "Pickup order and menu management",
-      "Cash or physical card payment at the shop",
-      "Basic order history and shop information",
+      "Core pickup orders, menu and availability (no order cap proposed)",
+      "Cash or existing physical card machine at the shop",
+      "Opening hours, basic order history and standard support",
     ],
   },
   {
     id:"pro",label:"Pro",monthlyPriceZar:399,
     headline:"Growth tools (future)",
     proposedBenefits:[
-      "Everything in Plus",
-      "More detailed shop performance insights (planned)",
-      "Marketing campaign preparation tools (planned)",
+      "Everything in Plus, including core ordering and security",
+      "Item, category and busy-period insights (planned)",
+      "Marketing drafts, approved offers and QR artwork (planned)",
     ],
   },
   {
     id:"premium",label:"Premium",monthlyPriceZar:499,
     headline:"Advanced growth (future)",
     proposedBenefits:[
-      "Everything in Pro",
-      "Advanced reporting and comparison views (planned)",
-      "Additional campaign planning and support options (planned)",
+      "Everything in Pro; no core features removed from lower plans",
+      "Advanced trend comparisons and report exports (planned)",
+      "Campaign measurement and optional team workflows (planned)",
     ],
   },
 ] as const;
 export function merchantSubscriptionsActivationEnabled():boolean{return false;}
 export function merchantSubscriptionsTrialNotice():string{
-  return "Proposed: the first 3 calendar months are free for each shop, starting only from its verified trading launch. No verified launch date or payment due date is available in this Preview.";
+  return "Proposed: each shop receives 3 free calendar months from its verified trading launch—not registration or testing. No trading-launch date or payment due date has been verified in this Preview.";
 }
 export function merchantSubscriptionPaymentNotice():string{
-  return "No plan is selected, billed or activated here. Pricing, included benefits and tax treatment require final approval. A shop must receive its terms and agree before paid billing can begin.";
+  return "No subscription or payment method is selected, saved, charged or activated here. Benefits and VAT treatment remain proposals. A shop must receive clear terms and explicitly agree before any paid billing; no automatic paid conversion is implied.";
 }
