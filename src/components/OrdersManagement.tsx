@@ -68,6 +68,7 @@ import { useAuthGuard } from "../hooks/useAuthGuard";
 import { AddressDisplay } from "./AddressDisplay";
 import { Skeleton } from "./ui/Skeleton";
 import { OperationFeedback, type OperationFeedbackStatus } from "./ui/OperationFeedback";
+import { merchantOrdersConfidence, merchantOrdersEmptyMessage } from "../services/merchantOrdersUXTrust";
 import { DispatchAlertModal } from "./DispatchAlertModal";
 import { format } from "date-fns";
 
@@ -1049,6 +1050,25 @@ Notes: "${order.notes || "None"}"
 
   const [ordersPage, setOrdersPage] = useState(1);
   const ordersPerPage = 12;
+
+  const filtersApplied = filterStatus !== "All" || orderTypeFilter !== "All" ||
+    Boolean(startDate || endDate || searchTerm || customerSearch || phoneSearch);
+  const clearAllOrderFilters = () => {
+    setFilterStatus("All");
+    setOrderTypeFilter("All");
+    setStartDate("");
+    setEndDate("");
+    setSearchTerm("");
+    setCustomerSearch("");
+    setPhoneSearch("");
+  };
+  const ordersConfidence = merchantOrdersConfidence(ordersReadState, ordersVerifiedAt);
+  const unverifiedWithoutPreviousOrders = ordersConfidence === "unavailable" ||
+    (ordersConfidence === "checking" && ordersVerifiedAt === null);
+  const emptyOrderMessage = merchantOrdersEmptyMessage(ordersConfidence, viewMode, filtersApplied);
+  const lastVerifiedOrdersTime = typeof ordersVerifiedAt === "number" && Number.isFinite(ordersVerifiedAt)
+    ? new Date(ordersVerifiedAt).toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" })
+    : null;
 
   const filterKey = `${searchTerm}_${customerSearch}_${phoneSearch}_${filterStatus}_${orderTypeFilter}_${startDate}_${endDate}_${viewMode}`;
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
@@ -2323,6 +2343,18 @@ Notes: "${order.notes || "None"}"
             orderRefreshStatus === "error" ? "Check the connection, then retry." : undefined}
           onRetry={orderRefreshStatus === "unverified" || orderRefreshStatus === "error" ? () => { void handleRefreshOrders(); } : undefined}
         />
+        <div role="status" aria-live="polite"
+          className="flex flex-wrap items-center gap-2 text-xs font-medium text-on-surface-variant">
+          <span className={ordersConfidence === "verified" ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
+            {ordersConfidence === "verified" ? "Verified order list" :
+              ordersConfidence === "checking" ? "Checking latest orders…" :
+              ordersConfidence === "stale" ? "Previously verified list · latest status unavailable" :
+              "Orders not verified"}
+          </span>
+          {lastVerifiedOrdersTime && (
+            <span>Last checked {lastVerifiedOrdersTime} SAST</span>
+          )}
+        </div>
       </section>
 
       <div
@@ -2342,10 +2374,16 @@ Notes: "${order.notes || "None"}"
               <h3 className="font-headline text-lg font-bold flex items-center gap-2">
                 {viewMode === "active" ? "Active Queue" : "Order History"}
                 <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">
-                  {displayedOrders.length} Orders
+                  {unverifiedWithoutPreviousOrders ? "—" : displayedOrders.length} {filtersApplied ? "matching" : "orders"}
                 </span>
               </h3>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {filtersApplied && (
+                  <button type="button" onClick={clearAllOrderFilters}
+                    className="rounded-full px-3 py-1.5 text-xs font-bold text-primary bg-primary/10 hover:bg-primary/15 focus-visible:outline-2 focus-visible:outline-primary">
+                    <X size={13} className="inline-block mr-1" aria-hidden="true" /> Clear filters
+                  </button>
+                )}
                 <button type="button"
                   aria-label="Search orders" aria-expanded={showSearch}
                   onClick={() => setShowSearch(!showSearch)}
@@ -2362,7 +2400,7 @@ Notes: "${order.notes || "None"}"
                   aria-expanded={showOrderFilters} aria-controls="orders-filter-panel"
                   className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors", showOrderFilters ? "border-primary bg-primary/10 text-primary" : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:border-primary/30")}>
                   <SlidersHorizontal size={14} /> Filters &amp; sort
-                  {(filterStatus !== "All" || orderTypeFilter !== "All" || startDate || endDate || searchTerm || customerSearch || phoneSearch) && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="Filters active" />}
+                  {filtersApplied && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="Filters active" />}
                 </button>
               </div>
             </div>
@@ -2431,17 +2469,10 @@ Notes: "${order.notes || "None"}"
               </div>
 
               <div className="flex flex-wrap items-center gap-2 mt-2">
-                {(filterStatus !== "All" || orderTypeFilter !== "All" || startDate || endDate || searchTerm || customerSearch || phoneSearch) && (
+                {filtersApplied && (
                   <button
-                    onClick={() => {
-                      setFilterStatus("All");
-                      setOrderTypeFilter("All");
-                      setStartDate("");
-                      setEndDate("");
-                      setSearchTerm("");
-                      setCustomerSearch("");
-                      setPhoneSearch("");
-                    }}
+                    type="button"
+                    onClick={clearAllOrderFilters}
                     className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black text-white bg-error shadow-lg shadow-error/20 hover:scale-105 active:scale-95 transition-all"
                   >
                     <RefreshCw size={12} />
@@ -2631,22 +2662,25 @@ Notes: "${order.notes || "None"}"
               </div>
               <div className="space-y-2">
                 <h4 className="font-headline text-2xl font-bold">
-                  {viewMode === "active" ? "All caught up!" : "No history yet"}
+                  {emptyOrderMessage.title}
                 </h4>
                 <p className="text-on-surface-variant max-w-xs mx-auto">
-                  {viewMode === "active"
-                    ? "Your kitchen is currently clear. New orders will appear here as they arrive."
-                    : "Completed and cancelled orders appear here. The date filter uses when each order was placed."}
+                  {emptyOrderMessage.description}
                 </p>
               </div>
-              {viewMode === "active" && (
-                <button
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {filtersApplied && (
+                  <button type="button" onClick={clearAllOrderFilters}
+                    className="px-5 py-2.5 bg-primary/10 text-primary font-bold rounded-full hover:bg-primary/15 border border-primary/20">
+                    Clear filters
+                  </button>
+                )}
+                <button type="button" disabled={isRefreshingOrders}
                   onClick={() => { void handleRefreshOrders(); }}
-                  className="px-8 py-3 bg-surface-container-lowest text-primary font-bold rounded-full shadow-sm hover:scale-105 transition-all border border-primary/10"
-                >
-                  Check for New Orders
+                  className="px-5 py-2.5 bg-surface-container-lowest text-primary font-bold rounded-full shadow-sm hover:bg-surface-container-high border border-primary/10 disabled:opacity-50">
+                  {isRefreshingOrders ? "Checking orders…" : "Refresh orders"}
                 </button>
-              )}
+              </div>
             </div>
           ) : viewMode === "active" && true ? (
             <div className="flex overflow-x-auto hide-scrollbar xl:grid xl:grid-cols-4 gap-6 items-start snap-x snap-mandatory pb-4 xl:pb-0">
