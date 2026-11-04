@@ -2557,10 +2557,12 @@ function App() {
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">App Preferences</h3>
                   <button
+                    disabled={!merchantSettingsS4ActionsEnabled()}
                     onClick={() => {
+                      if(!merchantSettingsS4ActionsEnabled())return;
                       setActiveTab("dashboard");
                       setOnboardingOpen(true);
-                      toast.success("✨ Starting interactive walkthrough tour...");
+                      toast.info("Walkthrough opened for inspection only.");
                     }}
                     className="w-full flex items-center justify-between p-5 bg-gradient-to-r from-primary/[0.04] to-transparent hover:from-primary/[0.08] hover:to-primary/[0.02] rounded-2xl transition-all border border-primary/10 group shadow-sm shadow-primary/[0.02]"
                   >
@@ -2573,7 +2575,7 @@ function App() {
                           App Walkthrough Tour
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Restart the guided interactive manual tour of your workspace resources.
+                          Walkthrough controls are unavailable while Settings is read-only.
                         </p>
                       </div>
                     </div>
@@ -3473,6 +3475,7 @@ function App() {
 
                     {settingsCategory === "preferences" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <p role="status" className="text-xs text-on-surface-variant rounded-2xl bg-surface-container-low border border-outline-variant/15 p-3">Preferences are design-only in this Preview. Sound, theme and push settings cannot be changed, and background notification delivery is not guaranteed.</p>
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-4">
@@ -3484,12 +3487,14 @@ function App() {
                             Sound Alerts
                           </p>
                           <p className="text-xs text-on-surface-variant">
-                            Play a sound when new orders arrive.
+                            Sound alerts are a local preference; no order alert is guaranteed while this Preview is locked.
                           </p>
                         </div>
                       </div>
                       <button
+                        disabled={!merchantSettingsS4ActionsEnabled()}
                         onClick={() => {
+                          if(!merchantSettingsS4ActionsEnabled())return;
                           const nextState = !soundAlerts;
                           setSoundAlerts(nextState);
                           if (nextState) {
@@ -3532,7 +3537,9 @@ function App() {
                               return (
                                 <button
                                   key={theme.id}
+                                  disabled={!merchantSettingsS4ActionsEnabled()}
                                   onClick={() => {
+                                    if(!merchantSettingsS4ActionsEnabled())return;
                                     setSoundStyle(theme.id);
                                     playNotificationSound(false, theme.id);
                                   }}
@@ -3575,17 +3582,21 @@ function App() {
                             <Volume1 size={16} className="text-on-surface-variant" />
                             <input
                               type="range"
+                              disabled={!merchantSettingsS4ActionsEnabled()}
                               min="0"
                               max="100"
                               value={soundVolume}
                               onChange={(e) => {
+                                if(!merchantSettingsS4ActionsEnabled())return;
                                 const v = parseInt(e.target.value);
                                 setSoundVolume(v);
                               }}
                               onMouseUp={() => {
+                                if(!merchantSettingsS4ActionsEnabled())return;
                                 playNotificationSound(false, soundStyle);
                               }}
                               onTouchEnd={() => {
+                                if(!merchantSettingsS4ActionsEnabled())return;
                                 playNotificationSound(false, soundStyle);
                               }}
                               className="flex-1 accent-primary h-1.5 rounded-lg appearance-none bg-outline-variant/40 cursor-pointer"
@@ -3607,12 +3618,14 @@ function App() {
                           Push Notifications
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Get browser alerts even when the app is closed.
+                          Browser push is not verified in Preview; notifications depend on permission, connectivity and the device.
                         </p>
                       </div>
                     </div>
                     <button
+                      disabled={!merchantSettingsS4ActionsEnabled()}
                       onClick={() => {
+                        if(!merchantSettingsS4ActionsEnabled())return;
                         if (!pushEnabled) {
                           requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
                         } else {
@@ -3648,7 +3661,8 @@ function App() {
                       </div>
                     </div>
                     <button
-                      onClick={() => setDarkMode(!darkMode)}
+                      disabled={!merchantSettingsS4ActionsEnabled()}
+                      onClick={() => { if(merchantSettingsS4ActionsEnabled())setDarkMode(!darkMode); }}
                       className={cn(
                         "w-12 h-6 rounded-full transition-all relative",
                         darkMode ? "bg-primary" : "bg-outline-variant",
@@ -3667,9 +3681,10 @@ function App() {
 
                     {settingsCategory === "account" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300 mt-8">
-                  <div className="w-full p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10"><LanguageSwitcher /></div>
+                  <div className="w-full p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10"><LanguageSwitcher previewOnly={!merchantSettingsS4ActionsEnabled()} /></div>
                   <button
-                    onClick={handleSignOut}
+                    onClick={() => { if(merchantSettingsS4ActionsEnabled()) void handleSignOut(); }}
+                    disabled={!merchantSettingsS4ActionsEnabled()}
                     className="w-full flex items-center justify-between p-5 bg-error/5 hover:bg-error/10 rounded-2xl transition-all border border-error/10 group"
                   >
                     <div className="flex items-center gap-4">
@@ -3679,7 +3694,7 @@ function App() {
                       <div className="text-left">
                         <p className="font-bold text-error">Sign Out</p>
                         <p className="text-xs text-error/60">
-                          Logout from your account.
+                          Unavailable from the read-only Settings Preview; use the authorised account flow.
                         </p>
                       </div>
                     </div>
