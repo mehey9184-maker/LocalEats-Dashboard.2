@@ -12,7 +12,7 @@ test("Orders manual refresh toggles an in-place page shimmer, not a new loading 
   assert.match(orders, /setIsRefreshingOrders\(true\)/);
   assert.match(orders, /setIsRefreshingOrders\(false\)/);
   assert.match(orders, /await Promise\.resolve\(onRefresh\(\)\)/);
-  assert.match(orders, /className=\{cn\("space-y-4", isRefreshingOrders && "orders-refresh-surface"\)\}/);
+  assert.match(orders, /className=\{cn\("space-y-4 relative merchant-pull-surface", isRefreshingOrders && "orders-refresh-surface"\)\}/);
   assert.match(orders, /disabled=\{isRefreshingOrders\} aria-busy=\{isRefreshingOrders\}/);
   assert.match(orders, /\{isRefreshingOrders \? "Refreshing…" : "Refresh"\}/);
   assert.match(orders, /<OperationFeedback/);
@@ -33,7 +33,7 @@ test("Shimmer remains decorative, uses existing palette, supports dark and reduc
 test("Keep inherited order verification and disabled activation boundaries", () => {
   assert.match(orders, /merchantOrdersConfidence\(ordersReadState, ordersVerifiedAt\)/);
   assert.match(orders, /emptyOrderMessage.title/);
-  assert.match(orders, /unverifiedWithoutPreviousOrders \? "—" : stat.count/);
+  assert.match(orders, /unverifiedWithoutPreviousOrders \? "—" : <RollingOrderCount value=\{stat.count\} animate=\{ordersConfidence === "verified"\}/);
   assert.match(app, /id="riders-coming-soon-title"/);
   assert.doesNotMatch(app, /<RiderManagement\b/);
 });

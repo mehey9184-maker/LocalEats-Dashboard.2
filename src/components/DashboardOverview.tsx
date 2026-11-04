@@ -11,6 +11,8 @@ import {
   subscribeAvailabilityCommand,
 } from "../utils/merchantAvailabilityCommand";
 import { Skeleton } from "../components/ui/Skeleton";
+import { RollingOrderCount } from "./ui/RollingOrderCount";
+import { merchantOrdersConfidence } from "../services/merchantOrdersUXTrust";
 import { OperationFeedback, type OperationFeedbackStatus } from "./ui/OperationFeedback";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { RiderConnection } from "../types";
@@ -514,6 +516,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   const [refreshFeedback,setRefreshFeedback]=useState<OperationFeedbackStatus>("idle");
   const [verificationBeforeRefresh,setVerificationBeforeRefresh]=useState<number|null>(null);
   const hasVerifiedOrders=ordersVerifiedAt!==null;
+  const canRollOrderCounts=merchantOrdersConfidence(ordersReadState,ordersVerifiedAt)==="verified";
   const ordersStatusText=ordersReadState==="checking" ? "Checking current orders…" :
     ordersReadState==="unavailable" ? (hasVerifiedOrders ? "Orders API unavailable · showing last confirmed list" : "Orders API unavailable · counts not verified") :
     ordersVerifiedAt!==null ? `Orders checked at ${new Date(ordersVerifiedAt).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit"})}` : "Checking current orders…";
@@ -1047,7 +1050,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 disabled={isManualRefreshing}
                 aria-busy={isManualRefreshing}
                 aria-label={isManualRefreshing ? "Refreshing dashboard" : "Refresh dashboard data"}
-                className="min-w-11 min-h-11 inline-flex items-center justify-center p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm"
+                className="merchant-tap-feedback min-w-11 min-h-11 inline-flex items-center justify-center p-3 bg-surface-container-low text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-colors shadow-sm"
                 title="Refresh Dashboard"
               >
                 <RefreshCw size={20} className={isManualRefreshing ? "animate-spin" : ""} />
@@ -1206,7 +1209,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             <p role="status" aria-live="polite" className={`text-xs font-bold mt-2 ${ordersReadState==="unavailable"?"text-amber-600 dark:text-amber-400":"text-on-surface-variant"}`}>{ordersStatusText}</p>
           </div>
           <button type="button" onClick={()=>onNavigate("orders")}
-            className="min-h-11 w-full sm:w-auto px-5 py-3 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-on-primary font-black text-xs uppercase tracking-wider rounded-xl focus-visible:outline-2 focus-visible:outline-primary">
+            className="merchant-tap-feedback min-h-11 w-full sm:w-auto px-5 py-3 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-on-primary font-black text-xs uppercase tracking-wider rounded-xl focus-visible:outline-2 focus-visible:outline-primary">
             <ReceiptText size={16} aria-hidden="true" />
             Manage Orders
           </button>
@@ -1227,7 +1230,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 <span className={`p-1.5 rounded-lg shrink-0 ${item.tone}`}><item.icon size={16} aria-hidden="true" /></span>
               </div>
               <span className={`text-2xl md:text-3xl font-headline font-black ${item.urgent&&item.count>0?"text-orange-600":"text-on-surface"}`}>
-                {hasVerifiedOrders?item.count:"—"}
+                {hasVerifiedOrders ? <RollingOrderCount value={item.count} animate={canRollOrderCounts} /> : "—"}
               </span>
             </button>
           ))}
@@ -1248,7 +1251,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           </div>
           <div className="mt-4 flex items-baseline gap-2">
             <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              {hasVerifiedOrders?todayOrdersCount:"—"}
+              {hasVerifiedOrders ? <RollingOrderCount value={todayOrdersCount} animate={canRollOrderCounts} /> : "—"}
             </span>
             <span className={cn(
               "text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1",
@@ -1347,7 +1350,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             </div>
             <button
               onClick={() => onNavigate("menu")}
-              className="px-6 py-2 bg-error text-white text-xs font-bold rounded-full hover:bg-error/90 transition-colors shadow-sm"
+              className="merchant-tap-feedback px-6 py-2 bg-error text-white text-xs font-bold rounded-full hover:bg-error/90 transition-colors shadow-sm"
             >
               Review Menu
             </button>
