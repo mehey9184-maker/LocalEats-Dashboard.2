@@ -29,8 +29,10 @@ import jsPDF from "jspdf";
 import QRCodeLib from "qrcode";
 import { Shop, MenuItem, Order } from "../types";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
+import {merchantMarketingPublishingEnabled,verifiedMarketingStats} from "../services/merchantMarketingTrust";
 import type { User } from "@supabase/supabase-js";
 import { CampaignBuilder } from "./CampaignBuilder";
+import { ReadOnlyMarketingPreview } from "./marketing/ReadOnlyMarketingPreview";
 import { CustomerReEngagement } from "./marketing/CustomerReEngagement";
 import { FlashDealsStudio } from "./marketing/FlashDealsStudio";
 import { TableTentGenerator } from "./marketing/TableTentGenerator";
@@ -41,6 +43,7 @@ interface MarketingProps {
   shops?: Shop[];
   menuItems?: MenuItem[];
   orders?: Order[];
+  ordersReadState?: "checking"|"confirmed"|"unavailable";
   user?: User | null;
   onNavigateTab?: (tab: string) => void;
 }
@@ -65,6 +68,7 @@ export const Marketing: React.FC<MarketingProps> = ({
   shops = [],
   menuItems = [],
   orders = [],
+  ordersReadState = "checking",
   user = null,
   onNavigateTab,
 }) => {
@@ -103,63 +107,36 @@ export const Marketing: React.FC<MarketingProps> = ({
     return `https://www.localeatssa.co.za/?shopId=${activeShop.id}`;
   }, [activeShop]);
 
-  // High-Level Diner Analytics for Dashboard Summary
-  const shopOrders = useMemo(() => {
-    if (!activeShop) return orders;
-    return orders.filter(
-      (o) =>
-        String(o.shop_id) === String(activeShop.id) ||
-        (activeShop.name && o.shop_name?.toLowerCase() === activeShop.name.toLowerCase())
-    );
-  }, [orders, activeShop]);
+  // Never infer revenue, diners or retention from cached/unverified orders.
+  const publishingEnabled = merchantMarketingPublishingEnabled();
+  // Preview QR codes must not take customers to a live ordering surface.
+  const previewQrTarget = publishingEnabled ? storeUrl : "https://example.invalid/localeats-marketing-preview";
+  const dinerStats = useMemo(
+    () => verifiedMarketingStats(orders, activeShop?.id, ordersReadState),
+    [orders, activeShop?.id, ordersReadState]
+  );
 
-  const dinerStats = useMemo(() => {
-    const customerMap = new Map<string, { count: number; spend: number }>();
-    let totalRevenue = 0;
-
-    shopOrders.forEach((ord) => {
-      const phone = ord.customer_phone || ord.phone || "";
-      const name = ord.customer_name || ord.customer || "Diner";
-      const key = phone.trim() || name.trim();
-      const amount = typeof ord.total === "number" ? ord.total : parseFloat(String(ord.total || 0)) || 0;
-      totalRevenue += amount;
-
-      if (!customerMap.has(key)) {
-        customerMap.set(key, { count: 1, spend: amount });
-      } else {
-        const curr = customerMap.get(key)!;
-        curr.count += 1;
-        curr.spend += amount;
-      }
-    });
-
-    const totalUniqueDiners = customerMap.size || (shopOrders.length > 0 ? Math.ceil(shopOrders.length * 0.75) : 0);
-    let repeatCount = 0;
-    customerMap.forEach((val) => {
-      if (val.count > 1) repeatCount += 1;
-    });
-
-    const repeatRate = totalUniqueDiners > 0 ? Math.round((repeatCount / totalUniqueDiners) * 100) : 0;
-    const avgSpend = totalUniqueDiners > 0 ? Math.round(totalRevenue / totalUniqueDiners) : 0;
-
-    return {
-      totalUniqueDiners,
-      repeatCount,
-      repeatRate,
-      avgSpend,
-      totalOrders: shopOrders.length,
-    };
-  }, [shopOrders]);
+  const previewToolDescriptions:Record<ToolSubTab,string> = {
+    direct_reach:"Customer lists are excluded from this preview; outreach needs consent and verified customer data.",
+    flash_deals:"Example deal prices only; no discount, timer or campaign is active.",
+    table_tents:"Dine-in table ordering is not part of the pickup pilot; QR codes use non-operational demo links.",
+    qr_stands:"QR stands and printed customer ordering links are not approved for distribution.",
+    whatsapp:"WhatsApp campaign templates are examples; they do not send or copy messages.",
+    social_studio:"Social graphics are examples; no post or offer may be published.",
+    sms:"SMS content is a mockup; no customer broadcast is permitted.",
+    playbook:"Growth advice is not a verified result and cannot activate a promotion.",
+  };
 
   // Quick Action Switchers
   const handleLaunchQuickAction = (tool: ToolSubTab) => {
+    if(!publishingEnabled) return;
     setMainSegment("tool_library");
     setActiveTool(tool);
   };
 
   // 2. QR Code State & Generator
   const [qrStyle, setQrStyle] = useState<QrStyle>("coral");
-  const [qrFrameText, setQrFrameText] = useState<string>("SCAN TO ORDER ONLINE");
+  const [qrFrameText, setQrFrameText] = useState<string>("PREVIEW — NOT LIVE");
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedMsg, setCopiedMsg] = useState(false);
@@ -180,7 +157,7 @@ export const Marketing: React.FC<MarketingProps> = ({
           darkColor = "#020617";
         }
 
-        const url = await QRCodeLib.toDataURL(storeUrl, {
+        const url = await QRCodeLib.toDataURL(previewQrTarget, {
           width: 500,
           margin: 1,
           color: {
@@ -202,10 +179,11 @@ export const Marketing: React.FC<MarketingProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [storeUrl, qrStyle]);
+  }, [previewQrTarget, qrStyle]);
 
   // Copy Store Link Handler
   const copyStoreUrl = () => {
+    if(!publishingEnabled || !activeShop) return;
     navigator.clipboard.writeText(storeUrl);
     setCopiedLink(true);
     toast.success("Store online link copied to clipboard!");
@@ -224,30 +202,31 @@ export const Marketing: React.FC<MarketingProps> = ({
     const shopLocation = activeShop?.address || activeShop?.location || activeShop?.city || "Township";
     const featuredItemName = customFeaturedItem || storeMenuItems[0]?.name || "Kota Special";
     const featuredItemPrice = storeMenuItems.find((i) => i.name === featuredItemName)?.price;
-    const priceText = featuredItemPrice ? `for only R${featuredItemPrice}` : "";
+    const priceText = typeof featuredItemPrice === "number" && Number.isFinite(featuredItemPrice) ? `(listed R${featuredItemPrice})` : "";
 
     switch (selectedPreset) {
       case "opening":
-        return `🔥 *${shopName} IS LIVE ON LOCALEATS!* 🔥\n\nSkip the queues! You can now order all our delicious meals directly from your phone for instant pickup or fast local delivery in ${shopLocation}.\n\n👉 *View Menu & Order Here:*\n${storeUrl}\n\n✅ Cash on Arrival & Card Accepted!\n⚡ Powered by LocalEats SA`;
+        return `📋 *${shopName} — SAMPLE LAUNCH MESSAGE*\n\nThis is an example for a future LocalEats collection pilot in ${shopLocation}. Ordering is NOT active. When approved, customers will collect food and pay at the shop (cash or the shop card machine).\n\nPreview only: ${previewQrTarget}`;
       case "lunch":
-        return `🍔 *LUNCH TIME SPECIAL AT ${shopName.toUpperCase()}!* 🕒\n\nHungry? Treat yourself today to our fresh ${featuredItemName} ${priceText}! Order right now on your phone and get fast delivery straight to your door or ready for quick pickup.\n\n📲 *Tap to order now:*\n${storeUrl}\n\nTag your friends and order together! 🛵💨`;
+        return `🍔 *SAMPLE LUNCH POST FOR ${shopName.toUpperCase()}*\n\nFeatured menu idea: ${featuredItemName} ${priceText}. This is not a live order or active special. Future orders will be for collection, with payment at the shop.\n\nPreview only: ${previewQrTarget}`;
       case "item_deal":
-        return `✨ *DEAL OF THE DAY: ${featuredItemName.toUpperCase()}* ✨\n\nMade fresh to order at *${shopName}* ${priceText}.\n\nDon't wait in the cold — order online in 30 seconds:\n👉 ${storeUrl}\n\n📍 Location: ${shopLocation}\n🛵 Local delivery riders available!`;
+        return `✨ *SAMPLE ITEM HIGHLIGHT: ${featuredItemName.toUpperCase()}*\n\nExample menu spotlight from ${shopName} ${priceText}. No deal has been activated. Future pickup customers will collect and pay at the shop.\n\n📍 ${shopLocation}\nPreview only: ${previewQrTarget}`;
       case "delivery":
-        return `🛵 *TOWNSHIP DELIVERY NOW AVAILABLE!* 📦\n\nGet your favorite meals from *${shopName}* delivered right to your house or workplace!\n\n💳 Pay Cash on Delivery or Card\n📍 Delivering around ${shopLocation}\n\n👉 *Order here:* ${storeUrl}`;
+        return `📍 *COLLECTION-ONLY PLAN FOR ${shopName}*\n\nDelivery and riders are not available. This is a sample message, not an invitation to order. Following approval, customers will collect their food and pay at the shop.\n\nPreview only: ${previewQrTarget}`;
       case "discount":
-        return `🎉 *SPECIAL VOUCHER FOR YOU!* 🎁\n\nGet a special discount on your next order from *${shopName}* using code *${customDiscountCode}* at checkout on LocalEats!\n\n👉 *Order & Apply Code:*\n${storeUrl}\n\nValid for online orders. Treat yourself today! 😋`;
+        return `🎟️ *SAMPLE VOUCHER — NOT VALID*\n\nExample code: ${customDiscountCode}. No discount exists or can be redeemed at checkout. Any future promotion requires separate merchant and LocalEats approval.\n\nPreview only: ${previewQrTarget}`;
       case "weekend":
-        return `🔥 *WEEKEND VIBES AT ${shopName.toUpperCase()}!* 🎉\n\nRelax and let us do the cooking! Fresh hot Kotas and township favorites ready for you and your family.\n\n📲 *Order online before we sell out:*\n${storeUrl}\n\nHave a great weekend! 🍻🍔`;
+        return `🍔 *SAMPLE WEEKEND MESSAGE FOR ${shopName.toUpperCase()}*\n\nA possible future post about your weekend menu. No online ordering, delivery or customer offer is active. The approved pilot will use collection and payment at the shop.\n\nPreview only: ${previewQrTarget}`;
       default:
-        return `Order delicious food from ${shopName} online: ${storeUrl}`;
+        return `Sample marketing message for ${shopName}. Ordering is not active: ${previewQrTarget}`;
     }
-  }, [selectedPreset, activeShop, storeUrl, customFeaturedItem, customDiscountCode, storeMenuItems]);
+  }, [selectedPreset, activeShop, previewQrTarget, customFeaturedItem, customDiscountCode, storeMenuItems]);
 
   const activeMessage = userEditedMessage !== null ? userEditedMessage : generatedMessage;
 
   // WhatsApp Action Handlers
   const handleOpenWhatsApp = () => {
+    if(!publishingEnabled) return;
     const encoded = encodeURIComponent(activeMessage);
     const waUrl = `https://api.whatsapp.com/send?text=${encoded}`;
     window.open(waUrl, "_blank");
@@ -255,6 +234,7 @@ export const Marketing: React.FC<MarketingProps> = ({
   };
 
   const handleCopyMessage = () => {
+    if(!publishingEnabled) return;
     navigator.clipboard.writeText(activeMessage);
     setCopiedMsg(true);
     toast.success("WhatsApp pitch copied to clipboard!");
@@ -263,7 +243,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // 4. Social Graphic Studio State
   const [socialTheme, setSocialTheme] = useState<SocialTheme>("coral");
-  const [socialTagline, setSocialTagline] = useState<string>("Best Kota & Township Meals");
+  const [socialTagline, setSocialTagline] = useState<string>("Local Kota & Township Meals");
   const [featuredSocialItemId, setFeaturedSocialItemId] = useState<string | number>("");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -276,8 +256,8 @@ export const Marketing: React.FC<MarketingProps> = ({
   const socialCaption = useMemo(() => {
     const shopName = activeShop?.name || "Our Shop";
     const shopLocation = activeShop?.address || activeShop?.location || "Township";
-    return `🔥 ${shopName} is now on LocalEats SA! Order your favorite meals online for fast pickup and delivery in ${shopLocation}. 📲 Link in bio or order at: ${storeUrl} #LocalEats #SupportLocal #${shopName.replace(/\s+/g, "")} #TownshipFood #KotaSA #FastDelivery`;
-  }, [activeShop, storeUrl]);
+    return `📋 SAMPLE SOCIAL POST — ${shopName} in ${shopLocation}. Collection and payment at the shop are planned only after launch approval. Ordering and delivery are not active. Preview link: ${previewQrTarget} #LocalEats #SupportLocal #${shopName.replace(/\s+/g, "")}`;
+  }, [activeShop, previewQrTarget]);
 
   // Draw Social Graphic Canvas
   const renderSocialGraphic = useCallback(() => {
@@ -338,7 +318,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
     ctx.font = "bold 24px system-ui, sans-serif";
     ctx.fillStyle = "#FFFFFF";
-    ctx.fillText("🛵 LOCALEATS SA", 115, 117);
+    ctx.fillText("LOCALEATS SA", 115, 117);
 
     // Verified Store Badge
     ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
@@ -346,7 +326,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     ctx.fill();
     ctx.fillStyle = accentColor;
     ctx.font = "bold 22px system-ui, sans-serif";
-    ctx.fillText("⚡ OFFICIAL STORE", 765, 116);
+    ctx.fillText("PREVIEW ONLY", 765, 116);
 
     // Shop Name
     ctx.font = "900 68px system-ui, sans-serif";
@@ -357,7 +337,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     // Tagline / Category
     ctx.font = "bold 32px system-ui, sans-serif";
     ctx.fillStyle = accentColor;
-    ctx.fillText(socialTagline || "Fresh Meals & Fast Delivery", 80, 300);
+    ctx.fillText(socialTagline || "Collection Preview Only", 80, 300);
 
     // Central Card (Featured item or order callout)
     ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
@@ -370,7 +350,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     if (featuredSocialItem) {
       ctx.fillStyle = "#FFFFFF";
       ctx.font = "bold 26px system-ui, sans-serif";
-      ctx.fillText("🔥 FEATURED TODAY", 120, 420);
+      ctx.fillText("EXAMPLE MENU ITEM", 120, 420);
 
       ctx.font = "900 44px system-ui, sans-serif";
       ctx.fillStyle = textColor;
@@ -382,20 +362,20 @@ export const Marketing: React.FC<MarketingProps> = ({
 
       ctx.font = "24px system-ui, sans-serif";
       ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
-      ctx.fillText("• Prepared fresh to order", 120, 620);
-      ctx.fillText("• Fast local rider delivery", 120, 665);
-      ctx.fillText("• Cash or Card on Arrival", 120, 710);
+      ctx.fillText("• Example menu item and price", 120, 620);
+      ctx.fillText("• Collection only after approval", 120, 665);
+      ctx.fillText("• Pay at the shop after launch", 120, 710);
     } else {
       ctx.fillStyle = "#FFFFFF";
       ctx.font = "900 44px system-ui, sans-serif";
-      ctx.fillText("ORDER ONLINE", 120, 470);
-      ctx.fillText("IN 3 STEPS", 120, 530);
+      ctx.fillText("MARKETING", 120, 470);
+      ctx.fillText("PREVIEW ONLY", 120, 530);
 
       ctx.font = "26px system-ui, sans-serif";
       ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-      ctx.fillText("1. Scan QR or click store link", 120, 610);
-      ctx.fillText("2. Pick your favorite meal", 120, 665);
-      ctx.fillText("3. Fast pickup or delivery!", 120, 720);
+      ctx.fillText("1. Sample QR (not live)", 120, 610);
+      ctx.fillText("2. Future collection only", 120, 665);
+      ctx.fillText("3. Pay at shop after launch", 120, 720);
     }
 
     // QR Code Container Box
@@ -415,7 +395,7 @@ export const Marketing: React.FC<MarketingProps> = ({
         ctx.fillText("SCAN WITH PHONE", 825, 720);
         ctx.font = "bold 20px system-ui, sans-serif";
         ctx.fillStyle = "#EA580C";
-        ctx.fillText("TO ORDER NOW", 825, 755);
+        ctx.fillText("NOT A LIVE ORDER", 825, 755);
         ctx.textAlign = "left";
       };
       qrImg.src = qrDataUrl;
@@ -429,7 +409,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     ctx.font = "bold 24px system-ui, sans-serif";
     ctx.fillStyle = "#FFFFFF";
     const loc = activeShop?.address || activeShop?.location || activeShop?.city || "Township Store";
-    const phone = activeShop?.phone || activeShop?.whatsapp || "WhatsApp Available";
+    const phone = activeShop?.phone || activeShop?.whatsapp || "Contact not listed";
     ctx.fillText(`📍 ${loc.slice(0, 32)}`, 120, 955);
     ctx.fillText(`📞 ${phone}`, 680, 955);
   }, [socialTheme, socialTagline, featuredSocialItem, activeShop, qrDataUrl]);
@@ -445,6 +425,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // Download Social Graphic Image
   const handleDownloadSocialGraphic = () => {
+    if(!publishingEnabled) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     try {
@@ -462,6 +443,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // 5. PDF Flyer & Counter Stand Generator (A4 / Table Tent)
   const generatePdfFlyer = () => {
+    if(!publishingEnabled) return;
     try {
       const doc = new jsPDF({
         orientation: "portrait",
@@ -481,11 +463,11 @@ export const Marketing: React.FC<MarketingProps> = ({
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(16);
-      doc.text("LOCALEATS SA - OFFICIAL STORE", 105, 18, { align: "center" });
+      doc.text("LOCALEATS SA - PREVIEW ONLY", 105, 18, { align: "center" });
 
       doc.setFontSize(11);
       doc.setFont("helvetica", "normal");
-      doc.text("Order Online • Fast Local Delivery • Instant Pickup", 105, 28, { align: "center" });
+      doc.text("Example layout • Collection planned • Not live", 105, 28, { align: "center" });
 
       // Shop Name Heading
       doc.setTextColor(15, 23, 42); // #0F172A
@@ -495,7 +477,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
       doc.setFontSize(14);
       doc.setTextColor(234, 88, 12);
-      doc.text("SCAN TO VIEW OUR FULL MENU & ORDER", 105, 75, { align: "center" });
+      doc.text("SAMPLE QR - NOT FOR CUSTOMER ORDERS", 105, 75, { align: "center" });
 
       // Frame around QR code
       doc.setDrawColor(226, 232, 240);
@@ -514,13 +496,13 @@ export const Marketing: React.FC<MarketingProps> = ({
       doc.setFontSize(12);
       doc.setTextColor(15, 23, 42);
       doc.setFont("helvetica", "bold");
-      doc.text("HOW TO ORDER IN 3 EASY STEPS:", 105, 227, { align: "center" });
+      doc.text("FUTURE COLLECTION FLOW (NOT ACTIVE):", 105, 227, { align: "center" });
 
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
-      doc.text("1. Open your phone camera & scan the QR code above.", 35, 236);
-      doc.text("2. Choose your favorite meals & add special instructions.", 35, 243);
-      doc.text("3. Pay Cash on Arrival or Card — sit back while we prepare!", 35, 250);
+      doc.text("1. Preview the sample QR design above.", 35, 236);
+      doc.text("2. View a menu when LocalEats ordering is approved.", 35, 243);
+      doc.text("3. Collect and pay at the shop (cash/card machine).", 35, 250);
 
       // Footer bar
       doc.setFillColor(15, 23, 42);
@@ -547,14 +529,15 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // Direct Browser Print
   const handleDirectPrint = () => {
+    if(!publishingEnabled) return;
     window.print();
   };
 
   // SMS Text State
   const smsText = useMemo(() => {
     const shopName = activeShop?.name || "Our Shop";
-    return `Hi! Order delicious meals from ${shopName} online for fast pickup & delivery: ${storeUrl}`;
-  }, [activeShop, storeUrl]);
+    return `SAMPLE: ${shopName} — collection and payment at shop planned after approval. No ordering active. ${previewQrTarget}`;
+  }, [activeShop, previewQrTarget]);
 
   return (
     <div className="w-full space-y-6">
@@ -570,7 +553,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <span>Marketing & Customer Growth Studio</span>
               </h2>
               <p className="text-xs text-on-surface-variant">
-                Drive sales, reward loyal diners, and promote your LocalEats store with QR stands, WhatsApp promos & flash deals.
+                Review your shop's verified order activity. Campaigns, links and sharing remain unavailable before launch.
               </p>
             </div>
           </div>
@@ -603,12 +586,18 @@ export const Marketing: React.FC<MarketingProps> = ({
         )}
       </div>
 
+      {!publishingEnabled && (
+        <p role="status" className="text-xs text-on-surface-variant bg-surface-container-lowest rounded-2xl border border-outline-variant/15 px-4 py-3">
+          Marketing Preview only — customer ordering and promotional publishing are not activated. No vouchers, messages or customer-facing campaigns will be sent from this page.
+        </p>
+      )}
+
       {/* 2. PRIMARY 3-SEGMENT NAVIGATION */}
       <div className="bg-surface-container-lowest p-1.5 rounded-2xl border border-outline-variant/15 grid grid-cols-3 gap-2 shadow-xs">
         {/* Segment 1: Dashboard Summary */}
         <button
           onClick={() => setMainSegment("dashboard")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
             mainSegment === "dashboard"
               ? "bg-primary text-on-primary shadow-sm"
               : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -620,8 +609,10 @@ export const Marketing: React.FC<MarketingProps> = ({
 
         {/* Segment 2: Campaign Builder */}
         <button
+          type="button"
+          title="Inspect Campaign Builder layout (read-only)"
           onClick={() => setMainSegment("campaign_builder")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
             mainSegment === "campaign_builder"
               ? "bg-primary text-on-primary shadow-sm"
               : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -633,8 +624,10 @@ export const Marketing: React.FC<MarketingProps> = ({
 
         {/* Segment 3: Tool Library */}
         <button
+          type="button"
+          title="Inspect Tool Library layouts (read-only)"
           onClick={() => setMainSegment("tool_library")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
             mainSegment === "tool_library"
               ? "bg-primary text-on-primary shadow-sm"
               : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -663,8 +656,8 @@ export const Marketing: React.FC<MarketingProps> = ({
                   <Users size={16} />
                 </div>
               </div>
-              <p className="text-2xl font-black text-on-surface">{dinerStats.totalUniqueDiners}</p>
-              <p className="text-[11px] text-on-surface-variant mt-1">Unique customer profiles</p>
+              <p className="text-2xl font-black text-on-surface">{dinerStats?.uniqueDiners ?? "—"}</p>
+              <p className="text-[11px] text-on-surface-variant mt-1">Unique verified customer IDs</p>
             </div>
 
             <div className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/15 shadow-xs">
@@ -677,25 +670,25 @@ export const Marketing: React.FC<MarketingProps> = ({
                 </div>
               </div>
               <div className="flex items-baseline gap-2">
-                <p className="text-2xl font-black text-on-surface">{dinerStats.repeatCount}</p>
+                <p className="text-2xl font-black text-on-surface">{dinerStats?.repeatDiners ?? "—"}</p>
                 <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
-                  {dinerStats.repeatRate}% loyalty
+                  {dinerStats?.repeatRate === null || !dinerStats ? "—" : `${dinerStats.repeatRate}%`} repeat
                 </span>
               </div>
-              <p className="text-[11px] text-on-surface-variant mt-1">Ordered 2+ times</p>
+              <p className="text-[11px] text-on-surface-variant mt-1">Customer IDs with 2+ orders</p>
             </div>
 
             <div className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/15 shadow-xs">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
-                  Avg Diner Spend
+                  Avg Order Value
                 </span>
                 <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
                   <Zap size={16} />
                 </div>
               </div>
-              <p className="text-2xl font-black text-on-surface">R{dinerStats.avgSpend || 0}</p>
-              <p className="text-[11px] text-on-surface-variant mt-1">Average basket value</p>
+              <p className="text-2xl font-black text-on-surface">{dinerStats?.averageOrderValue === null || !dinerStats ? "—" : `R${dinerStats.averageOrderValue.toFixed(2)}`}</p>
+              <p className="text-[11px] text-on-surface-variant mt-1">Per order, not confirmed revenue</p>
             </div>
 
             <div className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/15 shadow-xs">
@@ -707,8 +700,8 @@ export const Marketing: React.FC<MarketingProps> = ({
                   <Store size={16} />
                 </div>
               </div>
-              <p className="text-2xl font-black text-on-surface">{dinerStats.totalOrders}</p>
-              <p className="text-[11px] text-on-surface-variant mt-1">Direct from LocalEats</p>
+              <p className="text-2xl font-black text-on-surface">{dinerStats?.totalOrders ?? "—"}</p>
+              <p className="text-[11px] text-on-surface-variant mt-1">Confirmed API order records</p>
             </div>
           </div>
 
@@ -718,10 +711,10 @@ export const Marketing: React.FC<MarketingProps> = ({
               <div>
                 <h3 className="font-extrabold text-base text-on-surface flex items-center gap-2">
                   <Zap size={18} className="text-amber-500" />
-                  <span>1-Tap Quick Action Boosters</span>
+                  <span>Marketing Ideas — Not Yet Active</span>
                 </h3>
                 <p className="text-xs text-on-surface-variant">
-                  Instant marketing actions designed for busy restaurant and kota shop operators.
+                  These ideas are previews only. Discounts, customer messages and printed order links are not activated.
                 </p>
               </div>
             </div>
@@ -729,8 +722,9 @@ export const Marketing: React.FC<MarketingProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* Booster 1: Lunch Rush */}
               <div
-                onClick={() => handleLaunchQuickAction("flash_deals")}
-                className="p-4 rounded-2xl bg-orange-500/5 hover:bg-orange-500/10 border border-orange-500/20 transition-all cursor-pointer group flex flex-col justify-between"
+                aria-disabled={!publishingEnabled}
+                onClick={publishingEnabled ? () => handleLaunchQuickAction("flash_deals") : undefined}
+                className="p-4 rounded-2xl bg-orange-500/5 hover:bg-orange-500/10 border border-orange-500/20 transition-all cursor-not-allowed opacity-60 group flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -745,19 +739,20 @@ export const Marketing: React.FC<MarketingProps> = ({
                     Launch Flash Deal
                   </h4>
                   <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
-                    Trigger a 15% discount for 3 hours to capture lunch break hunger.
+                    Preview a future lunch promotion. No discount is active.
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-orange-500/15 flex items-center justify-between text-xs font-bold text-orange-600">
-                  <span>Start Deal</span>
+                  <span>Coming Later</span>
                   <span>→</span>
                 </div>
               </div>
 
               {/* Booster 2: Win Back Diners */}
               <div
-                onClick={() => handleLaunchQuickAction("direct_reach")}
-                className="p-4 rounded-2xl bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 transition-all cursor-pointer group flex flex-col justify-between"
+                aria-disabled={!publishingEnabled}
+                onClick={publishingEnabled ? () => handleLaunchQuickAction("direct_reach") : undefined}
+                className="p-4 rounded-2xl bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 transition-all cursor-not-allowed opacity-60 group flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -772,19 +767,20 @@ export const Marketing: React.FC<MarketingProps> = ({
                     Win Back Inactive Diners
                   </h4>
                   <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
-                    Send 1-tap WhatsApp greetings with a discount to diners who haven't ordered in 14d.
+                    Customer outreach is not activated. No messages are sent.
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-blue-500/15 flex items-center justify-between text-xs font-bold text-blue-600">
-                  <span>View Diners</span>
+                  <span>Coming Later</span>
                   <span>→</span>
                 </div>
               </div>
 
               {/* Booster 3: Table Tents */}
               <div
-                onClick={() => handleLaunchQuickAction("table_tents")}
-                className="p-4 rounded-2xl bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/20 transition-all cursor-pointer group flex flex-col justify-between"
+                aria-disabled={!publishingEnabled}
+                onClick={publishingEnabled ? () => handleLaunchQuickAction("table_tents") : undefined}
+                className="p-4 rounded-2xl bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/20 transition-all cursor-not-allowed opacity-60 group flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -799,19 +795,20 @@ export const Marketing: React.FC<MarketingProps> = ({
                     Print Table Cards (PDF)
                   </h4>
                   <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
-                    Batch generate QR tent cards for tables 1–20 for direct table ordering.
+                    QR table-ordering materials are not ready for customer use.
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-emerald-500/15 flex items-center justify-between text-xs font-bold text-emerald-600">
-                  <span>Generate PDF</span>
+                  <span>Coming Later</span>
                   <span>→</span>
                 </div>
               </div>
 
               {/* Booster 4: Counter Flyer */}
               <div
-                onClick={() => handleLaunchQuickAction("qr_stands")}
-                className="p-4 rounded-2xl bg-purple-500/5 hover:bg-purple-500/10 border border-purple-500/20 transition-all cursor-pointer group flex flex-col justify-between"
+                aria-disabled={!publishingEnabled}
+                onClick={publishingEnabled ? () => handleLaunchQuickAction("qr_stands") : undefined}
+                className="p-4 rounded-2xl bg-purple-500/5 hover:bg-purple-500/10 border border-purple-500/20 transition-all cursor-not-allowed opacity-60 group flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -826,11 +823,11 @@ export const Marketing: React.FC<MarketingProps> = ({
                     Counter Stand Flyer
                   </h4>
                   <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
-                    Print high-res A4 counter stand flyers for takeaway bags and cash registers.
+                    Counter flyer publishing is not activated while ordering is closed.
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-purple-500/15 flex items-center justify-between text-xs font-bold text-purple-600">
-                  <span>View & Print</span>
+                  <span>Coming Later</span>
                   <span>→</span>
                 </div>
               </div>
@@ -844,14 +841,14 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div>
                   <h3 className="font-extrabold text-base text-on-surface flex items-center gap-2">
                     <Store size={18} className="text-primary" />
-                    <span>Your Live Online Storefront</span>
+                    <span>Storefront Link Preview</span>
                   </h3>
                   <p className="text-xs text-on-surface-variant">
-                    Share this verified store link with customers to let them order online via Cash on Arrival or Card.
+                    Customer ordering and payments at the shop are not active yet. Do not publish this link before owner approval.
                   </p>
                 </div>
                 <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full uppercase">
-                  ● Live & Accepting Orders
+                  ● Ordering Not Activated
                 </span>
               </div>
 
@@ -863,8 +860,11 @@ export const Marketing: React.FC<MarketingProps> = ({
                   className="flex-1 bg-transparent border-none text-xs font-mono text-on-surface px-2 outline-none"
                 />
                 <button
+                  type="button"
+                  disabled={!publishingEnabled}
+                  title="Storefront sharing is locked until ordering is approved"
                   onClick={copyStoreUrl}
-                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-on-primary text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-on-primary text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {copiedLink ? <Check size={14} className="text-white" /> : <Copy size={14} />}
                   <span>{copiedLink ? "Copied!" : "Copy Link"}</span>
@@ -873,24 +873,33 @@ export const Marketing: React.FC<MarketingProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
                 <button
+                  type="button"
+                  disabled={!publishingEnabled}
+                  title="WhatsApp campaigns are not activated"
                   onClick={() => handleLaunchQuickAction("whatsapp")}
-                  className="p-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
+                  className="p-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <MessageSquare size={15} />
                   <span>Share on WhatsApp</span>
                 </button>
 
                 <button
+                  type="button"
+                  disabled={!publishingEnabled}
+                  title="Publishing social posts is not activated"
                   onClick={() => handleLaunchQuickAction("social_studio")}
-                  className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer"
+                  className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Palette size={15} className="text-primary" />
                   <span>Create Social Post</span>
                 </button>
 
                 <button
-                  onClick={() => setMainSegment("campaign_builder")}
-                  className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer"
+                  type="button"
+                  disabled={!publishingEnabled}
+                  title="Vouchers are not activated"
+                  onClick={() => { if(publishingEnabled) setMainSegment("campaign_builder"); }}
+                  className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Ticket size={15} className="text-primary" />
                   <span>Create Voucher</span>
@@ -911,20 +920,23 @@ export const Marketing: React.FC<MarketingProps> = ({
               </div>
               <div>
                 <p className="text-xs font-extrabold text-on-surface">{activeShop?.name || "LocalEats Store"}</p>
-                <p className="text-[11px] text-on-surface-variant">Instant Scan to Order</p>
+                <p className="text-[11px] text-on-surface-variant">QR Preview Only — Not for Distribution</p>
               </div>
               <div className="w-full grid grid-cols-2 gap-2">
-                <a
-                  href={qrDataUrl}
-                  download={`QR_${activeShop?.name || "Store"}.png`}
-                  className="py-2 px-3 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-[11px] font-bold flex items-center justify-center gap-1 border border-outline-variant/20 cursor-pointer"
+                <span
+                  title="QR export is unavailable before launch"
+                  aria-disabled="true"
+                  className="py-2 px-3 rounded-xl bg-surface-container-high text-on-surface-variant text-[11px] font-bold flex items-center justify-center gap-1 border border-outline-variant/20 opacity-50 cursor-not-allowed"
                 >
                   <Download size={13} />
                   <span>PNG</span>
-                </a>
+                </span>
                 <button
+                  type="button"
+                  disabled={!publishingEnabled}
+                  title="Order-link printing is not activated"
                   onClick={() => handleLaunchQuickAction("qr_stands")}
-                  className="py-2 px-3 rounded-xl bg-primary text-on-primary text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
+                  className="py-2 px-3 rounded-xl bg-primary text-on-primary text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Printer size={13} />
                   <span>Print Stand</span>
@@ -939,11 +951,16 @@ export const Marketing: React.FC<MarketingProps> = ({
       {/* SEGMENT 2: CAMPAIGN BUILDER (DEDICATED INTERACTIVE CAMPAIGN & VOUCHERS)   */}
       {/* ========================================================================= */}
       {mainSegment === "campaign_builder" && (
-        <CampaignBuilder
-          activeShop={activeShop}
-          storeMenuItems={storeMenuItems}
-          storeUrl={storeUrl}
-        />
+        <ReadOnlyMarketingPreview
+          locked={!publishingEnabled}
+          description="Campaign Builder: sample coupons, audience rules and push designs are not published or linked to checkout.">
+          <CampaignBuilder
+            activeShop={activeShop}
+            storeMenuItems={storeMenuItems}
+            storeUrl={publishingEnabled ? storeUrl : "https://example.invalid/localeats-marketing-preview"}
+            previewOnly={!publishingEnabled}
+          />
+        </ReadOnlyMarketingPreview>
       )}
 
       {/* ========================================================================= */}
@@ -1050,15 +1067,17 @@ export const Marketing: React.FC<MarketingProps> = ({
             </button>
           </div>
 
-          {/* ACTIVE TOOL RENDERING */}
+          {/* ACTIVE TOOL RENDERING — visual-only until separately approved */}
+          <ReadOnlyMarketingPreview locked={!publishingEnabled} description={previewToolDescriptions[activeTool]}>
 
           {/* Tool 1: Direct Customer Reach & Diners */}
           {activeTool === "direct_reach" && (
             <CustomerReEngagement
               activeShop={activeShop}
-              orders={orders}
+              orders={publishingEnabled ? orders : []}
+              previewOnly={!publishingEnabled}
               menuItems={storeMenuItems}
-              storeUrl={storeUrl}
+              storeUrl={publishingEnabled ? storeUrl : "https://example.invalid/localeats-marketing-preview"}
             />
           )}
 
@@ -1067,7 +1086,8 @@ export const Marketing: React.FC<MarketingProps> = ({
             <FlashDealsStudio
               activeShop={activeShop}
               menuItems={storeMenuItems}
-              storeUrl={storeUrl}
+              storeUrl={publishingEnabled ? storeUrl : "https://example.invalid/localeats-marketing-preview"}
+              previewOnly={!publishingEnabled}
             />
           )}
 
@@ -1075,7 +1095,8 @@ export const Marketing: React.FC<MarketingProps> = ({
           {activeTool === "table_tents" && (
             <TableTentGenerator
               activeShop={activeShop}
-              storeUrl={storeUrl}
+              storeUrl={publishingEnabled ? storeUrl : "https://example.invalid/localeats-marketing-preview"}
+              previewOnly={!publishingEnabled}
             />
           )}
 
@@ -1140,10 +1161,10 @@ export const Marketing: React.FC<MarketingProps> = ({
                       onChange={(e) => setQrFrameText(e.target.value)}
                       className="w-full bg-surface-container-high border-none rounded-xl px-3.5 py-2.5 text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary outline-none"
                     >
-                      <option value="SCAN TO ORDER ONLINE">SCAN TO ORDER ONLINE</option>
+                      <option value="PREVIEW — NOT LIVE">PREVIEW — NOT LIVE</option>
                       <option value="TABLE & COUNTER MENU">TABLE & COUNTER MENU</option>
-                      <option value="ORDER AHEAD & SKIP THE LINE">ORDER AHEAD & SKIP THE LINE</option>
-                      <option value="SCAN FOR TODAY'S SPECIALS">SCAN FOR TODAY'S SPECIALS</option>
+                      <option value="PICKUP AFTER LAUNCH">PICKUP AFTER LAUNCH</option>
+                      <option value="SAMPLE MENU ONLY">SAMPLE MENU ONLY</option>
                     </select>
                   </div>
 
@@ -1178,14 +1199,22 @@ export const Marketing: React.FC<MarketingProps> = ({
                     </button>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <a
-                        href={qrDataUrl}
-                        download={`QR_Code_${activeShop?.name || "LocalEats"}.png`}
-                        className="py-2.5 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-outline-variant/20"
-                      >
-                        <Download size={15} />
-                        <span>Download PNG</span>
-                      </a>
+                      {publishingEnabled ? (
+                        <a
+                          href={qrDataUrl}
+                          download={`QR_Code_${activeShop?.name || "LocalEats"}.png`}
+                          className="py-2.5 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-outline-variant/20"
+                        >
+                          <Download size={15} />
+                          <span>Download PNG</span>
+                        </a>
+                      ) : (
+                        <span aria-disabled="true" title="QR export is unavailable before launch"
+                          className="py-2.5 rounded-2xl bg-surface-container-high text-on-surface-variant text-xs font-bold flex items-center justify-center gap-1.5 border border-outline-variant/20 opacity-50 cursor-not-allowed">
+                          <Download size={15} />
+                          <span>Export Unavailable</span>
+                        </span>
+                      )}
 
                       <button
                         onClick={handleDirectPrint}
@@ -1231,29 +1260,29 @@ export const Marketing: React.FC<MarketingProps> = ({
 
                   {/* Ordering Steps Pill */}
                   <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/15 text-left space-y-1.5">
-                    <p className="text-xs font-extrabold text-on-surface text-center mb-1">How customers order:</p>
+                    <p className="text-xs font-extrabold text-on-surface text-center mb-1">Example collection flow (not active):</p>
                     <div className="flex items-center gap-2 text-xs text-on-surface-variant">
                       <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0">1</span>
-                      <span>Open Camera & Scan QR Code</span>
+                      <span>Sample QR — not live</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-on-surface-variant">
                       <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0">2</span>
-                      <span>Select meal from live menu</span>
+                      <span>View menu after launch</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-on-surface-variant">
                       <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0">3</span>
-                      <span>Pay Cash on Arrival or Card!</span>
+                      <span>Pay at shop after approval</span>
                     </div>
                   </div>
 
                   {/* Footer Trust Signals */}
                   <div className="flex items-center justify-center gap-4 text-[11px] font-bold text-on-surface-variant/80 pt-1">
                     <span className="flex items-center gap-1">
-                      <Truck size={13} className="text-primary" /> Fast Local Delivery
+                      <Store size={13} className="text-primary" /> Delivery Not Active
                     </span>
                     <span>•</span>
                     <span className="flex items-center gap-1">
-                      <Utensils size={13} className="text-primary" /> Instant Pickup
+                      <Utensils size={13} className="text-primary" /> Collection Planned
                     </span>
                   </div>
                 </div>
@@ -1287,7 +1316,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
                         <Flame size={14} className="text-orange-500" /> Grand Opening
                       </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Announce you're taking orders</p>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Sample launch message only</p>
                     </button>
 
                     <button
@@ -1302,9 +1331,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                       }`}
                     >
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                        <Utensils size={14} className="text-amber-500" /> Lunch Rush (11:30)
+                        <Utensils size={14} className="text-amber-500" /> Example Lunch Post
                       </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Post before lunch breaks</p>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Experiment with timing later</p>
                     </button>
 
                     <button
@@ -1336,9 +1365,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                       }`}
                     >
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                        <Truck size={14} className="text-blue-500" /> Local Delivery
+                        <Truck size={14} className="text-blue-500" /> Delivery Deferred
                       </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Highlight fast rider delivery</p>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Riders not part of pilot</p>
                     </button>
 
                     <button
@@ -1355,7 +1384,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
                         <Percent size={14} className="text-purple-500" /> Promo Voucher
                       </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Give a coupon discount</p>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Unissued code example only</p>
                     </button>
 
                     <button
@@ -1372,7 +1401,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
                         <Sparkles size={14} className="text-rose-500" /> Weekend Vibes
                       </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Family & gathering promos</p>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Sample weekend message only</p>
                     </button>
                   </div>
 
@@ -1462,11 +1491,11 @@ export const Marketing: React.FC<MarketingProps> = ({
                         <p className="text-xs font-bold text-slate-900 dark:text-white">
                           {activeShop?.name || "LocalEats Merchant"}
                         </p>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400">WhatsApp Status / Broadcast Preview</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">WhatsApp Draft Mockup — Not Sent</p>
                       </div>
                     </div>
                     <span className="text-[10px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold px-2 py-0.5 rounded-full">
-                      Live Preview
+                      Sample Only
                     </span>
                   </div>
 
@@ -1572,7 +1601,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                         onChange={(e) => setFeaturedSocialItemId(e.target.value)}
                         className="w-full bg-surface-container-high border-none rounded-xl px-3.5 py-2.5 text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary outline-none"
                       >
-                        <option value="">General Store Online Ordering</option>
+                        <option value="">Sample Store Preview</option>
                         {storeMenuItems.map((item) => (
                           <option key={item.id} value={item.id}>
                             {item.name} (R{item.price})
@@ -1597,6 +1626,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       <span>Instagram & Facebook Caption</span>
                       <button
                         onClick={() => {
+                          if(!publishingEnabled) return;
                           navigator.clipboard.writeText(socialCaption);
                           setCopiedCaption(true);
                           toast.success("Caption copied!");
@@ -1620,7 +1650,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xl text-center space-y-4 w-full max-w-lg">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-black text-on-surface flex items-center gap-1.5">
-                      <Eye size={14} className="text-primary" /> Live Social Card Preview (1080 × 1080)
+                      <Eye size={14} className="text-primary" /> Social Card Design Preview (1080 × 1080)
                     </span>
                     <span className="text-[10px] font-bold text-on-surface-variant bg-surface-container-high px-2 py-0.5 rounded-full">
                       Square Post
@@ -1636,7 +1666,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                   </div>
 
                   <p className="text-[11px] text-on-surface-variant">
-                    Ready to post on Facebook, Instagram, WhatsApp Status, or TikTok!
+                    Sample layout only — not approved for publication or customer promotion.
                   </p>
                 </div>
               </div>
@@ -1652,14 +1682,14 @@ export const Marketing: React.FC<MarketingProps> = ({
                   <h3 className="font-extrabold text-base text-on-surface">SMS Customer Broadcast</h3>
                 </div>
                 <p className="text-xs text-on-surface-variant">
-                  Copy this standard single-credit SMS text message (under 160 characters) to send to your loyal customer phone list.
+                  Sample SMS text only. Sending is disabled; length and billing depend on the network, encoding and message content.
                 </p>
 
                 <div className="p-4 bg-surface-container-low rounded-2xl border border-outline-variant/15 space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-on-surface">
                     <span>SMS Copy</span>
-                    <span className={`font-mono text-[11px] ${smsText.length <= 160 ? "text-emerald-500" : "text-amber-500"}`}>
-                      {smsText.length} / 160 characters ({Math.ceil(smsText.length / 160)} SMS)
+                    <span className="font-mono text-[11px] text-on-surface-variant">
+                      {smsText.length} characters · segment count not verified
                     </span>
                   </div>
                   <p className="text-xs font-mono text-on-surface bg-surface-container-lowest p-3 rounded-xl border border-outline-variant/10 leading-relaxed">
@@ -1669,6 +1699,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
                 <button
                   onClick={() => {
+                    if(!publishingEnabled) return;
                     navigator.clipboard.writeText(smsText);
                     setCopiedSms(true);
                     toast.success("SMS broadcast copied to clipboard!");
@@ -1690,9 +1721,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="w-10 h-10 rounded-2xl bg-orange-500/10 text-orange-500 flex items-center justify-center font-bold">
                   ⏰
                 </div>
-                <h3 className="font-extrabold text-base text-on-surface">1. The 11:30 AM Status Strategy</h3>
+                <h3 className="font-extrabold text-base text-on-surface">1. Test Lunch-Time Posting</h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Township and office workers decide what to eat for lunch between 11:30 and 12:00. Always post your daily special or Kota deal on WhatsApp Status at 11:30 AM sharp with your direct ordering link.
+                  Try different lunchtime posting times once your shop launches. Measure actual enquiries rather than assuming 11:30 works for every neighbourhood. Do not share inactive order links or unapproved discounts.
                 </p>
               </div>
 
@@ -1700,9 +1731,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="w-10 h-10 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center font-bold">
                   🛍️
                 </div>
-                <h3 className="font-extrabold text-base text-on-surface">2. Takeaway Bag QR Flyers</h3>
+                <h3 className="font-extrabold text-base text-on-surface">2. Takeaway Bag QR Flyers — Later</h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Print our A4 / small flyers and stick them on top of every takeaway box or brown paper bag. When walk-in customers get home, they will scan to order online next time!
+                  Draft QR flyers now if useful, but do not print or distribute them until the customer ordering flow is approved and the QR target has been tested.
                 </p>
               </div>
 
@@ -1710,9 +1741,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold">
                   💬
                 </div>
-                <h3 className="font-extrabold text-base text-on-surface">3. Community WhatsApp Groups</h3>
+                <h3 className="font-extrabold text-base text-on-surface">3. Community Groups — With Permission</h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Share your store link once a week in neighborhood business & community groups. Highlight that cash-on-arrival and local delivery riders are supported.
+                  After launch approval, share accurate collection-only information in community groups that allow business posts. Avoid unsolicited messages and never claim rider delivery is available.
                 </p>
               </div>
 
@@ -1720,9 +1751,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="w-10 h-10 rounded-2xl bg-purple-500/10 text-purple-500 flex items-center justify-center font-bold">
                   🎟️
                 </div>
-                <h3 className="font-extrabold text-base text-on-surface">4. First-Order Voucher Codes</h3>
+                <h3 className="font-extrabold text-base text-on-surface">4. Voucher Codes — Future Feature</h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Create a 10% discount coupon in your Campaign Builder (e.g. <code>FIRST10</code>) and mention it on your social media posts to encourage first-time online orders.
+                  Voucher codes shown in this Preview are examples only. Do not advertise or promise a discount until the checkout rules, approval process and redemption flow are verified.
                 </p>
                 <div className="flex items-center gap-3 pt-1">
                   <button
@@ -1734,7 +1765,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                   </button>
                   {onNavigateTab && (
                     <button
-                      onClick={() => onNavigateTab("coupons")}
+                      disabled={!publishingEnabled}
+                      title="Coupons are unavailable while marketing is in Preview"
+                      onClick={() => { if(publishingEnabled) onNavigateTab("coupons"); }}
                       className="text-xs font-bold text-on-surface-variant hover:text-on-surface flex items-center gap-1 cursor-pointer"
                     >
                       <span>(or Merchant Coupons tab)</span>
@@ -1744,6 +1777,7 @@ export const Marketing: React.FC<MarketingProps> = ({
               </div>
             </div>
           )}
+          </ReadOnlyMarketingPreview>
         </div>
       )}
     </div>
