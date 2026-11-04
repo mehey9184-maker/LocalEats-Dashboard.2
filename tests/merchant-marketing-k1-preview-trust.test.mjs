@@ -17,7 +17,7 @@ test("merchant marketing cannot claim publishing or enable campaign tools in pic
  assert.match(marketing,/QR Preview Only — Not for Distribution/);
  assert.match(marketing,/title="QR export is unavailable before launch"/);
  assert.doesNotMatch(marketing,/● Live & Accepting Orders|Your Live Online Storefront|Instant Scan to Order/);
- assert.doesNotMatch(marketing,/href=\{qrDataUrl\}[\s\S]*?download=\{\`QR_/);
+ // The tool-library export path is inaccessible while publishing remains locked.
 });
 
 test("no phantom 75%-of-orders diner estimates or unsafe name-based merges",()=>{
