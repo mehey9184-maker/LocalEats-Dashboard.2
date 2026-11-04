@@ -361,6 +361,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
 
   // Expiry text calculation
   const expiryDisplay = useMemo(() => {
+    if(previewOnly) return "Example date — not active";
     switch (expiryOption) {
       case "today_1500":
         return "Ends Today at 15:00";
@@ -373,7 +374,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
       default:
         return "Limited time only";
     }
-  }, [expiryOption, customExpiryDate]);
+  }, [expiryOption, customExpiryDate, previewOnly]);
 
   // Discount Text Display
   const discountDisplay = useMemo(() => {
@@ -656,7 +657,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
             {/* Coupon Code Input */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-on-surface mb-1.5">Coupon Code (Customer enters at checkout)</label>
+                <label className="block text-xs font-bold text-on-surface mb-1.5">{previewOnly ? "Sample Code — Not Redeemable" : "Coupon Code (Customer enters at checkout)"}</label>
                 <div className="relative">
                   <input
                     type="text"
@@ -679,7 +680,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
                   <option value="percentage">Percentage Discount (%)</option>
                   <option value="fixed_amount">Flat Rand Discount (R Off)</option>
                   <option value="free_delivery">{previewOnly ? "Delivery not available" : "Free Township Delivery"}</option>
-                  <option value="bonus_gift">Free Item / Refreshment</option>
+                  <option value="bonus_gift">{previewOnly ? "Example gift — not available" : "Free Item / Refreshment"}</option>
                 </select>
               </div>
             </div>
@@ -693,7 +694,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
                     : discountType === "fixed_amount"
                     ? "Rand Discount Value (R)"
                     : discountType === "free_delivery"
-                    ? "Waived Delivery Fee Value (R)"
+                    ? (previewOnly ? "Delivery not available" : "Waived Delivery Fee Value (R)")
                     : "Gift / Item Value (R)"}
                 </label>
                 <div className="relative">
@@ -727,7 +728,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
                   </div>
                 </div>
                 <span className="text-[10px] text-on-surface-variant mt-1 block">
-                  Customer must spend at least R{minSpend} to redeem
+                  {previewOnly ? `Example minimum: R${minSpend} (not a valid offer)` : `Customer must spend at least R${minSpend} to redeem`}
                 </span>
               </div>
             </div>
@@ -786,7 +787,7 @@ export const CampaignBuilder: React.FC<CampaignBuilderProps> = ({
               </div>
               <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Real-time
+                {previewOnly ? "Visual Only" : "Real-time"}
               </span>
             </div>
 
