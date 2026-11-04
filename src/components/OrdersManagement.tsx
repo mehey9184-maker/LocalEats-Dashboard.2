@@ -2277,7 +2277,7 @@ Notes: "${order.notes || "None"}"
   }
 
   return (
-    <div className="space-y-4">
+    <div className={cn("space-y-4", isRefreshingOrders && "orders-refresh-surface")}>
       <p role="status" className="text-xs text-on-surface-variant mb-3">{pickupOrderingEnabled() ? "Pickup actions are API-authorized. Confirm actual payment before food handover and Collected. Historical delivery records remain available." : "Pickup order, payment and collection changes are disabled pending separately approved database activation. Existing management and historical delivery records remain available."}</p>
       {!merchantPickupReadCurrent(ordersReadState, ordersVerifiedAt) && (
         <div role="status" className="flex flex-wrap items-center gap-2 px-4 py-3 rounded-xl border border-amber-500/25 bg-amber-500/5 text-xs text-on-surface-variant">
