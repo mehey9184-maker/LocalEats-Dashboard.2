@@ -3812,61 +3812,61 @@ function App() {
                     },
                     {
                       title: "Real-time Orders",
-                      desc: "Never miss a beat. Orders pop up instantly with sound alerts. Use Kitchen Mode for focus.",
+                      desc: "Order updates require a verified connection and may be delayed. Kitchen Mode focuses the display; alerts are not guaranteed in the background.",
                       icon: ReceiptText,
                       color: "text-green-500 bg-green-50",
                     },
                     {
                       title: "Marketing & Coupons",
-                      desc: "Grow your reach. Create discount codes and use AI to craft perfect campaigns.",
+                      desc: "Marketing campaigns and discount codes are design previews; distribution and redemption are not active.",
                       icon: Megaphone,
                       color: "text-purple-500 bg-purple-50",
                     },
                     {
                       title: "Insights",
-                      desc: "Understand your customers. View reviews and analyze performance trends.",
+                      desc: "Review verified shop-scoped figures where available; missing or unverified trends must not be treated as results.",
                       icon: TrendingUp,
                       color: "text-indigo-500 bg-indigo-50",
                     },
                     {
                       title: "Storefront",
-                      desc: "Customize how customers see your shop. Update your bio, location, and social links.",
+                      desc: "Shop profile changes are unavailable from Settings Preview. Customer-facing changes require an authorised workflow.",
                       icon: Store,
                       color: "text-pink-500 bg-pink-50",
                     },
                     {
                       title: "Delivery & Logistics",
-                      desc: "Set your delivery radius, monitor rider progress on the live map, and manage dispatching.",
+                      desc: "Delivery, live rider tracking and dispatch are deferred; the current Settings controls are examples only.",
                       icon: Truck,
                       color: "text-cyan-500 bg-cyan-50",
                     },
                     {
                       title: "Earnings & Payouts",
-                      desc: "Monitor your revenue in real-time and manage your weekly payout schedule securely.",
+                      desc: "Bank payouts and live settlement reports are not supported or verified in the collection-first pilot.",
                       icon: Wallet,
                       color: "text-emerald-500 bg-emerald-50",
                     },
                     {
                       title: "Customer Engagement",
-                      desc: "Respond to reviews, track repeat customers, and build loyalty with tailored rewards.",
+                      desc: "Verified customer data and outreach consent are required before using loyalty or engagement tools.",
                       icon: Heart,
                       color: "text-rose-500 bg-rose-50",
                     },
                     {
                       title: "Rider Network",
-                      desc: "Access a fleet of on-demand riders. Real-time GPS tracking ensures your food reaches customers hot and fresh.",
+                      desc: "Rider assignment and delivery tracking are not activated for the pickup-first pilot.",
                       icon: Bike,
                       color: "text-blue-600 bg-blue-50",
                     },
                     {
                       title: "QR Verification",
-                      desc: "The gold standard for security. QR codes ensure the right order goes to the right person every single time.",
+                      desc: "Order pickup verification must be checked against the authoritative API. Sample QR designs are not live order confirmation.",
                       icon: QrCode,
                       color: "text-amber-600 bg-amber-50",
                     },
                     {
                       title: "Growth Support",
-                      desc: "Get help when you need it. Our automated tools and community forum are here to help you grow your business.",
+                      desc: "Support and community features shown here may be planned or unavailable; verify access before relying on them.",
                       icon: HelpCircle,
                       color: "text-teal-600 bg-teal-50",
                     },
@@ -3878,7 +3878,7 @@ function App() {
                     },
                     {
                       title: "Community Forum",
-                      desc: "Connect with other vendors, share success stories, and get advice from the LocalEats community.",
+                      desc: "A merchant community forum is a future idea, not an active service in this Preview.",
                       icon: Users,
                       color: "text-indigo-600 bg-indigo-50",
                     },
@@ -3913,8 +3913,7 @@ function App() {
                     Pro Tip
                   </h4>
                   <p className="text-sm text-on-surface-variant">
-                    Enable <b>Sound Alerts</b> in Settings to ensure you hear
-                    every new order even when the tab is in the background.
+                    After launch, check notification permissions and test alerts on your device. Background delivery is not guaranteed; always verify order status.
                   </p>
                 </div>
 
@@ -3924,7 +3923,7 @@ function App() {
                     Safety & Trust
                   </h4>
                   <p className="text-sm text-on-surface-variant">
-                    All transactions are encrypted and secured. We use multi-factor verification for payouts and location data is only shared with active delivery participants.
+                    Do not enter payment-card or sensitive billing details in Preview. Payment settlement, payout verification and delivery-location privacy need a separate production security review.
                   </p>
                 </div>
 
