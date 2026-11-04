@@ -91,6 +91,7 @@ import { LocalEatsLogo } from "./components/LocalEatsLogo";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
 import { DashboardOverview } from "./components/DashboardOverview";
 import { MerchantStorefrontPreview } from "./components/MerchantStorefrontPreview";
+import { merchantStorefrontPreviewOnly, merchantStorefrontWritesEnabled } from "./services/merchantStorefrontPreviewPolicy";
 import { OrdersManagement } from "./components/OrdersManagement";
 import { MenuManagement } from "./components/MenuManagement";
 import { Coupons } from "./components/Coupons";
@@ -1535,6 +1536,7 @@ function App() {
   }
 
   const handleSaveProfile = async (data: ProfileData) => {
+    if (!merchantStorefrontWritesEnabled()) { toast.info("Profile saving is unavailable in Merchant Preview."); return; }
     setIsSaving(true);
     setIsSaveSuccess(false);
     try {
@@ -1613,6 +1615,17 @@ function App() {
   }
 
   if (user && merchantShopGate.status === "no-shop") {
+    if (merchantStorefrontPreviewOnly()) {
+      return (
+        <div className="min-h-screen bg-surface px-4 py-10 text-on-surface flex items-center justify-center">
+          <section className="max-w-xl w-full rounded-[2rem] bg-surface-container-lowest border border-outline-variant/20 p-8 text-center space-y-4">
+            <h2 className="font-headline text-2xl font-black">Shop Onboarding — Preview Only</h2>
+            <p className="text-sm text-on-surface-variant">No verified shop is selected. Shop registration and uploads are unavailable in this Preview. No shop or database record is created.</p>
+            <button type="button" onClick={() => void handleSignOut()} className="rounded-xl px-5 py-3 bg-surface-container-high text-on-surface text-sm font-bold">Sign Out</button>
+          </section>
+        </div>
+      );
+    }
     return (
       <CreateShopOnboarding
         onCreated={handleCreatedMerchantShop}
@@ -1655,7 +1668,7 @@ function App() {
     );
   }
 
-  if (isEditingProfile) {
+  if (isEditingProfile && !merchantStorefrontPreviewOnly()) {
     console.log("[Render] editing-profile", { isSessionChecking, isAuthReady, loading, userId: user?.id });
     return (
       <>
@@ -2219,9 +2232,10 @@ function App() {
              Store Offline - Not Receiving Orders
            </div>
            <button
-             disabled={availabilityBusy}
+             disabled={availabilityBusy || merchantStorefrontPreviewOnly()}
+             title={merchantStorefrontPreviewOnly() ? "Shop availability changes are unavailable in Merchant Preview" : "Mark shop available"}
              onClick={async () => {
-                if (availabilityBusy) return;
+                if (availabilityBusy || merchantStorefrontPreviewOnly()) return;
                 const newStatus = true;
 
                 const { success, error, freshShop } = await syncShopAvailability({
@@ -2250,7 +2264,7 @@ function App() {
              }}
              className="px-4 py-1 bg-white text-error rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-zinc-100 transition-colors ml-2 shadow-xs cursor-pointer active:scale-95 border border-white"
            >
-             Mark Shop Available
+             {merchantStorefrontPreviewOnly() ? "Status Change Unavailable" : "Mark Shop Available"}
            </button>
         </div>
       )}
@@ -2265,6 +2279,7 @@ function App() {
             <React.Suspense fallback={<DashboardSkeleton />}>
               {activeTab === "dashboard" && (
                 <DashboardOverview
+                  previewOnly={merchantStorefrontPreviewOnly()}
                   orders={orders}
                   loading={loading}
                   ordersReadState={ordersReadState}
@@ -2276,7 +2291,7 @@ function App() {
                     await fetchShops();
                     await Promise.all([fetchOrders(), fetchAllMenuItems()]);
                   }}
-                  onEditProfile={() => setIsEditingProfile(true)}
+                  onEditProfile={() => { if (merchantStorefrontPreviewOnly()) toast.info("Profile editing is unavailable in Merchant Preview."); else setIsEditingProfile(true); }}
                   menuItems={menuItems}
                   trialInfo={trialInfo}
                   currentShop={currentShop}

@@ -84,6 +84,7 @@ export interface DashboardOverviewProps {
   trialInfo: { daysRemaining: number; isExpired: boolean } | null;
   currentShop: Shop | undefined;
   darkMode: boolean;
+  previewOnly?: boolean;
 }
 
 const StatCard = React.memo(({
@@ -484,6 +485,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   trialInfo,
   currentShop,
   darkMode,
+  previewOnly = false,
 }: {
   orders: Order[];
   loading: boolean;
@@ -498,6 +500,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   trialInfo: { daysRemaining: number; isExpired: boolean } | null;
   currentShop: Shop | undefined;
   darkMode: boolean;
+  previewOnly?: boolean;
 }) => {
   const [followerCount, setFollowerCount] = useState<number | string>("--");
   const [followerTrend, setFollowerTrend] = useState<string>("0");
@@ -1149,9 +1152,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 Shop Status Control
               </span>
               <button
-                disabled={isStatusToggling}
+                disabled={previewOnly || isStatusToggling}
                 onClick={async () => {
-                  if (isStatusToggling) return;
+                  if (previewOnly || isStatusToggling) return;
                   const newStatus = !currentShop.is_active;
 
                   const { success, error, freshShop } = await syncShopAvailability({
@@ -1183,6 +1186,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                     <Loader2 size={14} className="animate-spin" />
                     <span>Updating...</span>
                   </>
+                ) : previewOnly ? (
+                  <><ShieldCheck size={14} /><span>Status Change Unavailable</span></>
                 ) : currentShop.is_active ? (
                   <>
                     <X size={14} />
@@ -1618,14 +1623,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             <div>
               <h3 className="text-sm font-black text-on-surface uppercase tracking-wider">Bulk Storefront Switch</h3>
               <p className="text-xs text-on-surface-variant/80 mt-1 max-w-xl">
-                Request an availability change for each linked shop. The API must confirm every update.
+                {previewOnly ? "Availability changes are disabled in Preview. The recorded shop status does not prove live ordering." : "Request an availability change for each linked shop. The API must confirm every update."}
               </p>
             </div>
           </div>
           <button
-            disabled={isStatusToggling}
+            disabled={previewOnly || isStatusToggling}
             onClick={async () => {
-              if (isStatusToggling) return;
+              if (previewOnly || isStatusToggling) return;
               const anyActive = shops.some(s => s.is_active);
               const newStatus = !anyActive;
 
@@ -1660,7 +1665,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 : "bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20"
             )}
           >
-            {shops.some(s => s.is_active) ? "Set All Offline" : "Set All Online"}
+            {previewOnly ? "Bulk Status Unavailable" : shops.some(s => s.is_active) ? "Set All Offline" : "Set All Online"}
           </button>
         </div>
       )}
