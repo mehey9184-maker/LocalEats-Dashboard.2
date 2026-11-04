@@ -33,3 +33,32 @@ export function merchantMenuLowStock(stock:unknown):boolean {
 export function merchantMenuOutOfStock(stock:unknown):boolean {
  return merchantMenuStockKnown(stock) && stock===0;
 }
+
+
+/** Only advertise categories actually present in the verified shop menu. */
+export function merchantMenuCategoryName(value:unknown):string {
+ return typeof value==="string" && value.trim() ? value.trim() : "General";
+}
+export function merchantMenuCategories(rows:readonly {category?:unknown}[]):string[] {
+ const found=new Map<string,string>();
+ for(const row of rows) {
+  const category=merchantMenuCategoryName(row?.category);
+  const key=category.toLocaleLowerCase("en-ZA");
+  if(key!=="all" && !found.has(key))found.set(key,category);
+ }
+ return ["All",...Array.from(found.values()).sort((a,b)=>a.localeCompare(b,"en-ZA",{sensitivity:"base"}))];
+}
+export function merchantMenuMatchesCategory(category:unknown,selected:string):boolean {
+ return selected==="All" || merchantMenuCategoryName(category).toLocaleLowerCase("en-ZA")===selected.toLocaleLowerCase("en-ZA");
+}
+export function merchantMenuFiltersActive(query:string,category:string):boolean {
+ return query.trim().length>0 || category!=="All";
+}
+
+/** A bounded step keeps the original card grid usable for large menus. */
+export const MERCHANT_MENU_PAGE_SIZE=24;
+export function merchantMenuNextVisibleCount(current:number,total:number):number {
+ const max=Number.isSafeInteger(total) && total>0 ? total : 0;
+ const shown=Number.isSafeInteger(current) && current>0 ? current : 0;
+ return Math.min(max,shown+MERCHANT_MENU_PAGE_SIZE);
+}

@@ -31,12 +31,14 @@ interface FlashDealsStudioProps {
   activeShop: Shop | undefined;
   menuItems: MenuItem[];
   storeUrl: string;
+  previewOnly?: boolean;
 }
 
 export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
   activeShop,
   menuItems = [],
   storeUrl,
+  previewOnly = false,
 }) => {
   const shopId = activeShop?.id || "default";
   const shopName = activeShop?.name || "LocalEats Shop";
@@ -53,6 +55,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
 
   // Active Deals
   const [deals, setDeals] = useState<FlashDeal[]>(() => {
+    if(previewOnly) return []; // Old local deal records cannot imply an active discount.
     try {
       const stored = localStorage.getItem(storageKey);
       if (stored) {
@@ -66,12 +69,13 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
 
   // Save to local storage on changes
   useEffect(() => {
+    if(previewOnly) return;
     try {
       localStorage.setItem(storageKey, JSON.stringify(deals));
     } catch {
       // ignore
     }
-  }, [deals, storageKey]);
+  }, [deals, storageKey, previewOnly]);
 
   // Selected item object
   const selectedItem = useMemo(() => {
@@ -114,6 +118,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
 
   // Launch Flash Deal
   const handleLaunchDeal = () => {
+    if(previewOnly) return;
     if (!selectedItem) {
       toast.error("Please select a menu item first.");
       return;
@@ -143,6 +148,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
   };
 
   const handleEndDeal = (dealId: string) => {
+    if(previewOnly) return;
     setDeals((prev) => prev.filter((d) => d.id !== dealId));
     toast.info("Flash deal removed.");
   };
@@ -153,6 +159,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
   };
 
   const handleShareWhatsApp = (deal: FlashDeal) => {
+    if(previewOnly) return;
     const text = getDealWhatsAppText(deal);
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(url, "_blank");
@@ -160,6 +167,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
   };
 
   const handleCopyDealBroadcast = (deal: FlashDeal) => {
+    if(previewOnly) return;
     const text = getDealWhatsAppText(deal);
     navigator.clipboard.writeText(text);
     setCopiedDealId(deal.id);
@@ -178,24 +186,24 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
                 <Flame size={12} /> Slow-Hour Booster
               </span>
               <span className="text-xs font-bold text-on-surface-variant">
-                Convert quiet hours into rapid online orders
+                {previewOnly ? "Example layout — no customer offers active" : "Convert quiet hours into rapid online orders"}
               </span>
             </div>
             <h3 className="text-lg font-black text-on-surface font-headline">
               Timed Flash Deals & Lightning Boosters
             </h3>
             <p className="text-xs text-on-surface-variant max-w-2xl leading-relaxed">
-              Launch temporary countdown deals (10% - 40% off) for 2 to 8 hours during slow afternoons or lunch rushes. Share directly to WhatsApp Status with 1-click.
+              {previewOnly ? "Example flash-deal layout only. No discounts, countdown offers or customer sharing are active." : "Launch temporary countdown deals (10% - 40% off) for 2 to 8 hours during slow afternoons or lunch rushes. Share directly to WhatsApp Status with 1-click."}
             </p>
           </div>
 
           <div className="flex items-center gap-2 p-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 text-center shrink-0">
             <div>
               <span className="text-[10px] font-bold text-on-surface-variant uppercase block">
-                Active Flash Deals
+                {previewOnly ? "No Live Flash Deals" : "Active Flash Deals"}
               </span>
               <span className="text-xl font-black text-orange-600 font-headline">
-                {deals.filter((d) => new Date(d.expiresAt).getTime() > timeNow).length} running
+                {previewOnly ? "Unavailable" : `${deals.filter((d) => new Date(d.expiresAt).getTime() > timeNow).length} running`}
               </span>
             </div>
           </div>
@@ -209,7 +217,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
           <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs space-y-5">
             <h4 className="font-black text-base text-on-surface flex items-center gap-2">
               <Zap size={18} className="text-orange-500" />
-              <span>Create New Flash Deal</span>
+              <span>{previewOnly ? "Example Flash Deal Setup" : "Create New Flash Deal"}</span>
             </h4>
 
             {/* 1. Menu Item Selector */}
@@ -332,13 +340,13 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-on-surface-variant">Flash Deal Price ({discountPercent}% Off):</span>
+                <span className="text-on-surface-variant">{previewOnly ? `Example Price (${discountPercent}% hypothetical)` : `Flash Deal Price (${discountPercent}% Off):`}</span>
                 <span className="text-base font-black text-orange-600 font-headline">
                   R {pricing.flash}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs pt-1 border-t border-orange-500/20 text-emerald-600 font-bold">
-                <span>Diner Saves:</span>
+                <span>{previewOnly ? "Example Difference:" : "Diner Saves:"}</span>
                 <span>R {pricing.savings} per item</span>
               </div>
             </div>
@@ -350,7 +358,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
               className="w-full py-3.5 rounded-2xl bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
             >
               <Flame size={16} />
-              <span>Launch Flash Deal ({durationHours}h Countdown)</span>
+              <span>{previewOnly ? "Deal Activation Unavailable" : `Launch Flash Deal (${durationHours}h Countdown)`}</span>
             </button>
           </div>
         </div>
@@ -361,7 +369,7 @@ export const FlashDealsStudio: React.FC<FlashDealsStudioProps> = ({
             <h4 className="font-black text-base text-on-surface flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <Clock size={18} className="text-primary" />
-                <span>Active & Scheduled Flash Deals</span>
+                <span>{previewOnly ? "No Published Flash Deals" : "Active & Scheduled Flash Deals"}</span>
               </span>
               <span className="text-xs font-bold text-on-surface-variant">
                 {deals.length} Total

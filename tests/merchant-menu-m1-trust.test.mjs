@@ -49,7 +49,8 @@ test("unapproved menu writes remain blocked and visually disabled without replac
   assert.doesNotMatch(menu,/onClick=\{\(\) => setEditingPriceId\(item.id\)\}/);
   assert.match(menu,/if \(menuWritesUnavailable\(\)\) \{ toast.error\("Menu is read-only/);
   assert.match(menu,/rounded-2xl md:rounded-\[2rem\]/);
-  assert.match(menu,/getOptimizedCloudinaryUrl\(item.image_url\)/);
+  assert.match(menu,/getOptimizedCloudinaryUrl\(imageUrl\)/);
+  assert.match(menu,/MenuItemPhoto key=/);
   assert.match(menu,/Available" : "Unavailable"/);
 });
 
