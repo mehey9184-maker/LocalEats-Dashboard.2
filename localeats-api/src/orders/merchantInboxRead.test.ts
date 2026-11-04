@@ -92,7 +92,7 @@ test("rejects malformed or truncated API pages and protects against silent empty
 });
 
 test("read-only merchant HTTP handler validates ownership, scoping and pages before JSON response",()=>{
- const handler=readFileSync(new URL("../routes/orders.ts",import.meta.url),"utf8");
+ const handler=readFileSync(new URL("../../src/routes/orders.ts",import.meta.url),"utf8");
  assert.match(handler,/authenticateFirebase/);
  assert.match(handler,/\.eq\("owner_id", uid\)/);
  assert.match(handler,/\.is\("archived_at", null\)/);
