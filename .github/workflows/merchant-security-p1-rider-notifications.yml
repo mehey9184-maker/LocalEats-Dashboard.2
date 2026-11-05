@@ -1,0 +1,56 @@
+name: Merchant Security P1 Rider Notification Privilege Review
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'security/drafts/rider_notifications_lockdown_REVIEW_ONLY.sql'
+      - 'tests/security/rider_notification_fixture.sql'
+      - 'tests/security/rider_notification_assertions.sql'
+      - 'docs/SECURITY_P1_RIDER_NOTIFICATIONS_REVIEW.md'
+      - '.github/workflows/merchant-security-p1-rider-notifications.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rider-notification-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_DB: local_security_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d local_security_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: isolated-ci-only
+      PGDATABASE: local_security_fixture
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: PostgreSQL installed on clean runner
+        run: psql --version
+      - name: Reproduce unsafe public grants and RLS in disposable database
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/security/rider_notification_fixture.sql
+      - name: Apply review-only SQL in disposable database only
+        run: psql -X -v ON_ERROR_STOP=1 -f security/drafts/rider_notifications_lockdown_REVIEW_ONLY.sql
+      - name: Assert blocked public rights, retained service access
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/security/rider_notification_assertions.sql
+      - name: Reapplication is rejected cleanly after policy removal
+        run: |
+          if psql -X -v ON_ERROR_STOP=1 -f security/drafts/rider_notifications_lockdown_REVIEW_ONLY.sql > /tmp/reapply-check.log 2>&1; then
+            echo "Review-only lockdown unexpectedly applied twice" >&2
+            exit 1
+          fi
+          grep -q 'SECURITY_REVIEW_POLICY_DRIFT' /tmp/reapply-check.log
