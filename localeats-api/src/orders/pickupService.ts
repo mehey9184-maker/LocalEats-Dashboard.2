@@ -88,6 +88,16 @@ export function persistedResult(data: unknown): {order:StoredOrder; replayed:boo
     typeof result.replayed!=="boolean") return fail(503,"PICKUP_PERSISTENCE_UNCONFIRMED");
   return result as {order:StoredOrder;replayed:boolean;event?:unknown};
 }
+export function merchantCommandReceipt(result:{order:StoredOrder;event?:unknown}) {
+  if(!result.event || typeof result.event!=="object" || Array.isArray(result.event))return fail(503,"PICKUP_COMMAND_UNCONFIRMED");
+  const event=result.event as Record<string,unknown>;
+  if(typeof event.command_id!=="string" || !UUID.test(event.command_id) || event.order_id!==result.order.id ||
+    typeof event.actor_uid!=="string" || !event.actor_uid.trim() ||
+    !["accepted","ready","merchant_rejected","payment_confirmed","collected"].includes(String(event.kind)) ||
+    !Number.isSafeInteger(event.revision) || Number(event.revision)<1 || !Number.isSafeInteger(result.order.revision) ||
+    Number(result.order.revision)<Number(event.revision))return fail(503,"PICKUP_COMMAND_UNCONFIRMED");
+  return {command_id:event.command_id,order_id:event.order_id,actor_uid:event.actor_uid,kind:event.kind,revision:event.revision};
+}
 export async function createPickup(client: RpcClient, repository: OrderRepository, uid:string, request:PickupInput) {
   if (!uid) return fail(401,"UNAUTHORIZED");
   const hash=creationHash(uid,request);

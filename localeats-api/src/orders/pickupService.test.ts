@@ -1,10 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parsePickupInput,pickupPricing,pickupQuote,creationHash,createPickup,commandPickup,type RpcClient} from "./pickupService.js";
+import {merchantCommandReceipt,parsePickupInput,pickupPricing,pickupQuote,creationHash,createPickup,commandPickup,type RpcClient} from "./pickupService.js";
 import {drainPickupPush} from "./pickupPush.js";
 import {draftTransition} from "../contracts/pickupDraft.js";
 import type {OrderRepository,StoredOrder} from "./orderService.js";
 const id="550e8400-e29b-41d4-a716-446655440000";
+test('merchant receipt exposes only matching persisted command facts',()=>{
+ const event={command_id:id,order_id:id,actor_uid:'merchant',kind:'accepted',revision:1,command_hash:'private',details:{reason:'private'}};
+ const result={order:{id,revision:4} as unknown as StoredOrder,event};
+ assert.deepEqual(merchantCommandReceipt(result),{command_id:id,order_id:id,actor_uid:'merchant',kind:'accepted',revision:1});
+ assert.throws(()=>merchantCommandReceipt({...result,event:undefined}),/UNCONFIRMED/);
+ for(const changed of [{order_id:'other'},{revision:5},{command_id:'invalid'},{kind:'created'},{actor_uid:''}])
+  assert.throws(()=>merchantCommandReceipt({...result,event:{...event,...changed}}),/UNCONFIRMED/);
+});
 const raw=()=>({contract_version:"pickup-v1",idempotency_key:id,shop_id:"shop",items:[{menu_item_id:"item",quantity:1}],
   delivery_type:"collection",delivery_schedule_mode:"standard",payment_method:"cash",customer_details:{name:"Customer",phone:"+27712345678"},
   launch_location:{lat:-26,lng:28}});
