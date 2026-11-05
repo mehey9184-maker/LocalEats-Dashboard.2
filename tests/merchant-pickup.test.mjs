@@ -1,8 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {receiptText} from '../src/utils/receiptText.ts';
 import {isPickupOrder,requireOwnedShop,pickupState,mapApiOrder,pickupCommand,pickupMutationsDisabled,pickupPaymentLabel} from '../src/services/merchantPickupPolicy.ts';
-const order={id:'o',shop_id:'shop-string',delivery_type:'collection',status:'pending',payment_status:'unpaid',revision:0,total_price:25};
+const order={id:'o',shop_id:'shop-string',delivery_type:'collection',status:'pending',payment_status:'unpaid',revision:0,total_price:25,items:[{name:'Meal',quantity:1,unit_price:25,line_total:25}]};
+
+test('pickup item presentation uses server prices and keeps named kitchen instructions',()=>{
+ const items=[{menu_item_id:'m',name:'Kota',quantity:2,unit_price:12.5,line_total:25,notes:'No atchar'}];
+ const mapped=mapApiOrder({...order,items});
+ assert.equal(mapped.items[0].price,12.5);
+ assert.equal(mapped.items[0].notes,'No atchar');
+ assert.equal(mapped.notes,'Kota (2 ×): No atchar');
+ assert.throws(()=>mapApiOrder({...order,items:[{...items[0],unit_price:NaN}]}));
+ for(const invalid of [undefined,null,'Meal',{},[]]) assert.throws(()=>mapApiOrder({...order,items:invalid}));
+ assert.match(mapApiOrder({...order,items,notes:'Call at counter'}).notes,/Call at counter/);
+});
+
+test('receipt instructions remain literal text in generated HTML',()=>{
+ assert.equal(receiptText('<img src=x onerror="alert(1)"> & no atchar'), '&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; no atchar');
+});
 test('shop authority requires actual Firebase UID equality',()=>{
  assert.equal(requireOwnedShop({id:'s',owner_id:'u'},'u').id,'s');
  for(const uid of ['', 'other'])assert.throws(()=>requireOwnedShop({id:'s',owner_id:'u'},uid));

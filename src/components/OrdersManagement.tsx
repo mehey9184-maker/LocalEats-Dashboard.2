@@ -1,3 +1,4 @@
+import {receiptText} from "../utils/receiptText";
 import {PickupOrderActions} from "./PickupOrderActions";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
@@ -79,7 +80,7 @@ export const isOrderDelivery = (order: Order): boolean => {
   return order.order_type === "delivery" || !!order.address;
 };
 
-export function safeGetOrderItems(rawItems: unknown): (string | { name: string; quantity: number; price?: number })[] {
+export function safeGetOrderItems(rawItems: unknown): (string | { name: string; quantity: number; price?: number; notes?: string })[] {
   if (!rawItems) return [];
   if (Array.isArray(rawItems)) return rawItems;
   if (typeof rawItems === "string") {
@@ -796,7 +797,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
           const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
           return `
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-              <span>${q}x ${n}</span>
+              <span>${q}x ${receiptText(n)}${isObj && i.notes ? `<br/><span style="white-space:pre-wrap">Instructions: ${receiptText(i.notes)}</span>` : ""}</span>
               <span>R${Number(p * q).toFixed(2)}</span>
             </div>
           `;
@@ -879,7 +880,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
               <p style="margin: 2px 0; font-weight: bold;">Customer: ${order.customer_name || "Guest"}</p>
               ${order.phone ? `<p style="margin: 2px 0;">Phone: ${order.phone}</p>` : ""}
               ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${order.address}, ${order.city}</p>` : ""}
-              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${order.notes}"</p>` : ""}
+              ${order.notes ? `<p style="margin: 5px 0; white-space: pre-wrap; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${receiptText(order.notes)}"</p>` : ""}
               <p style="margin: 12px 0 0 0; font-weight: bold; font-size: 12px;">THANK YOU FOR SUPPORTING LOCAL!</p>
             </div>
           </body>
@@ -932,7 +933,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             const n = isObj && "name" in i ? (i as { name: string }).name : String(i);
             return `
               <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <span>${q}x ${n}</span>
+                <span>${q}x ${receiptText(n)}${isObj && i.notes ? `<br/><span style="white-space:pre-wrap">Instructions: ${receiptText(i.notes)}</span>` : ""}</span>
                 <span>R${Number(p * q).toFixed(2)}</span>
               </div>
             `;
@@ -965,7 +966,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
               <p style="margin: 2px 0; font-weight: bold;">Customer: ${order.customer_name || "Guest"}</p>
               ${order.phone ? `<p style="margin: 2px 0;">Phone: ${order.phone}</p>` : ""}
               ${includeAddress && order.address ? `<p style="margin: 3px 0; font-style: italic;">Addr: ${order.address}, ${order.city}</p>` : ""}
-              ${order.notes ? `<p style="margin: 5px 0; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${order.notes}"</p>` : ""}
+              ${order.notes ? `<p style="margin: 5px 0; white-space: pre-wrap; font-style: italic; background: #f2f2f2; padding: 6px; border-radius: 4px;">Notes: "${receiptText(order.notes)}"</p>` : ""}
               <p style="margin: 12px 0 0 0; font-weight: bold; font-size: 12px;">THANK YOU FOR SUPPORTING LOCAL!</p>
             </div>
           </div>
@@ -3469,10 +3470,11 @@ Notes: "${order.notes || "None"}"
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
                             const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
+                            const notes = typeof item === "object" && item !== null ? item.notes : "";
                             return (
                               <div key={idx} className="flex justify-between">
-                                <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}{typeof notes === "string" && notes && <span className="block mt-1 text-sm font-medium text-on-surface-variant">Instructions: {notes}</span>}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number((price || 0) * qty).toFixed(2)}</span>
                               </div>
                             );
                           })}
@@ -3678,10 +3680,11 @@ Notes: "${order.notes || "None"}"
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
                             const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
+                            const notes = typeof item === "object" && item !== null ? item.notes : "";
                             return (
                               <div key={idx} className="flex justify-between">
-                                <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}{typeof notes === "string" && notes && <span className="block mt-1 text-sm font-medium text-on-surface-variant">Instructions: {notes}</span>}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number((price || 0) * qty).toFixed(2)}</span>
                               </div>
                             );
                           })}
@@ -3940,10 +3943,11 @@ Notes: "${order.notes || "None"}"
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
                             const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
+                            const notes = typeof item === "object" && item !== null ? item.notes : "";
                             return (
                               <div key={idx} className="flex justify-between">
-                                <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}{typeof notes === "string" && notes && <span className="block mt-1 text-sm font-medium text-on-surface-variant">Instructions: {notes}</span>}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number((price || 0) * qty).toFixed(2)}</span>
                               </div>
                             );
                           })}
@@ -4107,10 +4111,11 @@ Notes: "${order.notes || "None"}"
                             const name = isObj ? ((item as unknown) as Record<string, unknown>).name as string : String(item);
                             const qty = isObj ? ((item as unknown) as Record<string, unknown>).quantity as number : 1;
                             const price = isObj ? ((item as unknown) as Record<string, unknown>).price as number : 0;
+                            const notes = typeof item === "object" && item !== null ? item.notes : "";
                             return (
                               <div key={idx} className="flex justify-between">
-                                <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}</span>
-                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number(price || 0).toFixed(2)}</span>
+                                <span className="whitespace-pre-wrap break-words pr-2">{qty}x {name}{typeof notes === "string" && notes && <span className="block mt-1 text-sm font-medium text-on-surface-variant">Instructions: {notes}</span>}</span>
+                                <span className="opacity-90 font-mono text-primary font-black shrink-0">R {Number((price || 0) * qty).toFixed(2)}</span>
                               </div>
                             );
                           })}
@@ -4902,7 +4907,7 @@ Notes: "${order.notes || "None"}"
                             <div key={idx} className="flex justify-between items-center p-3 bg-surface-container-high/40 rounded-xl border border-outline-variant/5">
                               <div className="flex items-center gap-2">
                                 <span className="w-5 h-5 bg-primary/10 text-primary text-[10px] font-black rounded-full flex items-center justify-center">x{quantity}</span>
-                                <span className="text-xs font-bold text-on-surface">{name}</span>
+                                <span className="text-xs font-bold text-on-surface">{name}{typeof item === "object" && item.notes && <span className="block whitespace-pre-wrap mt-1 font-medium">Instructions: {item.notes}</span>}</span>
                               </div>
                               <span className="text-xs font-black text-on-surface-variant">R {(price * quantity).toFixed(2)}</span>
                             </div>

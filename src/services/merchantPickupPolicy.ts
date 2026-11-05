@@ -17,7 +17,20 @@ export function mapApiOrder(order:any):Record<string,unknown>{
  if(!isPickupOrder(order))return order;
  const status=pickupState(order);
  if(typeof order.total_price!=="number" || !Number.isFinite(order.total_price) || order.total_price<0)throw new Error("The API returned an invalid pickup total.");
- return {...order,pickup_status:status,order_type:"collection",status:status==="ready_for_pickup" ? "ready" : status==="collected" ? "completed" : status};
+ if(!Array.isArray(order.items) || !order.items.length || order.items.length>50)
+  throw new Error("Pickup item details are unavailable. Refresh before preparing the order.");
+ const items=order.items.map((line:any)=>{
+  if(!line || typeof line.name!=="string" || !Number.isSafeInteger(line.quantity) || line.quantity<1 ||
+   typeof line.unit_price!=="number" || !Number.isFinite(line.unit_price) || line.unit_price<0 ||
+   typeof line.line_total!=="number" || !Number.isFinite(line.line_total) || line.line_total<0 ||
+   Math.round(line.unit_price*100)*line.quantity!==Math.round(line.line_total*100) ||
+   (line.notes!=null && (typeof line.notes!=="string" || line.notes.length>500)))
+   throw new Error("Pickup item details are unavailable. Refresh before preparing the order.");
+  return {...line,price:line.unit_price};
+ });
+ const itemNotes=Array.isArray(items) ? items.filter((line:any)=>line.notes).map((line:any)=>`${line.name} (${line.quantity} ×): ${line.notes}`).join("\n") : "";
+ const notes=itemNotes ? itemNotes+(order.notes ? `\nOrder notes: ${order.notes}` : "") : order.notes;
+ return {...order,items,notes,pickup_status:status,order_type:"collection",status:status==="ready_for_pickup" ? "ready" : status==="collected" ? "completed" : status};
 }
 export function pickupCommand(order:any,action:PickupAction,extra:Record<string,unknown>={}){
  const status=pickupState(order);
