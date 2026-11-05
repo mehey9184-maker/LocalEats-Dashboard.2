@@ -2,7 +2,7 @@
 cd /app/applet/localeats-api
 export FIREBASE_PROJECT_ID="test-project"
 export FIREBASE_CLIENT_EMAIL="test@example.com"
-export FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDE\n-----END PRIVATE KEY-----"
+export FIREBASE_PRIVATE_KEY="${FIREBASE_PRIVATE_KEY:-test-placeholder-not-a-real-key}"
 npm run build
 node dist/server.js &
 API_PID=$!
