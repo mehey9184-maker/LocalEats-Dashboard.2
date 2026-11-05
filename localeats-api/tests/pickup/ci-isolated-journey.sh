@@ -30,6 +30,9 @@ if [[ "$(psql -X -v ON_ERROR_STOP=1 -At -c "select count(*) from pg_tables where
   exit 21
 fi
 
+# Require exact reviewed SQL function identity; do not bypass a drift guard.
+python3 localeats-api/tests/pickup/verify_review_hash.py
+
 for file in \
   localeats-api/tests/pickup/schema.sql \
   supabase/drafts/pickup_launch_foundation.sql \
