@@ -24,7 +24,6 @@ jobs:
       VITE_PICKUP_ORDERING_ENABLED: 'false'
       PICKUP_WRITES_ENABLED: 'false'
       RIDER_ACTIVATION_ENABLED: 'false'
-      LOCALEATS_PREVIEW_READ_ONLY: 'true'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
