@@ -1,0 +1,43 @@
+name: Merchant Phase 1 Legacy Offline Replay Lock
+on:
+  pull_request:
+    branches:
+      - main
+      - integration/merchant-offline-recovery-30min-p1-20261105
+    paths:
+      - src/App.tsx
+      - src/components/ConnectivityMonitor.tsx
+      - src/utils/offlineSyncQueue.ts
+      - tests/merchant-legacy-offline-replay-lock-p1.test.mjs
+      - docs/PHASE1_LEGACY_REPLAY_SAFETY.md
+      - .github/workflows/merchant-legacy-replay-lock-p1.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  no-legacy-firestore-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: No browser replay, no stale auto-accept, truthful reconnect messaging
+        run: node --experimental-strip-types --test tests/merchant-legacy-offline-replay-lock-p1.test.mjs
+      - name: Merchant original UI, pickup lock, Riders lock, cached data safety
+        run: node --experimental-strip-types --test tests/merchant-order-inbox-p1.test.mjs tests/merchant-cache-safety-main.test.mjs tests/merchant-riders-coming-soon-main.test.mjs tests/merchant-pickup.test.mjs
+      - name: Merchant build
+        run: npm run build
+      - name: API install and contract suite
+        run: |
+          npm ci --prefix localeats-api --no-audit --no-fund
+          npm test --prefix localeats-api
