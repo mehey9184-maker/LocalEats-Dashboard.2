@@ -1,5 +1,14 @@
 # LocalEats Platform - Persistent System Instructions
 
+## Active Merchant pickup-only Codex policy — 2026-11-05
+
+For the upcoming LocalEats merchant launch, **pickup and pay at the physical shop only** are in scope. Rider/delivery functions and subscriptions/online payments remain inactive and require future explicit approval. Existing Rider/delivery sections below are historical or retained-code descriptions, **not current launch instructions**.
+
+Use the repository-scoped `$localeats-merchant-pickup` skill at `.agents/skills/localeats-merchant-pickup/SKILL.md` when auditing merchant Storefront/Settings, menu, pickup Orders, availability, notifications, payment confirmation or performance. Preserve the existing UI/UX. Work on isolated branches with owner-reviewed **draft PRs**; do not merge, change Production, enable order or availability write flags, apply SQL, alter live data/security, or place real orders. Tests must use mocks, disposable databases, or separately approved truly isolated environments; Preview alone does not guarantee isolation.
+
+**Authoritative-truth rule**: historical guidance about local cache/status resilience must never authorize local state to claim that a pickup order, payment, availability change or customer handover was persisted. These outcomes require authenticated server confirmation. Merchant shop ownership and approval must be verified by the API, not inferred from cache or caller-provided metadata.
+
+
 ## 📚 Documentation Check & Continuity Protocol
 - **Documentation Check**: Before performing any file edits, always read `Vendor_LocalEats_App_Functionality_Documentation.md`.
 - **Documentation Sync**: After completing an edit, update `Vendor_LocalEats_App_Functionality_Documentation.md` to reflect the current state, architecture, and modular structure of the application.
