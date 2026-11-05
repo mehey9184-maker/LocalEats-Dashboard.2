@@ -4,6 +4,10 @@ on:
     branches: [main]
     paths:
       - 'src/App.tsx'
+      - 'src/components/DashboardOverview.tsx'
+      - 'src/services/merchantHomePickup.ts'
+      - 'tests/merchant-home-pickup.test.mjs'
+      - 'tests/merchant-shop-revalidation.test.mjs'
       - 'tests/merchant-riders-coming-soon-main.test.mjs'
       - '.github/workflows/merchant-riders-locked-main.yml'
   workflow_dispatch:
@@ -23,6 +27,6 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - name: Riders lock and inherited pickup safety regressions
-        run: node --experimental-strip-types --test tests/merchant-riders-coming-soon-main.test.mjs tests/merchant-pickup.test.mjs
+        run: node --experimental-strip-types --test tests/merchant-riders-coming-soon-main.test.mjs tests/merchant-pickup.test.mjs tests/merchant-home-pickup.test.mjs tests/merchant-shop-revalidation.test.mjs
       - name: Merchant production build
         run: npm run build

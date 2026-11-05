@@ -1,3 +1,4 @@
+import {pickupHomeOrders,pickupReadyCount,pickupReportCsv,pickupDayKey} from "../services/merchantHomePickup";
 import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 import { FoodPlaceholder } from "../components/MenuManagement";
 import { isPlaceholderImage } from "../constants";
@@ -78,6 +79,8 @@ export interface DashboardOverviewProps {
   onNavigate: (tab: string) => void;
   onEditProfile: () => void;
   menuItems: MenuItem[];
+  menuReadState?: "loading"|"ready"|"failed";
+  orderReadState?: "unverified"|"fresh"|"failed";
   trialInfo: { daysRemaining: number; isExpired: boolean } | null;
   currentShop: Shop | undefined;
   darkMode: boolean;
@@ -544,20 +547,15 @@ const OnboardingChecklist = ({
   onNavigate,
   onEditProfile,
   hasMenu,
+  menuReadState,
 }: {
   shops: Shop[];
   user: User | null;
   onNavigate: (tab: string) => void;
   onEditProfile: () => void;
   hasMenu: boolean;
+  menuReadState:"loading"|"ready"|"failed";
 }) => {
-  const [showBankModal, setShowBankModal] = useState(false);
-  const [bankName, setBankName] = useState("");
-  const [accountNumber, setAccountNumber] = useState("");
-  const [accountType, setAccountType] = useState("Savings");
-  const [branchCode, setBranchCode] = useState("");
-  const [payoutLinked, setPayoutLinked] = useState(() => localStorage.getItem("localeats_payout_linked") === "true");
-
   const userOwnedShops = useMemo(() => shops.filter((s) => isShopOwnedByUser(s, user)), [shops, user]);
   const hasShop = userOwnedShops.length > 0;
   const hasOperatingHours =
@@ -566,29 +564,14 @@ const OnboardingChecklist = ({
   const tasks = [
     { key: "shop", completed: hasShop, label: "Create Shop Profile", desc: "Required to start selling", icon: Store },
     { key: "hours", completed: hasOperatingHours, label: "Set Hours", desc: "Automate kitchen schedule", icon: Clock },
-    { key: "menu", completed: hasMenu, label: "Upload Menu", desc: "Upload your tasty dishes", icon: Pizza },
-    { key: "payout", completed: payoutLinked, label: "Link Payouts & Bank", desc: "Receive direct deposits", icon: Landmark },
+    { key: "menu", completed: hasMenu, label: "Review Menu", desc: menuReadState==="loading" ? "Loading menu…" : menuReadState==="failed" ? "Menu status unavailable. Open Menu to retry." : "Add your pickup dishes", icon: Pizza },
   ];
 
   const completedCount = tasks.filter((t) => t.completed).length;
   const progressPercent = Math.round((completedCount / tasks.length) * 100);
 
-  const handleLinkBank = () => {
-    if (!bankName.trim() || !accountNumber.trim()) {
-      toast.error("Please fill in your Bank Name and Account Number.");
-      return;
-    }
-    localStorage.setItem("localeats_payout_linked", "true");
-    localStorage.setItem("localeats_bank_name", bankName);
-    localStorage.setItem("localeats_account_number", accountNumber);
-    localStorage.setItem("localeats_account_type", accountType);
-    setPayoutLinked(true);
-    setShowBankModal(false);
-    toast.success("Bank account verified & linked for weekly payouts!");
-  };
-
   // If everything is completely set up, we can still show a subtle completed badge, but let's hide the checklist once completely done so the dashboard is super clean!
-  if (hasShop && hasOperatingHours && hasMenu && payoutLinked) return null;
+  if (hasShop && hasOperatingHours && hasMenu) return null;
 
   return (
     <motion.div
@@ -607,10 +590,10 @@ const OnboardingChecklist = ({
           </div>
           <div>
             <h2 className="text-xl md:text-2xl font-headline font-black text-on-surface tracking-tight leading-tight">
-              Ready to Launch?
+              Pickup Shop Setup
             </h2>
             <p className="text-xs md:text-sm text-on-surface-variant font-semibold mt-0.5">
-              Complete these steps to activate your digital storefront and start pocketing revenue.
+              Review your shop details, pickup hours and menu. Availability and order acceptance are confirmed separately.
             </p>
           </div>
         </div>
@@ -640,12 +623,12 @@ const OnboardingChecklist = ({
           </div>
           <div>
             <p className="text-[9px] font-black uppercase tracking-widest text-primary/60">Setup Progress</p>
-            <p className="text-sm font-black text-on-surface">{completedCount}/{tasks.length} Steps Done</p>
+            <p className="text-sm font-black text-on-surface">{completedCount}/{tasks.length} Steps Confirmed</p>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {tasks.map((task) => {
           const IconComponent = task.icon;
           const isCompleted = task.completed;
@@ -654,9 +637,7 @@ const OnboardingChecklist = ({
             <button
               key={task.key}
               onClick={() => {
-                if (task.key === "payout") {
-                  setShowBankModal(true);
-                } else if (task.key === "hours") {
+                if (task.key === "hours") {
                   onEditProfile();
                 } else {
                   onNavigate(task.key === "shop" ? "storefront" : "menu");
@@ -704,102 +685,7 @@ const OnboardingChecklist = ({
         </p>
       )}
 
-      {/* Interactive Bank Payout Linking Modal */}
-      <AnimatePresence>
-        {showBankModal && (
-          <div role="dialog" aria-modal="true" className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-              animate={{ backdropFilter: "blur(4px)", backgroundColor: "rgba(0,0,0,0.4)" }}
-              exit={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-              className="absolute inset-0"
-              onClick={() => setShowBankModal(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-surface relative z-10 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-outline-variant/20 flex flex-col"
-            >
-              <div className="p-6 md:p-8 space-y-6">
-                <div>
-                  <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-500 mb-4">
-                    <Landmark size={24} />
-                  </div>
-                  <h2 className="text-xl md:text-2xl font-headline font-black text-on-surface">Link Payout Account</h2>
-                  <p className="text-xs text-on-surface-variant font-semibold mt-1">Configure your bank account for weekly LocalEats payouts.</p>
-                </div>
 
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider">Bank Name</label>
-                    <input
-                      type="text"
-                      value={bankName}
-                      onChange={(e) => setBankName(e.target.value)}
-                      placeholder="e.g. Standard Bank, FNB, Nedbank"
-                      className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 transition-all"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider">Account Number</label>
-                    <input
-                      type="text"
-                      value={accountNumber}
-                      onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ""))}
-                      placeholder="e.g. 1014589632"
-                      className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 transition-all font-mono"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider">Account Type</label>
-                      <select
-                        value={accountType}
-                        onChange={(e) => setAccountType(e.target.value)}
-                        className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 transition-all"
-                      >
-                        <option value="Savings">Savings</option>
-                        <option value="Cheque">Cheque/Current</option>
-                        <option value="Transmission">Transmission</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider">Branch Code</label>
-                      <input
-                        type="text"
-                        value={branchCode}
-                        onChange={(e) => setBranchCode(e.target.value.replace(/\D/g, ""))}
-                        placeholder="e.g. 250655"
-                        className="w-full bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 transition-all font-mono"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="p-6 md:p-8 bg-surface-container-lowest border-t border-outline-variant/10 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowBankModal(false)}
-                  className="flex-1 py-3.5 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-black rounded-2xl text-xs uppercase tracking-wider transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLinkBank}
-                  className="flex-1 py-3.5 bg-primary text-on-primary font-black rounded-2xl text-xs uppercase tracking-wider shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all"
-                >
-                  Verify & Save
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 };
@@ -995,7 +881,7 @@ const DeliveryDispatchSuburbTrends = ({ orders, darkMode }: { orders: Order[]; d
 };
 
 export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
-  orders,
+  orders: allOrders,
   loading,
   shops,
   user,
@@ -1003,6 +889,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   onNavigate,
   onEditProfile,
   menuItems,
+  menuReadState="loading",
+  orderReadState="unverified",
   trialInfo,
   currentShop,
   darkMode,
@@ -1015,10 +903,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   onNavigate: (tab: string) => void;
   onEditProfile: () => void;
   menuItems: MenuItem[];
+  menuReadState?: "loading"|"ready"|"failed";
+  orderReadState?: "unverified"|"fresh"|"failed";
   trialInfo: { daysRemaining: number; isExpired: boolean } | null;
   currentShop: Shop | undefined;
   darkMode: boolean;
 }) => {
+  const orders=useMemo(()=>pickupHomeOrders(allOrders,currentShop?.id),[allOrders,currentShop?.id]);
+  const readyForPickup=pickupReadyCount(orders);
   const [followerCount, setFollowerCount] = useState<number | string>("--");
   const [followerTrend, setFollowerTrend] = useState<string>("0");
   const [recentFollowers, setRecentFollowers] = useState<
@@ -1027,6 +919,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   const [chartMetric, setChartMetric] = useState<"orders" | "revenue">("revenue");
   const [isStatusToggling, setIsStatusToggling] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isMenuRetrying,setIsMenuRetrying]=useState(false);
   const [layoutMode, setLayoutMode] = useState<"compact" | "advanced">(() => {
     return (localStorage.getItem("localeats_dashboard_layout") as "compact" | "advanced") || "compact";
   });
@@ -1090,7 +983,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   }, 0);
 
   const orderCount = weeklyOrders.length;
-  const hasMenu = menuItems.length > 0;
+  const hasMenu = menuReadState==="ready" && menuItems.length > 0;
   const [timeframe, setTimeframe] = useState<"weekly" | "monthly">("monthly");
 
   const avgOrderValue = useMemo(() => {
@@ -1131,12 +1024,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     })).filter(item => item.value > 0);
   }, [orders]);
 
-  const avgPrepTime = useMemo(() => {
-    const pendingCount = orders.filter(
-      (o) => o.status === "pending" || o.status === "preparing",
-    ).length;
-    return Number(Math.min(12 + pendingCount * 1.5, 45)).toFixed(1);
-  }, [orders]);
+  const kitchenQueueCount=orders.filter(order=>["pending","preparing"].includes(order.pickup_status ?? order.status)).length;
 
   const [connections, setConnections] = useState<RiderConnection[]>([]);
   const currentShopId = currentShop?.id;
@@ -1230,35 +1118,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     (c) => c.rider_id || c.connection_code === "IN-HOUSE" || c.status === "active",
   ).length;
 
-  useEffect(() => {
-    fetchRiders();
-    if (!currentShopId) return;
-    
-    let activeChannel: RealtimeChannel | null = null;
-    let isMounted = true;
-    void subscribeWithAuthGuard(`dashboard_riders_${currentShopId}`, (ch) => 
-      ch.on(
-        "postgres_changes",
-        { 
-          event: "*", 
-          schema: "public", 
-          table: "rider_connections",
-          filter: `shop_id=eq.${currentShopId}`,
-        },
-        () => fetchRiders(),
-      )
-    ).then(ch => {
-      if (ch) {
-        if (isMounted) activeChannel = ch;
-        else void supabase.removeChannel(ch);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      if (activeChannel) void supabase.removeChannel(activeChannel);
-    };
-  }, [currentShopId, fetchRiders, subscribeWithAuthGuard]);
+  // Rider discovery/subscriptions are intentionally inactive for pickup Home.
 
   const fetchFollowers = useCallback(async () => {
     if (!currentShop?.id) return;
@@ -1341,11 +1201,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
     const daysCount = timeframe === "weekly" ? 7 : 30;
     const lastDays = Array.from({ length: daysCount }, (_, index) => {
-      const d = new Date();
-      d.setDate(d.getDate() - index);
+      const d = new Date(Date.now()-index*24*60*60*1000);
       return {
-        date: d.toISOString().split("T")[0],
-        dayName: daysCount === 7 ? format(d, "EEE") : format(d, "MMM d"),
+        date: pickupDayKey(d),
+        dayName: new Intl.DateTimeFormat("en-ZA",{timeZone:"Africa/Johannesburg",...(daysCount===7 ? {weekday:"short" as const} : {month:"short" as const,day:"numeric" as const})}).format(d),
         count: 0,
         revenue: 0,
       };
@@ -1356,7 +1215,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         if (!order.created_at) return;
         const dateObj = new Date(order.created_at);
         if (isNaN(dateObj.getTime())) return;
-        const orderDate = dateObj.toISOString().split("T")[0];
+        const orderDate = pickupDayKey(dateObj);
         const day = lastDays.find((d) => d.date === orderDate);
         if (day) {
           day.count++;
@@ -1386,24 +1245,13 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   }, []);
 
   const exportWeeklyCSV = () => {
+    if(orderReadState!=="fresh"){toast.error("Refresh pickup statuses before exporting.");return;}
     if (weeklyOrders.length === 0) {
       toast.error("No orders this week to export. Check back later!");
       return;
     }
 
-    const headers = ["Order ID", "Product", "Price", "Status", "Date"];
-    const csvContent = [
-      headers.join(","),
-      ...weeklyOrders.map((o) =>
-        [
-          o.id,
-          `"${o.product_name}"`,
-          o.total_price,
-          o.status,
-          new Date(o.created_at).toLocaleDateString(),
-        ].join(","),
-      ),
-    ].join("");
+    const csvContent=pickupReportCsv(weeklyOrders);
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -1411,101 +1259,24 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     link.setAttribute("href", url);
     link.setAttribute(
       "download",
-      `localeats_weekly_report_${new Date().toISOString().split("T")[0]}.csv`,
+      `localeats_weekly_report_${pickupDayKey(Date.now())}.csv`,
     );
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     toast.success("Weekly report exported successfully!");
   };
 
-  const [showTestCheckout, setShowTestCheckout] = useState(false);
-  const [testOrderPayMethod, setTestOrderPayMethod] = useState("Cash");
-  const [cardName, setCardName] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [specialInstructions, setSpecialInstructions] = useState("");
-
-  const generateTestOrder = async () => {
-    if (!currentShop) return;
-
-    if (testOrderPayMethod === "Card Machine") {
-      if (!cardName.trim() || !cardNumber.trim() || cardNumber.length < 15) {
-        toast.error("Please provide valid Cardholder Name and Card Number.");
-        return;
-      }
-    }
-
-    const posOrder = {
-      shop_id: currentShop.id,
-      user_id: user?.id || null,
-      customer_name: "Walk-in / Phone Customer",
-      phone: "+27 00 000 0000",
-      email: "pos@localeats.co.za",
-      address: currentShop.address || "In-Store Pick Up",
-      city: currentShop.location ? getSupportedCity(currentShop.location) : "Tembisa",
-      lat: currentShop.lat ? currentShop.lat : -25.9964,
-      lng: currentShop.lng ? currentShop.lng : 28.2268,
-      product_name: "Store POS Order",
-      restaurant_name: currentShop.name,
-      total_price: 55,
-      price: 55,
-      delivery_fee: 0,
-      service_fee: 0,
-      status: "pending",
-      order_type: "pickup",
-      items: [
-        {
-          name: "Store POS Order",
-          price: 55,
-          quantity: 1,
-        },
-      ],
-      payment_method: testOrderPayMethod,
-      terminal_masked_card: testOrderPayMethod === "Card Machine" ? `**** **** **** ${cardNumber.slice(-4)}` : null,
-      terminal_sync_status: testOrderPayMethod === "Card Machine" ? "synced" : null,
-      created_at: new Date().toISOString(),
-      notes: specialInstructions.trim() || null,
-    };
-
-    let error = null;
-    try {
-      await OrderService.createOrder(posOrder);
-    } catch (err) {
-      error = err;
-    }
-    if (error) {
-      toast.error("Could not record manual order right now. Please try again.");
-    } else {
-      toast.success("Manual POS order logged successfully! View in Orders.");
-      setSpecialInstructions("");
-      setShowTestCheckout(false);
-      onRefresh();
-    }
-  };
-
-  const todayOrders = useMemo(() => {
-    const now = new Date();
-    return orders.filter((o) => {
-      if (!o.created_at) return false;
-      const d = new Date(o.created_at);
-      if (isNaN(d.getTime())) return false;
-      return (
-        d.getFullYear() === now.getFullYear() &&
-        d.getMonth() === now.getMonth() &&
-        d.getDate() === now.getDate()
-      );
-    });
-  }, [orders]);
+  const todayOrders = useMemo(() => orders.filter(order=>pickupDayKey(order.created_at)===pickupDayKey(Date.now())),[orders]);
 
   const todayOrdersCount = todayOrders.length;
 
   const yesterdayOrdersCount = useMemo(() => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split("T")[0];
-    return orders.filter(o => o.created_at && o.created_at.startsWith(yesterdayStr)).length;
-  }, [orders]);
+    const yesterday=pickupDayKey(Date.now()-24*60*60*1000);
+    return orders.filter(order=>pickupDayKey(order.created_at)===yesterday).length;
+  },[orders]);
 
   const todayTrendIsPositive = todayOrdersCount >= yesterdayOrdersCount;
   const todayTrendText = yesterdayOrdersCount === 0
@@ -1570,6 +1341,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
   return (
     <div className="space-y-8 md:space-y-12">
+      {orderReadState!=="fresh" && <div role={orderReadState==="failed" ? "alert" : "status"} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <p>{orderReadState==="failed" ? "Pickup statuses could not be refreshed. Open Orders to review the last confirmed statuses and retry." : "Loading verified pickup statuses…"}</p>
+        <button type="button" onClick={()=>onNavigate("orders")} className="min-h-11 mt-2 px-3 font-bold underline">Open Orders</button>
+      </div>}
       {/* Storefront Ownership Sync & Repair Card */}
       <div className="bg-surface-container-low border border-outline-variant/10 rounded-3xl p-4 md:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
         <div className="flex items-center gap-4">
@@ -1669,43 +1444,43 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             </div>
           </div>
           <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              {todayOrdersCount}
+            <span className={cn("font-black text-on-surface tracking-tight",orderReadState==="fresh" ? "text-2xl md:text-3.5xl" : "text-sm md:text-base")}>
+              {orderReadState==="fresh" ? todayOrdersCount : orderReadState==="failed" ? "Unavailable" : "Loading…"}
             </span>
             <span className={cn(
               "text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1",
               todayTrendIsPositive ? "bg-emerald-500/15 text-emerald-500" : "bg-rose-500/15 text-rose-500"
             )}>
-              {todayTrendIsPositive ? "↑" : "↓"} {todayTrendText}
+              {orderReadState==="fresh" ? `${todayTrendIsPositive ? "↑" : "↓"} ${todayTrendText}` : "Open Orders to verify"}
             </span>
           </div>
           <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-orange-500 to-rose-500 opacity-80" />
         </motion.div>
 
-        {/* Pending Payout Card */}
+        {/* Pay at Shop Card */}
         <motion.div
           whileHover={{ y: -4 }}
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
         >
           <div className="flex justify-between items-start">
-            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Pending Payout</p>
+            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Pay at shop</p>
             <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
-              <Landmark size={18} />
+              <CreditCard size={18} />
             </div>
           </div>
           <div className="mt-4">
-            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              R {weeklySales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <span className="text-base md:text-xl font-black text-on-surface leading-tight">
+              Cash or card machine
             </span>
             <p className="text-[10px] text-on-surface/75 font-extrabold mt-1">
-              Next payout: Wednesday (Weekly)
+              Payment is confirmed at the shop
             </p>
           </div>
           <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500 opacity-80" />
         </motion.div>
 
         {/* Active Menu Items Card */}
-        <motion.div
+        <motion.section aria-label="Menu availability"
           whileHover={{ y: -4 }}
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
         >
@@ -1716,167 +1491,41 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             </div>
           </div>
           <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              {activeMenuItemsCount}
+            <span className={cn("font-black text-on-surface tracking-tight",menuReadState==="ready" ? "text-2xl md:text-3.5xl" : "text-sm md:text-base")}>
+              {menuReadState==="ready" ? activeMenuItemsCount : menuReadState==="failed" ? "Unavailable" : "Loading…"}
             </span>
             <span className="text-[10px] text-on-surface/75 font-extrabold">
-              / {menuItems.length} listed
+              {menuReadState==="ready" ? `/ ${menuItems.length} listed` : "Open Menu to check"}
             </span>
           </div>
           <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-500 opacity-80" />
-        </motion.div>
+          {menuReadState==="failed" && <button type="button" disabled={isMenuRetrying} onClick={async()=>{if(isMenuRetrying)return;setIsMenuRetrying(true);try{await onRefresh();}catch{toast.error("Menu could not be refreshed. Try again.");}finally{setIsMenuRetrying(false);}}} className="min-h-11 mt-2 px-3 text-sm font-bold underline disabled:opacity-50">{isMenuRetrying ? "Refreshing menu…" : "Retry menu"}</button>}
+        </motion.section>
 
-        {/* Driver Availability Card */}
+        {/* Ready for Pickup Card */}
         <motion.div
           whileHover={{ y: -4 }}
           className="bg-surface-container-low/95 dark:bg-surface-container/95 border border-outline-variant/30 rounded-[2rem] p-5 md:p-6 shadow-sm relative overflow-hidden"
         >
           <div className="flex justify-between items-start">
-            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Driver Availability</p>
+            <p className="text-xs font-black uppercase tracking-wider text-on-surface/85">Ready for pickup</p>
             <div className="p-2 bg-primary/10 rounded-xl text-primary">
-              <Bike size={18} />
+              <UtensilsCrossed size={18} />
             </div>
           </div>
           <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl md:text-3.5xl font-black text-on-surface tracking-tight">
-              {driverAvailability.status}
+            <span className={cn("font-black text-on-surface tracking-tight",orderReadState==="fresh" ? "text-2xl md:text-3.5xl" : "text-sm md:text-base")}>
+              {orderReadState==="fresh" ? readyForPickup : orderReadState==="failed" ? "Unavailable" : "Loading…"}
             </span>
-            <span className={cn("text-[10px] font-extrabold px-2 py-0.5 rounded-full", driverAvailability.color)}>
-              {connectedRidersCount} riders online
+            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full text-primary bg-primary/10">
+              Awaiting collection
             </span>
           </div>
           <div className="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-primary to-orange-500" />
         </motion.div>
       </div>
 
-      <AnimatePresence>
-        {showTestCheckout && (
-          <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-              animate={{ backdropFilter: "blur(4px)", backgroundColor: "rgba(0,0,0,0.4)" }}
-              exit={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-              className="absolute inset-0"
-              onClick={() => setShowTestCheckout(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-surface relative z-10 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-outline-variant/20 flex flex-col max-h-[90vh]"
-            >
-              <div className="p-6 md:p-8 space-y-6 flex-1 overflow-y-auto">
-                <div>
-                  <h2 className="text-2xl font-headline font-black text-on-surface">New Phone / Walk-in Order</h2>
-                  <p className="text-xs text-on-surface-variant font-medium mt-1">Record a phone or walk-in customer order for kitchen dispatch and POS tracking.</p>
-                </div>
 
-                <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 space-y-2">
-                  <div className="flex justify-between text-sm font-bold text-on-surface">
-                    <span>Store POS Order</span>
-                    <span>R 55.00</span>
-                  </div>
-                  <div className="flex justify-between text-lg font-black text-on-surface pt-4 border-t border-outline-variant/10">
-                    <span>Total</span>
-                    <span className="text-primary">R 55.00</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="checkout_special_instructions" className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70">Special Instructions (Dietary / Delivery Notes)</label>
-                  <textarea
-                    id="checkout_special_instructions"
-                    value={specialInstructions}
-                    onChange={(e) => setSpecialInstructions(e.target.value)}
-                    placeholder="E.g. No onions, extra spicy, gluten free, leave at security..."
-                    className="w-full bg-surface-container-low border border-outline-variant/20 rounded-2xl p-4 text-xs font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all min-h-[80px] resize-y"
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/70">Payment Method</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={() => setTestOrderPayMethod("Cash")}
-                      className={cn(
-                        "p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2",
-                        testOrderPayMethod === "Cash" ? "border-primary bg-primary/10 text-primary" : "border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-low"
-                      )}
-                    >
-                      <span className="text-lg">💵</span>
-                      <span className="text-xs font-bold">Cash</span>
-                    </button>
-                    <button
-                      onClick={() => setTestOrderPayMethod("Card Machine")}
-                      className={cn(
-                        "p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2",
-                        testOrderPayMethod === "Card Machine" ? "border-primary bg-primary/10 text-primary" : "border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-low"
-                      )}
-                    >
-                      <CreditCard size={20} />
-                      <span className="text-xs font-bold">Card Machine</span>
-                    </button>
-                  </div>
-                </div>
-
-                <AnimatePresence>
-                  {testOrderPayMethod === "Card Machine" && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="p-5 rounded-2xl bg-surface-container-lowest border-2 border-emerald-500/20 shadow-sm space-y-4 mt-2">
-                        <div className="flex items-center gap-2 text-emerald-600 mb-2">
-                          <Lock size={14} />
-                          <span className="text-xs font-black uppercase tracking-wider">Secure Payment Synchronization</span>
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Cardholder Name</label>
-                          <input
-                            type="text"
-                            value={cardName}
-                            onChange={(e) => setCardName(e.target.value)}
-                            placeholder="John Doe"
-                            className="w-full bg-surface border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all font-mono"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Masked Card Number</label>
-                          <input
-                            type="text"
-                            value={cardNumber}
-                            onChange={(e) => {
-                               const val = e.target.value.replace(/\D/g, "");
-                               let formatted = "";
-                               for (let i = 0; i < val.length; i++) {
-                                 if (i > 0 && i % 4 === 0) formatted += " ";
-                                 formatted += val[i];
-                               }
-                               setCardNumber(formatted.slice(0, 19));
-                            }}
-                            placeholder="**** **** **** 1234"
-                            className="w-full bg-surface border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all font-mono"
-                          />
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-              <div className="p-6 md:p-8 bg-surface-container-lowest border-t border-outline-variant/10">
-                <button
-                  onClick={generateTestOrder}
-                  className="w-full px-6 py-4 bg-primary text-on-primary font-black rounded-2xl shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest"
-                >
-                  Confirm & Place Order
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
       {currentShop && (!currentShop.phone || !currentShop.whatsapp) && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
@@ -1941,7 +1590,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               onClick={() => onNavigate("orders")}
               className="bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest text-sm px-6 py-3 rounded-2xl shadow-md hover:shadow-lg transition-all border-none"
             >
-              + NEW WALK-IN ORDER
+              VIEW PICKUP ORDERS
             </button>
             <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/10 shadow-xs justify-center sm:justify-start">
               <button
@@ -1979,15 +1628,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             </div>
 
             <div className="flex gap-2 justify-end">
+
               <button
-                onClick={() => setShowTestCheckout(true)}
-                className="p-3 bg-primary/5 text-primary rounded-xl hover:bg-primary/10 transition-colors border border-primary/10 flex items-center gap-2 text-xs font-bold"
-                title="Create Manual POS Order"
-              >
-                <Plus size={18} />
-                <span className="hidden sm:inline">New POS Order</span>
-              </button>
-              <button
+                disabled={orderReadState!=="fresh"}
                 onClick={exportWeeklyCSV}
                 className="p-3 bg-surface-container-low text-primary rounded-xl hover:bg-surface-container-high transition-colors shadow-sm flex items-center gap-2 text-xs font-bold"
                 title="Download Weekly Report"
@@ -2149,11 +1792,12 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         onNavigate={onNavigate}
         onEditProfile={onEditProfile}
         hasMenu={hasMenu}
+        menuReadState={menuReadState}
       />
 
       
 
-      {layoutMode === "advanced" && (
+      {layoutMode === "advanced" && orderReadState==="fresh" && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           <motion.div
             initial={{ opacity: 0, y: 15 }}
@@ -2187,9 +1831,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             transition={{ delay: 0.2 }}
           >
             <StatCard
-              title="Avg. Prep"
-              value={`${avgPrepTime}m`}
-              change="Active flow"
+              title="Kitchen queue"
+              value={kitchenQueueCount}
+              change="Pending or preparing"
               icon={Clock}
               colorClass="bg-zinc-500/10 text-zinc-600 dark:text-zinc-400"
             />
@@ -2211,7 +1855,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       </div>
       )}
 
-      {layoutMode === "advanced" && (
+      {layoutMode === "advanced" && orderReadState==="fresh" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
@@ -2222,10 +1866,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
             <div>
               <h2 className="text-xl font-headline font-bold text-on-surface">
-                Business Analytics Trends
+                Pickup Inbox Activity
               </h2>
               <p className="text-sm text-on-surface-variant font-medium">
-                Live shop performance and statistics
+                Counts and order values from your current pickup inbox
               </p>
             </div>
             {orders.length > 0 && (
@@ -2241,7 +1885,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                         : "text-on-surface-variant hover:text-on-surface"
                     )}
                   >
-                    Revenue
+                    Order value
                   </button>
                   <button
                     onClick={() => setChartMetric("orders")}
@@ -2320,7 +1964,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                     }}
                     formatter={(val: number | string) => [
                       chartMetric === "revenue" ? `R ${Number(val).toLocaleString()}` : `${val} Orders`,
-                      chartMetric === "revenue" ? "Revenue" : "Volume"
+                      chartMetric === "revenue" ? "Order value" : "Volume"
                     ]}
                   />
                 </BarChart>
@@ -2441,7 +2085,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       )}
 
       {/* Suburb Dispatch Trends & Zone Profitability Section */}
-      <DeliveryDispatchSuburbTrends orders={orders} darkMode={darkMode} />
+      {/* Legacy delivery analytics remain unmounted during the pickup launch. */}
 
       {/* Compact View Guidance Block */}
       {layoutMode === "compact" && (
@@ -2550,7 +2194,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
         >
           <div className="flex justify-between items-center mb-8">
             <h2 className="text-xl font-headline font-bold text-on-surface">
-              Recent Activity
+              {orderReadState==="failed" ? "Last Confirmed Activity" : "Recent Activity"}
             </h2>
             <button
               onClick={() => onNavigate("orders")}
@@ -2615,7 +2259,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                    </div>
                 </div>
                 <div className="max-w-xs mx-auto">
-                  <h3 className="font-bold text-on-surface">Awaiting Your First Order</h3>
+                  <h3 className="font-bold text-on-surface">{orderReadState==="fresh" ? "No pickups in this inbox" : orderReadState==="failed" ? "Pickup statuses unavailable" : "Loading pickups…"}</h3>
                   <p className="text-xs text-on-surface-variant mt-2 opacity-70">
                     Your shop activity will appear here in real-time as customers place their orders.
                   </p>
