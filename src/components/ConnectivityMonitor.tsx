@@ -4,7 +4,7 @@ import { Wifi, WifiOff, RefreshCw, Layers, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
 import { getFreshChannel } from "../lib/supabase";
-import { getQueuedMutations, processOfflineSyncQueue } from "../utils/offlineSyncQueue";
+import { getQueuedMutations } from "../utils/offlineSyncQueue";
 import { logNetworkError } from "../utils/errorHandler";
 
 interface ConnectivityMonitorProps {
@@ -21,7 +21,6 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
   const [wsStatus, setWsStatus] = useState<"SUBSCRIBED" | "CONNECTING" | "CLOSED" | "CHANNEL_ERROR" | "TIMED_OUT">("CONNECTING");
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [pendingSyncs, setPendingSyncs] = useState<number>(0);
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // 1. Fetch & poll queued offline mutations count
   const updatePendingCount = useCallback(async () => {
@@ -53,12 +52,7 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      // Automatically attempt queue sync when returning online
-      processOfflineSyncQueue(supabase).then((count) => {
-        if (count > 0) {
-          toast.success(`Connection restored: Synced ${count} offline changes!`);
-        }
-      });
+      // App re-reads authoritative data on reconnect; no Firestore replay.
     };
     const handleOffline = () => {
       setIsOnline(false);
@@ -156,31 +150,13 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
     };
   }, [isOnline, checkHealth, supabase]);
 
-  // 5. Manual queue sync button handler
-  const handleTriggerSync = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isSyncing) return;
-
-    setIsSyncing(true);
-    try {
-      const count = await processOfflineSyncQueue(supabase);
-      await updatePendingCount();
-      if (count > 0) {
-        toast.success(`Successfully pushed ${count} pending offline operation${count > 1 ? "s" : ""}!`);
-      } else {
-        const remaining = await getQueuedMutations();
-        if (remaining.length > 0) {
-          toast.info(`${remaining.length} item(s) pending network clearance.`);
-        } else {
-          toast.success("All offline changes are fully synchronized!");
-        }
-      }
-    } catch (err) {
-      toast.error("Failed to process sync queue. Check network diagnostics.");
-      logNetworkError("manual_sync_queue", err, { type: "offline_sync" });
-    } finally {
-      setIsSyncing(false);
-    }
+  // Legacy offline records are review-only; never replay their mutations.
+  const handleTriggerSync = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    void updatePendingCount();
+    toast.warning("Legacy offline changes require review. Nothing was synchronized.", {
+      description: "Compare them with authoritative orders and menu data before acting.",
+    });
   };
 
   // Color mappings based on connection health stability
@@ -206,16 +182,11 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
       {pendingSyncs > 0 && (
         <button
           onClick={handleTriggerSync}
-          disabled={isSyncing}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-500 text-white shadow-md hover:bg-amber-600 active:scale-95 transition-all cursor-pointer border border-amber-400/30"
-          title="Click to sync offline changes now"
+          title="Legacy offline records require review and will not be automatically replayed"
         >
-          {isSyncing ? (
-            <RefreshCw size={12} className="animate-spin" />
-          ) : (
-            <Layers size={12} className="animate-pulse" />
-          )}
-          <span>{pendingSyncs} PENDING</span>
+          <Layers size={12} />
+          <span>{pendingSyncs} REVIEW</span>
         </button>
       )}
 
