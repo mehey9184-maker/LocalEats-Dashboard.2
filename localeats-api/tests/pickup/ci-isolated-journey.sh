@@ -44,6 +44,10 @@ for file in \
   psql -X -v ON_ERROR_STOP=1 -f "$file" >/dev/null
 done
 
+# Confirm transactional safety under concurrent retries and conflicting
+# merchant/customer actions before exercising the full HTTP flow.
+bash localeats-api/tests/pickup/ci-isolated-races.sh
+
 # Test adapters are checked out as pinned public source at the exact owner
 # preview commit, not copied into a production build.
 test -f customer-original-ui/src/pickup/client.ts
