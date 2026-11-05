@@ -4,6 +4,10 @@ on:
     branches: [main]
     paths:
       - 'src/lib/firebase.ts'
+      - 'src/services/merchantPickupPolicy.ts'
+      - 'src/components/OrdersManagement.tsx'
+      - 'src/utils/receiptText.ts'
+      - 'tests/merchant-pickup.test.mjs'
       - 'tests/firebase-environment.test.mjs'
       - 'package.json'
       - 'package-lock.json'
