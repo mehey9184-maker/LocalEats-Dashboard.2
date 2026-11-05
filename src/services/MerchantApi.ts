@@ -1,6 +1,7 @@
+import {createMerchantPickupRecovery} from "./merchantPickupRecovery";
 import {validateMerchantMenu} from "./merchantMenuPolicy";
 import {auth} from "../lib/firebase";
-import {isPickupOrder,mapApiOrder,requireOwnedShop,pickupCommand,pickupMutationsDisabled,type PickupAction} from "./merchantPickupPolicy";
+import {isPickupOrder,mapApiOrder,requireOwnedShop,pickupCommand,pickupMutationsDisabled,pickupOrderingEnabled,type PickupAction} from "./merchantPickupPolicy";
 import { getApiAuthHeaders } from "../lib/apiAuth";
 
 export type VerifiedMerchantShop = {
@@ -70,6 +71,17 @@ const readJsonResponse = async (response: Response): Promise<MerchantApiResponse
   }
 };
 
+const pickupRecovery=createMerchantPickupRecovery({
+ identity:()=>auth.currentUser?.uid,enabled:pickupOrderingEnabled,mapOrder:mapApiOrder,
+ storage:{getItem:key=>sessionStorage.getItem(key),setItem:(key,value)=>sessionStorage.setItem(key,value),removeItem:key=>sessionStorage.removeItem(key)},
+ transport:async(order,command,signal,uid)=>{
+  const headers=await getApiAuthHeaders();
+  if(signal.aborted || auth.currentUser?.uid!==uid)throw new MerchantApiError("Your session changed or the action timed out. Retry previous action.");
+  const response=await fetch(`${getApiUrl()}/api/v1/merchant/orders/${encodeURIComponent(String(order.id))}/${command.path}`,{method:"POST",headers,body:JSON.stringify(command.body),signal});
+  return {status:response.status,data:await readJsonResponse(response)};
+ },
+});
+
 export class MerchantApi {
   static async setAvailability(shopId:string|number,open:boolean,confirmOutsideHours=false,expectedRevision?:number):Promise<VerifiedMerchantShop> {
     const uid=auth.currentUser?.uid;
@@ -121,32 +133,20 @@ export class MerchantApi {
   }
 
   static hasPendingPickupCommand(order:any):boolean {
-    const uid=auth.currentUser?.uid; return !!uid && !!sessionStorage.getItem(`pickup-command:${uid}:${order.id}`);
+    const uid=auth.currentUser?.uid;
+    try{return !!uid && !!sessionStorage.getItem(`pickup-command:${uid}:${order.id}`);}catch{return false;}
   }
-  private static async sendPickupCommand(order:Record<string,unknown>,command:any,key:string) {
+  private static async sendPickupCommand(order:Record<string,unknown>,command:any) {
     pickupMutationsDisabled();
-    sessionStorage.setItem(key,JSON.stringify(command));
-    const response=await fetch(`${getApiUrl()}/api/v1/merchant/orders/${encodeURIComponent(String(order.id))}/${command.path}`,{method:"POST",headers:await getApiAuthHeaders(),body:JSON.stringify(command.body)});
-    const result=await readJsonResponse(response);
-    if(!response.ok || result.success!==true || !result.order || typeof result.order.id!=="string") {
-      if([400,403,404,409,422].includes(response.status))sessionStorage.removeItem(key);
-      throw new MerchantApiError(typeof result.error==="string" ? result.error : "The API did not confirm persistence.",response.status);
-    }
-    const confirmed=mapApiOrder(result.order);
-    if(String(confirmed.id)!==String(order.id) || String(confirmed.shop_id)!==String(order.shop_id))throw new MerchantApiError("The API confirmed a different order.");
-    sessionStorage.removeItem(key);return confirmed;
+    return pickupRecovery.send(order,command);
   }
   static async retryPendingPickupOrder(order:Record<string,unknown>) {
-    const uid=auth.currentUser?.uid;if(!uid)throw new MerchantApiError("Sign in first.");
-    const key=`pickup-command:${uid}:${order.id}`,stored=sessionStorage.getItem(key);
-    if(!stored)throw new MerchantApiError("No unresolved command exists.");
-    return this.sendPickupCommand(order,JSON.parse(stored),key);
+    return pickupRecovery.retry(order);
   }
   static async transitionPickupOrder(order:Record<string,unknown>,action:PickupAction,extra:Record<string,unknown>={}):Promise<Record<string,unknown>> {
-    const uid=auth.currentUser?.uid;if(!uid)throw new MerchantApiError("Sign in before changing an order.");
-    const key=`pickup-command:${uid}:${order.id}`;
-    if(sessionStorage.getItem(key))throw new MerchantApiError("Use Retry previous action before sending another command.");
-    return this.sendPickupCommand(order,pickupCommand(order,action,extra),key);
+    if(!auth.currentUser?.uid)throw new MerchantApiError("Sign in before changing an order.");
+    if(this.hasPendingPickupCommand(order))throw new MerchantApiError("Use Retry previous action before sending another command.");
+    return this.sendPickupCommand(order,pickupCommand(order,action,extra));
   }
 
   static async transitionOrder(orderId: string, action: "accept" | "ready"): Promise<Record<string, unknown>> {

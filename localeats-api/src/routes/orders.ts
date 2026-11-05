@@ -14,7 +14,7 @@ import {
   SupabaseOrderRepository,
   type StoredOrder,
 } from "../orders/orderService.js";
-import { commandPickup, createPickup, parsePickupInput, pickupPricing, pickupQuote } from "../orders/pickupService.js";
+import { merchantCommandReceipt, commandPickup, createPickup, parsePickupInput, pickupPricing, pickupQuote } from "../orders/pickupService.js";
 import { drainPickupPush } from "../orders/pickupPush.js";
 import { readCompleteMerchantInbox, MERCHANT_UNFINISHED_FILTER, MERCHANT_INBOX_RECENT_LIMIT } from "../orders/merchantInboxRead.js";
 import { deriveDeliveryProof } from "../orders/deliveryProof.js";
@@ -275,14 +275,14 @@ const updateMerchantOrder = async (
   orderId: string,
   action: "accept" | "ready",
   body: unknown,
-): Promise<StoredOrder> => {
+): Promise<{order:StoredOrder;replayed?:boolean;command_receipt?:ReturnType<typeof merchantCommandReceipt>}> => {
   const order = await loadMerchantOrder(uid, orderId);
   if (order.create_intent_hash != null || order.delivery_type === "collection") {
     assertControlledPickup(order);
     assertPickupWritesDisabled({delivery_type:"collection"});
     const result=await commandPickup(supabaseAdmin,uid,orderId,action,body);
     if (action === "ready") await drainPickupPush(supabaseAdmin,uid);
-    return result.order;
+    return {order:result.order,replayed:result.replayed,command_receipt:merchantCommandReceipt(result)};
   }
   const current = lifecycleStateFromOrder(order);
 
@@ -313,7 +313,7 @@ const updateMerchantOrder = async (
   if (!data) {
     throw new OrderContractError(409, "ORDER_STATE_CHANGED", "The order changed before this action completed. Refresh and try again.");
   }
-  return data as StoredOrder;
+  return {order:data as StoredOrder};
 };
 
 merchantOrderRoutes.post(
@@ -323,8 +323,8 @@ merchantOrderRoutes.post(
     try {
       const uid = req.authUser?.uid;
       if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
-      const order = await updateMerchantOrder(uid, routeParam(req.params.id), "accept", req.body);
-      res.status(200).json({ success: true, order: withoutDeliveryProofState(order) });
+      const result = await updateMerchantOrder(uid, routeParam(req.params.id), "accept", req.body);
+      res.status(200).json({ ...result, success: true, order: withoutDeliveryProofState(result.order) });
     } catch (error) {
       sendOrderError(res, error);
     }
@@ -338,8 +338,8 @@ merchantOrderRoutes.post(
     try {
       const uid = req.authUser?.uid;
       if (!uid) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
-      const order = await updateMerchantOrder(uid, routeParam(req.params.id), "ready", req.body);
-      res.status(200).json({ success: true, order: withoutDeliveryProofState(order) });
+      const result = await updateMerchantOrder(uid, routeParam(req.params.id), "ready", req.body);
+      res.status(200).json({ ...result, success: true, order: withoutDeliveryProofState(result.order) });
     } catch (error) {
       sendOrderError(res, error);
     }
@@ -355,7 +355,7 @@ for (const [path,action] of [["reject","reject"],["payment-confirmation","confir
       const order=await loadMerchantOrder(uid,routeParam(req.params.id));
       assertControlledPickup(order);
       const result=await commandPickup(supabaseAdmin,uid,routeParam(req.params.id),action,req.body);
-      res.status(200).json({success:true,replayed:result.replayed,order:withoutDeliveryProofState(result.order)});
+      res.status(200).json({success:true,replayed:result.replayed,command_receipt:merchantCommandReceipt(result),order:withoutDeliveryProofState(result.order)});
     } catch(error) { sendOrderError(res,error); }
   });
 }
