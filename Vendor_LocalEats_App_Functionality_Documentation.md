@@ -459,3 +459,8 @@ fix/merchant-authoritative-availability replaces direct Firestore/local availabi
 ## Merchant Codex pickup-only release skill — 2026-11-05
 
 Added the instructions-only repo skill `.agents/skills/localeats-merchant-pickup/SKILL.md` and a current pickup safety policy in `AGENTS.md`. The skill guides read-only/isolated checks of authenticated merchant ownership and shop approval, Storefront/Settings navigation, shop/menu availability, pickup order transitions, authoritative pay-at-shop confirmation, handover, notification trust, cache freshness, and performance without changing existing UI/UX. It points to `test:merchant-pickup`, `lint`, and `build` scripts and requires reporting tests actually run. Historic Rider and delivery workflows remain outside the release scope. Documentation-only change; no code behavior, feature flags, database writes, SQL, Production deployment, live orders or merging authorized by this skill.
+
+
+## Pickup release regression pin — 2026-11-05
+
+The PostgreSQL integration workflow tests the Customer adapter from reviewed main commit 8ba6129173eb628d629f9696d3eb84c0e24e9bfe. All identities and order data remain in the disposable CI fixture.

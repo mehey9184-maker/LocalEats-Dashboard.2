@@ -50,7 +50,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: mehey9184-maker/LocalEats-app
-          ref: 7c7954158791d773f223fc3405a63d424946de54 # Client PR #40 tested commit
+          ref: 8ba6129173eb628d629f9696d3eb84c0e24e9bfe # Customer main after PR #53
           path: customer-original-ui
           persist-credentials: false
       - name: Validate Customer adapter matches the pickup-only reviewed release
