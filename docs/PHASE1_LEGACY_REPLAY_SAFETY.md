@@ -17,6 +17,7 @@ The reconnect toast said the local cache had synchronized *before* a verified AP
 3. Connectivity badge retains its layout, but displays **N REVIEW** for leftover offline records. Its click explains that no offline changes were synchronized. It does not claim success.
 4. The old client-side auto-accept effect is **removed**. The switch defaults off even if localStorage previously said true and displays **Paused**; clicking it explains that server-authorized auto-accept is not available. The old confirmation modal cannot turn it on.
 5. Reconnect notice now says the server is being checked. The Orders read-status warning from PR #60 remains responsible for confirming a successful read.
+6. When branch-scoped `VITE_MERCHANT_PREVIEW_READ_ONLY=true` is configured, the automatic shop heartbeat that updates `shops.updated_at` will not run. This prevents simply opening that Preview from modifying a shared live Supabase row. Other direct database writes from interactive settings remain possible, so **do not save settings or place orders in Preview**.
 
 ## Limitations and gates
 
