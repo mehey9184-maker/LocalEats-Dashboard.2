@@ -572,6 +572,9 @@ function App() {
 
   // --- Shop Live Heartbeat & Inactivity Tracker ---
   useEffect(() => {
+    // Preview may reuse Production Supabase credentials. Opening a read-only
+    // Preview must not update shops.updated_at in the live database.
+    if (import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true") return;
     if (merchantShopGate.status !== "ready" || !user || !currentShop) return;
 
     const syncHeartbeat = async () => {
