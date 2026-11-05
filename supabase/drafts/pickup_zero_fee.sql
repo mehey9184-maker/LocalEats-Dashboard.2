@@ -1,12 +1,18 @@
 -- REVIEW DRAFT ONLY: separate owner approval required before Production application.
 -- Changes only the new pickup creation fee. Preserves function identity/grants, replay and historical rows.
+-- Guard hash below matches pg_proc.prosrc installed by the exact, reviewed
+-- supabase/drafts/pickup_launch_foundation.sql source (SHA-256 of the full
+-- dollar-quoted $create$ body, including its newlines). The previous hash
+-- did not match that source, so a fresh isolated deployment failed closed.
+-- This is STILL a review-only draft. Do not apply to a live project without
+-- owner approval, a fresh backup/verified restore, and a same-schema preflight.
 begin;
 set local lock_timeout = '5s';
 set local statement_timeout = '30s';
 do $preflight$
 begin
   if (select encode(sha256(convert_to(prosrc,'UTF8')),'hex') from pg_proc
-      where oid = 'public.pickup_create_order(text,text,jsonb)'::regprocedure) is distinct from '6ff9319db511da669b0489cef8d18fe6f252269096b243f3d40e3fc20696836a' then
+      where oid = 'public.pickup_create_order(text,text,jsonb)'::regprocedure) is distinct from 'fbb9847a0a4eacaa68fc1840e3e9ae992b8ec377c8a4724c12cac74079076456' then
     raise exception 'PICKUP_CREATE_FUNCTION_DRIFT';
   end if;
 end;
