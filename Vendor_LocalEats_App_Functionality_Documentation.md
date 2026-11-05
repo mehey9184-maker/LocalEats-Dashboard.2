@@ -468,3 +468,6 @@ Added the instructions-only repo skill `.agents/skills/localeats-merchant-pickup
 ## Pickup release regression pin — 2026-11-05
 
 The PostgreSQL integration workflow tests the Customer adapter from reviewed main commit 8ba6129173eb628d629f9696d3eb84c0e24e9bfe. All identities and order data remain in the disposable CI fixture.
+
+## Pickup instructions and item amounts — 2026-11-05
+The customer adapter sends trimmed special instructions as supported item notes. Different requests for the same menu item consolidate into one server line with quantity labels, without client prices; combined notes over 500 characters and aggregate quantity over 20 fail before quote. The picker limits notes to 500 characters and quantity to 20, matching the existing API and SQL. Merchant mapping preserves authoritative unit/line amounts and named instructions; kitchen cards and acceptance show instructions, item rows show line amounts, and HTML receipt notes are escaped. No database migration or production activation is included.

@@ -44,3 +44,6 @@ Use the repository-scoped `$localeats-merchant-pickup` skill at `.agents/skills/
 - **Modern Aesthetic**: Clean, spacious white canvas with bold charcoal typography paired with warm coral accents (`#FF5A36`). High-contrast elements only.
 - **No Telemetry Slop**: Never display raw developer console logs, container port numbers (such as "PORT: 3000"), or system debugging borders in the user interface. 
 - **Haptic & Visual Feedback**: Provide instant visual loading triggers, haptic vibration cues for riders, and highly readable notification alerts via `sonner` toasts.
+
+## Pickup kitchen instructions — 2026-11-05
+Customer special instructions are bounded to 500 characters per server menu line and preserved through quote/create. Repeated menu IDs consolidate with quantity-labelled instructions; aggregate quantity is limited to the existing server maximum of 20. Merchant presentation uses authoritative unit prices and line totals, keeps item instructions visible and escapes customer notes in HTML receipts. This changes no live SQL, ordering flags or payment state.
