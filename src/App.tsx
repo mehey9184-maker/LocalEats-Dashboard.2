@@ -1262,8 +1262,8 @@ function App() {
   useEffect(() => {
     const isCurrentlyOffline = isOffline || isHeartbeatFailed;
     if (!isCurrentlyOffline && wasOffline.current) {
-      toast.success("Connection re-established! Synchronizing local cache with cloud database...", {
-        description: "Pulling any missed order events that occurred during the disconnect window.",
+      toast.info("Connection detected. Verifying orders with LocalEats...", {
+        description: "The order list remains unverified until a successful API refresh. Old offline edits are not replayed.",
         duration: 5000,
       });
       void fetchOrders();
