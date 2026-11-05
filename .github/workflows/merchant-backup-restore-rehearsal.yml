@@ -1,0 +1,56 @@
+name: Merchant Phase 1 Synthetic Backup and Restore Rehearsal
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tests/recovery/**'
+      - 'docs/PHASE1_BACKUP_RESTORE_PLAYBOOK.md'
+      - '.github/workflows/merchant-backup-restore-rehearsal.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-backup-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-only-no-secrets
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-only-no-secrets
+      PGDATABASE: local_recovery_source
+      REHEARSAL_ISOLATED_ONLY: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify isolated PostgreSQL tools
+        run: |
+          psql --version
+          pg_dump --version
+          pg_restore --version
+      - name: Create isolated source and synthetic shops, orders, events, notifications
+        run: |
+          PGDATABASE=postgres createdb local_recovery_source
+          psql -X -v ON_ERROR_STOP=1 -f tests/recovery/synthetic_pickup_fixture.sql
+      - name: Export, simulate source data loss and verify restored independent database
+        run: bash tests/recovery/run_isolated_drill.sh
+      - name: Ensure archive never becomes a workflow artifact
+        run: |
+          test ! -e synthetic_public_only.dump
+          test ! -e roles.sql
+          test ! -e data.sql
