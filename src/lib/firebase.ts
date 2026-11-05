@@ -88,7 +88,18 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 // Web app's Firebase configuration
-const firebaseConfig = {
+// Existing deployments keep the bundled selection. Isolated builds opt in to
+// one complete environment config instead of mixing two Firebase projects.
+const useEnvironmentConfig = import.meta.env.VITE_FIREBASE_CONFIG_SOURCE === "environment";
+const firebaseConfig = useEnvironmentConfig ? {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || ""
+} : {
   apiKey: firebaseConfigData.apiKey || import.meta.env.VITE_FIREBASE_API_KEY || "",
   authDomain: firebaseConfigData.authDomain || import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "gen-lang-client-0863469023.firebaseapp.com",
   projectId: firebaseConfigData.projectId || import.meta.env.VITE_FIREBASE_PROJECT_ID || "gen-lang-client-0863469023",
@@ -98,12 +109,20 @@ const firebaseConfig = {
   measurementId: firebaseConfigData.measurementId || ""
 };
 
+if (useEnvironmentConfig && [firebaseConfig.apiKey, firebaseConfig.authDomain,
+  firebaseConfig.projectId, firebaseConfig.storageBucket,
+  firebaseConfig.messagingSenderId, firebaseConfig.appId].some(value => !value.trim())) {
+  throw new Error("Firebase environment configuration is incomplete.");
+}
+
 // Initialize Firebase App
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 // Initialize Firebase Auth, Firestore & Storage
 export const auth = getAuth(app);
-const databaseId = firebaseConfigData.firestoreDatabaseId || "ai-studio-localeatsvendord-a61b068b-3029-4d93-ba41-626b03a23bbe";
+const databaseId = useEnvironmentConfig
+  ? import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || "(default)"
+  : firebaseConfigData.firestoreDatabaseId || "ai-studio-localeatsvendord-a61b068b-3029-4d93-ba41-626b03a23bbe";
 export const db = databaseId && databaseId !== "(default)" ? getFirestore(app, databaseId) : getFirestore(app);
 export const storage = getStorage(app, `gs://${firebaseConfig.storageBucket}`);
 

@@ -2,6 +2,8 @@
 
 ## Active Merchant pickup-only Codex policy — 2026-11-05
 
+Isolated Firebase staging builds must explicitly set `VITE_FIREBASE_CONFIG_SOURCE=environment` and supply the complete staging app configuration. That mode selects `VITE_FIREBASE_FIRESTORE_DATABASE_ID` (defaulting to `(default)`) without reusing bundled production values. Existing deployments retain their bundled configuration until opted in.
+
 For the upcoming LocalEats merchant launch, **pickup and pay at the physical shop only** are in scope. Rider/delivery functions and subscriptions/online payments remain inactive and require future explicit approval. Existing Rider/delivery sections below are historical or retained-code descriptions, **not current launch instructions**.
 
 Use the repository-scoped `$localeats-merchant-pickup` skill at `.agents/skills/localeats-merchant-pickup/SKILL.md` when auditing merchant Storefront/Settings, menu, pickup Orders, availability, notifications, payment confirmation or performance. Preserve the existing UI/UX. Work on isolated branches with owner-reviewed **draft PRs**; do not merge, change Production, enable order or availability write flags, apply SQL, alter live data/security, or place real orders. Tests must use mocks, disposable databases, or separately approved truly isolated environments; Preview alone does not guarantee isolation.

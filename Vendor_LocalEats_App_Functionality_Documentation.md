@@ -1,5 +1,9 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## Isolated Firebase staging configuration — 2026-11-05
+
+The Dashboard previously preferred bundled Firebase values even when staging environment values were supplied. Staging builds now explicitly select `VITE_FIREBASE_CONFIG_SOURCE=environment` and provide all six Firebase app values. Incomplete environment configurations fail before Firebase initializes. The Firestore database is selected with `VITE_FIREBASE_FIRESTORE_DATABASE_ID`, defaulting to `(default)` in that mode. Existing deployments continue using their bundled configuration unless opted in. This does not activate ordering or deploy security rules. `tests/firebase-environment.test.mjs` captures the Firebase SDK initialization arguments to verify both staging isolation and existing-build compatibility.
+
 **Application Name**: LocalEats Vendor (Merchant Dashboard & Operations Platform)  
 **Platform**: React 18+ (Vite, TypeScript, Tailwind CSS, Framer Motion, Lucide React)  
 **Backend & Persistence**: Google Cloud Firestore & Firebase Authentication (`src/lib/firebase.ts`) with Firestore Compatibility Bridge (`src/lib/supabase.ts`)
