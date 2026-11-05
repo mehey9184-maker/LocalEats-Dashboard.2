@@ -327,25 +327,37 @@ function App() {
     [shops, user],
   );
 
+  const merchantShopRequest=useRef(0);
+  const verifiedMerchantUid=useRef<string|null>(null);
   const acceptAuthoritativeMerchantShop = useCallback((firebaseUid: string, shop: Shop) => {
+    if(firebaseAuth.currentUser?.uid!==firebaseUid)return;
+    if(shop.owner_id!==firebaseUid)throw Error("Shop ownership could not be verified for this account.");
     registerVerifiedShopId(firebaseUid, shop.id);
     setShops([shop]);
     if (shop.approval_status === "approved") {
+      verifiedMerchantUid.current=firebaseUid;
       setMerchantShopGate({ status: "ready", shop });
       return;
     }
 
     setOrders([]);
     setMenuItems([]);
+    verifiedMerchantUid.current=null;
     setMerchantShopGate({ status: "approval-required", shop });
   }, []);
 
-  const resolveMerchantShop = useCallback(async (firebaseUid: string): Promise<Shop | null> => {
-    setOrders([]);
-    setMerchantShopGate({ status: "checking" });
+  const resolveMerchantShop = useCallback(async (firebaseUid: string,background=false): Promise<Shop | null> => {
+    if(firebaseAuth.currentUser?.uid!==firebaseUid)return null;
+    const request=++merchantShopRequest.current;
+    const sameVerifiedAccount=background && verifiedMerchantUid.current===firebaseUid && firebaseAuth.currentUser?.uid===firebaseUid;
+    if(!sameVerifiedAccount){setOrders([]);setMerchantShopGate({ status: "checking" });}
+    const current=()=>request===merchantShopRequest.current && firebaseAuth.currentUser?.uid===firebaseUid;
+    let deadline:ReturnType<typeof setTimeout>|undefined;
     try {
-      const verifiedShop = await MerchantApi.getMerchantShop();
+      const verifiedShop = await Promise.race([MerchantApi.getMerchantShop(),new Promise<never>((_resolve,reject)=>{deadline=setTimeout(()=>reject(Error("Shop verification timed out. Retry verification.")),15000);})]);
+      if(!current())return null;
       if (!verifiedShop || verifiedShop.id === null || verifiedShop.id === undefined) {
+        verifiedMerchantUid.current=null;
         clearVerifiedShopOwnership();
         clearMerchantShopOperationalCache();
         setShops([]);
@@ -359,6 +371,8 @@ function App() {
       acceptAuthoritativeMerchantShop(firebaseUid, shop);
       return shop;
     } catch (error) {
+      if(!current())return null;
+      verifiedMerchantUid.current=null;
       console.warn("[Shop Discovery] API verification failed closed:", error);
       clearVerifiedShopOwnership();
       clearMerchantShopOperationalCache();
@@ -367,7 +381,7 @@ function App() {
       setOrders([]);
       setMerchantShopGate({ status: "error", message: getMerchantShopErrorMessage(error) });
       return null;
-    }
+    }finally{clearTimeout(deadline);}
   }, [acceptAuthoritativeMerchantShop]);
 
   const handleCreatedMerchantShop = useCallback(async (shop: Shop) => {
@@ -396,7 +410,7 @@ function App() {
       });
       return;
     }
-    await resolveMerchantShop(firebaseUid);
+    await resolveMerchantShop(firebaseUid,true);
   }, [resolveMerchantShop]);
 
   // Centralized Shop Location & Sync State Engine
@@ -704,12 +718,15 @@ function App() {
     // Listen for Firebase Auth state changes
     console.log("[Auth Init] Registering Firebase onAuthStateChanged listener...");
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (fbUser) => {
+      if((fbUser?.uid ?? null)!==(firebaseAuth.currentUser?.uid ?? null))return;
       console.log(`[Auth Listener] Firebase Auth event triggered, user: ${fbUser?.uid || 'none'}`);
       if (fbUser) {
         try {
           const sessionUser = await formatFirebaseUserSession(fbUser);
+          if(firebaseAuth.currentUser?.uid!==fbUser.uid)return;
           
           await resolveMerchantShop(fbUser.uid);
+          if(firebaseAuth.currentUser?.uid!==fbUser.uid)return;
 
           setUser(sessionUser);
           localStorage.setItem("localeats_user_session", JSON.stringify(sessionUser));
@@ -717,6 +734,7 @@ function App() {
             setDarkMode(Boolean(sessionUser.user_metadata.dark_mode));
           }
         } catch (e) {
+          if(firebaseAuth.currentUser?.uid!==fbUser.uid)return;
           console.warn("[Auth Listener] Warning formatting Firebase user session:", e);
           clearVerifiedShopOwnership();
           clearMerchantShopOperationalCache();
@@ -1121,14 +1139,21 @@ function App() {
     setOrderReadStatus({state:"fresh",lastSuccessAt:Date.now()});
   }, [orderReadScope,orderReadShopId,processAndSetOrders]);
 
+  const menuReadScope=user && merchantShopGate.status==="ready" && currentShop ? `${user.id}:${currentShop.id}` : null;
+  const [menuReadStatus,setMenuReadStatus]=useState<{scope:string|null;state:"loading"|"ready"|"failed"}>({scope:null,state:"loading"});
   const menuReadRequest = useRef(0);
   useEffect(()=>{const refresh=()=>{void fetchOrders();};window.addEventListener("merchant-pickup-order-confirmed",refresh);return()=>window.removeEventListener("merchant-pickup-order-confirmed",refresh);},[fetchOrders]);
   const fetchAllMenuItems = useCallback(async () => {
     const request = ++menuReadRequest.current;
-    if (!user || merchantShopGate.status !== "ready" || !currentShop) { setMenuItems([]); return; }
-    try { const rows = await MerchantApi.getMenuItems(currentShop.id); if (request === menuReadRequest.current) setMenuItems(rows); }
-    catch { if (request === menuReadRequest.current) setMenuItems([]); }
-  }, [user, merchantShopGate.status, currentShop]);
+    if (!user || merchantShopGate.status !== "ready" || !currentShop) { setMenuItems([]);setMenuReadStatus({scope:null,state:"loading"});return; }
+    // Keep same-shop verified menu facts visible during a background refresh.
+    setMenuReadStatus(previous=>previous.scope===menuReadScope && previous.state==="ready" ? previous : {scope:menuReadScope,state:"loading"});
+    let deadline:ReturnType<typeof setTimeout>|undefined;
+    try { const rows = await Promise.race([MerchantApi.getMenuItems(currentShop.id),new Promise<never>((_resolve,reject)=>{deadline=setTimeout(()=>reject(Error("Menu read timed out")),15000);})]); if (request === menuReadRequest.current) {setMenuItems(rows);setMenuReadStatus({scope:menuReadScope,state:"ready"});} }
+    catch { if (request === menuReadRequest.current) {setMenuItems([]);setMenuReadStatus({scope:menuReadScope,state:"failed"});} }
+    finally{clearTimeout(deadline);}
+  }, [user, merchantShopGate.status, currentShop,menuReadScope]);
+  useEffect(()=>{void fetchAllMenuItems();return ()=>{menuReadRequest.current++;};},[fetchAllMenuItems]);
 
   const fetchShops = useCallback(async () => {
     if (!user) {
@@ -2268,6 +2293,7 @@ function App() {
               {activeTab === "dashboard" && (
                 <DashboardOverview
                   orders={orders}
+                  orderReadState={orderReadStatus.state}
                   loading={loading}
                   shops={shops}
                   user={user}
@@ -2278,6 +2304,7 @@ function App() {
                   }}
                   onEditProfile={() => setIsEditingProfile(true)}
                   menuItems={menuItems}
+                  menuReadState={menuReadStatus.scope===menuReadScope ? menuReadStatus.state : "loading"}
                   trialInfo={trialInfo}
                   currentShop={currentShop}
                   darkMode={darkMode}
