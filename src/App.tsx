@@ -1,10 +1,10 @@
 import {pickupOrderingEnabled} from "./services/merchantPickupPolicy";
 import {isPickupOrder} from "./services/merchantPickupPolicy";
 import { checkPrinterConnectivity, printViaBluetooth, printViaUSB } from "./utils/escPosEngine";
-import { processOfflineSyncQueue } from "./utils/offlineSyncQueue";
 import React, {
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useMemo,
   useCallback,
@@ -138,6 +138,7 @@ import {
   clearVerifiedShopOwnership,
 } from "./utils/shopOwnership";
 import { MerchantApi, MerchantApiError } from "./services/MerchantApi";
+import { createMerchantOrderReadCoordinator } from "./services/merchantOrderRecovery";
 import { fetchWithRetry } from "./utils/fetchWithRetry";
 
 function cn(...inputs: ClassValue[]) {
@@ -253,7 +254,9 @@ function App() {
   const [soundAlerts, setSoundAlerts] = useState<boolean>(() => localStorage.getItem("soundAlerts") !== "false");
   const [soundStyle, setSoundStyle] = useState<string>(() => localStorage.getItem("soundStyle") || "modern");
   const [soundVolume, setSoundVolume] = useState<number>(() => Number(localStorage.getItem("soundVolume") || "70"));
-  const [autoAcceptOrders, setAutoAcceptOrders] = useState<boolean>(() => localStorage.getItem("autoAcceptOrders") === "true");
+  // Client-side automatic acceptance remains safety-locked. It must not accept
+  // old orders after reconnection or based solely on a browser-stored toggle.
+  const [autoAcceptOrders, setAutoAcceptOrders] = useState<boolean>(false);
   const [autoPrint, setAutoPrint] = useState<boolean>(() => localStorage.getItem("autoPrint") === "true");
   const [printingFormat, setPrintingFormat] = useState<"80mm" | "58mm">(() => (localStorage.getItem("printingFormat") as "80mm" | "58mm") || "80mm");
   const [deliverySettings, setDeliverySettings] = useState({ 
@@ -569,6 +572,9 @@ function App() {
 
   // --- Shop Live Heartbeat & Inactivity Tracker ---
   useEffect(() => {
+    // Preview may reuse Production Supabase credentials. Opening a read-only
+    // Preview must not update shops.updated_at in the live database.
+    if (import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true") return;
     if (merchantShopGate.status !== "ready" || !user || !currentShop) return;
 
     const syncHeartbeat = async () => {
@@ -1067,25 +1073,53 @@ function App() {
     setOrders(combinedOrders);
   }, []);
 
+  // Orders are always read from the authenticated API. Keep only the current
+  // shop's verified rows, in component memory, never in browser storage.
+  const orderReadCoordinator = useRef(createMerchantOrderReadCoordinator<Record<string, unknown>>());
+  const orderReadShopId = currentShop?.id == null ? null : String(currentShop.id);
+  const orderReadScope = user && merchantShopGate.status === "ready" && orderReadShopId
+    ? `${user.id}:${orderReadShopId}` : null;
+  const [orderReadStatus,setOrderReadStatus] = useState<{
+    state:"unverified"|"fresh"|"failed";lastSuccessAt:number|null;
+  }>({state:"unverified",lastSuccessAt:null});
+
+  // Invalidate and clear prior shop/account orders before the browser paints.
+  // A stale inbox can stay visible only during a failed refresh of the SAME scope.
+  useLayoutEffect(()=>{
+    orderReadCoordinator.current.activate(orderReadScope);
+    setOrders([]);
+    setOrderReadStatus({state:"unverified",lastSuccessAt:null});
+    return ()=>orderReadCoordinator.current.activate(null);
+  },[orderReadScope]);
+
   const fetchOrders = useCallback(async () => {
-    if (!user || merchantShopGate.status !== "ready" || !currentShop) {
+    if (!orderReadScope || !orderReadShopId) {
       setOrders([]);
       return;
     }
 
-    try {
+    const result = await orderReadCoordinator.current.refresh(orderReadScope, async()=>{
       const data = await MerchantApi.getOrders();
-      const apiOrders = data.map((d: Record<string, unknown>) => ({
-          ...d,
-          id: String(d.id),
-          total_price: Number(d.total_price ?? d.price ?? 0),
-        })) as Order[];
-      processAndSetOrders([], apiOrders);
-    } catch (apiError) {
-      console.warn("[Orders Sync] Authoritative API unavailable:", apiError);
-      toast.error(apiError instanceof Error ? apiError.message : "Orders could not be refreshed. No cached order changes were applied.");
+      return data;
+    });
+    if (result.kind === "stale") return;
+    if (result.kind === "failed") {
+      // Keep the last verified rows visible, but clearly label them stale.
+      // Polling must not flood the merchant with a new toast every 15 seconds.
+      console.warn("[Orders Sync] Authoritative API unavailable:", result.error);
+      setOrderReadStatus(previous => ({...previous,state:"failed"}));
+      return;
     }
-  }, [user, shops, processAndSetOrders, merchantShopGate.status, currentShop]);
+    const apiOrders = result.rows
+      .filter(d=>String(d.shop_id)===orderReadShopId)
+      .map((d: Record<string, unknown>) => ({
+        ...d,
+        id: String(d.id),
+        total_price: Number(d.total_price ?? d.price ?? 0),
+      })) as Order[];
+    processAndSetOrders([], apiOrders);
+    setOrderReadStatus({state:"fresh",lastSuccessAt:Date.now()});
+  }, [orderReadScope,orderReadShopId,processAndSetOrders]);
 
   const menuReadRequest = useRef(0);
   useEffect(()=>{const refresh=()=>{void fetchOrders();};window.addEventListener("merchant-pickup-order-confirmed",refresh);return()=>window.removeEventListener("merchant-pickup-order-confirmed",refresh);},[fetchOrders]);
@@ -1130,17 +1164,26 @@ function App() {
     operationalReady: merchantShopGate.status === "ready" && Boolean(currentShop),
   });
 
-  // Orders are read from the authoritative LocalEats API. Polling avoids treating
-  // either Firestore or a frontend Supabase adapter as a competing order source.
+  // Polling is a recovery mechanism, not an alternative order authority.
+  // Read only while the app is visible/online, and reconcile on focus or
+  // visibility return. The coordinator coalesces overlapping triggers.
   useEffect(() => {
-    if (merchantShopGate.status !== "ready" || !currentShop || !user || shops.length === 0) return;
-    void fetchOrders();
-    const pollingInterval = setInterval(() => void fetchOrders(), 15000);
-
+    if (!orderReadScope) return;
+    const refreshVisibleOrders = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) void fetchOrders();
+    };
+    refreshVisibleOrders();
+    const pollingInterval = setInterval(refreshVisibleOrders, 15000);
+    window.addEventListener("focus", refreshVisibleOrders);
+    document.addEventListener("visibilitychange", refreshVisibleOrders);
+    window.addEventListener("online", refreshVisibleOrders);
     return () => {
       clearInterval(pollingInterval);
+      window.removeEventListener("focus", refreshVisibleOrders);
+      document.removeEventListener("visibilitychange", refreshVisibleOrders);
+      window.removeEventListener("online", refreshVisibleOrders);
     };
-  }, [user, shops, fetchOrders, merchantShopGate.status, currentShop]);
+  }, [orderReadScope,fetchOrders]);
 
   const deleteAllOrders = async () => {
     if (!user) return;
@@ -1222,8 +1265,8 @@ function App() {
   useEffect(() => {
     const isCurrentlyOffline = isOffline || isHeartbeatFailed;
     if (!isCurrentlyOffline && wasOffline.current) {
-      toast.success("Connection re-established! Synchronizing local cache with cloud database...", {
-        description: "Pulling any missed order events that occurred during the disconnect window.",
+      toast.info("Connection detected. Verifying orders with LocalEats...", {
+        description: "The order list remains unverified until a successful API refresh. Old offline edits are not replayed.",
         duration: 5000,
       });
       void fetchOrders();
@@ -1280,41 +1323,33 @@ function App() {
     };
   }, [user, merchantShopGate.status, currentShop]);
 
+  // Recover authoritative server state only. Never replay legacy IndexedDB
+  // order/menu commands directly into Firestore on reconnect or SW messages.
   useEffect(() => {
-    const triggerQueueSync = async () => {
+    const reconcileFromServer = () => {
       if (merchantShopGate.status !== "ready" || !currentShop) return;
-      const synced = await processOfflineSyncQueue(supabase);
-      if (synced > 0) {
-        toast.success(`Network Restored: ${synced} offline operations synchronized!`);
-        void fetchOrders();
-        void fetchShops();
-        void fetchAllMenuItems();
-      }
+      void fetchOrders();
+      void fetchShops();
+      void fetchAllMenuItems();
     };
-
     const handleOnline = () => {
       setIsOffline(false);
       setIsHeartbeatFailed(false);
       setDismissedOfflineOverlay(false);
-      void triggerQueueSync();
+      reconcileFromServer();
     };
     const handleOffline = () => {
       setIsOffline(true);
       setDismissedOfflineOverlay(false);
     };
-
-    const handleSWMessage = (event: Event) => {
-      if (event.data?.type === "TRIGGER_OFFLINE_SYNC") {
-        void triggerQueueSync();
-      }
+    const handleSWMessage = (event: MessageEvent) => {
+      if (event.data?.type === "TRIGGER_OFFLINE_SYNC") reconcileFromServer();
     };
-
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.addEventListener("message", handleSWMessage);
     }
-
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
@@ -1428,23 +1463,8 @@ function App() {
     }
   };
 
-  useEffect(() => {
-    if (merchantShopGate.status !== "ready" || !currentShop) return;
-    if (!autoAcceptOrders || orders.length === 0) return;
-
-    // Automatically accept any "pending" orders that aren't yet handled
-    const pendingOrders = orders.filter(o => o.status === "pending");
-    if (pendingOrders.length > 0) {
-      pendingOrders.forEach(async (order) => {
-        try {
-          console.log(`Auto-accepting order ${order.id}`);
-          await updateOrderStatus(order.id, "preparing", "Auto-Accepted by system.");
-        } catch (e) {
-          console.warn("Auto-accept failed for order", order.id, e);
-        }
-      });
-    }
-  }, [orders, autoAcceptOrders, updateOrderStatus, merchantShopGate.status, currentShop]);
+  // Never auto-accept from browser memory, including after a stale reconnect.
+  // Future auto-accept requires a separately approved server-authoritative policy.
 
 
   const sendRiderNudge = async (riderId: string, message: string) => {
@@ -1983,9 +2003,9 @@ function App() {
           confirmText="Yes, Enable Auto-Accept"
           cancelText="Cancel"
           onConfirm={() => {
-            setAutoAcceptOrders(true);
+            setAutoAcceptOrders(false);
             setShowAutoAcceptModal(false);
-            toast.success("Automated Auto-Accept Enabled.");
+            toast.info("Auto-Accept is unavailable until server-authorized acceptance is approved.");
           }}
           onCancel={() => setShowAutoAcceptModal(false)}
           isDestructive={false}
@@ -2279,6 +2299,13 @@ function App() {
                 />
               )}
               {activeTab === "orders" && (
+                <>
+                  {orderReadStatus.state === "failed" && (
+                    <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                      <span>Order list could not be verified. It may be out of date; do not assume there are no new orders. {orderReadStatus.lastSuccessAt ? `Last confirmed sync: ${new Date(orderReadStatus.lastSuccessAt).toLocaleTimeString()}.` : "No confirmed order sync yet."}</span>
+                      <button type="button" className="rounded-lg border border-current px-3 py-2 font-bold" onClick={() => void fetchOrders()}>Retry order sync</button>
+                    </div>
+                  )}
                 <OrdersManagement
                   orders={orders}
                   onUpdateStatus={updateOrderStatus}
@@ -2305,6 +2332,7 @@ function App() {
                   retryQueuedPrintDirect={retryQueuedPrintDirect}
                   clearPrintQueue={clearPrintQueue}
                 />
+                </>
               )}
               {activeTab === "marketing" && (
                 <Marketing
@@ -3200,14 +3228,14 @@ function App() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6 mt-6 border-t border-outline-variant/10">
                       <div className="text-left">
                          <p className="font-bold text-on-surface flex items-center gap-2">
-                           Automated Auto-Accept <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Fast</span>
+                           Automated Auto-Accept <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded uppercase tracking-wider">Paused</span>
                          </p>
-                         <p className="text-xs text-on-surface-variant">Automatically accept incoming orders into your "Preparing" queue instantly without manual review.</p>
+                         <p className="text-xs text-on-surface-variant">Paused for safety. Orders must be accepted through the verified LocalEats API; old offline orders are never auto-accepted.</p>
                       </div>
                       <button
                         onClick={() => {
                           if (!autoAcceptOrders) {
-                            setShowAutoAcceptModal(true);
+                            toast.info("Auto-Accept is paused until server-side acceptance is approved.");
                           } else {
                             setAutoAcceptOrders(false);
                             toast.success("Auto-Accept disabled.");

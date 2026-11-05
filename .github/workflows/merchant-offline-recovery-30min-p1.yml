@@ -1,0 +1,47 @@
+name: Merchant Phase 1 Offline Recovery Integration Gate
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/App.tsx'
+      - 'src/services/merchantOrderRecovery.ts'
+      - 'localeats-api/src/orders/merchantInboxRead.ts'
+      - 'localeats-api/src/routes/orders.ts'
+      - 'tests/merchant-offline-recovery-30min-p1.test.mjs'
+      - 'docs/PHASE1_CLIENT_LAUNCH_READINESS.md'
+      - '.github/workflows/merchant-offline-recovery-30min-p1.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-30min-reconnect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install merchant dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install API dependencies
+        run: npm ci --prefix localeats-api --no-audit --no-fund
+      - name: Build API and merchant with disabled-order flags
+        run: |
+          npm run build --prefix localeats-api
+          npm run build
+      - name: Prove Preview cannot write to a shared live database
+        run: node --test localeats-api/dist/middleware/previewReadOnlyGate.test.js
+      - name: Offline 30-minute merchant and customer-ready notification recovery simulation
+        run: node --experimental-strip-types --test tests/merchant-offline-recovery-30min-p1.test.mjs
+      - name: Shop switch privacy and merchant UI regressions
+        run: node --experimental-strip-types --test tests/merchant-order-inbox-p1.test.mjs tests/merchant-cache-safety-main.test.mjs tests/merchant-riders-coming-soon-main.test.mjs tests/merchant-pickup.test.mjs
+      - name: API open-order pagination and full API contract regressions
+        run: npm test --prefix localeats-api

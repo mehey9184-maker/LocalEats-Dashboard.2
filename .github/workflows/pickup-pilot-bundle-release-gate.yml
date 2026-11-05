@@ -1,0 +1,55 @@
+name: Pickup-only combined Merchant and API release gate
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/pickup-pilot-bundle-release-gate.yml'
+      - 'src/App.tsx'
+      - 'src/services/merchantOrderRecovery.ts'
+      - 'src/utils/offlineSyncQueue.ts'
+      - 'localeats-api/src/routes/orders.ts'
+      - 'localeats-api/src/orders/merchantInboxRead.ts'
+      - 'localeats-api/src/middleware/previewReadOnlyGate.ts'
+      - 'tests/merchant-offline-recovery-30min-p1.test.mjs'
+      - 'tests/merchant-legacy-offline-replay-lock-p1.test.mjs'
+      - 'localeats-api/tests/pickup/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  integrated-merchant-and-api:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install merchant and API, with no live credentials
+        run: |
+          npm ci --no-audit --no-fund
+          npm ci --prefix localeats-api --no-audit --no-fund
+      - name: Build merchant interface and pickup API
+        run: |
+          npm run build
+          npm run build --prefix localeats-api
+      - name: Verify 30-minute merchant outage and no stale-order replay
+        run: node --experimental-strip-types --test tests/merchant-offline-recovery-30min-p1.test.mjs tests/merchant-order-inbox-p1.test.mjs tests/merchant-legacy-offline-replay-lock-p1.test.mjs
+      - name: Check original dashboard cache, rider lock and pickup restrictions
+        run: node --experimental-strip-types --test tests/merchant-cache-safety-main.test.mjs tests/merchant-riders-coming-soon-main.test.mjs tests/merchant-pickup.test.mjs
+      - name: Preview-only read barrier and full API contract test suite
+        run: npm test --prefix localeats-api
+      - name: Confirm no database migrations or live activation in release branch
+        run: |
+          test ! -f supabase/migrations/20261105_pilot_release.sql
+          test "${PICKUP_WRITES_ENABLED}" = "false"
+          test "${VITE_PICKUP_ORDERING_ENABLED}" = "false"
+          test "${RIDER_ACTIVATION_ENABLED}" = "false"
+          echo "PICKUP_BUNDLE_RELEASE_REGRESSION_PASS"

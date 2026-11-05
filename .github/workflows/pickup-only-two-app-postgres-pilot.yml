@@ -1,0 +1,80 @@
+name: Pickup Only — Isolated Client Merchant API PostgreSQL Journey
+on:
+  pull_request:
+    branches:
+      - main
+      - reliability/merchant-legacy-offline-replay-lock-p1-20261105
+    paths:
+      - 'localeats-api/tests/pickup/**'
+      - 'localeats-api/src/routes/orders.ts'
+      - 'localeats-api/src/orders/merchantInboxRead.ts'
+      - 'docs/PICKUP_ONLY_SIX_MONTH_PILOT.md'
+      - '.github/workflows/pickup-only-two-app-postgres-pilot.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pickup-only-real-http:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-only-do-not-reuse
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-only-do-not-reuse
+      PGSSLMODE: disable
+      PGDATABASE: local_pickup_qa
+      PICKUP_TEST_ISOLATED: '1'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Pin the actual Customer pickup adapter at reviewed Preview commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: mehey9184-maker/LocalEats-app
+          ref: 7c7954158791d773f223fc3405a63d424946de54 # Client PR #40 tested commit
+          path: customer-original-ui
+          persist-credentials: false
+      - name: Validate Customer adapter matches the pickup-only reviewed release
+        run: |
+          test -f customer-original-ui/src/pickup/client.ts
+          ! grep -q 'RIDER_ACTIVATION_ENABLED.*true' customer-original-ui/src/pickup/client.ts
+          test -f src/pickup/client.ts
+          # Preserve pre-existing Windows fixture path, without copying any client data.
+          ln -s "$GITHUB_WORKSPACE/customer-original-ui" "$GITHUB_WORKSPACE/../customer-original-ui"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Install API dependencies without live secrets
+        run: npm ci --prefix localeats-api --no-audit --no-fund
+      - name: Build real production API handler code for isolated tests
+        run: npm run build --prefix localeats-api
+      - name: Create fresh disposable PostgreSQL 17 database
+        run: |
+          psql --version
+          PGDATABASE=postgres createdb local_pickup_qa
+          test "$(psql -X -At -c 'select current_database()')" = "local_pickup_qa"
+      - name: Real Customer and Merchant HTTP lifecycle with transactional PostgreSQL
+        run: bash localeats-api/tests/pickup/ci-isolated-journey.sh
+      - name: API unit contract regression suite, ordering still globally disabled
+        run: npm test --prefix localeats-api

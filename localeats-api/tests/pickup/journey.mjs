@@ -25,18 +25,33 @@ const allowed=["orders","shops_with_availability","shops","menu_items","pickup_o
 let failDatabase=false;
 supabaseAdmin.from=table=>{
  if(!allowed.includes(table))throw Error("Unexpected fixture table "+table);
- const where=[];let limit=250;let ordering=[];let single=false;
+ const where=[];let limit=250;let offset=0;let ordering=[];let single=false;
  const load=()=>{
   if(failDatabase)return {data:null,error:{message:"Simulated offline database"}};
   const rows=jsonSql("select coalesce(jsonb_agg(to_jsonb(q)),'[]'::jsonb) from (select * from public."+ident(table)+
-   (where.length ? " where "+where.join(" and ") : "")+(ordering.length ? " order by "+ordering.join(",") : "")+" limit "+limit+")q");
+   (where.length ? " where "+where.join(" and ") : "")+
+   (ordering.length ? " order by "+ordering.join(",") : "")+" limit "+limit+" offset "+offset+")q");
   return {data:single ? rows[0] ?? null : rows,error:null};
  };
  const query={select:()=>query,eq:(k,v)=>{where.push(ident(k)+"="+quote(v));return query;},
   is:(k,v)=>{where.push(ident(k)+(v===null ? " is null" : "="+quote(v)));return query;},
   in:(k,v)=>{where.push(ident(k)+" in ("+v.map(quote).join(",")+")");return query;},
+  or:filter=>{
+    // Emulate ONLY the fixed, server-authored unfinished filter. Never
+    // interpolate arbitrary PostgREST expressions into SQL.
+    if(filter!=="status.is.null,status.not.in.(cancelled,collected,delivered,completed)")
+      throw Error("Unexpected pickup fixture filter");
+    where.push('("status" is null or "status" not in (\'cancelled\',\'collected\',\'delivered\',\'completed\'))');
+    return query;
+  },
   order:(k,options)=>{ordering.push(ident(k)+(options?.ascending===false ? " desc" : " asc"));return query;},
-  limit:n=>{limit=Number(n);return query;},maybeSingle:async()=>{single=true;return load();},
+  limit:n=>{limit=Number(n);return query;},
+  range:(start,end)=>{
+    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<start||end-start>=250)
+      throw Error("Invalid synthetic inbox page");
+    offset=start;limit=end-start+1;return query;
+  },
+  maybeSingle:async()=>{single=true;return load();},
   then:(resolve,reject)=>Promise.resolve().then(load).then(resolve,reject)};
  return query;
 };
