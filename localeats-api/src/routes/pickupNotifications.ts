@@ -4,6 +4,7 @@ import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 import { object, onlyKeys, UUID } from "../orders/pickupService.js";
 import { OrderContractError } from "../orders/orderContract.js";
 import { drainPickupPush } from "../orders/pickupPush.js";
+import { isReadOnlyPreviewMode } from "../middleware/previewReadOnlyGate.js";
 export const pickupNotificationRoutes=Router();
 const errorResponse=(res:Response,error:unknown):void=>{
   const e=error instanceof OrderContractError ? error : new OrderContractError(503,"NOTIFICATION_SERVICE_UNAVAILABLE","Notifications unavailable.");
@@ -23,7 +24,10 @@ pickupNotificationRoutes.get("/notifications",authenticateFirebase,async(req:Aut
     }
     const {data,error}=await query.order("occurred_at",{ascending:false}).order("id",{ascending:false}).limit(50);
     if(error) throw error;
-    await drainPickupPush(supabaseAdmin,uid);
+    // A read-only Preview may reuse the live database: never claim outbox
+    // rows, write delivery receipts, or send FCM from this GET/HEAD request.
+    // Production retains the existing request-triggered outbox retry behavior.
+    if (!isReadOnlyPreviewMode()) await drainPickupPush(supabaseAdmin,uid);
     const events=data ?? [], last=events.at(-1);
     res.json({success:true,notifications:events,next_cursor:events.length===50 && last ? {before:last.occurred_at,before_id:last.id} : null});
   } catch(error) { errorResponse(res,error); }
