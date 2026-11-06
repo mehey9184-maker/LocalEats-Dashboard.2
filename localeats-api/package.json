@@ -7,7 +7,9 @@
     "build": "tsc",
     "test": "npm run build && node --test dist/routes/availability.test.js dist/legacyOrderGuard.test.js dist/corsOrigins.test.js dist/orders/orderContract.test.js dist/orders/orderService.test.js dist/routes/catalog.test.js dist/routes/customerProfiles.test.js dist/routes/riderAccess.test.js dist/routes/adminRiders.test.js dist/middleware/apiCacheSafety.test.js dist/contracts/pickupDraft.test.js dist/orders/pickupService.test.js dist/orders/pickupRead.test.js dist/routes/pickupCompat.test.js dist/routes/pickup.test.js dist/middleware/pickupWriteGate.test.js dist/middleware/controlledPickup.test.js dist/routes/customerProfile.test.js dist/profiles/supabaseProfileRepository.test.js dist/profiles/customerProfileRuntime.test.js",
     "start": "node dist/server.js",
-    "dev": "ts-node src/server.ts"
+    "dev": "ts-node src/server.ts",
+    "test:profile-stage-preflight": "node --test scripts/profile-stage-config.test.mjs",
+    "test:profile-stage-cloud": "npm run build && node scripts/profile-stage-acceptance.mjs --run"
   },
   "keywords": [],
   "author": "",

@@ -11,6 +11,7 @@ on:
       - 'localeats-api/src/middleware/authenticateFirebase.ts'
       - 'localeats-api/src/server.ts'
       - 'localeats-api/package.json'
+      - 'localeats-api/scripts/**'
       - 'docs/CUSTOMER_PROFILE_API_SECURITY_20261106.md'
       - '.github/workflows/customer-profile-api-verified.yml'
   workflow_dispatch:
@@ -34,6 +35,7 @@ jobs:
           cache: npm
           cache-dependency-path: localeats-api/package-lock.json
       - run: npm ci --prefix localeats-api --no-audit --no-fund
+      - run: npm run test:profile-stage-preflight --prefix localeats-api
       - name: Every existing API contract and two-account profile authorization test
         run: npm test --prefix localeats-api
       - name: Verify profile writes and pickup stay default-off
