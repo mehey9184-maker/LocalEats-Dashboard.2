@@ -76,11 +76,12 @@ export class SupabaseProfileStore implements ProfileStore {
     if(email!==null)record.email=email;
     const result=await this.db.from("profiles").upsert(record,{onConflict:"user_id"}).select(PROFILE_FIELDS).single();
     if(result.error||!result.data)throw Error("PROFILE_SAVE_UNAVAILABLE");
-    if(result.data.user_id!==uid)throw Error("PROFILE_SCOPE_MISMATCH");
+    const confirmed=result.data as Record<string,unknown>;
+    if(confirmed.user_id!==uid)throw Error("PROFILE_SCOPE_MISMATCH");
     for(const key of Object.keys(data)){
-      if(JSON.stringify(result.data[key])!==JSON.stringify(data[key]))throw Error("PROFILE_SAVE_UNCONFIRMED");
+      if(JSON.stringify(confirmed[key])!==JSON.stringify(data[key]))throw Error("PROFILE_SAVE_UNCONFIRMED");
     }
-    return result.data as Profile;
+    return confirmed as Profile;
   }
 }
 
