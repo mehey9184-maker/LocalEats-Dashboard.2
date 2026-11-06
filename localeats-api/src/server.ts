@@ -14,6 +14,7 @@ import { customerOrderRoutes, merchantOrderRoutes } from "./routes/orders.js";
 import riderOrderRoutes from "./routes/riderOrders.js";
 import { riderRouter, merchantRiderRouter } from "./routes/riderAccess.js";
 import { isAllowedOrigin } from "./corsOrigins.js";
+import { customerProfilesRouter } from "./routes/customerProfiles.js";
 import { configureApiCacheSafety } from "./middleware/apiCacheSafety.js";
 
 dotenv.config();
@@ -56,6 +57,7 @@ app.use("/api/v1/rider", riderRouter);
 app.use("/api/v1/merchant/riders", merchantRiderRouter);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/catalog", catalogRoutes);
+app.use("/api/v1/profiles", customerProfilesRouter);
 app.use("/api/v1", pickupNotificationRoutes);
 
 // 404 Handler
