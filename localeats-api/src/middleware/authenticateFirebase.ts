@@ -5,6 +5,7 @@ export interface AuthenticatedRequest extends Request {
   authUser?: {
     uid: string;
     email: string | null;
+    isAnonymous?: boolean;
   };
 }
 
@@ -35,6 +36,7 @@ export const authenticateFirebase = async (
     req.authUser = {
       uid: decoded.uid,
       email: decoded.email || null,
+      isAnonymous: decoded.firebase?.sign_in_provider === "anonymous",
     };
 
     next();
