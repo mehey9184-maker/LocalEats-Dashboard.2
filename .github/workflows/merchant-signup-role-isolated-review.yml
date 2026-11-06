@@ -1,0 +1,53 @@
+name: Signup Metadata Role P1 — Isolated Security Review
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'security/drafts/signup_role_customer_only_REVIEW_ONLY.sql'
+      - 'tests/security/signup_role_fixture.sql'
+      - 'tests/security/signup_role_assertions.sql'
+      - 'docs/SIGNUP_ROLE_SECURITY_CUTOVER_20261106.md'
+      - '.github/workflows/merchant-signup-role-isolated-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  signup-role-guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-only
+          POSTGRES_DB: signup_synthetic_qa
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d signup_synthetic_qa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-only
+      PGDATABASE: signup_synthetic_qa
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify isolated target and no external database settings
+        run: |
+          test "$PGDATABASE" = "signup_synthetic_qa"
+          test "$PGHOST" = "127.0.0.1"
+          test -z "${SUPABASE_URL:-}"
+          test -z "${DATABASE_URL:-}"
+          test "$(psql -X -At -c 'select current_database()')" = "signup_synthetic_qa"
+      - name: Reproduce unsafe signup role from synthetic user metadata
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/security/signup_role_fixture.sql
+      - name: Apply reviewed SQL only inside synthetic PostgreSQL
+        run: psql -X -v ON_ERROR_STOP=1 -f security/drafts/signup_role_customer_only_REVIEW_ONLY.sql
+      - name: Assert role cannot be supplied by signed-up user
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/security/signup_role_assertions.sql
