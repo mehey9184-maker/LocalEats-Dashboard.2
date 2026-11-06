@@ -1,0 +1,51 @@
+name: Security Review — Signup Role Escalation Lockdown (Synthetic Only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'security/drafts/signup_role_metadata_lockdown_REVIEW_ONLY.sql'
+      - 'tests/security/signup_metadata_fixture.sql'
+      - 'tests/security/signup_metadata_assertions.sql'
+      - 'tests/security/run_signup_review.sh'
+      - 'docs/SECURITY_SIGNUP_ROLE_REVIEW_20261106.md'
+      - '.github/workflows/merchant-signup-role-security-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  signup-role-security-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-local-review-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-local-review-only
+      PGSSLMODE: disable
+      PGDATABASE: local_signup_role_qa
+      SIGNUP_REVIEW_ISOLATED: '1'
+      PICKUP_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Create disposable PostgreSQL 17 fixture database
+        run: PGDATABASE=postgres createdb local_signup_role_qa
+      - name: Reproduce and repair unsafe user-selected role (no Production access)
+        run: bash tests/security/run_signup_review.sh
