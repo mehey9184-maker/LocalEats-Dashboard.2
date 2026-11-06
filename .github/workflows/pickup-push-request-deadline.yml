@@ -1,0 +1,29 @@
+name: Pickup push request deadline — synthetic reliability gate
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/src/orders/pickupPush.ts'
+      - 'localeats-api/src/orders/pickupPushDeadline.test.ts'
+      - 'localeats-api/package.json'
+      - '.github/workflows/pickup-push-request-deadline.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bounded-push-and-api-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Install locked API dependencies (no live credentials)
+        run: npm ci --prefix localeats-api --no-audit --no-fund
+      - name: Run TypeScript build and API regression suite including hung-provider tests
+        run: npm test --prefix localeats-api
