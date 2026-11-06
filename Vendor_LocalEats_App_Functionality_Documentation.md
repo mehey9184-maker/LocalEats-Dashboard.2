@@ -1,5 +1,10 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## Commercial hosting launch budget review — 2026-11-07
+
+A new review-only operating note at `docs/VERCEL_COMMERCIAL_HOSTING_CAPACITY_GATE_20261107.md` documents the 3 Vercel projects, current Hobby non-commercial restriction, Pro starting cost and 1 TB *transfer* distinction, and the 2026-11-07 read-only Production PostgreSQL footprint (~21 MiB). The existing 180-day synthetic capacity test is retained; it is not a real live-load measurement. No code, hosting purchase, Vercel feature flags, Production deployment, Firebase/Supabase permissions or ordering behavior changed.
+
+
 ## Isolated Firebase staging configuration — 2026-11-05
 
 The Dashboard previously preferred bundled Firebase values even when staging environment values were supplied. Staging builds now explicitly select `VITE_FIREBASE_CONFIG_SOURCE=environment` and provide all six Firebase app values. Incomplete environment configurations fail before Firebase initializes. The Firestore database is selected with `VITE_FIREBASE_FIRESTORE_DATABASE_ID`, defaulting to `(default)` in that mode. Existing deployments continue using their bundled configuration unless opted in. This does not activate ordering or deploy security rules. `tests/firebase-environment.test.mjs` captures the Firebase SDK initialization arguments to verify both staging isolation and existing-build compatibility.
