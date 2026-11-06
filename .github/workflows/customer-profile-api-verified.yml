@@ -3,6 +3,9 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'localeats-api/src/profiles/**'
+      - 'localeats-api/src/routes/customerProfile.ts'
+      - 'localeats-api/src/routes/customerProfile.test.ts'
       - 'localeats-api/src/routes/customerProfiles.ts'
       - 'localeats-api/src/routes/customerProfiles.test.ts'
       - 'localeats-api/src/middleware/authenticateFirebase.ts'
