@@ -786,7 +786,7 @@ r32_seed(){
 }
 r32_claim(){
   pg -c "SET SESSION AUTHORIZATION r32_worker;
-    SELECT order_id::text||'|'||collected_command::text||'|'||lease_token::text||'|'||attempt
+    SELECT order_id::text||'|'||command_id::text||'|'||lease_token::text||'|'||attempt
       FROM r32_private.claim_next();"
 }
 r32_reset
