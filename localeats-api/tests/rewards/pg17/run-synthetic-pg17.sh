@@ -556,7 +556,9 @@ expect_r30_denied "SET ROLE r30_api_executor;
  UPDATE r30_private.programme SET committed_minor=0;"
 expect_r30_denied "SET ROLE r30_api_executor;
  UPDATE r30_source.orders SET registered=true;"
-expect_r30_denied "SET ROLE r30_api_executor; SET ROLE r30_finance_owner;"
+# SET ROLE alone preserves a superuser session_user in our Docker harness.
+# SET SESSION AUTHORIZATION drops that privilege for this fresh psql session.
+expect_r30_denied "SET SESSION AUTHORIZATION r30_api_executor; SET ROLE r30_finance_owner;"
 expect_r30_denied "SET ROLE r30_finance_owner;
  INSERT INTO r30_source.orders(id,customer_uid,shop_id,origin,registered,test_order,status,payment_status)
  VALUES('00000000-0000-4000-8000-000000000398'::uuid,'fake','fake','server_created_pickup',
