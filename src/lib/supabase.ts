@@ -1,3 +1,4 @@
+import {projectCachedMerchantSession} from "./merchantSessionMetadata";
 import {legacyOrderWriteError} from "./legacyOrderWrite";
 /**
  * Firestore Compatibility & Migration Bridge
@@ -506,8 +507,8 @@ export const supabase = {
       const cached = localStorage.getItem("localeats_user_session");
       if (cached) {
         try {
-          const user = JSON.parse(cached);
-          return { data: { session: { user, access_token: "firebase-token" } }, error: null };
+          const user = projectCachedMerchantSession(JSON.parse(cached));
+          if (user) return { data: { session: { user, access_token: "firebase-token" } }, error: null };
         } catch {
           // ignore
         }
@@ -532,7 +533,7 @@ export const supabase = {
       const cached = localStorage.getItem("localeats_user_session");
       if (cached) {
         try {
-          return { data: { user: JSON.parse(cached) }, error: null };
+          return { data: { user: projectCachedMerchantSession(JSON.parse(cached)) }, error: null };
         } catch {
           // ignore
         }

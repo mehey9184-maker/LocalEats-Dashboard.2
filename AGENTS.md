@@ -62,4 +62,4 @@ Background shop revalidation retains the approved same-account display while the
 The quote response adds can_submit for the verified customer and requested shop, based on the existing pilot gate. Prices remain available while submission is disabled. Clients treat a missing or false result as quote-only. The create route independently rechecks all authorization and pricing.
 
 ## Merchant Firestore signup metadata
-Merchant signup saves contact fields without a role. Session formatting projects only contact and display preferences from Firestore. Shop ownership and administrator authority continue to come from verified API records.
+Merchant signup saves contact fields without a role. Session formatting and legacy cache hydration project only contact and display preferences. Shop ownership and administrator authority continue to come from verified API records.

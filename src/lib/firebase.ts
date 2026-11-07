@@ -1,3 +1,4 @@
+import {projectMerchantSessionMetadata} from "./merchantSessionMetadata";
 import {legacyOrderWriteError} from "./legacyOrderWrite";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
@@ -192,11 +193,7 @@ export async function formatFirebaseUserSession(fbUser: FirebaseUser): Promise<U
       full_name: name,
       name: name,
       phone: fbUser.phoneNumber || (userMeta.phone as string) || "",
-      ...Object.fromEntries([
-        "full_name", "name", "phone", "whatsapp", "location", "address", "city",
-        "avatar_url", "marketing_preferences", "dark_mode", "auto_schedule_enabled",
-        "operating_hours", "weekly_operating_hours", "holiday_schedule",
-      ].filter(key => Object.hasOwn(userMeta, key)).map(key => [key, userMeta[key]])),
+      ...projectMerchantSessionMetadata(userMeta),
     },
   };
 }

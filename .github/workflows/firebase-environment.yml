@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'src/lib/firebase.ts'
+      - 'src/lib/merchantSessionMetadata.ts'
+      - 'src/lib/supabase.ts'
       - 'src/services/merchantPickupPolicy.ts'
       - 'src/services/MerchantApi.ts'
       - 'src/services/merchantPickupRecovery.ts'
