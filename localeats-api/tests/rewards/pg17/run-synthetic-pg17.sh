@@ -272,3 +272,140 @@ assert_query "SELECT CASE WHEN (SELECT count(*) FROM reward_lab.grants)=0
 assert_query "SELECT balanced FROM reward_lab.reconcile_allocated_budget();" "t"
 assert_query "SELECT count(*) FROM reward_lab.payables;" "0"
 echo "R25_PG17_CHECKOUT_MENU_AND_REFUND_CONCURRENCY_PASS"
+
+# R2.8: private schema is NEW and ISOLATED in the same scratch PostgreSQL 17.
+# It is NOT a hosted Supabase schema, not in migrations and not Production SQL.
+echo "R2.8 PG17: private ledger, budget commitments, refunds and access denial"
+run_file "$here/private-r28.SYNTHETIC_ONLY.sql" >"$tmp/private-r28-schema.out"
+run_file "$here/private-r28-assertions.SYNTHETIC_ONLY.sql" >"$tmp/private-r28-assertions.out"
+grep -q 'R28_PRIVATE_PG17_DETERMINISTIC_FINANCE_AND_PRIVILEGES_PASS' "$tmp/private-r28-assertions.out"
+assert_query "SELECT balanced FROM r28_private.reconcile_commitment();" "t"
+
+reset_r28(){
+  pg -c "TRUNCATE r28_private.programme, r28_private.customers, r28_private.shops,
+     r28_private.admins, r28_private.audit_events RESTART IDENTITY CASCADE;" >/dev/null 2>&1
+  pg -c "INSERT INTO r28_private.programme(version,active,budget_minor,committed_minor)
+     VALUES('pilot-v1',true,2500,0);" >/dev/null
+  pg -c "INSERT INTO r28_private.customers(customer_uid,registered,is_test) VALUES
+     ('race-user-1',true,false),('race-user-2',true,false);" >/dev/null
+  pg -c "INSERT INTO r28_private.shops(shop_id,owner_uid,approval_status)
+     VALUES('shop-1','merchant-1','approved');" >/dev/null
+  pg -c "INSERT INTO r28_private.shop_enrolments(shop_id,version,enrolled_at,enabled)
+     VALUES('shop-1','pilot-v1',now()-interval '1 day',true);" >/dev/null
+  pg -c "INSERT INTO r28_private.menu_current(shop_id,item_id,revision,unit_minor,eligible_kota,kind)
+     VALUES('shop-1','kota',1,2500,true,'standard_kota'),
+           ('shop-1','kota2',1,2500,true,'standard_kota');" >/dev/null
+  pg -c "INSERT INTO r28_private.admins(uid,role,active)
+     VALUES('admin-1','super_admin',true);" >/dev/null
+}
+r28_pickup(){
+  local order="$1" prefix="$2"
+  pg -c "SELECT r28_private.record_pickup_event('$order','$prefix-pay','payment_confirmed',1,'merchant-1');" >/dev/null
+  pg -c "SELECT r28_private.record_pickup_event('$order','$prefix-collected','collected',2,'merchant-1');" >/dev/null
+}
+reset_r28
+# Same checkout ID in separate database processes: one immutable snapshot.
+paired \
+ "SELECT r28_private.capture_checkout('race-order','race-user-1','shop-1','[{\"item_id\":\"kota\",\"quantity\":4}]'::jsonb);" \
+ "SELECT r28_private.capture_checkout('race-order','race-user-1','shop-1','[{\"item_id\":\"kota\",\"quantity\":4}]'::jsonb);"
+if [[ "$status_a" -ne 0 || "$status_b" -ne 0 ]]; then
+  cat "$tmp/a.err" "$tmp/b.err" >&2; echo "R28 parallel checkout replay FAILED" >&2; exit 1
+fi
+assert_query "SELECT count(*) FROM r28_private.orders;" "1"
+assert_query "SELECT count(*) FROM r28_private.purchase_lines;" "1"
+r28_pickup race-order r1
+paired \
+ "SELECT r28_private.credit_collected_order('race-order');" \
+ "SELECT r28_private.credit_collected_order('race-order');"
+if [[ "$status_a" -ne 0 || "$status_b" -ne 0 ]]; then
+  cat "$tmp/a.err" "$tmp/b.err" >&2; echo "R28 parallel duplicate credit FAILED" >&2; exit 1
+fi
+assert_query "SELECT count(*) FROM r28_private.credits;" "1"
+assert_query "SELECT count(*) FROM r28_private.grants;" "1"
+assert_query "SELECT committed_minor FROM r28_private.programme;" "2500"
+assert_query "SELECT balanced FROM r28_private.reconcile_commitment();" "t"
+
+# Two customers compete for one R25 owner commitment: exactly one wins.
+reset_r28
+pg -c "SELECT r28_private.capture_checkout('race-a','race-user-1','shop-1','[{\"item_id\":\"kota\",\"quantity\":4}]'::jsonb);" >/dev/null
+pg -c "SELECT r28_private.capture_checkout('race-b','race-user-2','shop-1','[{\"item_id\":\"kota\",\"quantity\":4}]'::jsonb);" >/dev/null
+r28_pickup race-a a
+r28_pickup race-b b
+paired \
+ "SELECT r28_private.credit_collected_order('race-a');" \
+ "SELECT r28_private.credit_collected_order('race-b');"
+r28_wins=0
+if [[ "$status_a" -eq 0 ]]; then r28_wins=$((r28_wins+1)); else grep -q 'R28_REWARD_BUDGET_EXHAUSTED' "$tmp/a.err"; fi
+if [[ "$status_b" -eq 0 ]]; then r28_wins=$((r28_wins+1)); else grep -q 'R28_REWARD_BUDGET_EXHAUSTED' "$tmp/b.err"; fi
+if [[ "$r28_wins" -ne 1 ]]; then
+  cat "$tmp/a.err" "$tmp/b.err" >&2; echo "R28 owner budget overcommitted" >&2; exit 1
+fi
+assert_query "SELECT count(*) FROM r28_private.credits;" "1"
+assert_query "SELECT count(*) FROM r28_private.grants;" "1"
+assert_query "SELECT committed_minor FROM r28_private.programme;" "2500"
+assert_query "SELECT balanced FROM r28_private.reconcile_commitment();" "t"
+
+# Multi-line (4+20 units) must roll back the ENTIRE transaction if budget
+# cannot pay both Bronze R25 and Silver R125 commitments.
+reset_r28
+pg -c "SELECT r28_private.capture_checkout('race-multiline','race-user-1','shop-1',
+ '[{\"item_id\":\"kota\",\"quantity\":4},{\"item_id\":\"kota2\",\"quantity\":20}]'::jsonb);" >/dev/null
+r28_pickup race-multiline multi
+if pg -c "SELECT r28_private.credit_collected_order('race-multiline');" >"$tmp/r28-budget.out" 2>"$tmp/r28-budget.err"; then
+ echo "R28 partial multi-line budget failure was incorrectly accepted" >&2; exit 1
+fi
+grep -q 'R28_REWARD_BUDGET_EXHAUSTED' "$tmp/r28-budget.err"
+assert_query "SELECT count(*) FROM r28_private.credits;" "0"
+assert_query "SELECT count(*) FROM r28_private.grants;" "0"
+assert_query "SELECT count(*) FROM r28_private.progress;" "0"
+assert_query "SELECT committed_minor FROM r28_private.programme;" "0"
+
+# Refund/credit order is serialized: refund first rejects credit, or credit
+# first keeps grant reserved and creates a customer hold. Never double-award.
+reset_r28
+pg -c "SELECT r28_private.capture_checkout('race-refund','race-user-1','shop-1',
+ '[{\"item_id\":\"kota\",\"quantity\":4}]'::jsonb);" >/dev/null
+r28_pickup race-refund ref
+paired \
+ "SELECT r28_private.record_verified_refund('refund-race','race-refund','race-refund:line:1',1,
+  'merchant-1','admin-1','Verified synthetic shop refund');" \
+ "SELECT r28_private.credit_collected_order('race-refund');"
+if [[ "$status_a" -ne 0 ]]; then
+  cat "$tmp/a.err" >&2; echo "R28 refund source failed" >&2; exit 1
+fi
+if [[ "$status_b" -ne 0 ]]; then
+  grep -q 'R28_REFUNDED_OR_HELD' "$tmp/b.err"
+fi
+assert_query "SELECT count(*) FROM r28_private.refund_events;" "1"
+assert_query "SELECT CASE WHEN (SELECT count(*) FROM r28_private.grants)=0
+ THEN (SELECT count(*) FROM r28_private.credits)=0
+ ELSE (SELECT count(*) FROM r28_private.credits)=1 AND
+      (SELECT count(*) FROM r28_private.refund_holds)=1
+ END;" "t"
+assert_query "SELECT balanced FROM r28_private.reconcile_commitment();" "t"
+
+# Menu UPDATE and checkout race, but saved price and eligibility always come
+# from ONE complete revision (never a Frankenstein price/eligibility snapshot).
+reset_r28
+paired \
+ "BEGIN; UPDATE r28_private.menu_current SET revision=2,unit_minor=3300,
+  eligible_kota=false WHERE shop_id='shop-1' AND item_id='kota';
+  SELECT pg_sleep(0.4); COMMIT;" \
+ "SELECT r28_private.capture_checkout('race-menu','race-user-1','shop-1',
+  '[{\"item_id\":\"kota\",\"quantity\":4}]'::jsonb);"
+if [[ "$status_a" -ne 0 || "$status_b" -ne 0 ]]; then
+  cat "$tmp/a.err" "$tmp/b.err" >&2; echo "R28 menu vs checkout FAILED" >&2; exit 1
+fi
+assert_query "SELECT CASE WHEN
+ (menu_revision=1 AND unit_minor=2500 AND qualifies_kota=true) OR
+ (menu_revision=2 AND unit_minor=3300 AND qualifies_kota=false)
+ THEN true ELSE false END FROM r28_private.purchase_lines WHERE order_id='race-menu';" "t"
+assert_query "SELECT count(*) FROM r28_private.purchase_lines WHERE order_id='race-menu';" "1"
+
+# Final check of scratch schema access: read, write, functions and public grant
+# all denied for an explicit untrusted role.
+assert_query "SELECT has_schema_privilege('r28_untrusted','r28_private','USAGE');" "f"
+assert_query "SELECT has_table_privilege('r28_untrusted','r28_private.orders','INSERT');" "f"
+assert_query "SELECT has_function_privilege('r28_untrusted',
+ 'r28_private.credit_collected_order(text)','EXECUTE');" "f"
+echo "R28_PRIVATE_PG17_CONCURRENCY_BUDGET_AND_ACCESS_PASS"
