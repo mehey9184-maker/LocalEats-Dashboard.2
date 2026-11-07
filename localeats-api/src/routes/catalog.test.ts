@@ -53,9 +53,10 @@ test("Pickup catalog enforces real coordinates, active pilot metadata and maximu
   const noLocation=await fetch(base+"/api/v1/catalog/pickup-shops");assert.equal(noLocation.status,400);
   const result=await fetch(base+"/api/v1/catalog/pickup-shops?lat=-25.98&lng=28.2");assert.equal(result.status,200);
   const body=await result.json();
-  assert.deepEqual(body.shops.map((shop:any)=>shop.id),["eligible","offline"]);
+  assert.deepEqual(body.shops.map((shop:any)=>shop.id),["eligible","offline","outside-area"]);
   assert.equal(body.shops[0].distance_km,0);
   assert.equal(body.shops[1].is_active,false,"Closed shop must remain visibly closed, not orderable");
+  assert.equal(body.shops[2].location,"Elsewhere","An approved nearby shop is not blocked by town text");
   assert.equal(fakeDb.calls.some(c=>c.method==="eq" && c.args[0]==="approval_status" && c.args[1]==="approved"),true);
   assert.equal(fakeDb.calls.some(c=>c.method==="is" && c.args[0]==="archived_at" && c.args[1]===null),true);
 
@@ -175,5 +176,23 @@ test("Approved closed shop's real menu remains readable without relaxing approva
   assert.deepEqual(payload.menu_items.map((item:any)=>item.name),["Real menu item"]);
   assert.equal(fakeDb.calls.some(c=>c.method==="eq"&&c.args[0]==="approval_status"&&c.args[1]==="approved"),true);
   assert.equal(fakeDb.calls.some(c=>c.method==="is"&&c.args[0]==="archived_at"&&c.args[1]===null),true);
+ });
+});
+
+test("Pickup nearby approved shops are distance-ranked across town boundaries, with real coordinates only",async()=>{
+ const {app,fakeDb}=createTestApp();
+ fakeDb.mockShopData=[
+  {id:"pretoria-far",name:"Too far",is_active:true,location:"Pretoria",lat:-25.7,lng:28.1},
+  {id:"cosmo-near",name:"Local",is_active:true,location:"Cosmo City",lat:-25.984,lng:28.2},
+  {id:"unknown-area",name:"No town",is_active:false,location:null,lat:-25.982,lng:28.2},
+  {id:"missing-pin",name:"No pin",is_active:true,location:"Cosmo City",lat:null,lng:null},
+ ];
+ await runWithServer(app,async base=>{
+  const response=await fetch(base+"/api/v1/catalog/pickup-shops?lat=-25.98&lng=28.2");
+  assert.equal(response.status,200);
+  const body=await response.json();
+  assert.deepEqual(body.shops.map((x:any)=>x.id),["unknown-area","cosmo-near"]);
+  assert.equal(body.shops[0].is_active,false);
+  assert.ok(body.shops[0].distance_km < body.shops[1].distance_km);
  });
 });
