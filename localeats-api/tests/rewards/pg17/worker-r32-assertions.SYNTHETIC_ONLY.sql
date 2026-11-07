@@ -51,14 +51,14 @@ FROM r32_pickup.orders WHERE customer_uid<>'no-proof'
   AND customer_uid<>'old-user';
 COMMIT;
 DO $r32check$
-DECLARE id_num integer; order_id uuid; pay uuid; collect uuid;
+DECLARE id_num integer; v_order uuid; pay uuid; collect uuid;
 BEGIN
  FOR id_num IN 510..516 LOOP
-   order_id:=('00000000-0000-4000-8000-000000000'||id_num)::uuid;
+   v_order:=('00000000-0000-4000-8000-000000000'||id_num)::uuid;
    pay:=('00000000-0000-4000-8000-000000000'||(id_num+20))::uuid;
    collect:=('00000000-0000-4000-8000-000000000'||(id_num+30))::uuid;
-   PERFORM r32_pickup.command(order_id,'owner-1','confirm_payment',pay,0);
-   PERFORM r32_pickup.command(order_id,'owner-1','collect',collect,1);
+   PERFORM r32_pickup.command(v_order,'owner-1','confirm_payment',pay,0);
+   PERFORM r32_pickup.command(v_order,'owner-1','collect',collect,1);
  END LOOP;
  IF (SELECT count(*) FROM r32_private.outbox)<>1 OR
     NOT EXISTS(SELECT 1 FROM r32_private.outbox
