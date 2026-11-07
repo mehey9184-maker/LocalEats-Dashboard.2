@@ -1,4 +1,4 @@
-import {assertControlledPickup} from "../middleware/controlledPickup.js";
+import {assertControlledPickup, canSubmitControlledPickup} from "../middleware/controlledPickup.js";
 import {assertPickupWritesDisabled} from "../middleware/pickupWriteGate.js";
 import { Router, type Response } from "express";
 import { authenticateFirebase, type AuthenticatedRequest } from "../middleware/authenticateFirebase.js";
@@ -75,7 +75,11 @@ router.post("/quote", authenticateFirebase, async (req: AuthenticatedRequest, re
 
     const request = parsePickupInput(req.body,false);
     const quote = pickupQuote(await pickupPricing(repository,userId,request));
-    res.status(200).json({ success: true, quote });
+    const canSubmit = !req.authUser?.isAnonymous && canSubmitControlledPickup({
+      shop_id: request.input.shop_id,
+      user_id: userId,
+    });
+    res.status(200).json({ success: true, quote: { ...quote, can_submit: canSubmit } });
   } catch (error) {
     sendOrderError(res, error);
   }

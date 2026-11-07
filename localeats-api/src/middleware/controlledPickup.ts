@@ -9,3 +9,13 @@ export function assertControlledPickup(order:{shop_id?:unknown;user_id?:unknown}
  if(order.shop_id!==CONTROLLED_PICKUP_SHOP || order.user_id!==customer)
   throw new OrderContractError(403,"PICKUP_TEST_NOT_ALLOWED","This order is outside the controlled pickup test.");
 }
+
+export function canSubmitControlledPickup(order: {shop_id?: unknown; user_id?: unknown}): boolean {
+  try {
+    assertControlledPickup(order);
+    return true;
+  } catch (error) {
+    if (error instanceof OrderContractError) return false;
+    throw error;
+  }
+}
