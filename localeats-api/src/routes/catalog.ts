@@ -1,7 +1,7 @@
 import {effectiveShop} from "../orders/shopAvailability.js";
 import { Router, Request, Response } from "express";
 import {calculateDistanceKm} from "../orders/orderContract.js";
-import {isPickupPilotShop} from "../orders/pickupRead.js";
+
 import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 
 const PUBLIC_SHOP_FIELDS = "effective_is_active,availability_revision,availability_override_until,id,name,description,location,category,logo_url,rating,opening_time,closing_time,is_active,latitude,longitude,lat,lng,story";
@@ -63,7 +63,7 @@ export const makeCatalogRouter = (repository: CatalogRepository): Router => {
         const lat=shop.lat ?? shop.latitude,lng=shop.lng ?? shop.longitude;
         // Approved closed shops remain discoverable for menu browsing, but
         // pickup quote/create still require the authoritative open state.
-        if(typeof shop.is_active!=="boolean" || !isPickupPilotShop(shop.location) || typeof lat!=="number" ||
+        if(typeof shop.is_active!=="boolean" || typeof lat!=="number" ||
           !Number.isFinite(lat) || Math.abs(lat)>90 || typeof lng!=="number" || !Number.isFinite(lng) || Math.abs(lng)>180)return [];
         const distance_km=calculateDistanceKm(Number(rawLat),Number(rawLng),lat,lng);
         return distance_km<=4 ? [{...shop,distance_km}] : [];
