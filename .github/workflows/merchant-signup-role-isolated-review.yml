@@ -47,6 +47,23 @@ jobs:
           test "$(psql -X -At -c 'select current_database()')" = "signup_synthetic_qa"
       - name: Reproduce unsafe signup role from synthetic user metadata
         run: psql -X -v ON_ERROR_STOP=1 -f tests/security/signup_role_fixture.sql
+      - name: Reject disabled signup trigger and unexpected grants
+        run: |
+          set -eu
+          draft=security/drafts/signup_role_customer_only_REVIEW_ONLY.sql
+          reject_drift() {
+            if psql -X -v ON_ERROR_STOP=1 -f "$draft" > /tmp/signup-drift.log 2>&1; then
+              echo 'Unexpectedly accepted signup drift' >&2
+              exit 1
+            fi
+            grep -q 'SIGNUP_ROLE_REVIEW_SCHEMA_DRIFT' /tmp/signup-drift.log
+          }
+          psql -X -v ON_ERROR_STOP=1 -c 'alter table auth.users disable trigger on_auth_user_created'
+          reject_drift
+          psql -X -v ON_ERROR_STOP=1 -c 'alter table auth.users enable trigger on_auth_user_created'
+          psql -X -v ON_ERROR_STOP=1 -c 'revoke execute on function public.handle_new_user() from service_role'
+          reject_drift
+          psql -X -v ON_ERROR_STOP=1 -c 'grant execute on function public.handle_new_user() to service_role'
       - name: Apply reviewed SQL only inside synthetic PostgreSQL
         run: psql -X -v ON_ERROR_STOP=1 -f security/drafts/signup_role_customer_only_REVIEW_ONLY.sql
       - name: Assert role cannot be supplied by signed-up user
