@@ -1,0 +1,36 @@
+name: Pickup geo policy — any approved town within 4 km
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/src/routes/catalog.ts'
+      - 'localeats-api/src/routes/catalog.test.ts'
+      - 'localeats-api/src/orders/pickupRead.ts'
+      - 'localeats-api/src/orders/pickupRead.test.ts'
+      - 'localeats-api/src/orders/pickupService.ts'
+      - 'localeats-api/src/orders/pickupService.test.ts'
+      - 'localeats-api/src/orders/orderContract.ts'
+      - '.github/workflows/pickup-any-town-4km.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  any-town-radius-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Install locked API dependencies without cloud credentials
+        run: npm ci --prefix localeats-api --no-audit --no-fund
+      - name: TypeScript build and full pickup API regression suite
+        run: npm test --prefix localeats-api
+      - name: Assert source no longer limits shops to named towns
+        run: |
+          ! grep -R -E 'isPickupPilotShop|OUTSIDE_PICKUP_PILOT' localeats-api/src/routes/catalog.ts localeats-api/src/orders/pickupService.ts localeats-api/src/orders/pickupRead.ts
