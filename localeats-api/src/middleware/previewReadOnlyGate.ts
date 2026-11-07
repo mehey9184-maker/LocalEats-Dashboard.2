@@ -1,21 +1,19 @@
 import type {RequestHandler} from "express";
 
 /**
- * A Preview deployment can share read credentials with the live database.
- * It MUST NOT become an accidental write-capable API.
- *
- * VERCEL_ENV is set by Vercel. Production and local development are
- * deliberately unchanged; Preview blocks *all* mutation verbs before routes.
- * Do not rely on this guard as a substitute for isolated staging credentials.
+ * Preview deployments can share read credentials with live data.
+ * They MUST NOT become accidentally write-capable. Preview is not isolation.
  */
+export const isReadOnlyPreviewMode=():boolean=>
+  process.env.VERCEL_ENV === "preview" || process.env.LOCALEATS_PREVIEW_READ_ONLY === "true";
+
 export const previewReadOnlyGate:RequestHandler=(req,res,next)=>{
-  if(process.env.VERCEL_ENV !== "preview" && process.env.LOCALEATS_PREVIEW_READ_ONLY !== "true") { next(); return; }
-  const method=req.method.toUpperCase();
-  // The legacy GET /notifications endpoint internally drains FCM outbox jobs
-  // (writes + sends push). Block both GET and implicit HEAD on that route.
-  const sideEffectRead=["GET","HEAD"].includes(method)
-    && new RegExp("^/api/v1/notifications/?$").test(req.path);
-  if(!sideEffectRead && !["POST","PUT","PATCH","DELETE"].includes(method)) {next();return;}
+  if (!isReadOnlyPreviewMode()) { next(); return; }
+  // GET/HEAD /api/v1/notifications now skip outbox claim, completion and FCM
+  // in Preview. The persisted, account-scoped inbox is truly read-only there.
+  if(!["POST","PUT","PATCH","DELETE"].includes(req.method.toUpperCase())) {
+    next();return;
+  }
   res.status(503).set("Cache-Control","no-store").json({
     success:false,
     code:"PREVIEW_READ_ONLY",
