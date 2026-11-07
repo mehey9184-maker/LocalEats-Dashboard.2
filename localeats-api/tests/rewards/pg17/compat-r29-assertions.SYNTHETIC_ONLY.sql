@@ -44,7 +44,7 @@ BEGIN
 
   -- No reward snapshot for guest/test provenance or unenrolled shops;
   -- checkout still works without a monetary liability.
-  v_status:=r29_private.capture_source_order(v_guest,'shop-a','guest',repeat('g',64),
+  v_status:=r29_private.capture_source_order(v_guest,'shop-a','guest',repeat('a',64),
      '[{"item_id":"kota-a","quantity":4}]'::jsonb);
   IF v_status<>'pickup-only' THEN RAISE EXCEPTION 'R29_GUEST_REWARD_SOURCE'; END IF;
   v_status:=r29_private.capture_source_order(v_no_enrol,'shop-b','bob',repeat('b',64),
