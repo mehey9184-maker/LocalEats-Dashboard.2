@@ -3,18 +3,22 @@
 -- Disposable PostgreSQL 17 only. The real staging Supabase project is
 -- NEVER a target. This is a synthetic P5 compatibility + pickup rehearsal.
 
--- Remove only the explicitly INSECURE synthetic legacy browser order policy
--- supplied by the existing historical pickup test fixture. Future connected
--- staging schema must be secure from inception; this is NOT a deployable DDL.
-DROP POLICY legacy_browser ON public.orders;
-REVOKE ALL ON public.orders FROM PUBLIC,anon,authenticated;
-ALTER TABLE public.shops ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.shops FORCE ROW LEVEL SECURITY;
-ALTER TABLE public.menu_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.menu_items FORCE ROW LEVEL SECURITY;
-ALTER TABLE public.rider_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.rider_profiles FORCE ROW LEVEL SECURITY;
-REVOKE ALL ON public.shops,public.menu_items,public.rider_profiles FROM PUBLIC,anon,authenticated;
+-- Secure-from-creation contract: no historical browser policy exists and
+-- all foundational tables are already RLS-enforced before test users arrive.
+DO $already_safe$
+BEGIN
+ IF EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public'
+   AND tablename IN ('shops','menu_items','orders'))
+ OR has_table_privilege('anon','public.orders','SELECT')
+ OR has_table_privilege('authenticated','public.orders','INSERT')
+ OR has_table_privilege('authenticated','public.shops','UPDATE')
+ OR NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class
+         WHERE oid='public.orders'::regclass)
+ OR NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class
+         WHERE oid='public.menu_items'::regclass)
+ OR to_regclass('public.rider_profiles') IS NOT NULL
+ THEN RAISE EXCEPTION 'NEW_PICKUP_SCHEMA_WAS_NOT_SECURE_FROM_CREATION'; END IF;
+END $already_safe$;
 
 INSERT INTO public.admin_users(firebase_uid,role,is_active)
 VALUES ('synthetic-stage-admin','super_admin',true);
