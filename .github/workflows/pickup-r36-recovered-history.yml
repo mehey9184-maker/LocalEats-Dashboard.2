@@ -1,0 +1,50 @@
+name: Pickup R3.6 recovered applied SQL offline replay and owner acceptance gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/recovered_applied_readonly/**'
+      - 'localeats-api/tests/pickup/r35/**'
+      - 'localeats-api/tests/pickup/r36/**'
+      - '.github/workflows/pickup-r36-recovered-history.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recovered-applied-history:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      REWARDS_ENABLED: 'false'
+      R36_PICKUP_REPLAY_MODE: recorded_applied
+    steps:
+      - name: Checkout historical archive without GitHub credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify archived remote statements exactly match read-only recovery digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test localeats-api/tests/pickup/r35/reproducibility.test.mjs
+      - name: Ensure no hosted connection or new active migration is possible
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f supabase/recovered_applied_readonly/20261030111305_pickup_launch_foundation.sql.txt
+          test -f supabase/recovered_applied_readonly/20261031073608_pickup_zero_fee.sql.txt
+          test -f supabase/recovered_applied_readonly/20261031073645_merchant_availability.sql.txt
+          test -f supabase/recovered_applied_readonly/20261101160331_pickup_payment_methods.sql.txt
+          test -f localeats-api/tests/pickup/r35/run-local-pickup-r35.sh
+          ! find supabase/migrations -maxdepth 1 -name '202610*.sql' -o -name '202611*.sql' | grep .
+          ! grep -En 'supabase\.co|SUPABASE_SERVICE_ROLE_KEY|DATABASE_URL|db push|apply_migration|--remote|--publish' \
+            localeats-api/tests/pickup/r35/run-local-pickup-r35.sh
+      - name: Replay verbatim recorded applied pickup SQL on disposable PostgreSQL 17
+        shell: bash
+        run: bash localeats-api/tests/pickup/r35/run-local-pickup-r35.sh

@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync,readdirSync} from "node:fs";
+import {createHash} from "node:crypto";
 import {fileURLToPath} from "node:url";
 import {resolve,dirname} from "node:path";
 const here=dirname(fileURLToPath(import.meta.url));
@@ -19,8 +20,7 @@ test("R3.5: applied migration history inventoried, not silently reconstructed",(
     out[x]=(out[x]||0)+1;return out;
   },{}),{
     "versioned-migration-present":4,
-    "draft-only-not-versioned":3,
-    "effective-behavior-only-not-original":1,
+    "recorded-statement-archived-not-versioned":4,
   });
   assert.ok(manifest.manually_pending.length>=5);
 });
@@ -36,23 +36,37 @@ test("R3.5: original four versioned migration files exist, later versions not im
   }
 });
 
-test("R3.5: October pickup SQL remains a review draft, not a forged migration",()=>{
-  for(const m of manifest.applied.filter(x=>x.state==="draft-only-not-versioned")){
-    assert.match(m.repo_source,/^supabase\/drafts\/.+\.sql$/);
-    assert.ok(read(m.repo_source).length>100);
+test("R3.6: all four missing applied statements recovered in inert archive",()=>{
+  const recovered=manifest.applied.filter(x=>x.state==="recorded-statement-archived-not-versioned");
+  assert.equal(recovered.length,4);
+  const catalog=JSON.parse(read("supabase/recovered_applied_readonly/R36_APPLIED_STATEMENTS_MANIFEST.json"));
+  assert.equal(catalog.versions.length,4);
+  assert.equal(catalog.historical_source_recovered,true);
+  assert.equal(catalog.deployable_migration_chain_complete,false);
+  assert.equal(catalog.effective_full_schema_parity_verified,false);
+  for(const m of recovered){
+    const v=catalog.versions.find(x=>x.version===m.version && x.name===m.name);
+    assert.ok(v,"Missing archive provenance for "+m.version);
+    assert.equal(v.archived_path,m.repo_source);
+    assert.match(m.repo_source,/^supabase\/recovered_applied_readonly\/\d{14}_.+\.sql\.txt$/);
+    const raw=readFileSync(resolve(root,m.repo_source));
+    assert.equal(raw.toString("utf8").length,v.recorded_sql_utf8_char_length);
+    assert.equal(createHash("md5").update(raw).digest("hex"),v.recorded_sql_md5);
+    assert.equal(v.recorded_statement_count,1);
+    assert.ok(m.review_draft && read(m.review_draft).length>100);
     assert.ok(!readdirSync(resolve(root,"supabase/migrations")).some(x=>x.startsWith(m.version)));
   }
+  assert.equal(manifest.complete,false,"History recovered != whole schema parity");
 });
 
-test("R3.5: missing November migration is modeled as effective behavior ONLY",()=>{
+test("R3.6: original payment migration recovered without rewriting effective-only fixture",()=>{
   const m=manifest.applied.find(x=>x.version==="20261101160331");
   assert.equal(m.name,"pickup_payment_methods");
-  assert.match(m.repo_source,/SYNTHETIC_ONLY\.sql$/);
-  const sql=read(m.repo_source);
-  assert.match(sql,/OBSERVED BEHAVIOR RECONSTRUCTION/);
-  assert.match(sql,/merchant_set_pickup_payment_methods/);
-  assert.match(sql,/pickup_payment_method_guard/);
-  assert.ok(!readdirSync(resolve(root,"supabase/migrations")).some(x=>x.startsWith(m.version)));
+  assert.match(read(m.repo_source),/set local lock_timeout = '5s'/);
+  assert.match(read(m.repo_source),/create function public.pickup_payment_method_guard/);
+  assert.match(read(m.repo_source),/create function public.merchant_set_pickup_payment_methods/);
+  assert.match(read(m.review_draft),/OBSERVED BEHAVIOR RECONSTRUCTION/);
+  assert.equal(manifest.complete,false);
 });
 
 test("R3.5: offline runners never connect to Production or publish DB ports",()=>{
