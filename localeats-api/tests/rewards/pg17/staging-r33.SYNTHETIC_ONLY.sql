@@ -40,7 +40,8 @@ CREATE TABLE r33_source.pickup_order_events(
   occurred_at timestamptz NOT NULL DEFAULT transaction_timestamp(),
   UNIQUE(order_id,command_id),
   UNIQUE(order_id,revision),
-  UNIQUE(order_id,kind)
+  UNIQUE(order_id,kind),
+  UNIQUE(id,order_id)
 );
 CREATE TABLE r33_private.programme(
   version text PRIMARY KEY,
@@ -74,7 +75,9 @@ CREATE TABLE r33_private.original_lines(
 );
 CREATE TABLE r33_private.outbox(
   order_id uuid PRIMARY KEY REFERENCES r33_private.checkout_snapshots(order_id) ON DELETE RESTRICT,
-  collected_event_id uuid NOT NULL UNIQUE REFERENCES r33_source.pickup_order_events(id) ON DELETE RESTRICT,
+  collected_event_id uuid NOT NULL UNIQUE,
+  FOREIGN KEY(collected_event_id,order_id)
+    REFERENCES r33_source.pickup_order_events(id,order_id) ON DELETE RESTRICT,
   state text NOT NULL DEFAULT 'pending'
     CHECK(state IN ('pending','leased','consumed','dead_letter')),
   created_at timestamptz NOT NULL DEFAULT transaction_timestamp()
