@@ -67,6 +67,7 @@ CREATE TABLE reward_lab.source_refund_notices (
   line_id text NOT NULL,
   refund_reference text NOT NULL UNIQUE,
   units integer NOT NULL CHECK(units>0),
+  reason text NOT NULL CHECK(length(reason) BETWEEN 3 AND 500),
   received_at timestamptz NOT NULL DEFAULT transaction_timestamp(),
   FOREIGN KEY(order_id,line_id) REFERENCES reward_lab.purchase_line_snapshots(order_id,line_id)
 );
@@ -244,6 +245,55 @@ BEGIN
   RETURN reward_lab.credit_paid_order(p_order_id);
 END;
 $$;
+
+-- Reconciles both sides of the refund/credit race. Program-row lock orders this
+-- with checkout and reward credit; after a credit this also invokes the R2.3
+-- refund-hold procedure in the SAME transaction. All identity inputs are
+-- synthetic trusted service facts, never browser-provided.
+CREATE FUNCTION reward_lab.record_snapshot_refund(
+  p_notice text,p_order text,p_line text,p_ref text,p_units integer,p_reason text)
+RETURNS text
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog AS $
+DECLARE
+  v_line reward_lab.purchase_line_snapshots%ROWTYPE;
+  v_old reward_lab.source_refund_notices%ROWTYPE;
+  v_total integer;
+BEGIN
+  IF p_notice IS NULL OR length(trim(p_notice)) NOT BETWEEN 1 AND 160
+     OR p_ref IS NULL OR length(trim(p_ref)) NOT BETWEEN 1 AND 160
+     OR p_units IS NULL OR p_units<1
+     OR p_reason IS NULL OR length(p_reason) NOT BETWEEN 3 AND 500
+  THEN RAISE EXCEPTION 'INVALID_SNAPSHOT_REFUND'; END IF;
+  PERFORM id FROM reward_lab.program WHERE id=1 FOR UPDATE;
+  SELECT * INTO v_old FROM reward_lab.source_refund_notices WHERE notice_id=p_notice;
+  IF FOUND THEN
+    IF (v_old.order_id,v_old.line_id,v_old.refund_reference,v_old.units,v_old.reason)
+      IS DISTINCT FROM (p_order,p_line,p_ref,p_units,p_reason)
+    THEN RAISE EXCEPTION 'SNAPSHOT_REFUND_REPLAY_CONFLICT'; END IF;
+    RETURN p_notice;
+  END IF;
+  SELECT * INTO v_line FROM reward_lab.purchase_line_snapshots
+    WHERE order_id=p_order AND line_id=p_line;
+  IF NOT FOUND THEN RAISE EXCEPTION 'PURCHASE_LINE_NOT_FOUND'; END IF;
+  SELECT COALESCE(sum(units),0)::integer INTO v_total
+    FROM reward_lab.source_refund_notices
+    WHERE order_id=p_order AND line_id=p_line;
+  IF v_total+p_units>v_line.quantity THEN RAISE EXCEPTION 'REFUND_EXCEEDS_PURCHASE_UNITS'; END IF;
+  INSERT INTO reward_lab.source_refund_notices(
+    notice_id,order_id,line_id,refund_reference,units,reason)
+  VALUES(p_notice,p_order,p_line,p_ref,p_units,p_reason);
+  IF EXISTS(SELECT 1 FROM reward_lab.credited_lines
+            WHERE order_id=p_order AND line_id=p_line)
+  THEN
+    PERFORM reward_lab.record_verified_refund(
+      p_notice,p_ref,p_order,p_line,p_units,p_reason);
+  END IF;
+  INSERT INTO reward_lab.audit(event_type,subject_id,detail)
+    VALUES('purchase_refund_notice',p_notice,p_order||':'||p_line);
+  RETURN p_notice;
+END;
+$;
+
 REVOKE ALL ON ALL TABLES IN SCHEMA reward_lab FROM PUBLIC;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA reward_lab FROM PUBLIC;
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA reward_lab FROM PUBLIC;
