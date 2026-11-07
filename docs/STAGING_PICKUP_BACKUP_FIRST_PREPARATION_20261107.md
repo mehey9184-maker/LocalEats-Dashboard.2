@@ -16,6 +16,22 @@ This result is based on **zero** `public.profiles` rows, zero `auth.users`, zero
 
 The corrected pickup-only parity audit in draft PR #87 now requires **23** shop/approval/ordering objects and columns (not dormant Rider or Supabase-signup objects): **3 are present and 20 are missing** on the latest read-only staging inspection. This means the current staging project is fit for profile tests, **not yet** complete Super Admin→Merchant→Customer pickup integration.
 
+## Fastest safe route now that you have Docker and Supabase CLI
+
+From a checked-out copy of **draft PR #88 branch** on your Windows computer, run one PowerShell command:
+
+    powershell -ExecutionPolicy Bypass -File .\localeats-api\scripts\staging\run-private-backup-and-restore.ps1
+
+This prompts **privately** for the staging database URL from [Supabase staging → Connect](https://supabase.com/dashboard/project/rgpbdajhlrwfmhopzgzk). Input is hidden and the wrapper refuses any Production database URL. It exports five SQL dumps into a new private Documents folder, checks SHA-256 hashes, starts a **local no-network Docker PostgreSQL 17**, runs the full SQL restore, checks P5 profile structure/RLS and migration history, then destroys the container.
+
+If successful, the script prints exactly:
+
+    STAGING_BACKUP_AND_LOCAL_P5_RESTORE_VERIFIED
+
+**Only this marker from your actual Windows run** confirms a real backup was locally restore-tested. GitHub's fictional-data CI does **not**. Encrypt the backup folder, keep an offsite copy and verify you can retrieve it before staging SQL is allowed. Do not paste database URLs, passwords, SQL backup data, manifests or screenshots of them into chat.
+
+If the restore fails, do **not** disable its safety checks or run connected staging SQL. Describe the error without sharing secrets; the verifier can be reviewed and corrected then retried with a new private backup folder.
+
 ## Backup first — run on a trusted computer, NOT CI
 
 The connected Supabase integration available here has **no database dump / restore-backup action**. SQL catalogs and checksums are not a restorable backup, and the zero row count is **not** permission to overwrite the existing profile schema.
