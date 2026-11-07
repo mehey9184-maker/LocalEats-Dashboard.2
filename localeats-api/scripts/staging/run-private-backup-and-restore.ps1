@@ -7,6 +7,25 @@ param([string]$OutputDir = (Join-Path $HOME ('Documents\LocalEats-Staging-Backup
 $ErrorActionPreference = 'Stop'
 $secretPointer = [IntPtr]::Zero
 try {
+  # Supabase CLI runs pg_dump inside a Docker container. Check the Linux
+  # engine BEFORE requesting credentials or creating backup files.
+  if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    throw 'Docker CLI is missing. Install/start Docker Desktop in Linux container mode.'
+  }
+  $dockerOS = $null
+  try { $dockerOS = (& docker info --format '{{.OSType}}' 2>$null | Select-Object -Last 1) } catch { $dockerOS = $null }
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($dockerOS)) {
+    throw 'Docker Desktop Linux engine is not running. Open Docker Desktop, verify Engine running, then run: docker info --format "{{.OSType}}" (expected: linux). No backup was started.'
+  }
+  if ($dockerOS.Trim() -ne 'linux') {
+    throw 'Docker is using Windows containers. Switch Docker Desktop to Linux containers, then retry. No backup was started.'
+  }
+  if (-not (Get-Command supabase -ErrorAction SilentlyContinue)) {
+    throw 'Supabase CLI was not found in PATH.'
+  }
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    throw 'Node.js is required for private backup integrity checks.'
+  }
   $secure = Read-Host -Prompt 'Paste ONLY the LocalEats-Profile-Staging DB connection URL (input hidden)' -AsSecureString
   if ($null -eq $secure -or $secure.Length -eq 0) { throw 'No staging URL supplied' }
   $secretPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
