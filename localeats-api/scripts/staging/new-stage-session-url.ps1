@@ -9,7 +9,7 @@ function New-StageSessionPoolerUrl {
   $stagingRef = 'rgpbdajhlrwfmhopzgzk'
   $placeholder = '[YOUR-PASSWORD]'
   if (-not $Template.Contains($placeholder) -or
-      ($Template.Split(@($placeholder),[StringSplitOptions]::None).Count -ne 2)) {
+      ([regex]::Matches($Template,[regex]::Escape($placeholder)).Count -ne 1)) {
     throw 'Copy the original staging Session pooler connection template with [YOUR-PASSWORD] still present. Do not paste an existing password or a Production URL.'
   }
   $sanitizedUri = $null
