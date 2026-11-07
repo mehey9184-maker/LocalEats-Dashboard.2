@@ -30,6 +30,38 @@ jobs:
             echo 'Refusing cloud configuration' >&2
             exit 1
           fi
+      - name: Missing Docker must fail BEFORE prompting for credentials or writing files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Simulate installed Docker CLI while its engine is unavailable.
+          function docker {
+            $global:LASTEXITCODE = 1
+            return ''
+          }
+          $dummy = Join-Path $env:RUNNER_TEMP 'must-not-be-created'
+          $env:LOCALEATS_STAGE_DB_URL = 'postgresql://postgres:fake@db.rgpbdajhlrwfmhopzgzk.supabase.co/postgres'
+          try {
+            $caught = $false
+            try {
+              & ./localeats-api/scripts/staging/export-private-staging-backup.ps1 -OutputDir $dummy
+            } catch {
+              $caught = $_.Exception.Message -match 'Docker Desktop Linux engine unavailable'
+            }
+            if (-not $caught) { throw 'Export failed to check Docker before beginning backup' }
+            if (Test-Path $dummy) { throw 'Export created a backup directory before Docker preflight' }
+            $caught = $false
+            try {
+              & ./localeats-api/scripts/staging/run-private-backup-and-restore.ps1 -OutputDir $dummy
+            } catch {
+              $caught = $_.Exception.Message -match 'Docker Desktop Linux engine is not running'
+            }
+            if (-not $caught) { throw 'Wrapper prompted for secrets instead of detecting Docker failure' }
+            if (Test-Path $dummy) { throw 'Wrapper created backup directory before Docker preflight' }
+          } finally {
+            Remove-Item Env:\LOCALEATS_STAGE_DB_URL -ErrorAction SilentlyContinue
+            Remove-Item Function:\docker -ErrorAction SilentlyContinue
+          }
       - name: Construct fictional P5 backup files (never download connected staging)
         shell: bash
         run: |
