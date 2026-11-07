@@ -77,6 +77,30 @@ jobs:
             $global:LASTEXITCODE = 0
           }
           Write-Host 'DOCKER_UNAVAILABLE_FAILS_BEFORE_SECRET_AND_BACKUP_PASS'
+      - name: Verify Session pooler template and reserved-character database password encoding offline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./localeats-api/scripts/staging/new-stage-session-url.ps1
+          $template='postgresql://postgres.rgpbdajhlrwfmhopzgzk:[YOUR-PASSWORD]@aws-0-eu-west-1.pooler.supabase.com:5432/postgres'
+          $synthetic='demo%&@#?: 42+'
+          $url=New-StageSessionPoolerUrl -Template $template -Password $synthetic
+          $parsed=[Uri]$url
+          $encoded=$parsed.UserInfo.Split(':',2)[1]
+          if ([Uri]::UnescapeDataString($encoded) -cne $synthetic) { throw 'Synthetic database password encoding failed' }
+          if ($parsed.Host -cne 'aws-0-eu-west-1.pooler.supabase.com' -or $parsed.Port -ne 5432) { throw 'Pooler host/port changed unexpectedly' }
+          foreach ($wrong in @(
+            'postgresql://postgres.rgpbdajhlrwfmhopzgzk:[YOUR-PASSWORD]@aws-0-eu-west-1.pooler.supabase.com:6543/postgres',
+            'postgresql://postgres.otherproject:[YOUR-PASSWORD]@aws-0-eu-west-1.pooler.supabase.com:5432/postgres',
+            'postgresql://postgres.rgpbdajhlrwfmhopzgzk:[YOUR-PASSWORD]@db.rgpbdajhlrwfmhopzgzk.supabase.co:5432/postgres',
+            'postgresql://postgres.rgpbdajhlrwfmhopzgzk:already-a-password@aws-0-eu-west-1.pooler.supabase.com:5432/postgres'
+          )) {
+            $blocked=$false
+            try { $null=New-StageSessionPoolerUrl -Template $wrong -Password 'synthetic-only' }
+            catch { $blocked=$true }
+            if (-not $blocked) { throw 'Rejected connection template was unexpectedly accepted' }
+          }
+          Write-Host 'STAGING_TEMPLATE_AND_PASSWORD_URI_ENCODING_PASS'
       - name: Construct fictional P5 backup files (never download connected staging)
         shell: bash
         run: |
