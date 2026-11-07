@@ -10,7 +10,7 @@ function fixture(){
     kind,identifier,exists:true,
     ...(kind==="function"?
       {anon_execute:false,authenticated_execute:false,service_execute:true,
-       security_definer:identifier==="public.handle_new_user()"}:{})
+       security_definer:false}:{})
   }))
  };
 }
@@ -68,4 +68,15 @@ test("Invalid inventory values reject instead of becoming permissive",()=>{
  const input=fixture();
  input.objects[0].exists="true";
  assert.throws(()=>evaluateStageParity(input),/Malformed read-only inventory entry/);
+});
+
+test("No Rider table or privileged Rider RPC and no Supabase signup trigger are required for pickup-only staging",()=>{
+  const f=fixture();
+  const result=evaluateStageParity(f);
+  assert.equal(result.status,"OBJECT_AND_GRANT_PRECHECK_PASS");
+  for(const name of ["public.rider_notifications","public.nudge_rider(uuid,text)",
+    "public.nudge_rider_by_id(uuid,bigint,text)","public.handle_new_user()"]){
+    assert.ok(!REQUIREMENTS.some(([,id])=>id===name),name+" must remain deferred");
+  }
+  assert.ok(REQUIREMENTS.some(([,id])=>id==="public.pickup_push_subscriptions"));
 });
