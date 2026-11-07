@@ -1,10 +1,9 @@
 -- R2.3 SYNTHETIC recovery assertions in the same disposable PostgreSQL 17 container.
 \set ON_ERROR_STOP on
 BEGIN;
-INSERT INTO reward_lab.shops(shop_id) VALUES('shop-1'),('shop-2');
+INSERT INTO reward_lab.shops(shop_id) VALUES('shop-2');
 INSERT INTO reward_lab.catalogue(shop_id,item_id,item_kind,price_minor) VALUES
  ('shop-1','kota-25','standard_kota',2500),
- ('shop-1','kota-24','standard_kota',2400),
  ('shop-1','other-24','other_food',2400);
 UPDATE reward_lab.program SET active=true,limit_minor=20000,allocated_minor=0 WHERE id=1;
 INSERT INTO reward_lab.order_line_facts
