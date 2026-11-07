@@ -47,7 +47,7 @@ jobs:
           test -z "${SUPABASE_URL:-}"
           test -z "${DATABASE_URL:-}"
           test "$(psql -X -At -c 'select current_database()')" = "localeats_security_disposable"
-          test "$(psql -X -At -c 'select current_setting('"'server_version_num'"')' | cut -c1-2)" = "17"
+          test "$(psql -X -At -c 'show server_version_num' | cut -c1-2)" = "17"
       - name: Reproduce both unsafe Production configurations synthetically
         run: |
           set -eu
