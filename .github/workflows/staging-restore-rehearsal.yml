@@ -1,0 +1,128 @@
+name: Staging private backup local restore verifier — synthetic Docker test
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/scripts/staging/**'
+      - '.github/workflows/staging-restore-rehearsal.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-windows-script-restore-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Verify PowerShell and Docker available; do not use cloud credentials
+        shell: bash
+        run: |
+          set -eu
+          command -v pwsh
+          command -v docker
+          docker version --format '{{.Server.Version}}'
+          if printenv DATABASE_URL >/dev/null || printenv SUPABASE_URL >/dev/null || printenv SUPABASE_SERVICE_ROLE_KEY >/dev/null; then
+            echo 'Refusing cloud configuration' >&2
+            exit 1
+          fi
+      - name: Missing Docker must fail BEFORE prompting for credentials or writing files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Simulate installed Docker CLI while its engine is unavailable.
+          function docker {
+            $global:LASTEXITCODE = 1
+            return ''
+          }
+          $dummy = Join-Path $env:RUNNER_TEMP 'must-not-be-created'
+          $env:LOCALEATS_STAGE_DB_URL = 'postgresql://postgres.rgpbdajhlrwfmhopzgzk:fake@aws-example.pooler.supabase.com:5432/postgres'
+          try {
+            $caught = $false
+            try {
+              & ./localeats-api/scripts/staging/export-private-staging-backup.ps1 -OutputDir $dummy
+            } catch {
+              $caught = $_.Exception.Message -match 'Docker Desktop Linux engine unavailable'
+            }
+            if (-not $caught) { throw 'Export failed to check Docker before beginning backup' }
+            if (Test-Path $dummy) { throw 'Export created a backup directory before Docker preflight' }
+            # Mode validation must reject transaction pooler before any Docker
+            # call, network request, credential handling or backup creation.
+            $env:LOCALEATS_STAGE_DB_URL = 'postgresql://postgres.rgpbdajhlrwfmhopzgzk:fake@aws-example.pooler.supabase.com:6543/postgres'
+            $badPort = $false
+            try {
+              & ./localeats-api/scripts/staging/export-private-staging-backup.ps1 -OutputDir $dummy
+            } catch {
+              $badPort = $_.Exception.Message -match 'Session pooler.*5432'
+            }
+            if (-not $badPort) { throw 'Export must reject transaction pooler port 6543 before backup' }
+            if (Test-Path $dummy) { throw 'Wrong pooler port created a backup folder' }
+            $caught = $false
+            try {
+              & ./localeats-api/scripts/staging/run-private-backup-and-restore.ps1 -OutputDir $dummy
+            } catch {
+              $caught = $_.Exception.Message -match 'Docker Desktop Linux engine is not running'
+            }
+            if (-not $caught) { throw 'Wrapper prompted for secrets instead of detecting Docker failure' }
+            if (Test-Path $dummy) { throw 'Wrapper created backup directory before Docker preflight' }
+          } finally {
+            Remove-Item Env:\LOCALEATS_STAGE_DB_URL -ErrorAction SilentlyContinue
+            Remove-Item Function:\docker -ErrorAction SilentlyContinue
+            # Mock CLI sets LASTEXITCODE=1; clear it after testing expected denial
+            # so PowerShell's job wrapper does not report a spurious failed step.
+            $global:LASTEXITCODE = 0
+          }
+          Write-Host 'DOCKER_UNAVAILABLE_FAILS_BEFORE_SECRET_AND_BACKUP_PASS'
+      - name: Verify exact stage pooler URL and special-character password encoding offline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./localeats-api/scripts/staging/new-stage-session-url.ps1
+          $synthetic='demo%&@#?: 42+'
+          $url=New-StageSessionPoolerUrl -Password $synthetic
+          $parsed=[Uri]$url
+          $encoded=$parsed.UserInfo.Split(':',2)[1]
+          if ([Uri]::UnescapeDataString($encoded) -cne $synthetic) { throw 'Synthetic database password encoding failed' }
+          if ($parsed.Host -cne 'aws-0-eu-west-1.pooler.supabase.com' -or
+              $parsed.Port -ne 5432 -or
+              $parsed.AbsolutePath -cne '/postgres' -or
+              $parsed.UserInfo.Split(':',2)[0] -cne 'postgres.rgpbdajhlrwfmhopzgzk' -or
+              $parsed.Query -cne '?sslmode=require') {
+            throw 'Stage connection host/port/database/username/SSL pin changed unexpectedly'
+          }
+          if ($url -match '\[YOUR-PASSWORD\]') { throw 'Connection incorrectly contains a placeholder' }
+          $blocked=$false
+          try { $null=New-StageSessionPoolerUrl -Password '' }
+          catch { $blocked=$true }
+          if (-not $blocked) { throw 'Empty database password was accepted' }
+          Write-Host 'STAGING_PASSWORD_ONLY_POOLER_PIN_AND_URI_ENCODING_PASS'
+      - name: Construct fictional P5 backup files (never download connected staging)
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/local-only-backup"
+          printf 'CREATE ROLE anon NOLOGIN;\nCREATE ROLE authenticated NOLOGIN;\nCREATE ROLE service_role NOLOGIN BYPASSRLS;\n' > "$RUNNER_TEMP/local-only-backup/roles.sql"
+          cp localeats-api/scripts/staging/fixtures/restore-test-profiles.sql "$RUNNER_TEMP/local-only-backup/schema.sql"
+          printf '%s\n' '-- No real staging or customer rows are present in this test.' > "$RUNNER_TEMP/local-only-backup/data.sql"
+          printf 'CREATE SCHEMA supabase_migrations;\nCREATE TABLE supabase_migrations.schema_migrations (version text PRIMARY KEY);\n' > "$RUNNER_TEMP/local-only-backup/history_schema.sql"
+          printf "INSERT INTO supabase_migrations.schema_migrations(version) VALUES ('20261103140914');\n" > "$RUNNER_TEMP/local-only-backup/history_data.sql"
+          node localeats-api/scripts/staging/verify-stage-dumps.mjs --directory "$RUNNER_TEMP/local-only-backup" --manifest "$RUNNER_TEMP/local-only-backup/integrity-manifest.json"
+      - name: Rehearse real PowerShell restore gate with isolated Docker PG17
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./localeats-api/scripts/staging/verify-stage-local-restore.ps1 -BackupDir "$env:RUNNER_TEMP/local-only-backup"
+          $result = Get-Content "$env:RUNNER_TEMP/local-only-backup/restore-evidence.json" -Raw | ConvertFrom-Json
+          if ($result.result -cne 'LOCAL_RESTORE_P5_VERIFIED' -or $result.stage_project_ref -cne 'rgpbdajhlrwfmhopzgzk') {
+            throw 'Offline restore evidence did not report the correct staging-only gate'
+          }
+      - name: Never publish backup SQL or private restore artifacts
+        shell: bash
+        run: |
+          set -eu
+          test -f "$RUNNER_TEMP/local-only-backup/restore-evidence.json"
+          ! grep -R -i -E 'production-secret|customer-email|JWT' "$RUNNER_TEMP/local-only-backup"

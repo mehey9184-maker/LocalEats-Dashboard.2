@@ -1,0 +1,31 @@
+name: Staging pickup backup preflight — offline safe review
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/scripts/staging/**'
+      - 'security/preflight/pickup_stage_prebootstrap_READ_ONLY.sql'
+      - 'docs/STAGING_PICKUP_BACKUP_FIRST_PREPARATION_20261107.md'
+      - '.github/workflows/staging-pickup-backup-preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-backup-integrity-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - name: Synthetic no-secrets backup integrity tests
+        run: node --test localeats-api/scripts/staging/verify-stage-dumps.test.mjs
+      - name: Staging SQL remains a SELECT-only inventory
+        run: |
+          set -eu
+          sed '/^[[:space:]]*--/d' security/preflight/pickup_stage_prebootstrap_READ_ONLY.sql > /tmp/staging-preflight.sql
+          grep -q 'BASELINE_PRECHECK_PASS_BACKUP_AND_RESTORE_STILL_REQUIRED' /tmp/staging-preflight.sql
+          ! grep -Eiq '^[[:space:]]*(insert|update|delete|create|alter|drop|truncate|grant|revoke|call|execute|do|begin|commit)[[:space:]]' /tmp/staging-preflight.sql
