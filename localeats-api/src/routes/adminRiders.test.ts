@@ -22,12 +22,14 @@ class MemoryRepository implements AdminRiderRepository {
     firebase_uid: "private-firebase-uid", internal_note: "private",
   }];
   updates: Row[] = [];
+  reads = 0;
   failRead = false;
   failUpdate = false;
   returnZeroRows = false;
   returnInvalidState = false;
 
   async list(status: "pending" | "approved" | "rejected" | "suspended" | null, limit: number, offset: number) {
+    this.reads++;
     if (this.failRead) throw new Error("database unavailable");
     return this.riders
       .filter((rider) => status === null || rider.verification_status === status)
@@ -35,6 +37,7 @@ class MemoryRepository implements AdminRiderRepository {
       .slice(offset, offset + limit);
   }
   async findById(riderId: string) {
+    this.reads++;
     if (this.failRead) throw new Error("database unavailable");
     return this.riders.find((rider) => rider.id === riderId) ?? null;
   }
@@ -75,12 +78,13 @@ async function apiRequest(
   body?: unknown,
   configure?: (repository: MemoryRepository) => void,
   uid: string | null = "active-super-admin",
+  writesEnabled = true,
 ) {
   const repository = new MemoryRepository();
   configure?.(repository);
   const app = express();
   app.use(express.json());
-  app.use("/api/v1/admin/riders", createAdminRiderRouter(repository, fakeAuthenticate, fakeAuthorize));
+  app.use("/api/v1/admin/riders", createAdminRiderRouter(repository, fakeAuthenticate, fakeAuthorize, () => writesEnabled));
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
   try {
@@ -103,6 +107,61 @@ test("Rider admin routes require authentication and active super-admin authoriza
   assert.equal((await apiRequest("GET", path, undefined, undefined, null)).status, 401);
   assert.equal((await apiRequest("GET", path, undefined, undefined, "ordinary-user")).status, 403);
   assert.equal((await apiRequest("GET", path)).status, 200);
+});
+
+test("pickup-only Rider verification API is disabled before any database reads or writes", async () => {
+  const path = `/api/v1/admin/riders/${RIDER_ID}/verification`;
+  const requestBody = { verification_status: "approved" };
+  const disabled = await apiRequest("PATCH", path, requestBody, undefined, "active-super-admin", false);
+  assert.equal(disabled.status, 503);
+  assert.equal(disabled.body.success, false);
+  assert.equal(disabled.body.code, "RIDER_VERIFICATION_COMING_SOON");
+  assert.equal(disabled.headers.get("cache-control"), "no-store");
+  assert.equal(disabled.repository.reads, 0);
+  assert.equal(disabled.repository.updates.length, 0);
+
+  // Missing Firebase authentication and non-admin callers still fail auth
+  // before this feature gate reveals any admin-only information.
+  assert.equal((await apiRequest("PATCH", path, requestBody, undefined, null, false)).status, 401);
+  assert.equal((await apiRequest("PATCH", path, requestBody, undefined, "ordinary-user", false)).status, 403);
+
+  // Disabled state is a hard gate even if a client submits unexpected fields.
+  const invalid = await apiRequest("PATCH", path, { verification_status:"approved", role:"super_admin" }, undefined, "active-super-admin", false);
+  assert.equal(invalid.status, 503);
+  assert.equal(invalid.repository.reads, 0);
+  assert.equal(invalid.repository.updates.length, 0);
+});
+
+test("mounted Rider router uses strict default-off server flag", async () => {
+  const before = process.env.ADMIN_RIDER_VERIFICATION_WRITES_ENABLED;
+  try {
+    delete process.env.ADMIN_RIDER_VERIFICATION_WRITES_ENABLED;
+    const repository = new MemoryRepository();
+    const app=express();
+    app.use(express.json());
+    app.use("/api/v1/admin/riders",createAdminRiderRouter(repository,fakeAuthenticate,fakeAuthorize));
+    const server=app.listen(0,"127.0.0.1");
+    await once(server,"listening");
+    try {
+      const url=`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/admin/riders/${RIDER_ID}/verification`;
+      const call = async () => {
+        const response=await fetch(url,{method:"PATCH",headers:{"Content-Type":"application/json","x-test-uid":"active-super-admin"},
+          body:JSON.stringify({verification_status:"approved"})});
+        return {status:response.status,body:await response.json() as {code?:string}};
+      };
+      assert.deepEqual(await call(),{status:503,body:{success:false,code:"RIDER_VERIFICATION_COMING_SOON",
+        error:"Rider verification is not available during the pickup-only pilot."}});
+      process.env.ADMIN_RIDER_VERIFICATION_WRITES_ENABLED="TRUE";
+      assert.equal((await call()).status,503);
+      assert.equal(repository.reads,0);
+      assert.equal(repository.updates.length,0);
+    }finally{
+      const closed=once(server,"close");server.close();await closed;
+    }
+  }finally{
+    if(before===undefined)delete process.env.ADMIN_RIDER_VERIFICATION_WRITES_ENABLED;
+    else process.env.ADMIN_RIDER_VERIFICATION_WRITES_ENABLED=before;
+  }
 });
 
 test("mounted production admin Rider route rejects a missing Firebase bearer token", async () => {
@@ -235,5 +294,7 @@ test("production router uses existing admin middleware and one conditional Rider
   assert.match(source, /\.update\(\{ verification_status: target, is_online: false, status: "offline" \}\)/);
   assert.match(source, /\.eq\("verification_status", expected\)/);
   assert.match(adminSource, /router\.use\("\/riders", adminRiderRouter\)/);
+  assert.match(source, /ADMIN_RIDER_VERIFICATION_WRITES_ENABLED === "true"/);
+  assert.match(source, /RIDER_VERIFICATION_COMING_SOON/);
   assert.doesNotMatch(source, /localStorage|mock[_-]?admin|admin_users.*update/i);
 });
