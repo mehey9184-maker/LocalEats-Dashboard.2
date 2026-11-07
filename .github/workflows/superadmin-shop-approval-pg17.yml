@@ -1,0 +1,54 @@
+name: Super Admin shop approval — isolated pickup visibility rehearsal
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tests/security/shop_approval_pilot_fixture.sql'
+      - 'tests/security/shop_approval_pilot_assertions.sql'
+      - '.github/workflows/superadmin-shop-approval-pg17.yml'
+      - 'supabase/archived-migrations/20260902234040_phase4g_admin_approval_foundation.sql'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  disposable-approval-pg17:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-approval-ci-only
+          POSTGRES_DB: local_shop_approval_qa
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d local_shop_approval_qa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: '127.0.0.1'
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-approval-ci-only
+      PGDATABASE: local_shop_approval_qa
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Refuse Production and shared staging databases
+        run: |
+          set -eu
+          test "$PGHOST" = '127.0.0.1'
+          test "$PGDATABASE" = 'local_shop_approval_qa'
+          test -z "${SUPABASE_URL:-}"
+          test -z "${DATABASE_URL:-}"
+          test "$(psql -X -At -c 'select current_database()')" = 'local_shop_approval_qa'
+          test "$(psql -X -At -c 'show server_version_num' | cut -c1-2)" = '17'
+      - name: Create disposable synthetic shop fixture and browser roles
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/security/shop_approval_pilot_fixture.sql
+      - name: Apply actual reviewed Phase4G shop-approval SQL to disposable DB only
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/archived-migrations/20260902234040_phase4g_admin_approval_foundation.sql
+      - name: Assert admin authority, atomic audit, closed approval and suspension
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/security/shop_approval_pilot_assertions.sql
