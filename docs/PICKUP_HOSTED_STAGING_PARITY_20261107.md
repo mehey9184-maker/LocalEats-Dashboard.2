@@ -12,7 +12,7 @@ The existing three-app LocalEats architecture requires these flows for a supervi
 3. **Customer:** approved nearby open/closed catalog, real menus, quoted pickup prices, own profile and order history; no delivery or online payment.
 4. **API/DB:** server-only service role, authoritative price/4 km, idempotent order/create-event, Ready notifications and recovery.
 
-On November 7, an authenticated Supabase **read-only** comparison and the exact SQL file `security/preflight/pickup_stage_schema_parity_READ_ONLY.sql` found **3 of 26 specific required tables/views/columns/function signatures present** in staging. The present items are `public.profiles`, `public.profiles.user_id` and `public.profiles.role`. **23 are absent**, including `shops`, `menu_items`, `orders`, `pickup_order_events`, `pickup_push_outbox`, `admin_users`, `shop_approval_events`, `shops_with_availability`, `transition_shop_approval`, `merchant_set_availability` and `pickup_create_order`. No row data or PII was read or exported.
+On November 7, an authenticated Supabase **read-only** comparison and the exact SQL file `security/preflight/pickup_stage_schema_parity_READ_ONLY.sql` found **3 of 23 pickup-specific required tables/views/columns/function signatures present** in staging. The present items are `public.profiles`, `public.profiles.user_id` and `public.profiles.role`. **20 are absent**, including `shops`, `menu_items`, `orders`, `pickup_order_events`, `pickup_push_outbox`, `admin_users`, `shop_approval_events`, `shops_with_availability`, `transition_shop_approval`, `merchant_set_availability` and `pickup_create_order`. No row data or PII was read or exported.
 
 Production has the primary pickup and approval objects, but its known role-escalation, dormant Rider access and named-town restriction remain active until separately approved cutovers. It is **unsafe** to call a profile-only cloud test full checkout/approval acceptance, or to point any Preview with write permissions at Production to fill this gap.
 
@@ -20,7 +20,7 @@ Production has the primary pickup and approval objects, but its known role-escal
 
 The SQL file under `security/preflight` queries only the system catalogs/information_schema; it does not use `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `ALTER`, privileged RPC calls, personal rows or auth tokens. It returns a single schema metadata JSON object with exact required relations, columns, functions, object-presence, and the function roles able to execute.
 
-The offline `localeats-api/scripts/pickup-stage-parity-gate.mjs` reads a private JSON snapshot, compares against the fixed 26-object contract and refuses incomplete or dangerously public function privileges. Its reported `OBJECT_AND_GRANT_PRECHECK_PASS` means **only** a basic inventory/EXECUTE preflight passed—never complete Firebase Auth, RLS, data-isolation, role, API routing or live-order acceptance. A result can become stale immediately after capture.
+The offline `localeats-api/scripts/pickup-stage-parity-gate.mjs` reads a private JSON snapshot, compares against the fixed 23-object pickup-only contract and refuses incomplete or dangerously public function privileges. Its reported `OBJECT_AND_GRANT_PRECHECK_PASS` means **only** a basic inventory/EXECUTE preflight passed—never complete Firebase Auth, RLS, data-isolation, role, API routing or live-order acceptance. A result can become stale immediately after capture.
 
 To run safely, select the **correct staging project** via an independently authenticated Supabase connection, run the SQL only there, and save the returned JSON to a private local file. Add `"project_ref":"rgpbdajhlrwfmhopzgzk"` *only after independently verifying the source project*. Then run:
 
@@ -52,3 +52,7 @@ The operator's label is **not proof of provenance**; the actual project ID must 
 - Vercel Hobby is not a commercial hosting solution for the public business. Support/privacy/POPIA and actual pilot customer acceptance are independent release gates.
 
 **This review/test is not a staging migration.** The connected Supabase and Firebase projects, Vercel environments, Production database and all owner test shops are unchanged. No rider, delivery, online payment, subscription or live ordering activated.
+
+### Scope correction: Rider and Supabase Auth signup are intentionally deferred
+
+Pickup does **not** require `rider_notifications`, either `nudge_rider` RPC or a production-style `public.handle_new_user()` trigger. The existing profile staging uses Firebase UID-scoped API writes; recreating the vulnerable production signup trigger or unused Rider privileges would make staging less safe. The review-only inventory therefore checks **23 pickup-only objects** (including the required `pickup_push_subscriptions`) and leaves deferred Rider infrastructure absent. This changes the numeric preflight to **3 present / 20 missing** on the last read-only staging inspection, not the underlying actual staging schema. No database DDL was applied.
