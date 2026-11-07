@@ -1,4 +1,4 @@
-name: Rewards R2 isolated PG17 concurrent-ledger gate
+name: Rewards R2-R2.3 isolated PG17 ledger and recovery gate
 on:
   pull_request:
     branches: [main]
@@ -21,9 +21,11 @@ jobs:
         run: |
           set -euo pipefail
           test -f localeats-api/tests/rewards/pg17/schema.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/recovery-r23.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/recovery-r23-assertions.SYNTHETIC_ONLY.sql
           test -f localeats-api/tests/rewards/pg17/run-synthetic-pg17.sh
           ! grep -En 'supabase\.co|DATABASE_URL|service_role|PRODUCTION_DATABASE|apply_migration|public\.pickup_create_order' \
-            localeats-api/tests/rewards/pg17/schema.SYNTHETIC_ONLY.sql
+            localeats-api/tests/rewards/pg17/*.sql
       - name: Run deterministic and two-session PostgreSQL 17 contract tests
         shell: bash
         run: bash localeats-api/tests/rewards/pg17/run-synthetic-pg17.sh
