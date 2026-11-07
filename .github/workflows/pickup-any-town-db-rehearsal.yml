@@ -1,0 +1,75 @@
+name: Pickup any-town DB cutover — isolated PG17 rehearsal
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'security/drafts/pickup_any_town_4km_create_REVIEW_ONLY.sql'
+      - 'tests/security/pickup_any_town_function_fixture.sql'
+      - 'tests/security/pickup_any_town_function_assertions.sql'
+      - 'supabase/drafts/pickup_zero_fee.sql'
+      - '.github/workflows/pickup-any-town-db-rehearsal.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  disposable-exact-source-pg17:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-no-cloud-credentials
+          POSTGRES_DB: localeats_any_town_disposable
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d localeats_any_town_disposable"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: '127.0.0.1'
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: 'synthetic-no-cloud-credentials'
+      PGDATABASE: 'localeats_any_town_disposable'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Refuse remote or shared database connection
+        run: |
+          set -eu
+          test "$PGHOST" = '127.0.0.1'
+          test "$PGDATABASE" = 'localeats_any_town_disposable'
+          test -z "${DATABASE_URL:-}"
+          test -z "${SUPABASE_URL:-}"
+          test "$(psql -X -At -c 'select current_database()')" = 'localeats_any_town_disposable'
+          test "$(psql -X -At -c 'show server_version_num' | cut -c1-2)" = '17'
+      - name: Create synthetic schema, roles and eligible/ineligible shops
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/security/pickup_any_town_function_fixture.sql
+      - name: Recreate exact current zero-fee pickup function from reviewed source
+        run: |
+          set -eu
+          awk '/^create or replace function public.pickup_create_order\(/ { copying=1 }
+               copying { print }
+               copying && /^\$create\$;/ { exit }' \
+            supabase/drafts/pickup_zero_fee.sql > /tmp/pickup_exact_existing_function.sql
+          test "$(grep -c '^create or replace function public.pickup_create_order(' /tmp/pickup_exact_existing_function.sql)" = 1
+          grep -q '^\$create\$;' /tmp/pickup_exact_existing_function.sql
+          psql -X -v ON_ERROR_STOP=1 -f /tmp/pickup_exact_existing_function.sql
+          psql -X -v ON_ERROR_STOP=1 -c "revoke all on function public.pickup_create_order(text,text,jsonb) from public, anon, authenticated; grant execute on function public.pickup_create_order(text,text,jsonb) to service_role;"
+          test "$(psql -X -At -c "select encode(sha256(convert_to(prosrc,'UTF8')),'hex') from pg_proc where oid=to_regprocedure('public.pickup_create_order(text,text,jsonb)')")" = 'd876b99ff69718b9aed46ebe4b0f8074eb762454f237728e0f13a5a2b87d0b0d'
+      - name: Apply REVIEW-ONLY exact-hash-pinned SQL to disposable DB
+        run: psql -X -v ON_ERROR_STOP=1 -f security/drafts/pickup_any_town_4km_create_REVIEW_ONLY.sql
+      - name: Verify customer order integrity and radius across towns
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/security/pickup_any_town_function_assertions.sql
+      - name: Require repeated cutover to reject changed function instead of silently passing
+        run: |
+          set -eu
+          if psql -X -v ON_ERROR_STOP=1 -f security/drafts/pickup_any_town_4km_create_REVIEW_ONLY.sql > /tmp/pickup-reapply.log 2>&1; then
+            echo "ERROR: migration incorrectly permitted a second application" >&2
+            exit 1
+          fi
+          grep -q 'PICKUP_ANY_TOWN_BASELINE_OR_GRANTS_DRIFT' /tmp/pickup-reapply.log
