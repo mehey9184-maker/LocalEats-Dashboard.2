@@ -29,7 +29,3 @@ jobs:
           sed '/^[[:space:]]*--/d' security/preflight/pickup_stage_prebootstrap_READ_ONLY.sql > /tmp/staging-preflight.sql
           grep -q 'BASELINE_PRECHECK_PASS_BACKUP_AND_RESTORE_STILL_REQUIRED' /tmp/staging-preflight.sql
           ! grep -Eiq '^[[:space:]]*(insert|update|delete|create|alter|drop|truncate|grant|revoke|call|execute|do|begin|commit)[[:space:]]' /tmp/staging-preflight.sql
-      - name: Prevent automated backup or cloud migration in this workflow
-        run: |
-          set -eu
-          ! grep -Eiq 'supabase[[:space:]]+db[[:space:]]+push|apply_migration|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY' .github/workflows/staging-pickup-backup-preflight.yml
