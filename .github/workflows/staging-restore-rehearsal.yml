@@ -50,6 +50,17 @@ jobs:
             }
             if (-not $caught) { throw 'Export failed to check Docker before beginning backup' }
             if (Test-Path $dummy) { throw 'Export created a backup directory before Docker preflight' }
+            # Mode validation must reject transaction pooler before any Docker
+            # call, network request, credential handling or backup creation.
+            $env:LOCALEATS_STAGE_DB_URL = 'postgresql://postgres.rgpbdajhlrwfmhopzgzk:fake@aws-example.pooler.supabase.com:6543/postgres'
+            $badPort = $false
+            try {
+              & ./localeats-api/scripts/staging/export-private-staging-backup.ps1 -OutputDir $dummy
+            } catch {
+              $badPort = $_.Exception.Message -match 'Session pooler.*5432'
+            }
+            if (-not $badPort) { throw 'Export must reject transaction pooler port 6543 before backup' }
+            if (Test-Path $dummy) { throw 'Wrong pooler port created a backup folder' }
             $caught = $false
             try {
               & ./localeats-api/scripts/staging/run-private-backup-and-restore.ps1 -OutputDir $dummy
