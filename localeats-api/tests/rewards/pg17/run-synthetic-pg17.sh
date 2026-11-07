@@ -615,3 +615,113 @@ if pg -c "UPDATE r30_source.purchase_lines SET qualifies_kota=false;" \
 fi
 grep -q 'R30_IMMUTABLE_SOURCE' "$tmp/r30-tamper.err"
 echo "R30_FINANCIAL_OWNER_PRIVATE_EXECUTION_AND_BUDGET_RACE_PASS"
+
+# R3.1: inactive by default, source-only trigger creates a private outbox pointer.
+# A restricted worker can claim/ack pointers but cannot manufacture source facts
+# or credit financial ledgers. No hosted DB connection and no real Firebase.
+echo "R3.1 PG17: genuine collected outbox events, private worker lease and crash replay"
+run_file "$here/outbox-r31.SYNTHETIC_ONLY.sql" >"$tmp/r31-schema.out"
+run_file "$here/outbox-r31-assertions.SYNTHETIC_ONLY.sql" >"$tmp/r31-assertions.out"
+grep -q 'R31_TRUSTED_COLLECTED_EVENT_PRIVATE_OUTBOX_PASS' "$tmp/r31-assertions.out"
+assert_query "SELECT count(*) FROM r31_private.outbox;" "1"
+
+expect_r31_denied(){
+ local sql="$1"
+ if pg -c "$sql" >"$tmp/r31-denied.out" 2>"$tmp/r31-denied.err"; then
+   echo "R31 unauthorized SQL succeeded: $sql" >&2;exit 1
+ fi
+ if ! grep -q 'permission denied' "$tmp/r31-denied.err"; then
+   cat "$tmp/r31-denied.err" >&2
+   echo "R31 unexpected denial cause" >&2;exit 1
+ fi
+}
+expect_r31_denied "SET SESSION AUTHORIZATION r31_browser;
+ SELECT * FROM r31_private.outbox;"
+expect_r31_denied "SET SESSION AUTHORIZATION r31_browser;
+ SELECT * FROM r31_private.claim_next('browser');"
+expect_r31_denied "SET SESSION AUTHORIZATION r31_worker;
+ SELECT * FROM r31_private.outbox;"
+expect_r31_denied "SET SESSION AUTHORIZATION r31_worker;
+ INSERT INTO r31_private.outbox(order_id,collected_command_id,collected_revision)
+ VALUES('00000000-0000-4000-8000-000000000401'::uuid,
+        '00000000-0000-4000-8000-000000000412'::uuid,2);"
+expect_r31_denied "SET SESSION AUTHORIZATION r31_worker;
+ INSERT INTO r31_pickup.command_events(order_id,command_id,revision,kind,actor_uid)
+ VALUES('00000000-0000-4000-8000-000000000402'::uuid,
+        '00000000-0000-4000-8000-000000000499'::uuid,3,'collected','merchant-1');"
+expect_r31_denied "SET SESSION AUTHORIZATION r31_worker;
+ SET ROLE r31_definer;"
+
+# Parallel worker requests may both succeed but exactly one may lease the row.
+paired \
+ "SET SESSION AUTHORIZATION r31_worker; SELECT * FROM r31_private.claim_next('worker-a');" \
+ "SET SESSION AUTHORIZATION r31_worker; SELECT * FROM r31_private.claim_next('worker-b');"
+if [[ "$status_a" -ne 0 || "$status_b" -ne 0 ]]; then
+ cat "$tmp/a.err" "$tmp/b.err" >&2; echo "R31 parallel worker claim FAILED" >&2;exit 1
+fi
+assert_query "SELECT count(*) FROM r31_private.outbox WHERE state='leased';" "1"
+assert_query "SELECT attempt FROM r31_private.outbox;" "1"
+# An acknowledgement must match the actual lease owner and immutable command.
+if pg -c "SET SESSION AUTHORIZATION r31_worker;
+ SELECT r31_private.acknowledge(
+   '00000000-0000-4000-8000-000000000402'::uuid,
+   '00000000-0000-4000-8000-000000000422'::uuid,
+   'wrong-worker');" >"$tmp/r31-badack.out" 2>"$tmp/r31-badack.err"; then
+ echo "R31 cross-worker acknowledgement unexpectedly succeeded" >&2;exit 1
+fi
+grep -q 'R31_STALE_OR_FORGED_ACK' "$tmp/r31-badack.err"
+leased_worker="$(pg -c "SELECT leased_to FROM r31_private.outbox;")"
+assert_query "SET SESSION AUTHORIZATION r31_worker;
+ SELECT r31_private.acknowledge(
+  '00000000-0000-4000-8000-000000000402'::uuid,
+  '00000000-0000-4000-8000-000000000422'::uuid,'$leased_worker');" "t"
+assert_query "SELECT state FROM r31_private.outbox;" "consumed"
+assert_query "SET SESSION AUTHORIZATION r31_worker;
+ SELECT count(*) FROM r31_private.claim_next('worker-c');" "0"
+
+# Simulate worker crash: a lease past its expiry becomes available to another
+# worker without duplicating the physical event pointer or paying anything.
+pg -c "UPDATE r31_private.outbox SET state='pending',attempt=0,
+ leased_to=NULL,lease_until=NULL,processed_at=NULL;" >/dev/null
+assert_query "SET SESSION AUTHORIZATION r31_worker;
+ SELECT attempt FROM r31_private.claim_next('crashed-worker');" "1"
+pg -c "UPDATE r31_private.outbox SET lease_until=clock_timestamp()-interval '2 seconds'
+ WHERE leased_to='crashed-worker';" >/dev/null
+assert_query "SET SESSION AUTHORIZATION r31_worker;
+ SELECT attempt FROM r31_private.claim_next('recovery-worker');" "2"
+if pg -c "SET SESSION AUTHORIZATION r31_worker;
+ SELECT r31_private.acknowledge(
+ '00000000-0000-4000-8000-000000000402'::uuid,
+ '00000000-0000-4000-8000-000000000422'::uuid,
+ 'crashed-worker');" >"$tmp/r31-stale.out" 2>"$tmp/r31-stale.err"; then
+ echo "R31 crashed worker accepted stale lease" >&2;exit 1
+fi
+grep -q 'R31_STALE_OR_FORGED_ACK' "$tmp/r31-stale.err"
+assert_query "SET SESSION AUTHORIZATION r31_worker;
+ SELECT r31_private.acknowledge(
+ '00000000-0000-4000-8000-000000000402'::uuid,
+ '00000000-0000-4000-8000-000000000422'::uuid,
+ 'recovery-worker');" "t"
+assert_query "SELECT count(*) FROM r31_private.outbox;" "1"
+assert_query "SELECT state FROM r31_private.outbox;" "consumed"
+
+# Queuing is part of the *same transaction* as verified collected command.
+# A rollback must undo both event insertion and outbox row.
+pg -c "BEGIN;
+INSERT INTO r31_pickup.orders(id,shop_id,customer_uid,owner_uid,origin,
+ registered,is_test,status,payment_status)
+VALUES('00000000-0000-4000-8000-000000000410'::uuid,'shop-1','rollback','merchant-1',
+'authoritative_pickup',true,false,'collected','paid');
+INSERT INTO r31_pickup.checkout_proofs(order_id,shop_id,customer_uid,programme_version,
+ eligible_units,approved_at_purchase,enrolled_at_purchase,captured_at)
+SELECT id,shop_id,customer_uid,'future-v1',4,true,true,created_at
+ FROM r31_pickup.orders WHERE customer_uid='rollback';
+INSERT INTO r31_pickup.command_events(order_id,command_id,revision,kind,actor_uid)
+VALUES('00000000-0000-4000-8000-000000000410'::uuid,
+ '00000000-0000-4000-8000-000000000431'::uuid,1,'payment_confirmed','merchant-1'),
+('00000000-0000-4000-8000-000000000410'::uuid,
+ '00000000-0000-4000-8000-000000000432'::uuid,2,'collected','merchant-1');
+ROLLBACK;" >/dev/null
+assert_query "SELECT count(*) FROM r31_private.outbox;" "1"
+assert_query "SELECT count(*) FROM r31_pickup.orders WHERE customer_uid='rollback';" "0"
+echo "R31_PRIVATE_WORKER_LEASE_REPLAY_ATOMIC_ENQUEUE_PASS"
