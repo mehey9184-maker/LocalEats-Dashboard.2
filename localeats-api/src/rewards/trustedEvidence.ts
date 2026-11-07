@@ -177,7 +177,7 @@ export async function verifyAdminTransferAuthority(
     admin.is_active===true,"ACTIVE_SUPER_ADMIN_REQUIRED");
   ensure(payable.id===payableId && payable.status==="owed" &&
     id(payable.shop_id) && minor(payable.amount_minor) &&
-    (payable.transfer_id === null || payable.transfer_id === undefined),
+    payable.transfer_id === null && data.existingTransfer === null,
     "PAYOUT_NOT_OWED_OR_ALREADY_SENT");
   return {payableId,verifiedAdminUid:uid,shopId:String(payable.shop_id),
     amountMinor:payable.amount_minor as number};
@@ -207,7 +207,7 @@ export async function verifyManualRefundReview(
     id(refund.bank_or_cash_reference),"REFUND_NOT_VERIFIED");
   ensure(credit.order_id===refund.order_id && credit.line_id===refund.line_id &&
     credit.customer_id===refund.customer_id && int(credit.credited_units) &&
-    refund.units<=credit.credited_units,"REFUND_CREDIT_MISMATCH");
+    Number(refund.units)<=Number(credit.credited_units),"REFUND_CREDIT_MISMATCH");
   ensure(shop.id===refund.shop_id && id(shop.owner_id) &&
     shop.owner_id===refund.merchant_verified_by_uid &&
     admin.firebase_uid===refund.admin_verified_by_uid &&
