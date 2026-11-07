@@ -1,0 +1,67 @@
+name: Staging P5 profile preserved — synthetic pickup schema rehearsal
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tests/staging/pickup_p5_preservation_fixture.sql'
+      - 'tests/staging/pickup_p5_preservation_assertions.sql'
+      - 'security/drafts/pickup_any_town_4km_create_REVIEW_ONLY.sql'
+      - '.github/workflows/staging-p5-pickup-schema-rehearsal.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  p5-profile-and-pickup-integrity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: local-only-synthetic-p5
+          POSTGRES_DB: localeats_stage_p5_disposable
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d localeats_stage_p5_disposable"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: '127.0.0.1'
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: 'local-only-synthetic-p5'
+      PGDATABASE: 'localeats_stage_p5_disposable'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Refuse any nonlocal or existing staging/Production database
+        run: |
+          set -eu
+          test "$PGHOST" = '127.0.0.1'
+          test "$PGPORT" = '5432'
+          test "$PGDATABASE" = 'localeats_stage_p5_disposable'
+          test -z "${DATABASE_URL:-}"
+          test -z "${SUPABASE_URL:-}"
+          test -z "${SUPABASE_SERVICE_ROLE_KEY:-}"
+          test "$(psql -X -At -c 'select current_database()')" = 'localeats_stage_p5_disposable'
+          test "$(psql -X -At -c 'show server_version_num' | cut -c1-2)" = '17'
+          test "$(psql -X -At -c "select count(*) from pg_tables where schemaname='public'")" = '0'
+      - name: Recreate the existing synthetic pickup tables and stage P5 profile contract
+        run: |
+          set -eu
+          psql -X -v ON_ERROR_STOP=1 -f localeats-api/tests/pickup/schema.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/staging/pickup_p5_preservation_fixture.sql
+      - name: Exercise canonical existing order, zero-fee, availability and admin approval SQL
+        run: |
+          set -eu
+          psql -X -v ON_ERROR_STOP=1 -f supabase/drafts/pickup_launch_foundation.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/drafts/pickup_zero_fee.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/drafts/merchant_availability.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/archived-migrations/20260902234040_phase4g_admin_approval_foundation.sql
+      - name: Remove obsolete town guard using reviewed hash-pinned SQL in disposable DB only
+        run: psql -X -v ON_ERROR_STOP=1 -f security/drafts/pickup_any_town_4km_create_REVIEW_ONLY.sql
+      - name: Assert profile schema unchanged and Super Admin to Merchant to Customer pickup flow
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/staging/pickup_p5_preservation_assertions.sql
