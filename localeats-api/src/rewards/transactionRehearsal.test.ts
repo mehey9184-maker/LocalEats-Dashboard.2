@@ -73,7 +73,7 @@ class SyntheticAtomicStore implements RewardsTransactionalStore {
   programme:ProgrammeSnapshot={active:true,version:"pilot-v1",funded:true};
   orderData=orderBundle();
   refundData=refundBundle();
-  adminData=adminBundle();
+  adminData: Omit<ReturnType<typeof adminBundle>, "existingTransfer"> & {existingTransfer:unknown}=adminBundle();
   merchantData=merchantBundle();
   transactionCalls=0;
   writes=0;
