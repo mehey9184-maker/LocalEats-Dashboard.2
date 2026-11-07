@@ -800,7 +800,8 @@ assert_query "SET SESSION AUTHORIZATION r32_worker;
 assert_query "SELECT state FROM r32_private.outbox;" "consumed"
 assert_query "SELECT count(*) FROM r32_private.credit_receipts;" "1"
 assert_query "SELECT reserved_minor FROM r32_private.programme;" "2500"
-assert_query "SELECT count(*) FROM r32_private.claim_next();" "0" # test owner forbidden? function enforces session_user
+assert_query "SET SESSION AUTHORIZATION r32_worker;
+ SELECT count(*) FROM r32_private.claim_next();" "0"
 echo "R32_DISPOSABLE_WORKER_CONSUMED_WITH_ATOMIC_CREDIT" 
 
 # Simulated crash AFTER reservation and INSERT but BEFORE ACK: all work rolls
