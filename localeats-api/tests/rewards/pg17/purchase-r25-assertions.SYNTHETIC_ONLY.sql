@@ -137,7 +137,7 @@ BEGIN
     VALUES('order-carol-refund','c-confirm',1,'payment_confirmed','merchant-a'),
           ('order-carol-refund','c-collected',2,'collected','merchant-a');
   PERFORM reward_lab.record_snapshot_refund(
-    'src-refund-c','CASH-REF-C','order-carol-refund','order-carol-refund:line:1',2,
+    'src-refund-c','order-carol-refund','order-carol-refund:line:1','CASH-REF-C',2,
     'Merchant verified refund before credit');
   BEGIN
     PERFORM reward_lab.credit_snapshotted_pickup('order-carol-refund');
@@ -151,10 +151,10 @@ BEGIN
   -- After credit, the same refund source is linked to an immutable R2.3
   -- recovery event and automatically places the customer entitlement on hold.
   PERFORM reward_lab.record_snapshot_refund(
-    'src-refund-a','CASH-REF-A','order-alice','order-alice:line:1',1,
+    'src-refund-a','order-alice','order-alice:line:1','CASH-REF-A',1,
     'Merchant verified refund after credit');
   PERFORM reward_lab.record_snapshot_refund(
-    'src-refund-a','CASH-REF-A','order-alice','order-alice:line:1',1,
+    'src-refund-a','order-alice','order-alice:line:1','CASH-REF-A',1,
     'Merchant verified refund after credit');
   IF NOT EXISTS(SELECT 1 FROM reward_lab.customer_holds WHERE customer_id='alice') OR
      (SELECT status FROM reward_lab.grants WHERE customer_id='alice')<>'earned' OR
@@ -162,7 +162,7 @@ BEGIN
   THEN RAISE EXCEPTION 'REFUND_DID_NOT_PRESERVE_AND_HOLD_ENTITLEMENT'; END IF;
   BEGIN
     PERFORM reward_lab.record_snapshot_refund(
-      'src-refund-a','DIFFERENT-REF','order-alice','order-alice:line:1',1,
+      'src-refund-a','order-alice','order-alice:line:1','DIFFERENT-REF',1,
       'Merchant verified refund after credit');
     RAISE EXCEPTION 'EXPECTED_REJECTION_MISSING';
   EXCEPTION WHEN OTHERS THEN
@@ -170,7 +170,7 @@ BEGIN
   END;
   BEGIN
     PERFORM reward_lab.record_snapshot_refund(
-      'src-refund-excess','MORE-UNITS','order-alice','order-alice:line:1',4,
+      'src-refund-excess','order-alice','order-alice:line:1','MORE-UNITS',4,
       'Invalid refund exceeding quantity');
     RAISE EXCEPTION 'EXPECTED_REJECTION_MISSING';
   EXCEPTION WHEN OTHERS THEN
