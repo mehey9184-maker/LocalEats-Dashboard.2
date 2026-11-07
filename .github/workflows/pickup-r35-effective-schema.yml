@@ -1,0 +1,45 @@
+name: Pickup R3.5 effective schema payment and restore gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/tests/pickup/r35/**'
+      - 'localeats-api/tests/pickup/r34/**'
+      - 'supabase/drafts/pickup_launch_foundation.sql'
+      - 'supabase/drafts/pickup_zero_fee.sql'
+      - 'supabase/drafts/merchant_availability.sql'
+      - '.github/workflows/pickup-r35-effective-schema.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-incomplete-migrations-and-offline-payment-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source without deploy credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Reject false full-migration parity declarations
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test localeats-api/tests/pickup/r35/reproducibility.test.mjs
+      - name: Verify no hosted SQL or production secrets in disposable runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f localeats-api/tests/pickup/r35/effective-payment-methods.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/pickup/r35/payment-pre-e2e.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/pickup/r35/payment-post-e2e.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/pickup/r35/run-local-pickup-r35.sh
+          ! grep -Ein 'supabase\.co|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY|db push|apply_migration|--remote|--publish| -p [0-9]+:' \
+            localeats-api/tests/pickup/r35/*.sql \
+            localeats-api/tests/pickup/r35/*.sh
+      - name: Run verified effective payment behavior with original pickup RPCs
+        shell: bash
+        run: bash localeats-api/tests/pickup/r35/run-local-pickup-r35.sh
