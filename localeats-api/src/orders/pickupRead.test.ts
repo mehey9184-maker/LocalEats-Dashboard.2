@@ -23,7 +23,7 @@ test("missing identity, old contracts and client prices fail before catalog read
 });
 test("archived/offline/out-of-area/out-of-radius shops, invalid contact and prices fail closed",async()=>{
  const base=repository(),shop=await base.findShop();
- for(const [patch,expected] of [[{archived_at:"old"},"SHOP_UNAVAILABLE"],[{is_active:false},"SHOP_UNAVAILABLE"],[{location:"Elsewhere"},"OUTSIDE_PICKUP_PILOT"],[{lat:-26.5},"OUTSIDE_PICKUP_RADIUS"]] as const)
+ for(const [patch,expected] of [[{archived_at:"old"},"SHOP_UNAVAILABLE"],[{is_active:false},"SHOP_UNAVAILABLE"],[{approval_status:"pending"},"SHOP_UNAVAILABLE"],[{lat:-26.5},"OUTSIDE_PICKUP_RADIUS"]] as const)
   await assert.rejects(pickupReadQuote({...base,findShop:async()=>({...shop,...patch})},"u",request()),code(expected));
  await assert.rejects(pickupReadQuote(base,"u",{...request(),customer_details:{name:"Test",phone:"bad"}}),code("INVALID_PHONE"));
  await assert.rejects(pickupReadQuote({...base,findMenuItems:async()=>[{id:"m",shop_id:"s",name:"Bad",price:"",is_available:true}]},"u",request()),code("INVALID_SERVER_PRICE"));
@@ -31,4 +31,14 @@ test("archived/offline/out-of-area/out-of-radius shops, invalid contact and pric
 });
 test("database failures never manufacture a quote",async()=>{
  await assert.rejects(pickupReadQuote({findShop:async()=>{throw new Error("database offline");},findMenuItems:async()=>[]},"u",request()),/database offline/);
+});
+
+test("Pickup quote accepts other towns and missing town text with same approved, open 4 km shop",async()=>{
+ const base=repository(),shop=await base.findShop();
+ for(const location of ["Cosmo City","Soweto","Pretoria",null,""]){
+  const other={...base,findShop:async()=>({...shop,location})};
+  const quote=await pickupReadQuote(other as PickupReadRepository,"u",request());
+  assert.equal(quote.total_minor,6500);
+ }
+ await assert.rejects(pickupReadQuote({...base,findShop:async()=>({...shop,location:"Cosmo City",lat:-26.5})},"u",request()),code("OUTSIDE_PICKUP_RADIUS"));
 });

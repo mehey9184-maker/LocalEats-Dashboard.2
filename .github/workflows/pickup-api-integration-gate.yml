@@ -1,0 +1,40 @@
+name: LocalEats pickup API integration — geo, closed browse, Riders OFF
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/src/routes/catalog.ts'
+      - 'localeats-api/src/routes/catalog.test.ts'
+      - 'localeats-api/src/routes/adminRiders.ts'
+      - 'localeats-api/src/routes/adminRiders.test.ts'
+      - 'localeats-api/src/orders/**'
+      - '.github/workflows/pickup-api-integration-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  safe-pickup-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Locked dependencies without Supabase/Firebase/Vercel keys
+        run: npm ci --prefix localeats-api --no-audit --no-fund
+      - name: Full TypeScript build + API tests
+        run: npm test --prefix localeats-api
+      - name: Verify authoritative any-town radius and default-off Rider status
+        run: |
+          set -eu
+          ! grep -R 'isPickupPilotShop' localeats-api/src/routes/catalog.ts localeats-api/src/orders/pickupService.ts localeats-api/src/orders/pickupRead.ts
+          grep -q 'distance_km<=4' localeats-api/src/routes/catalog.ts
+          grep -q 'ADMIN_RIDER_VERIFICATION_WRITES_ENABLED === "true"' localeats-api/src/routes/adminRiders.ts
+          grep -q 'RIDER_VERIFICATION_COMING_SOON' localeats-api/src/routes/adminRiders.ts
+          grep -q 'shop.is_active' localeats-api/src/routes/catalog.ts
+          grep -q 'approval_status' localeats-api/src/routes/catalog.ts

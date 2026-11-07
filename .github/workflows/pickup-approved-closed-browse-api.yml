@@ -1,0 +1,28 @@
+name: Pickup approved closed shops — API browse contract
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/src/routes/catalog.ts'
+      - 'localeats-api/src/routes/catalog.test.ts'
+      - '.github/workflows/pickup-approved-closed-browse-api.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  nearby-closed-browse:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Install locked dependencies; no live credentials
+        run: npm ci --prefix localeats-api --no-audit --no-fund
+      - name: TypeScript and all existing API contract tests
+        run: npm test --prefix localeats-api
