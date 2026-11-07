@@ -409,3 +409,113 @@ assert_query "SELECT has_table_privilege('r28_untrusted','r28_private.orders','I
 assert_query "SELECT has_function_privilege('r28_untrusted',
  'r28_private.credit_collected_order(text)','EXECUTE');" "f"
 echo "R28_PRIVATE_PG17_CONCURRENCY_BUDGET_AND_ACCESS_PASS"
+
+# R2.9 is a distinct isolated lab that mimics the *types* of real pickup
+# source contracts; it does not read or modify connected Supabase data.
+echo "R2.9 PG17: UUID pickup source, private source FKs and actual role switching"
+run_file "$here/compat-r29.SYNTHETIC_ONLY.sql" >"$tmp/r29-schema.out"
+run_file "$here/compat-r29-assertions.SYNTHETIC_ONLY.sql" >"$tmp/r29-assertions.out"
+grep -q 'R29_UUID_IDENTITY_PRIVATE_RLS_AND_SNAPSHOT_PASS' "$tmp/r29-assertions.out"
+assert_query "SELECT committed_minor FROM r29_private.programme WHERE version='future-pilot';" "2500"
+
+# Confirm actual execution permissions under these nonlogin roles, not merely
+# querying information_schema. The test owner may SET ROLE inside the scratch DB.
+expect_r29_denied(){
+  local candidate="$1"
+  if pg -c "$candidate" >"$tmp/r29-denied.out" 2>"$tmp/r29-denied.err"; then
+    echo "R29 UNEXPECTED SQL ACCESS: $candidate" >&2
+    exit 1
+  fi
+  if ! grep -q "permission denied" "$tmp/r29-denied.err"; then
+    cat "$tmp/r29-denied.err" >&2
+    echo "R29 denied for unexpected reason" >&2
+    exit 1
+  fi
+}
+assert_query "SET ROLE r29_observer; SELECT feature_status FROM r29_private.safe_status;" "not-live"
+expect_r29_denied "SET ROLE r29_browser; SELECT feature_status FROM r29_private.safe_status;"
+expect_r29_denied "SET ROLE r29_browser; INSERT INTO r29_private.progress(customer_uid) VALUES('alice');"
+expect_r29_denied "SET ROLE r29_observer; SELECT count(*) FROM r29_private.purchase_lines;"
+expect_r29_denied "SET ROLE r29_observer; UPDATE r29_private.programme SET active=true;"
+expect_r29_denied "SET ROLE r29_observer; SELECT r29_private.credit_from_pickup('00000000-0000-4000-8000-000000000029'::uuid);"
+
+# A failed SERIALIZABLE transaction MUST roll back, and a retried decision
+# must re-evaluate funding. Two independent sessions start with the same
+# original snapshot, then compete for the single R25 budget row.
+paired \
+ "BEGIN ISOLATION LEVEL SERIALIZABLE;
+  SELECT reserved_minor FROM r29_private.isolation_budget WHERE id=1;
+  SELECT pg_sleep(0.6);
+  SELECT r29_private.reserve_isolation_budget('serial-a',2500);
+  COMMIT;" \
+ "BEGIN ISOLATION LEVEL SERIALIZABLE;
+  SELECT reserved_minor FROM r29_private.isolation_budget WHERE id=1;
+  SELECT pg_sleep(0.6);
+  SELECT r29_private.reserve_isolation_budget('serial-b',2500);
+  COMMIT;"
+r29_winner=""
+r29_loser=""
+if [[ "$status_a" -eq 0 && "$status_b" -ne 0 ]]; then
+  r29_winner="serial-a"
+  r29_loser="serial-b"
+  grep -q 'could not serialize access' "$tmp/b.err"
+elif [[ "$status_b" -eq 0 && "$status_a" -ne 0 ]]; then
+  r29_winner="serial-b"
+  r29_loser="serial-a"
+  grep -q 'could not serialize access' "$tmp/a.err"
+else
+  echo "Expected one SERIALIZABLE winner and one conflict" >&2
+  cat "$tmp/a.err" "$tmp/b.err" >&2
+  exit 1
+fi
+assert_query "SELECT count(*) FROM r29_private.isolation_claims;" "1"
+assert_query "SELECT reserved_minor FROM r29_private.isolation_budget WHERE id=1;" "2500"
+# Idempotent replay is allowed for the winning claim only.
+assert_query "SELECT r29_private.reserve_isolation_budget('$r29_winner',2500);" "$r29_winner"
+if pg -c "SELECT r29_private.reserve_isolation_budget('$r29_loser',2500);" >"$tmp/r29-retry.out" 2>"$tmp/r29-retry.err"; then
+  echo "R29 unfunded serialization retry was incorrectly accepted" >&2
+  exit 1
+fi
+grep -q 'R29_ISOLATION_BUDGET_EXHAUSTED' "$tmp/r29-retry.err"
+assert_query "SELECT count(*) FROM r29_private.isolation_claims;" "1"
+
+# Aborted PREVIEW migration must leave exactly zero objects behind.
+pg -c "BEGIN; CREATE TABLE r29_private.preview_draft_should_rollback(id integer); ROLLBACK;" >/dev/null
+assert_query "SELECT to_regclass('r29_private.preview_draft_should_rollback') IS NULL;" "t"
+assert_query "SELECT committed_minor FROM r29_private.programme WHERE version='future-pilot';" "2500"
+
+# Real schema-level restore rehearsal: a pg_dump *of the synthetic schemas
+# only* is restored into a NEW scratch database in the SAME temporary Docker
+# container. No hosted project, credentials, users or backups are touched.
+r29_source_before="$(pg -c "SELECT count(*) FROM r29_source.orders;")"
+r29_private_before="$(pg -c "SELECT count(*) FROM r29_private.purchase_lines;")"
+r29_credit_before="$(pg -c "SELECT count(*) FROM r29_private.credits;")"
+docker exec "$name" pg_dump -U postgres -d rewards_lab \
+  -n r29_source -n r29_private -F c -f /tmp/r29-private-restore.dump
+docker exec "$name" createdb -U postgres rewards_r29_restore
+docker exec "$name" pg_restore -U postgres --no-owner \
+  -d rewards_r29_restore /tmp/r29-private-restore.dump
+r29_restore(){
+  docker exec "$name" psql -X -A -t -q -v ON_ERROR_STOP=1 -U postgres \
+    -d rewards_r29_restore -c "$1"
+}
+if [[ "$(r29_restore "SELECT count(*) FROM r29_source.orders;")" != "$r29_source_before" ||
+      "$(r29_restore "SELECT count(*) FROM r29_private.purchase_lines;")" != "$r29_private_before" ||
+      "$(r29_restore "SELECT count(*) FROM r29_private.credits;")" != "$r29_credit_before" ]]; then
+  echo "R29 private UUID source/ledger backup restore mismatch" >&2
+  exit 1
+fi
+if [[ "$(r29_restore "SELECT committed_minor FROM r29_private.programme WHERE version='future-pilot';")" != "2500" ||
+      "$(r29_restore "SELECT count(*) FROM r29_private.bronze_grants;")" != "1" ||
+      "$(r29_restore "SELECT has_schema_privilege('r29_browser','r29_private','USAGE');")" != "f" ]]; then
+  echo "R29 restored private financial invariants or role access diverged" >&2
+  exit 1
+fi
+if [[ "$(r29_restore "SELECT count(*) FROM r29_private.purchase_snapshots s
+  JOIN r29_source.orders o ON o.id=s.order_id
+    AND o.shop_id=s.shop_id AND o.user_id=s.customer_uid;")" != \
+      "$(r29_restore "SELECT count(*) FROM r29_private.purchase_snapshots;")" ]]; then
+  echo "R29 restored source/customer/shop identity FKs failed" >&2
+  exit 1
+fi
+echo "R29_UUID_PRIVILEGES_SERIALIZABLE_RETRY_AND_RESTORE_PASS"
