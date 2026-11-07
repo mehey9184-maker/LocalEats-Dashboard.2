@@ -14,6 +14,15 @@ try {
   $pool = $uri.Host -match '(^|\.)pooler\.supabase\.com$' -and $username -eq "postgres.$expectedRef"
   if (-not ($direct -or $pool)) {throw 'REFUSED: database URL is not the approved LocalEats staging project'}
   if ($uri.AbsolutePath -ne '/postgres') {throw 'REFUSED: unexpected database name'}
+  # Fail before creating a backup folder when Docker Desktop Linux engine
+  # is unavailable. This avoids partial backup folders for a known blocker.
+  if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'Docker CLI is missing' }
+  $dockerOS = $null
+  try { $dockerOS = (& docker info --format '{{.OSType}}' 2>$null | Select-Object -Last 1) } catch { $dockerOS = $null }
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($dockerOS)) {
+    throw 'Docker Desktop Linux engine unavailable. Start Docker Desktop and check docker info before retrying.'
+  }
+  if ($dockerOS.Trim() -ne 'linux') { throw 'Docker Desktop must use Linux containers for Supabase CLI db dump.' }
   $dest = [System.IO.Path]::GetFullPath($OutputDir)
   $repoRoot = (git rev-parse --show-toplevel 2>$null)
   if ($repoRoot) {
