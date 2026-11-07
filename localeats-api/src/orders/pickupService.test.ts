@@ -90,12 +90,20 @@ test("push rechecks lease/token and awaits fenced completion; failure does not r
   await drainPickupPush(denied,"customer",async()=>{throw Error("should not send");});
 });
 
-test("pickup quote rejects missing or outside-pilot shop metadata without classifying it",async()=>{
+test("pickup quote uses verified radius and approval, never town text",async()=>{
  const repository=repo(),shop=await repository.findShop("shop");assert.ok(shop);
- for(const location of [null,"","Elsewhere"]){
+ const request=parsePickupInput(raw(),false);
+ for(const location of [null,"","Cosmo City","Soweto","Pretoria"]){
   repository.findShop=async()=>({...shop,location});
-  await assert.rejects(()=>pickupPricing(repository,"customer",parsePickupInput(raw(),false)),/OUTSIDE_PICKUP_PILOT/);
+  const quoted=pickupQuote(await pickupPricing(repository,"customer",request));
+  assert.equal(quoted.total_minor,2500);
  }
+ repository.findShop=async()=>({...shop,location:"Cosmo City",lat:-26.5});
+ await assert.rejects(()=>pickupPricing(repository,"customer",request),/OUTSIDE_PICKUP_RADIUS/);
+ repository.findShop=async()=>({...shop,location:"Cosmo City",approval_status:"pending"});
+ await assert.rejects(()=>pickupPricing(repository,"customer",request),/SHOP_UNAVAILABLE/);
+ repository.findShop=async()=>({...shop,location:"Cosmo City",is_active:false});
+ await assert.rejects(()=>pickupPricing(repository,"customer",request),/SHOP_UNAVAILABLE/);
 });
 
 
