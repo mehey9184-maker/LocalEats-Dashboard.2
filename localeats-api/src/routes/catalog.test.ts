@@ -52,7 +52,13 @@ test("Pickup catalog enforces real coordinates, active pilot metadata and maximu
  await runWithServer(app,async base=>{
   const noLocation=await fetch(base+"/api/v1/catalog/pickup-shops");assert.equal(noLocation.status,400);
   const result=await fetch(base+"/api/v1/catalog/pickup-shops?lat=-25.98&lng=28.2");assert.equal(result.status,200);
-  const body=await result.json();assert.deepEqual(body.shops.map((shop:any)=>shop.id),["eligible"]);assert.equal(body.shops[0].distance_km,0);
+  const body=await result.json();
+  assert.deepEqual(body.shops.map((shop:any)=>shop.id),["eligible","offline"]);
+  assert.equal(body.shops[0].distance_km,0);
+  assert.equal(body.shops[1].is_active,false,"Closed shop must remain visibly closed, not orderable");
+  assert.equal(fakeDb.calls.some(c=>c.method==="eq" && c.args[0]==="approval_status" && c.args[1]==="approved"),true);
+  assert.equal(fakeDb.calls.some(c=>c.method==="is" && c.args[0]==="archived_at" && c.args[1]===null),true);
+
  });
 });
 
@@ -156,4 +162,18 @@ test("Catalog Router - GET shop menu (behaviors 10, 11, 12, 13, 14, 18)", async 
     body = await res.json();
     assert.equal(res.status, 404);
   });
+});
+
+test("Approved closed shop's real menu remains readable without relaxing approval rules",async()=>{
+ const {app,fakeDb}=createTestApp();
+ fakeDb.mockShopData={id:"closed",name:"Closed Kitchen",is_active:false,approval_status:"approved"};
+ fakeDb.mockMenuData=[{id:"menu-1",name:"Real menu item",price:25,is_available:true}];
+ await runWithServer(app,async base=>{
+  const menu=await fetch(base+"/api/v1/catalog/shops/closed/menu");
+  assert.equal(menu.status,200);
+  const payload=await menu.json();
+  assert.deepEqual(payload.menu_items.map((item:any)=>item.name),["Real menu item"]);
+  assert.equal(fakeDb.calls.some(c=>c.method==="eq"&&c.args[0]==="approval_status"&&c.args[1]==="approved"),true);
+  assert.equal(fakeDb.calls.some(c=>c.method==="is"&&c.args[0]==="archived_at"&&c.args[1]===null),true);
+ });
 });
