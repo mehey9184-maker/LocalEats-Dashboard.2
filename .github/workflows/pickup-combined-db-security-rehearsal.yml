@@ -1,0 +1,80 @@
+name: LocalEats pickup security — combined Postgres 17 rehearsal
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tests/security/combined_rider_fixture_after_signup.sql'
+      - 'tests/security/combined_launch_hardening_preconditions.sql'
+      - 'tests/security/combined_launch_hardening_postconditions.sql'
+      - 'security/drafts/signup_role_customer_only_REVIEW_ONLY.sql'
+      - 'security/drafts/rider_notifications_lockdown_REVIEW_ONLY.sql'
+      - '.github/workflows/pickup-combined-db-security-rehearsal.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-pg17-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-not-live
+          POSTGRES_DB: localeats_security_disposable
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d localeats_security_disposable"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: '127.0.0.1'
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: 'synthetic-ci-not-live'
+      PGDATABASE: 'localeats_security_disposable'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Refuse nonlocal or shared cloud database
+        run: |
+          set -eu
+          test "$PGHOST" = "127.0.0.1"
+          test "$PGDATABASE" = "localeats_security_disposable"
+          test -z "${SUPABASE_URL:-}"
+          test -z "${DATABASE_URL:-}"
+          test "$(psql -X -At -c 'select current_database()')" = "localeats_security_disposable"
+          test "$(psql -X -At -c 'select current_setting('"'server_version_num'"')' | cut -c1-2)" = "17"
+      - name: Reproduce both unsafe Production configurations synthetically
+        run: |
+          set -eu
+          psql -X -v ON_ERROR_STOP=1 -f tests/security/signup_role_fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/security/combined_rider_fixture_after_signup.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/security/combined_launch_hardening_preconditions.sql
+      - name: Apply exactly one signup draft and rider draft in isolated test DB
+        run: |
+          set -eu
+          psql -X -v ON_ERROR_STOP=1 -f security/drafts/signup_role_customer_only_REVIEW_ONLY.sql
+          psql -X -v ON_ERROR_STOP=1 -f security/drafts/rider_notifications_lockdown_REVIEW_ONLY.sql
+      - name: Verify customer-only signup, existing roles and retained service notifications
+        run: |
+          set -eu
+          psql -X -v ON_ERROR_STOP=1 -f tests/security/signup_role_assertions.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/security/rider_notification_assertions.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/security/combined_launch_hardening_postconditions.sql
+      - name: Confirm both drafts reject unsafe repeat deployment instead of masking drift
+        run: |
+          set -eu
+          if psql -X -v ON_ERROR_STOP=1 -f security/drafts/signup_role_customer_only_REVIEW_ONLY.sql > /tmp/signup-replay.log 2>&1; then
+            echo "Signup role draft re-applied without verifying baseline drift" >&2
+            exit 1
+          fi
+          grep -q 'SIGNUP_ROLE_REVIEW_SCHEMA_DRIFT' /tmp/signup-replay.log
+          if psql -X -v ON_ERROR_STOP=1 -f security/drafts/rider_notifications_lockdown_REVIEW_ONLY.sql > /tmp/rider-replay.log 2>&1; then
+            echo "Rider draft re-applied without verifying baseline drift" >&2
+            exit 1
+          fi
+          grep -q 'SECURITY_REVIEW_POLICY_DRIFT' /tmp/rider-replay.log
