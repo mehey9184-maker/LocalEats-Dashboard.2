@@ -61,7 +61,9 @@ export const makeCatalogRouter = (repository: CatalogRepository): Router => {
     try {
       const shops=(await repository.getApprovedShops()).flatMap(shop=>{
         const lat=shop.lat ?? shop.latitude,lng=shop.lng ?? shop.longitude;
-        if(shop.is_active!==true || !isPickupPilotShop(shop.location) || typeof lat!=="number" ||
+        // Approved closed shops remain discoverable for menu browsing, but
+        // pickup quote/create still require the authoritative open state.
+        if(typeof shop.is_active!=="boolean" || !isPickupPilotShop(shop.location) || typeof lat!=="number" ||
           !Number.isFinite(lat) || Math.abs(lat)>90 || typeof lng!=="number" || !Number.isFinite(lng) || Math.abs(lng)>180)return [];
         const distance_km=calculateDistanceKm(Number(rawLat),Number(rawLng),lat,lng);
         return distance_km<=4 ? [{...shop,distance_km}] : [];
