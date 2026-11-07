@@ -1,8 +1,8 @@
 {
-  "source": "Read-only Supabase migration history 2026-11-08; no remote data copied",
+  "source": "Read-only Supabase migration history, original statements[1] recovered on 2026-11-08; no remote application data copied",
   "production_project_id_redacted": true,
   "complete": false,
-  "compatibility": "effective pickup payment method behavior reconstructed OFFLINE; original SQL unknown",
+  "compatibility": "All four applied pickup SQL statements recovered verbatim as non-runnable archive .sql.txt; full deployable migration chain and 1:1 effective schema parity NOT verified",
   "applied": [
     {
       "version": "20260921085319",
@@ -31,34 +31,39 @@
     {
       "version": "20261030111305",
       "name": "pickup_launch_foundation",
-      "repo_source": "supabase/drafts/pickup_launch_foundation.sql",
-      "state": "draft-only-not-versioned"
+      "repo_source": "supabase/recovered_applied_readonly/20261030111305_pickup_launch_foundation.sql.txt",
+      "state": "recorded-statement-archived-not-versioned",
+      "review_draft": "supabase/drafts/pickup_launch_foundation.sql"
     },
     {
       "version": "20261031073608",
       "name": "pickup_zero_fee",
-      "repo_source": "supabase/drafts/pickup_zero_fee.sql",
-      "state": "draft-only-not-versioned"
+      "repo_source": "supabase/recovered_applied_readonly/20261031073608_pickup_zero_fee.sql.txt",
+      "state": "recorded-statement-archived-not-versioned",
+      "review_draft": "supabase/drafts/pickup_zero_fee.sql"
     },
     {
       "version": "20261031073645",
       "name": "merchant_availability",
-      "repo_source": "supabase/drafts/merchant_availability.sql",
-      "state": "draft-only-not-versioned"
+      "repo_source": "supabase/recovered_applied_readonly/20261031073645_merchant_availability.sql.txt",
+      "state": "recorded-statement-archived-not-versioned",
+      "review_draft": "supabase/drafts/merchant_availability.sql"
     },
     {
       "version": "20261101160331",
       "name": "pickup_payment_methods",
-      "repo_source": "localeats-api/tests/pickup/r35/effective-payment-methods.SYNTHETIC_ONLY.sql",
-      "state": "effective-behavior-only-not-original"
+      "repo_source": "supabase/recovered_applied_readonly/20261101160331_pickup_payment_methods.sql.txt",
+      "state": "recorded-statement-archived-not-versioned",
+      "review_draft": "localeats-api/tests/pickup/r35/effective-payment-methods.SYNTHETIC_ONLY.sql"
     }
   ],
   "manually_pending": [
-    "Complete source-equivalent historical applied migration SQL and verify by offline rebuilt catalog",
+    "Convert recovered SQL statements into a reviewed, reversible, owner-approved LOCAL migration restoration plan; do not assume remote source can be replayed automatically",
     "Full effective Production table/constraint/index/trigger/RLS/policy/grant parity and restore test",
     "Real Customer and Merchant Preview visual acceptance with real identity but no live orders",
     "End-to-end reliable FCM push delivery and reconnect tests",
     "Resolution of overly broad public.payments authenticated ALL policy and public definer function review",
     "Owner approval before real online ordering or future Rewards activation"
-  ]
+  ],
+  "recovered_recorded_applied_statements": true
 }
