@@ -1,0 +1,37 @@
+name: Pickup hosted staging parity — fail-closed offline preflight
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'security/preflight/pickup_stage_schema_parity_READ_ONLY.sql'
+      - 'localeats-api/scripts/pickup-stage-parity-gate.mjs'
+      - 'localeats-api/scripts/pickup-stage-parity-gate.test.mjs'
+      - '.github/workflows/pickup-hosted-staging-parity.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-parity-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Verify fail-closed schema and privilege requirements offline
+        run: node --test localeats-api/scripts/pickup-stage-parity-gate.test.mjs
+      - name: Verify no schema mutations in read-only inventory SQL
+        run: |
+          set -eu
+          sed '/^[[:space:]]*--/d' security/preflight/pickup_stage_schema_parity_READ_ONLY.sql > /tmp/staging-schema-inspection.sql
+          ! grep -Eiq '^[[:space:]]*(insert|update|delete|create|drop|alter|truncate|grant|revoke|execute|call|do)[[:space:]]' /tmp/staging-schema-inspection.sql
+          grep -q 'SELECT jsonb_build_object' /tmp/staging-schema-inspection.sql
+      - name: Install pinned API dependencies; no cloud keys
+        run: npm ci --prefix localeats-api --no-audit --no-fund
+      - name: Run existing API TypeScript and regression contract checks
+        run: npm test --prefix localeats-api
