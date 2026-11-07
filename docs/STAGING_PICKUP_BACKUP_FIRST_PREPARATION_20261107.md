@@ -22,7 +22,7 @@ From a checked-out copy of **draft PR #88 branch** on your Windows computer, run
 
     powershell -ExecutionPolicy Bypass -File .\localeats-api\scripts\staging\run-private-backup-and-restore.ps1
 
-This prompts **privately** for the staging database URL from [Supabase staging → Connect](https://supabase.com/dashboard/project/rgpbdajhlrwfmhopzgzk). Input is hidden and the wrapper refuses any Production database URL. It exports five SQL dumps into a new private Documents folder, checks SHA-256 hashes, starts a **local no-network Docker PostgreSQL 17**, runs the full SQL restore, checks P5 profile structure/RLS and migration history, then destroys the container.
+This prompts for the **Session pooler connection TEMPLATE**, copied from [Supabase staging → Connect](https://supabase.com/dashboard/project/rgpbdajhlrwfmhopzgzk) with its literal `[YOUR-PASSWORD]` placeholder **unchanged**. It then requests the **staging DATABASE password** in a separate hidden prompt. The wrapper percent-encodes special password characters automatically and refuses Production URLs or Transaction pooler connections. Use the database password—not your Supabase dashboard login password or API keys. It exports five SQL dumps into a new private Documents folder, checks SHA-256 hashes, starts a **local no-network Docker PostgreSQL 17**, runs the full SQL restore, checks P5 profile structure/RLS and migration history, then destroys the container.
 
 If successful, the script prints exactly:
 
@@ -36,11 +36,22 @@ If the restore fails, do **not** disable its safety checks or run connected stag
 
 The owner's Windows backup attempt reached `pg_dumpall` but the Docker container could not resolve `db.rgpbdajhlrwfmhopzgzk.supabase.co`. This is consistent with the **direct database endpoint being IPv6-only on Supabase Free**, while the local Docker/Windows route has no usable IPv6 DNS/address path. Supabase documents that **Session pooler is available over IPv4** on Free.
 
-Use **Supabase staging → Connect → Session pooler**, not Direct connection or Transaction pooler. Copy the exact URI shown by Supabase, replacing its password privately. It should have **port 5432**, a hostname ending `.pooler.supabase.com`, and a username of `postgres.rgpbdajhlrwfmhopzgzk`. **Do not construct a pooler hostname from the region or paste the URI into GitHub or ChatGPT.** Use the copy action; host names vary by cluster. Check special characters in the password are percent-encoded in the URI.
+Use **Supabase staging → Connect → Session pooler**, not Direct connection or Transaction pooler. Copy the exact URI shown by Supabase with `[YOUR-PASSWORD]` still present. Do not put a password directly into this first prompt; the separate hidden **staging database password** prompt handles encoding. It should have **port 5432**, a hostname ending `.pooler.supabase.com`, and a username of `postgres.rgpbdajhlrwfmhopzgzk`. **Do not construct a pooler hostname from the region or paste the URI into GitHub or ChatGPT.** Use the copy action; host names vary by cluster. The wrapper percent-encodes reserved characters (`#`, `@`, `?`, `%`, spaces and others) in the database password, so you should enter the **ordinary literal database password** at the hidden prompt, without manually encoding it.
 
 The export helper verifies the staging-only host/account/database and refuses **Transaction pooler port 6543**. On a direct connection without IPv4 DNS, it now fails **before creating a backup folder** with `STAGING_DIRECT_IPV6_DNS_UNAVAILABLE`, explaining how to switch to Session pooler. This does not imply the Supabase database or password is incorrect, and does not require an IPv4 add-on or paid plan.
 
 Reference: https://supabase.com/docs/guides/database/connecting-to-postgres and https://supabase.com/docs/reference/cli/supabase-db-dump .
+
+### Pooler authentication failure — diagnose before retrying
+
+A later owner's attempted backup reached the **Session pooler on port 5432**, but PostgreSQL rejected the password for role `postgres`. This means network/DNS is now working; it **does not imply that the Supabase username in the pooler URL was simply `postgres`**. The exporter had already confirmed the correct `postgres.rgpbdajhlrwfmhopzgzk` username. PostgreSQL may display the underlying role `postgres` in the server-side failure.
+
+1. Supabase staging → **Connect → Session pooler**: copy its connection template with `[YOUR-PASSWORD]` present. It must use project-specific `postgres.rgpbdajhlrwfmhopzgzk` and port 5432.
+2. At the separate hidden password prompt, use the **database password** for **LocalEats-Profile-Staging** (not your Supabase login, service_role key or project API key).
+3. If the database password was forgotten, changing it is a **staging credential rotation**, and may require updating any staging clients that use it. Review the staging project's **Database Settings → Reset database password** before deciding to rotate; do not repeatedly reset Production or paste credentials into chat.
+4. If the same error persists with a known-good database password, stop repeated attempts. Supabase has documented shared-pooler password problems after rotation; contact Supabase Support with the staging project ref and redacted authentication error, without including the password.
+
+Related official troubleshooting: https://supabase.com/kb/troubleshooting/fatal-password-authentication-failed .
 
 ## Backup first — run on a trusted computer, NOT CI
 
