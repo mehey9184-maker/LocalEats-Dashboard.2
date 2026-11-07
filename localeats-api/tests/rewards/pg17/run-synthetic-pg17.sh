@@ -519,3 +519,97 @@ if [[ "$(r29_restore "SELECT count(*) FROM r29_private.purchase_snapshots s
   exit 1
 fi
 echo "R29_UUID_PRIVILEGES_SERIALIZABLE_RETRY_AND_RESTORE_PASS"
+
+# R3.0: restricted NOLOGIN executor in disposable PostgreSQL 17 only.
+echo "R3.0 PG17: NOLOGIN financial owner, limited SQL executor, forgery and races"
+run_file "$here/executor-r30.SYNTHETIC_ONLY.sql" >"$tmp/r30-schema.out"
+run_file "$here/executor-r30-assertions.SYNTHETIC_ONLY.sql" >"$tmp/r30-assertions.out"
+grep -q 'R30_PRIVATE_EXECUTOR_SOURCE_IDENTITY_AND_BUDGET_PASS' "$tmp/r30-assertions.out"
+assert_query "SELECT count(*) FROM r30_private.bronze_grants;" "1"
+assert_query "SELECT committed_minor FROM r30_private.programme WHERE version='synthetic-v1';" "2500"
+
+expect_r30_denied(){
+  local sql="$1"
+  if pg -c "$sql" >"$tmp/r30-denied.out" 2>"$tmp/r30-denied.err"; then
+    echo "R3.0 illegal privilege succeeded: $sql" >&2; exit 1
+  fi
+  if ! grep -q 'permission denied' "$tmp/r30-denied.err"; then
+    cat "$tmp/r30-denied.err" >&2
+    echo "R3.0 denial was not a permissions error" >&2; exit 1
+  fi
+}
+assert_query "SELECT has_function_privilege('r30_api_executor',
+ 'r30_private.credit_verified_pickup(uuid)','EXECUTE');" "t"
+assert_query "SELECT has_function_privilege('r30_browser',
+ 'r30_private.credit_verified_pickup(uuid)','EXECUTE');" "f"
+assert_query "SELECT has_function_privilege('r30_api_executor',
+ 'r30_private.no_mutation()','EXECUTE');" "f"
+expect_r30_denied "SET ROLE r30_browser;
+ SELECT r30_private.credit_verified_pickup('00000000-0000-4000-8000-000000000301'::uuid);"
+expect_r30_denied "SET ROLE r30_merchant;
+ SELECT r30_private.credit_verified_pickup('00000000-0000-4000-8000-000000000301'::uuid);"
+expect_r30_denied "SET ROLE r30_api_executor; SELECT * FROM r30_private.credits;"
+expect_r30_denied "SET ROLE r30_api_executor;
+ INSERT INTO r30_private.credits(order_id,line_index,customer_uid,units)
+ VALUES('00000000-0000-4000-8000-000000000399'::uuid,1,'forged',100);"
+expect_r30_denied "SET ROLE r30_api_executor;
+ UPDATE r30_private.programme SET committed_minor=0;"
+expect_r30_denied "SET ROLE r30_api_executor;
+ UPDATE r30_source.orders SET registered=true;"
+expect_r30_denied "SET ROLE r30_api_executor; SET ROLE r30_finance_owner;"
+expect_r30_denied "SET ROLE r30_finance_owner;
+ INSERT INTO r30_source.orders(id,customer_uid,shop_id,origin,registered,test_order,status,payment_status)
+ VALUES('00000000-0000-4000-8000-000000000398'::uuid,'fake','fake','server_created_pickup',
+ true,false,'collected','paid');"
+assert_query "SET ROLE r30_api_executor;
+ SELECT r30_private.credit_verified_pickup('00000000-0000-4000-8000-000000000301'::uuid);" "0"
+assert_query "SELECT count(*) FROM r30_private.credits;" "1"
+
+reset_r30(){
+ pg -c "TRUNCATE r30_source.orders,r30_private.programme,r30_private.progress
+   RESTART IDENTITY CASCADE;" >/dev/null 2>&1
+ pg -c "INSERT INTO r30_private.programme(version,active,budget_minor)
+    VALUES('synthetic-v1',true,2500);" >/dev/null
+ pg -c "INSERT INTO r30_source.orders(id,customer_uid,shop_id,origin,registered,test_order,status,payment_status)
+ VALUES('00000000-0000-4000-8000-000000000351'::uuid,'racer-a','shop-a',
+        'server_created_pickup',true,false,'collected','paid'),
+       ('00000000-0000-4000-8000-000000000352'::uuid,'racer-b','shop-a',
+        'server_created_pickup',true,false,'collected','paid');
+ INSERT INTO r30_source.purchase_lines(order_id,line_index,quantity,qualifies_kota,provenance,snapshot_at)
+ SELECT id,1,4,true,'immutable_checkout_snapshot',created_at FROM r30_source.orders;
+ INSERT INTO r30_source.pickup_events(order_id,revision,command_id,kind,occurred_at)
+ SELECT id,1,CASE customer_uid WHEN 'racer-a' THEN
+ '00000000-0000-4000-8000-000000000361'::uuid ELSE
+ '00000000-0000-4000-8000-000000000362'::uuid END,
+ 'payment_confirmed',created_at FROM r30_source.orders;
+ INSERT INTO r30_source.pickup_events(order_id,revision,command_id,kind,occurred_at)
+ SELECT id,2,CASE customer_uid WHEN 'racer-a' THEN
+ '00000000-0000-4000-8000-000000000371'::uuid ELSE
+ '00000000-0000-4000-8000-000000000372'::uuid END,
+ 'collected',created_at FROM r30_source.orders;" >/dev/null
+}
+# Two separately executing restricted-role API sessions compete for one owner cap.
+reset_r30
+paired \
+ "SET ROLE r30_api_executor;
+ SELECT r30_private.credit_verified_pickup('00000000-0000-4000-8000-000000000351'::uuid);" \
+ "SET ROLE r30_api_executor;
+ SELECT r30_private.credit_verified_pickup('00000000-0000-4000-8000-000000000352'::uuid);"
+r30_wins=0
+if [[ "$status_a" -eq 0 ]]; then r30_wins=$((r30_wins+1)); else grep -q 'R30_BUDGET_EXHAUSTED' "$tmp/a.err"; fi
+if [[ "$status_b" -eq 0 ]]; then r30_wins=$((r30_wins+1)); else grep -q 'R30_BUDGET_EXHAUSTED' "$tmp/b.err"; fi
+if [[ "$r30_wins" -ne 1 ]]; then
+ cat "$tmp/a.err" "$tmp/b.err" >&2; echo "R3.0 backend-role race overcommitted budget" >&2; exit 1
+fi
+assert_query "SELECT count(*) FROM r30_private.bronze_grants;" "1"
+assert_query "SELECT count(*) FROM r30_private.credits;" "1"
+assert_query "SELECT committed_minor FROM r30_private.programme WHERE version='synthetic-v1';" "2500"
+assert_query "SELECT
+  (SELECT COALESCE(sum(cap_minor),0) FROM r30_private.bronze_grants)=
+  (SELECT committed_minor FROM r30_private.programme WHERE version='synthetic-v1');" "t"
+if pg -c "UPDATE r30_source.purchase_lines SET qualifies_kota=false;" \
+  >"$tmp/r30-tamper.out" 2>"$tmp/r30-tamper.err"; then
+ echo "R30 synthetic source was not immutable" >&2;exit 1
+fi
+grep -q 'R30_IMMUTABLE_SOURCE' "$tmp/r30-tamper.err"
+echo "R30_FINANCIAL_OWNER_PRIVATE_EXECUTION_AND_BUDGET_RACE_PASS"
