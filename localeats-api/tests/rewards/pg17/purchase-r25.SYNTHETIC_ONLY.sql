@@ -253,7 +253,7 @@ $$;
 CREATE FUNCTION reward_lab.record_snapshot_refund(
   p_notice text,p_order text,p_line text,p_ref text,p_units integer,p_reason text)
 RETURNS text
-LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog AS $
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog AS $r25refund$
 DECLARE
   v_line reward_lab.purchase_line_snapshots%ROWTYPE;
   v_old reward_lab.source_refund_notices%ROWTYPE;
@@ -292,7 +292,7 @@ BEGIN
     VALUES('purchase_refund_notice',p_notice,p_order||':'||p_line);
   RETURN p_notice;
 END;
-$;
+$r25refund$;
 
 REVOKE ALL ON ALL TABLES IN SCHEMA reward_lab FROM PUBLIC;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA reward_lab FROM PUBLIC;
