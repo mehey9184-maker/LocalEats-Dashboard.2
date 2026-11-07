@@ -210,7 +210,7 @@ BEGIN
   RETURNING o.order_id,o.attempt
  )
  INSERT INTO r32_private.deadletter_audit(order_id,reason,attempt)
- SELECT order_id,'LEASE_EXHAUSTED',attempt FROM moved
+ SELECT moved.order_id,'LEASE_EXHAUSTED',moved.attempt FROM moved
  ON CONFLICT DO NOTHING;
  SELECT * INTO v FROM r32_private.outbox o
    WHERE o.attempt<3 AND (
@@ -237,7 +237,7 @@ DECLARE v r32_private.outbox%ROWTYPE;
         outcome text;
 BEGIN
  IF session_user<>'r32_worker' THEN RAISE EXCEPTION 'R32_INTERNAL_ROLE_REQUIRED'; END IF;
- IF p_code NOT IN ('SOURCE_UNAVAILABLE','TRANSIENT_DB','PERMANENT_INVALID_PROOF')
+ IF p_code IS NULL OR p_code NOT IN ('SOURCE_UNAVAILABLE','TRANSIENT_DB','PERMANENT_INVALID_PROOF')
  THEN RAISE EXCEPTION 'R32_UNTRUSTED_FAILURE_CODE'; END IF;
  SELECT * INTO v FROM r32_private.outbox WHERE order_id=p_order FOR UPDATE;
  IF v.state IS DISTINCT FROM 'leased' OR
