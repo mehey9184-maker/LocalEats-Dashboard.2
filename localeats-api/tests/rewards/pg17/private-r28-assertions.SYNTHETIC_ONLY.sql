@@ -131,7 +131,8 @@ BEGIN
       'payment_confirmed',1,'merchant-1');
   PERFORM r28_private.record_pickup_event('order-a-20','a20-collected',
       'collected',2,'merchant-1');
-  IF r28_private.credit_collected_order('order-a-20')<>20 OR
+  v_count:=r28_private.credit_collected_order('order-a-20');
+  IF v_count<>20 OR
      (SELECT rank FROM r28_private.progress WHERE customer_uid='alice')<>'gold' OR
      (SELECT lifetime_units FROM r28_private.progress WHERE customer_uid='alice')<>24 OR
      (SELECT count(*) FROM r28_private.grants WHERE customer_uid='alice')<>2 OR
