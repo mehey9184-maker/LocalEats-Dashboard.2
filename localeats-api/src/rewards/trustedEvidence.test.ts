@@ -176,7 +176,8 @@ test("only a revocation-checked active Super Admin may record a previously owed 
   for(const edit of [
     {payable:{...adminBundle().payable,status:"sent"}},
     {payable:{...adminBundle().payable,amount_minor:-100}},
-    {payable:{...adminBundle().payable,transfer_id:"already-sent"}}
+    {payable:{...adminBundle().payable,transfer_id:"already-sent"}},
+    {existingTransfer:{id:"existing-transfer-for-payable"}}
   ])await assert.rejects(()=>verifyAdminTransferAuthority(
     reader({admin:{...adminBundle(),...edit}}),actor(adminUid),payableId),
       /REWARDS_PAYOUT_NOT_OWED_OR_ALREADY_SENT/);
