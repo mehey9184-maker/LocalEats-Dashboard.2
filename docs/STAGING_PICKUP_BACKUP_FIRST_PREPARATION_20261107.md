@@ -14,7 +14,7 @@ Ran `security/preflight/pickup_stage_prebootstrap_READ_ONLY.sql` against the con
 
 This result is based on **zero** `public.profiles` rows, zero `auth.users`, zero `storage.objects`, **one** existing `20261103140914_create_isolated_profile_staging_p5` migration, `public.profiles` with RLS enabled and no RLS policies, no direct anon SELECT or authenticated UPDATE, and no `shops`, `orders`, or `admin_users` tables. Supabase security advisor reported one INFO item: `public.profiles` has RLS but no policies; this is expected for the existing **server-only** profile model. Do **not** add permissive policies to silence it.
 
-A separate earlier 26-object audit found only three expected profiles-related entries. This means the current staging project is fit for profile tests, **not yet** complete Super Admin→Merchant→Customer pickup integration.
+The corrected pickup-only parity audit in draft PR #87 now requires **23** shop/approval/ordering objects and columns (not dormant Rider or Supabase-signup objects): **3 are present and 20 are missing** on the latest read-only staging inspection. This means the current staging project is fit for profile tests, **not yet** complete Super Admin→Merchant→Customer pickup integration.
 
 ## Backup first — run on a trusted computer, NOT CI
 
@@ -49,7 +49,7 @@ Use a fresh, trusted, separately verified database to restore; do not use `supab
 
 1. Independently verify dump source and the staging prebootstrap SQL still passes immediately before changes. Stop if any profile/auth record appeared, the staging migrations changed, or permissions drifted.
 2. Review the **canonical Production schema and migration chain as source code**, not Production data. Rebuild or export **schema-only** and reconcile with the already existing P5 `profiles` table; never drop/recreate or change existing P5 profile semantics.
-3. Resolve differences in protected roles, Firebase account identity mapping and RLS. **Do not replay the vulnerable Production `handle_new_user()`** or public rider notification GRANT/RLS. Use the reviewed customer-only signup and Rider lockdown, with staging-compatible fixtures, and keep Rider verification disabled.
+3. Resolve differences in protected roles, Firebase account identity mapping and RLS. **Do not replay the vulnerable Production `handle_new_user()`** or public rider notification GRANT/RLS. The current staging Firebase-to-API profile flow **does not require any Supabase signup trigger or Rider notification table/function**; leave those objects absent. The reviewed customer-only signup and Rider lockdown concern the separate legacy Production security cutover. Keep Rider verification disabled.
 4. Rehearse the complete reviewed migration chain in a separate disposable PostgreSQL 17 instance. Require the integrated SQL tests for shop approvals, merchant availability, pickup creation, idempotency, 4km any-town matching, events and outbox. No real data copied.
 5. Prepare a **stage-targeted, reviewed and fail-closed** migration after step 4. Apply only to `rgpbdajhlrwfmhopzgzk` with explicit environment and schema hash checks, and verify the resulting tables, RPC signatures, privileges, no unexpected tables/rows and the profile P5 regression suite.
 6. Add synthetic Firebase staging identities and synthetic shops/menu/orders only after verifying their keys, role boundaries and row-level isolation; do not point staging APIs at Production Supabase or Firebase.
