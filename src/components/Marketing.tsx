@@ -215,7 +215,6 @@ export const Marketing: React.FC<MarketingProps> = ({
   // 3. WhatsApp Promo Studio State
   const [selectedPreset, setSelectedPreset] = useState<string>("opening");
   const [customFeaturedItem, setCustomFeaturedItem] = useState<string>("");
-  const [customDiscountCode, setCustomDiscountCode] = useState<string>("LOCAL10");
   const [userEditedMessage, setUserEditedMessage] = useState<string | null>(null);
 
   // Derived auto-generated message
@@ -228,21 +227,21 @@ export const Marketing: React.FC<MarketingProps> = ({
 
     switch (selectedPreset) {
       case "opening":
-        return `🔥 *${shopName} IS LIVE ON LOCALEATS!* 🔥\n\nSkip the queues! Explore our menu on your phone in ${shopLocation}. Pickup ordering availability is shown inside LocalEats.\n\n👉 *Explore Our Menu:*\n${storeUrl}\n\n✅ Pickup only. Pay at the shop when ordering is available.\n⚡ Powered by LocalEats SA`;
+        return `🔥 *EXPLORE ${shopName} ON LOCALEATS!* 🔥\n\nExplore local favourites! Browse our menu on your phone in ${shopLocation}. Pickup ordering availability is shown inside LocalEats.\n\n👉 *Explore Our Menu:*\n${storeUrl}\n\n✅ Pickup only. Pay at the shop when ordering is available.\n⚡ Powered by LocalEats SA`;
       case "lunch":
-        return `🍔 *LUNCH TIME SPECIAL AT ${shopName.toUpperCase()}!* 🕒\n\nHungry? Treat yourself today to our fresh ${featuredItemName} ${priceText}! Explore our menu and prices in LocalEats. Pickup ordering is available only when shown in the app.\n\n📲 *Explore the menu:*\n${storeUrl}\n\nShare with friends who love local food!`;
+        return `🍔 *LUNCH MENU AT ${shopName.toUpperCase()}!* 🕒\n\nHungry? Treat yourself today to our fresh ${featuredItemName} ${priceText}! Explore our menu and prices in LocalEats. Pickup ordering is available only when shown in the app.\n\n📲 *Explore the menu:*\n${storeUrl}\n\nShare with friends who love local food!`;
       case "item_deal":
-        return `✨ *DEAL OF THE DAY: ${featuredItemName.toUpperCase()}* ✨\n\nMade fresh to order at *${shopName}* ${priceText}.\n\nSee the menu inside LocalEats:\n👉 ${storeUrl}\n\n📍 Location: ${shopLocation}\nPickup only - pay at the shop when ordering is available.`;
+        return `✨ *MENU SPOTLIGHT: ${featuredItemName.toUpperCase()}* ✨\n\nMade fresh to order at *${shopName}* ${priceText}.\n\nSee the menu inside LocalEats:\n👉 ${storeUrl}\n\n📍 Location: ${shopLocation}\nPickup only - pay at the shop when ordering is available.`;
       case "pickup":
         return `*PICKUP FOOD FROM ${shopName.toUpperCase()}!*\n\nExplore the menu on LocalEats and check whether pickup ordering is available.\n\nLocation: ${shopLocation}\nPay at the shop when collecting. No delivery.\n\nExplore: ${storeUrl}`;
       case "discount":
-        return `🎉 *SPECIAL VOUCHER FOR YOU!* 🎁\n\nBrowse *${shopName}* on LocalEats. Only offers confirmed active in the app can be redeemed. Do not share unconfirmed voucher codes.\n\n👉 *Check available offers:*\n${storeUrl}\n\nNo promotion is guaranteed unless shown as active inside LocalEats.`;
+        return `🎉 *CHECK OFFERS ON LOCALEATS!* 🎁\n\nBrowse *${shopName}* on LocalEats. Only offers confirmed active in the app can be redeemed. Do not share unconfirmed voucher codes.\n\n👉 *Check available offers:*\n${storeUrl}\n\nNo promotion is guaranteed unless shown as active inside LocalEats.`;
       case "weekend":
         return `🔥 *WEEKEND VIBES AT ${shopName.toUpperCase()}!* 🎉\n\nRelax and let us do the cooking! Fresh hot Kotas and township favorites ready for you and your family.\n\n📲 *Browse the local menu:*\n${storeUrl}\n\nHave a great weekend! 🍻🍔`;
       default:
         return `Explore food from ${shopName} on LocalEats: ${storeUrl}`;
     }
-  }, [selectedPreset, activeShop, storeUrl, customFeaturedItem, customDiscountCode, storeMenuItems]);
+  }, [selectedPreset, activeShop, storeUrl, customFeaturedItem, storeMenuItems]);
 
   const activeMessage = userEditedMessage !== null ? userEditedMessage : generatedMessage;
 
@@ -1204,8 +1203,8 @@ export const Marketing: React.FC<MarketingProps> = ({
                     >
                       <option value="SCAN TO VIEW MENU">SCAN TO VIEW MENU</option>
                       <option value="TABLE & COUNTER MENU">TABLE & COUNTER MENU</option>
-                      <option value="ORDER AHEAD & SKIP THE LINE">ORDER AHEAD & SKIP THE LINE</option>
-                      <option value="SCAN FOR TODAY'S SPECIALS">SCAN FOR TODAY'S SPECIALS</option>
+                      <option value="VIEW PICKUP OPTIONS">VIEW PICKUP OPTIONS</option>
+                      <option value="SCAN FOR MENU & PRICES">SCAN FOR MENU & PRICES</option>
                     </select>
                   </div>
 
@@ -1392,7 +1391,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       }`}
                     >
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                        <Gift size={14} className="text-primary" /> Item Special
+                        <Gift size={14} className="text-primary" /> Menu Spotlight
                       </p>
                       <p className="text-[11px] text-on-surface-variant mt-0.5">Feature a specific Kota / meal</p>
                     </button>
@@ -1426,9 +1425,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                       }`}
                     >
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                        <Percent size={14} className="text-purple-500" /> Promo Voucher
+                        <Percent size={14} className="text-purple-500" /> Check Offers
                       </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Give a coupon discount</p>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Share only offers verified in-app</p>
                     </button>
 
                     <button
@@ -1471,19 +1470,9 @@ export const Marketing: React.FC<MarketingProps> = ({
                   )}
 
                   {selectedPreset === "discount" && (
-                    <div>
-                      <label className="block text-xs font-bold text-on-surface mb-1.5">Promo / Voucher Code</label>
-                      <input
-                        type="text"
-                        value={customDiscountCode}
-                        onChange={(e) => {
-                          setCustomDiscountCode(e.target.value.toUpperCase());
-                          setUserEditedMessage(null);
-                        }}
-                        className="w-full bg-surface-container-high border-none rounded-xl px-3.5 py-2.5 text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary outline-none uppercase font-mono"
-                        placeholder="e.g. KOTA10, WINTER20"
-                      />
-                    </div>
+                    <p className="rounded-xl bg-surface-container-low p-3 text-xs text-on-surface-variant">
+                      This message only links to offers confirmed inside LocalEats. It does not create or activate a voucher code.
+                    </p>
                   )}
 
                   {/* Editable Message Box */}
@@ -1765,7 +1754,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 </div>
                 <h3 className="font-extrabold text-base text-on-surface">1. The 11:30 AM Status Strategy</h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Township and office workers decide what to eat for lunch between 11:30 and 12:00. Always post your daily special or Kota deal on WhatsApp Status at 11:30 AM sharp with your direct ordering link.
+                  Try a short lunch-time status featuring a genuine menu item and its real price. Include your LocalEats menu link, but do not promise ordering or a discount unless it is available in the app.
                 </p>
               </div>
 
