@@ -1,0 +1,87 @@
+name: Pickup R3.5 effective schema payment and restore gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/tests/pickup/r35/**'
+      - 'localeats-api/tests/pickup/r34/**'
+      - 'supabase/drafts/pickup_launch_foundation.sql'
+      - 'supabase/drafts/pickup_zero_fee.sql'
+      - 'supabase/drafts/merchant_availability.sql'
+      - '.github/workflows/pickup-r35-effective-schema.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-incomplete-migrations-and-offline-payment-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source without deploy credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Reject false full-migration parity declarations
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test localeats-api/tests/pickup/r35/reproducibility.test.mjs
+      - name: Verify no hosted SQL or production secrets in disposable runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f localeats-api/tests/pickup/r35/effective-payment-methods.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/pickup/r35/payment-pre-e2e.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/pickup/r35/payment-post-e2e.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/pickup/r35/run-local-pickup-r35.sh
+          ! grep -Ein 'supabase\.co|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY|db push|apply_migration|--remote|--publish| -p [0-9]+:' \
+            localeats-api/tests/pickup/r35/*.sql \
+            localeats-api/tests/pickup/r35/*.sh
+      - name: Run verified effective payment behavior with original pickup RPCs
+        shell: bash
+        run: bash localeats-api/tests/pickup/r35/run-local-pickup-r35.sh
+
+  pinned-customer-source-and-local-browser:
+    # This does NOT claim deployed Preview acceptance; all browser traffic
+    # outside the local test server is blocked by the existing fixture.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - name: Checkout current reviewed Customer main (pinned source)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: mehey9184-maker/LocalEats-app
+          ref: 01069d9e6db41325c4ad9a086a0148efa32edce7
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install pinned Customer source dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Test guest-to-login, startup, closed browse, nearby, original pickup and checkout
+        run: |
+          node --experimental-strip-types --test \
+            tests/customer-guest-profile-main-safe.test.mjs \
+            tests/customer-startup-auth-routing.test.mjs \
+            tests/customer-closed-browse-main.test.mjs \
+            tests/customer-nearby-cache-main.test.mjs \
+            tests/customer-cache-safety-main.test.mjs \
+            tests/original-pickup.test.mjs \
+            tests/checkout-render.test.mjs
+      - name: Install isolated chromium for local-only startup fixture
+        run: npx playwright install --with-deps chromium
+      - name: Validate mobile startup guide and keyboard in local browser (NOT deployed Preview)
+        run: node tests/startup-browser.mjs
+      - name: Static check for current Customer source
+        run: npm run lint
+      - name: Customer build with real ordering disabled
+        run: npm run build

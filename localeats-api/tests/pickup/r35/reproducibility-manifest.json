@@ -1,0 +1,64 @@
+{
+  "source": "Read-only Supabase migration history 2026-11-08; no remote data copied",
+  "production_project_id_redacted": true,
+  "complete": false,
+  "compatibility": "effective pickup payment method behavior reconstructed OFFLINE; original SQL unknown",
+  "applied": [
+    {
+      "version": "20260921085319",
+      "name": "align_order_shop_ids",
+      "repo_source": "supabase/migrations/20260921085319_align_order_shop_ids.sql",
+      "state": "versioned-migration-present"
+    },
+    {
+      "version": "20260926193602",
+      "name": "rider_access_prerequisite",
+      "repo_source": "supabase/migrations/20260926193602_rider_access_prerequisite.sql",
+      "state": "versioned-migration-present"
+    },
+    {
+      "version": "20260926194744",
+      "name": "rider_onboarding_pairing_authority",
+      "repo_source": "supabase/migrations/20260926194744_rider_onboarding_pairing_authority.sql",
+      "state": "versioned-migration-present"
+    },
+    {
+      "version": "20260926202836",
+      "name": "rider_pool_verification_authority",
+      "repo_source": "supabase/migrations/20260926202836_rider_pool_verification_authority.sql",
+      "state": "versioned-migration-present"
+    },
+    {
+      "version": "20261030111305",
+      "name": "pickup_launch_foundation",
+      "repo_source": "supabase/drafts/pickup_launch_foundation.sql",
+      "state": "draft-only-not-versioned"
+    },
+    {
+      "version": "20261031073608",
+      "name": "pickup_zero_fee",
+      "repo_source": "supabase/drafts/pickup_zero_fee.sql",
+      "state": "draft-only-not-versioned"
+    },
+    {
+      "version": "20261031073645",
+      "name": "merchant_availability",
+      "repo_source": "supabase/drafts/merchant_availability.sql",
+      "state": "draft-only-not-versioned"
+    },
+    {
+      "version": "20261101160331",
+      "name": "pickup_payment_methods",
+      "repo_source": "localeats-api/tests/pickup/r35/effective-payment-methods.SYNTHETIC_ONLY.sql",
+      "state": "effective-behavior-only-not-original"
+    }
+  ],
+  "manually_pending": [
+    "Complete source-equivalent historical applied migration SQL and verify by offline rebuilt catalog",
+    "Full effective Production table/constraint/index/trigger/RLS/policy/grant parity and restore test",
+    "Real Customer and Merchant Preview visual acceptance with real identity but no live orders",
+    "End-to-end reliable FCM push delivery and reconnect tests",
+    "Resolution of overly broad public.payments authenticated ALL policy and public definer function review",
+    "Owner approval before real online ordering or future Rewards activation"
+  ]
+}
