@@ -37,7 +37,7 @@ begin
      or v_owner::regrole::text <> 'postgres'
      or v_definer is distinct from false
      or v_volatile is distinct from 'v'
-     or not ('search_path=""' = any(v_options))
+     or ('search_path=""' = any(v_options)) is distinct from true
      or has_function_privilege('anon',v_oid,'EXECUTE')
      or has_function_privilege('authenticated',v_oid,'EXECUTE')
      or not has_function_privilege('service_role',v_oid,'EXECUTE')
@@ -66,7 +66,7 @@ begin
      or v_owner::regrole::text <> 'postgres'
      or v_definer is distinct from false
      or v_volatile is distinct from 'v'
-     or not ('search_path=""' = any(v_options))
+     or ('search_path=""' = any(v_options)) is distinct from true
      or has_function_privilege('anon',v_oid,'EXECUTE')
      or has_function_privilege('authenticated',v_oid,'EXECUTE')
      or not has_function_privilege('service_role',v_oid,'EXECUTE')

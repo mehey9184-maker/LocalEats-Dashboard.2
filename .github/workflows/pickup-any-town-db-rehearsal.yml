@@ -61,6 +61,16 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f /tmp/pickup_exact_existing_function.sql
           psql -X -v ON_ERROR_STOP=1 -c "revoke all on function public.pickup_create_order(text,text,jsonb) from public, anon, authenticated; grant execute on function public.pickup_create_order(text,text,jsonb) to service_role;"
           test "$(psql -X -At -c "select encode(sha256(convert_to(prosrc,'UTF8')),'hex') from pg_proc where oid=to_regprocedure('public.pickup_create_order(text,text,jsonb)')")" = 'd876b99ff69718b9aed46ebe4b0f8074eb762454f237728e0f13a5a2b87d0b0d'
+      - name: Reject a missing function search path
+        run: |
+          set -eu
+          psql -X -v ON_ERROR_STOP=1 -c "alter function public.pickup_create_order(text,text,jsonb) reset all;"
+          if psql -X -v ON_ERROR_STOP=1 -f security/drafts/pickup_any_town_4km_create_REVIEW_ONLY.sql > /tmp/pickup-search-path-drift.log 2>&1; then
+            echo "ERROR: migration incorrectly accepted missing search_path" >&2
+            exit 1
+          fi
+          grep -q 'PICKUP_ANY_TOWN_BASELINE_OR_GRANTS_DRIFT' /tmp/pickup-search-path-drift.log
+          psql -X -v ON_ERROR_STOP=1 -c "alter function public.pickup_create_order(text,text,jsonb) set search_path = '';"
       - name: Apply REVIEW-ONLY exact-hash-pinned SQL to disposable DB
         run: psql -X -v ON_ERROR_STOP=1 -f security/drafts/pickup_any_town_4km_create_REVIEW_ONLY.sql
       - name: Verify customer order integrity and radius across towns

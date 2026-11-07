@@ -54,3 +54,5 @@ This is a carefully scoped *candidate*, **not a license to apply it in the real 
 5. After separately approved launch, monitor Customer discovery/quote/create consistency, merchant order inbox, Ready push/receipt recovery, duplicate order prevention, closure and support flows.
 
 **No Production/staging DB writes, merged PRs, real orders, billing, Riders/Delivery, deployments, or hosting purchases in this PR.**
+
+The guarded check rejects a missing function search_path as well as an unexpected setting. Run the exact review SQL from the Git LF bytes. A Windows CRLF copy can cause the one-line guard to fail closed, as observed in the local rehearsal. The LF copy passed the PostgreSQL 17 authority and radius assertions, and rejected repeat application. Do not bypass a hash or guard failure.

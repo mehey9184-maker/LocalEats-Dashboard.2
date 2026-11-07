@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {merchantCommandReceipt,parsePickupInput,pickupPricing,pickupQuote,creationHash,createPickup,commandPickup,type RpcClient} from "./pickupService.js";
 import {drainPickupPush} from "./pickupPush.js";
 import {draftTransition} from "../contracts/pickupDraft.js";
+import {OrderContractError} from "./orderContract.js";
 import type {OrderRepository,StoredOrder} from "./orderService.js";
 const id="550e8400-e29b-41d4-a716-446655440000";
 test('merchant receipt exposes only matching persisted command facts',()=>{
@@ -90,12 +91,22 @@ test("push rechecks lease/token and awaits fenced completion; failure does not r
   await drainPickupPush(denied,"customer",async()=>{throw Error("should not send");});
 });
 
-test("pickup quote rejects missing or outside-pilot shop metadata without classifying it",async()=>{
+test("pickup quote uses verified radius and approval, never town text",async()=>{
  const repository=repo(),shop=await repository.findShop("shop");assert.ok(shop);
- for(const location of [null,"","Elsewhere"]){
+ const request=parsePickupInput(raw(),false);
+ for(const location of [null,"","Cosmo City","Soweto","Pretoria"]){
   repository.findShop=async()=>({...shop,location});
-  await assert.rejects(()=>pickupPricing(repository,"customer",parsePickupInput(raw(),false)),/OUTSIDE_PICKUP_PILOT/);
+  const quoted=pickupQuote(await pickupPricing(repository,"customer",request));
+  assert.equal(quoted.total_minor,2500);
  }
+ repository.findShop=async()=>({...shop,location:"Cosmo City",lat:-26.5});
+ await assert.rejects(()=>pickupPricing(repository,"customer",request),/OUTSIDE_PICKUP_RADIUS/);
+ repository.findShop=async()=>({...shop,location:"Cosmo City",approval_status:"pending"});
+ await assert.rejects(()=>pickupPricing(repository,"customer",request),
+  (error:unknown)=>error instanceof OrderContractError && error.code==="SHOP_UNAVAILABLE");
+ repository.findShop=async()=>({...shop,location:"Cosmo City",is_active:false});
+ await assert.rejects(()=>pickupPricing(repository,"customer",request),
+  (error:unknown)=>error instanceof OrderContractError && error.code==="SHOP_UNAVAILABLE");
 });
 
 

@@ -132,7 +132,12 @@ const readyBody=command(1);
 try {
  const shops=await customer.shops({lat:-26,lng:28});
  assert(shops.shops.some(s=>s.id==="shop-my-kota-ivory-park"));
- assert(!shops.shops.some(s=>["far","closed","elsewhere"].includes(s.id)));
+ assert(!shops.shops.some(s=>s.id==="far"));
+ const closedShop=shops.shops.find(s=>s.id==="closed");
+ const elsewhereShop=shops.shops.find(s=>s.id==="elsewhere");
+ assert.equal(closedShop?.is_active,false,"Approved closed shops must remain browsable");
+ assert.equal(elsewhereShop?.is_active,true,"Nearby approved shops must not be filtered by town name");
+ assert.equal(elsewhereShop?.distance_km,0);
  assert.equal((await customer.menu("shop-my-kota-ivory-park")).menu_items[0].price,30);
  const body=intent(),preview=await customer.quote(body);
  assert.equal(preview.quote.total_minor,6000);assert.equal(preview.quote.service_fee_minor,0);assert.equal(preview.quote.delivery_fee_minor,0);

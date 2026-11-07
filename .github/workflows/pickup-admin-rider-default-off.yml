@@ -1,0 +1,29 @@
+name: Pickup-only Admin Rider verification server gate
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/src/routes/adminRiders.ts'
+      - 'localeats-api/src/routes/adminRiders.test.ts'
+      - 'docs/ADMIN_RIDER_VERIFICATION_PICKUP_ONLY_GATE_20261107.md'
+      - '.github/workflows/pickup-admin-rider-default-off.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rider-default-off:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Install locked API dependencies without cloud credentials
+        run: npm ci --prefix localeats-api --no-audit --no-fund
+      - name: TypeScript and API regression tests, including Rider default-off
+        run: npm test --prefix localeats-api
