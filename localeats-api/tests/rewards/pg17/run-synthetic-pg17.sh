@@ -95,3 +95,90 @@ assert_query "SELECT count(*) FROM reward_lab.grants;" "1"
 assert_query "SELECT allocated_minor FROM reward_lab.program WHERE id=1;" "2500"
 assert_query "SELECT count(*) FROM reward_lab.payables;" "0"
 echo "R2_PG17_CONCURRENCY_AND_BUDGET_PASS"
+
+# R2.3: add additive synthetic recovery tables to the SAME isolated PG17 only.
+echo "R2.3 PG17: loading refund, cancellation and settlement recovery assertions"
+run_file "$here/recovery-r23.SYNTHETIC_ONLY.sql" >"$tmp/recovery-schema.out"
+reset
+pg -c "UPDATE reward_lab.program SET limit_minor=20000 WHERE id=1;" >/dev/null
+run_file "$here/recovery-r23-assertions.SYNTHETIC_ONLY.sql" >"$tmp/recovery-assertions.out"
+grep -q 'R23_PG17_REFUND_AND_SETTLEMENT_ASSERTIONS_PASS' "$tmp/recovery-assertions.out"
+assert_query "SELECT balanced FROM reward_lab.reconcile_allocated_budget();" "t"
+
+# Simultaneous identical refund notifications must create exactly one hold/event.
+reset
+pg -c "INSERT INTO reward_lab.order_line_facts VALUES
+  ('race-refund','line','race-customer','shop-1',4,true,true,true,false,false);" >/dev/null
+pg -c "SELECT reward_lab.credit_paid_order('race-refund');" >/dev/null
+paired \
+ "SELECT reward_lab.record_verified_refund('race-refund-id','bank-ref-race','race-refund','line',1,'Verified synthetic refund');" \
+ "SELECT reward_lab.record_verified_refund('race-refund-id','bank-ref-race','race-refund','line',1,'Verified synthetic refund');"
+if [[ "$status_a" -ne 0 || "$status_b" -ne 0 ]]; then
+  cat "$tmp/a.err" "$tmp/b.err" >&2; echo "concurrent refund replay failure" >&2; exit 1
+fi
+assert_query "SELECT count(*) FROM reward_lab.refund_events;" "1"
+assert_query "SELECT count(*) FROM reward_lab.customer_holds;" "1"
+assert_query "SELECT status FROM reward_lab.grants WHERE customer_id='race-customer';" "earned"
+assert_query "SELECT count(*) FROM reward_lab.payables;" "0"
+assert_query "SELECT allocated_minor FROM reward_lab.program WHERE id=1;" "2500"
+
+# Competing partial refunds totalling more than the original qualifying
+# quantity: precisely one commits; the loser rolls back with a specific error.
+reset
+pg -c "INSERT INTO reward_lab.order_line_facts VALUES
+  ('race-partial','line','race-partial-user','shop-1',4,true,true,true,false,false);" >/dev/null
+pg -c "SELECT reward_lab.credit_paid_order('race-partial');" >/dev/null
+paired \
+ "SELECT reward_lab.record_verified_refund('partial-ref-a','bank-partial-a','race-partial','line',3,'Partial refund A');" \
+ "SELECT reward_lab.record_verified_refund('partial-ref-b','bank-partial-b','race-partial','line',3,'Partial refund B');"
+success=0
+if [[ "$status_a" -eq 0 ]]; then success=$((success+1)); else grep -q 'REFUND_UNITS_EXCEED_QUALIFIED_QUANTITY' "$tmp/a.err"; fi
+if [[ "$status_b" -eq 0 ]]; then success=$((success+1)); else grep -q 'REFUND_UNITS_EXCEED_QUALIFIED_QUANTITY' "$tmp/b.err"; fi
+if [[ "$success" -ne 1 ]]; then
+  cat "$tmp/a.err" "$tmp/b.err" >&2; echo "partial refund over-count" >&2; exit 1
+fi
+assert_query "SELECT coalesce(sum(units),0) FROM reward_lab.refund_events;" "3"
+assert_query "SELECT count(*) FROM reward_lab.customer_holds;" "1"
+
+# Refund vs fulfil cannot create an inconsistent state regardless of which
+# serialized transaction obtains the programme lock first.
+reset
+pg -c "INSERT INTO reward_lab.order_line_facts VALUES
+  ('race-handover','line','race-handover-user','shop-1',4,true,true,true,false,false);" >/dev/null
+pg -c "SELECT reward_lab.credit_paid_order('race-handover');" >/dev/null
+paired \
+ "SELECT reward_lab.record_verified_refund('handover-refund','bank-race-handover','race-handover','line',4,'Full synthetic refund');" \
+ "SELECT reward_lab.fulfil_grant('reward:race-handover-user:bronze','race-handover-user','shop-1','kota-24','handover-race');"
+if [[ "$status_a" -ne 0 ]]; then
+  cat "$tmp/a.err" >&2; echo "refund did not commit" >&2; exit 1
+fi
+if [[ "$status_b" -ne 0 ]]; then
+  grep -q 'CUSTOMER_REWARDS_ON_REFUND_HOLD' "$tmp/b.err"
+fi
+assert_query "SELECT count(*) FROM reward_lab.customer_holds;" "1"
+assert_query "SELECT count(*) FROM reward_lab.grants;" "1"
+assert_query "SELECT CASE WHEN (SELECT status FROM reward_lab.grants LIMIT 1)='fulfilled'
+  THEN (SELECT count(*)=1 FROM reward_lab.payables)
+  ELSE (SELECT count(*)=0 FROM reward_lab.payables) END;" "t"
+assert_query "SELECT balanced FROM reward_lab.reconcile_allocated_budget();" "t"
+
+# Simultaneous merchant acknowledgement of the same investigated dispute
+# is idempotent and cannot double-settle.
+reset
+pg -c "INSERT INTO reward_lab.order_line_facts VALUES
+  ('race-dispute','line','race-dispute-user','shop-1',4,true,true,true,false,false);" >/dev/null
+pg -c "SELECT reward_lab.credit_paid_order('race-dispute');" >/dev/null
+pg -c "SELECT reward_lab.fulfil_grant('reward:race-dispute-user:bronze','race-dispute-user','shop-1','kota-24','handover-dispute');" >/dev/null
+pg -c "SELECT reward_lab.record_transfer('payable:reward:race-dispute-user:bronze','race-transfer','admin-a','BANK-RACE',2400);" >/dev/null
+pg -c "SELECT reward_lab.confirm_merchant_receipt('payable:reward:race-dispute-user:bronze','shop-1','merchant-disputes','disputed');" >/dev/null
+pg -c "SELECT reward_lab.document_dispute_resolution('race-resolution','payable:reward:race-dispute-user:bronze','admin-a','Reviewed synthetic bank proof');" >/dev/null
+paired \
+ "SELECT reward_lab.merchant_acknowledge_dispute_resolution('ack-same','race-resolution','shop-1');" \
+ "SELECT reward_lab.merchant_acknowledge_dispute_resolution('ack-same','race-resolution','shop-1');"
+if [[ "$status_a" -ne 0 || "$status_b" -ne 0 ]]; then
+  cat "$tmp/a.err" "$tmp/b.err" >&2; echo "concurrent merchant dispute acknowledgement failure" >&2; exit 1
+fi
+assert_query "SELECT count(*) FROM reward_lab.dispute_merchant_acks;" "1"
+assert_query "SELECT status FROM reward_lab.payables;" "confirmed"
+assert_query "SELECT balanced FROM reward_lab.reconcile_allocated_budget();" "t"
+echo "R23_PG17_REFUND_CONCURRENCY_AND_SETTLEMENT_PASS"
