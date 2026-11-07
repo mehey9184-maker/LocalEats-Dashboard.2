@@ -33,4 +33,7 @@ jobs:
         run: npm test --prefix localeats-api
       - name: Assert source no longer limits shops to named towns
         run: |
-          ! grep -R -E 'isPickupPilotShop|OUTSIDE_PICKUP_PILOT' localeats-api/src/routes/catalog.ts localeats-api/src/orders/pickupService.ts localeats-api/src/orders/pickupRead.ts
+          # Keep legacy OUTSIDE_PICKUP_PILOT RPC error mapping until the database
+          # receives its separately approved cutover; it is NOT an eligibility check.
+          ! grep -R 'isPickupPilotShop' localeats-api/src/routes/catalog.ts localeats-api/src/orders/pickupService.ts localeats-api/src/orders/pickupRead.ts
+          ! grep -R -E 'tembisa|thembisa|ivory' localeats-api/src/routes/catalog.ts localeats-api/src/orders/pickupService.ts localeats-api/src/orders/pickupRead.ts
