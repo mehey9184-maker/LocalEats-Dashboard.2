@@ -25,7 +25,7 @@ case "${R36_PICKUP_REPLAY_MODE:-r35_draft}" in
     echo "R36_INVALID_DISPOSABLE_REPLAY_MODE" >&2;exit 1
     ;;
 esac
-name="localeats_pickup_r35_$"
+name="localeats_pickup_r35_${BASHPID}"
 tmp="$(mktemp -d)"
 cleanup(){ docker rm -f "$name" >/dev/null 2>&1 || true; rm -rf "$tmp"; }
 trap cleanup EXIT
