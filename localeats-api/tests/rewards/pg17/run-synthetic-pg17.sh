@@ -725,3 +725,218 @@ ROLLBACK;" >/dev/null
 assert_query "SELECT count(*) FROM r31_private.outbox;" "1"
 assert_query "SELECT count(*) FROM r31_pickup.orders WHERE customer_uid='rollback';" "0"
 echo "R31_PRIVATE_WORKER_LEASE_REPLAY_ATOMIC_ENQUEUE_PASS"
+
+# R3.2: reduced read-only observed pickup command order -> private worker source.
+# Every row, dollar amount, order and worker here is synthetic Docker-only.
+echo "R3.2 PG17: internal worker SQL identity, fenced leases, crash rollback and poison DLQ"
+run_file "$here/worker-r32.SYNTHETIC_ONLY.sql" >"$tmp/r32-schema.out"
+run_file "$here/worker-r32-assertions.SYNTHETIC_ONLY.sql" >"$tmp/r32-assertions.out"
+grep -q 'R32_REAL_ORDER_COMMAND_SEQUENCE_AND_OUTBOX_PASS' "$tmp/r32-assertions.out"
+assert_query "SELECT count(*) FROM r32_private.outbox;" "1"
+
+r32_denied(){
+ local sql="$1"
+ if pg -c "$sql" >"$tmp/r32-denied.out" 2>"$tmp/r32-denied.err"; then
+   echo "R32 illegal worker SQL succeeded: $sql" >&2;exit 1
+ fi
+ if ! grep -q 'permission denied' "$tmp/r32-denied.err"; then
+   cat "$tmp/r32-denied.err" >&2
+   echo "R32 SQL failure not an access denial" >&2;exit 1
+ fi
+}
+r32_denied "SET SESSION AUTHORIZATION r32_browser; SELECT * FROM r32_private.outbox;"
+r32_denied "SET SESSION AUTHORIZATION r32_worker; SELECT * FROM r32_private.outbox;"
+r32_denied "SET SESSION AUTHORIZATION r32_worker; SELECT * FROM r32_private.credit_receipts;"
+r32_denied "SET SESSION AUTHORIZATION r32_worker;
+ INSERT INTO r32_private.credit_receipts(order_id,collected_command,customer_uid,kota_units,reserved_minor)
+ VALUES('00000000-0000-4000-8000-000000000510'::uuid,
+ '00000000-0000-4000-8000-000000000540'::uuid,'fake',4,2500);"
+r32_denied "SET SESSION AUTHORIZATION r32_worker; UPDATE r32_private.programme SET reserved_minor=0;"
+r32_denied "SET SESSION AUTHORIZATION r32_worker; SET ROLE r32_owner;"
+r32_denied "SET SESSION AUTHORIZATION r32_worker;
+ SELECT r32_pickup.command('00000000-0000-4000-8000-000000000510'::uuid,
+ 'owner-1','collect','00000000-0000-4000-8000-000000000599'::uuid,2);"
+r32_denied "SET SESSION AUTHORIZATION r32_browser;
+ SELECT * FROM r32_private.claim_next();"
+
+r32_reset(){
+  # Only the PostgreSQL superuser test fixture can truncate synthetic rows.
+  pg -c "TRUNCATE r32_pickup.orders,r32_private.programme RESTART IDENTITY CASCADE;" >/dev/null 2>&1
+  pg -c "INSERT INTO r32_private.programme(version,active,starts_at,budget_minor)
+    VALUES('future-v1',true,now()-interval '1 day',2500);" >/dev/null
+}
+r32_seed(){
+  local id="$1" order
+  order="00000000-0000-4000-8000-000000000$id"
+  local pay="00000000-0000-4000-8000-000000000$((id+100))"
+  local collected="00000000-0000-4000-8000-000000000$((id+200))"
+  pg -c "INSERT INTO r32_pickup.orders(id,shop_id,customer_uid,merchant_uid,origin,
+    registered,is_test,status,payment_status)
+    VALUES('$order'::uuid,'shop-1','user-$id','merchant-1','server_created_pickup',
+      true,false,'ready_for_pickup','unpaid');
+    INSERT INTO r32_pickup.checkout_proofs(order_id,shop_id,customer_uid,
+      programme_version,qualifies_kota,eligible_units,enrolled_at_purchase,
+      approved_at_purchase,captured_at)
+    SELECT id,shop_id,customer_uid,'future-v1',true,4,true,true,created_at
+      FROM r32_pickup.orders WHERE id='$order'::uuid;" >/dev/null
+  pg -c "SELECT r32_pickup.command('$order'::uuid,'merchant-1','confirm_payment',
+      '$pay'::uuid,0);" >/dev/null
+  pg -c "SELECT r32_pickup.command('$order'::uuid,'merchant-1','collect',
+      '$collected'::uuid,1);" >/dev/null
+}
+r32_claim(){
+  pg -c "SET SESSION AUTHORIZATION r32_worker;
+    SELECT order_id::text||'|'||command_id::text||'|'||lease_token::text||'|'||attempt
+      FROM r32_private.claim_next();"
+}
+r32_reset
+r32_seed 570
+claim="$(r32_claim)"
+IFS='|' read -r r32_order r32_event r32_token r32_attempt <<<"$claim"
+if [[ "$r32_attempt" != "1" || "$r32_order" != "00000000-0000-4000-8000-000000000570" ]]; then
+  echo "R32 worker could not claim valid event" >&2;exit 1
+fi
+assert_query "SET SESSION AUTHORIZATION r32_worker;
+ SELECT r32_private.consume_job('$r32_order'::uuid,'$r32_token'::uuid);" "4"
+assert_query "SELECT state FROM r32_private.outbox;" "consumed"
+assert_query "SELECT count(*) FROM r32_private.credit_receipts;" "1"
+assert_query "SELECT reserved_minor FROM r32_private.programme;" "2500"
+assert_query "SET SESSION AUTHORIZATION r32_worker;
+ SELECT count(*) FROM r32_private.claim_next();" "0"
+echo "R32_DISPOSABLE_WORKER_CONSUMED_WITH_ATOMIC_CREDIT" 
+
+# Simulated crash AFTER reservation and INSERT but BEFORE ACK: all work rolls
+# back. A bounded retried lease can later commit exactly one receipt.
+r32_reset
+r32_seed 580
+claim="$(r32_claim)"
+IFS='|' read -r r32_order r32_event r32_oldtoken r32_attempt <<<"$claim"
+pg -c "INSERT INTO r32_private.fault_injections(order_id,fault)
+ VALUES('$r32_order'::uuid,'after_credit_before_consume');" >/dev/null
+if pg -c "SET SESSION AUTHORIZATION r32_worker;
+ SELECT r32_private.consume_job('$r32_order'::uuid,'$r32_oldtoken'::uuid);" \
+    >"$tmp/r32-crash.out" 2>"$tmp/r32-crash.err"; then
+ echo "R32 artificial crash incorrectly committed money" >&2; exit 1
+fi
+grep -q 'R32_SYNTHETIC_CRASH' "$tmp/r32-crash.err"
+assert_query "SELECT count(*) FROM r32_private.credit_receipts;" "0"
+assert_query "SELECT reserved_minor FROM r32_private.programme;" "0"
+assert_query "SELECT state FROM r32_private.outbox;" "leased"
+assert_query "SET SESSION AUTHORIZATION r32_worker;
+ SELECT r32_private.fail_job('$r32_order'::uuid,'$r32_oldtoken'::uuid,'TRANSIENT_DB');" "retry"
+assert_query "SELECT state FROM r32_private.outbox;" "retry"
+assert_query "SET SESSION AUTHORIZATION r32_worker;
+ SELECT count(*) FROM r32_private.claim_next();" "0"
+pg -c "DELETE FROM r32_private.fault_injections WHERE order_id='$r32_order'::uuid;
+ UPDATE r32_private.outbox SET retry_at=clock_timestamp()-interval '2 seconds'
+ WHERE order_id='$r32_order'::uuid;" >/dev/null
+claim="$(r32_claim)"
+IFS='|' read -r r32_retryorder r32_event r32_newtoken r32_attempt <<<"$claim"
+if [[ "$r32_attempt" != "2" || "$r32_oldtoken" == "$r32_newtoken" ]]; then
+ echo "R32 retry reused stale lease token" >&2;exit 1
+fi
+if pg -c "SET SESSION AUTHORIZATION r32_worker;
+ SELECT r32_private.consume_job('$r32_order'::uuid,'$r32_oldtoken'::uuid);" \
+   >"$tmp/r32-stale.out" 2>"$tmp/r32-stale.err"; then
+ echo "R32 stale token accepted" >&2;exit 1
+fi
+grep -q 'R32_STALE_LEASE' "$tmp/r32-stale.err"
+assert_query "SET SESSION AUTHORIZATION r32_worker;
+ SELECT r32_private.consume_job('$r32_order'::uuid,'$r32_newtoken'::uuid);" "4"
+assert_query "SELECT count(*) FROM r32_private.credit_receipts;" "1"
+assert_query "SELECT reserved_minor FROM r32_private.programme;" "2500"
+assert_query "SELECT state FROM r32_private.outbox;" "consumed"
+
+# Poison messages are retained for operator review, not silently dropped or
+# redriven. A worker cannot alter historical credits or dead-letter audit.
+r32_reset
+r32_seed 590
+claim="$(r32_claim)"
+IFS='|' read -r r32_order r32_event r32_token r32_attempt <<<"$claim"
+assert_query "SET SESSION AUTHORIZATION r32_worker;
+ SELECT r32_private.fail_job('$r32_order'::uuid,'$r32_token'::uuid,
+ 'PERMANENT_INVALID_PROOF');" "dead_letter"
+assert_query "SELECT count(*) FROM r32_private.deadletter_audit;" "1"
+assert_query "SELECT count(*) FROM r32_private.credit_receipts;" "0"
+assert_query "SET SESSION AUTHORIZATION r32_worker;
+ SELECT count(*) FROM r32_private.claim_next();" "0"
+r32_denied "SET SESSION AUTHORIZATION r32_worker; DELETE FROM r32_private.deadletter_audit;"
+
+# Even transient failures stop at three attempts, no infinite retry loop.
+r32_reset
+r32_seed 600
+for attempt in 1 2 3; do
+ claim="$(r32_claim)"
+ IFS='|' read -r r32_order r32_event r32_token r32_attempt <<<"$claim"
+ if [[ "$r32_attempt" != "$attempt" ]]; then
+  echo "R32 attempt counter did not advance" >&2;exit 1
+ fi
+ expected="retry"
+ if [[ "$attempt" -eq 3 ]]; then expected="dead_letter"; fi
+ assert_query "SET SESSION AUTHORIZATION r32_worker;
+ SELECT r32_private.fail_job('$r32_order'::uuid,'$r32_token'::uuid,
+ 'TRANSIENT_DB');" "$expected"
+ if [[ "$attempt" -lt 3 ]]; then
+  pg -c "UPDATE r32_private.outbox
+   SET retry_at=clock_timestamp()-interval '2 seconds'
+   WHERE order_id='$r32_order'::uuid;" >/dev/null
+ fi
+done
+assert_query "SELECT count(*) FROM r32_private.deadletter_audit;" "1"
+assert_query "SELECT count(*) FROM r32_private.credit_receipts;" "0"
+
+# Two different pending orders compete for the only R25 budget. One must
+# commit receipt+ack. The loser cannot leave a receipt or reserved funds.
+r32_reset
+r32_seed 610
+r32_seed 611
+paired \
+ "SET SESSION AUTHORIZATION r32_worker; SELECT * FROM r32_private.claim_next();" \
+ "SET SESSION AUTHORIZATION r32_worker; SELECT * FROM r32_private.claim_next();"
+if [[ "$status_a" -ne 0 || "$status_b" -ne 0 ]]; then
+ cat "$tmp/a.err" "$tmp/b.err" >&2
+ echo "R32 parallel lease claim error" >&2;exit 1
+fi
+assert_query "SELECT count(*) FROM r32_private.outbox WHERE state='leased';" "2"
+r32_token_a="$(pg -c "SELECT lease_token FROM r32_private.outbox
+ WHERE order_id='00000000-0000-4000-8000-000000000610'::uuid;")"
+r32_token_b="$(pg -c "SELECT lease_token FROM r32_private.outbox
+ WHERE order_id='00000000-0000-4000-8000-000000000611'::uuid;")"
+paired \
+ "SET SESSION AUTHORIZATION r32_worker;
+ SELECT r32_private.consume_job('00000000-0000-4000-8000-000000000610'::uuid,'$r32_token_a'::uuid);" \
+ "SET SESSION AUTHORIZATION r32_worker;
+ SELECT r32_private.consume_job('00000000-0000-4000-8000-000000000611'::uuid,'$r32_token_b'::uuid);"
+wins=0
+if [[ "$status_a" -eq 0 ]]; then wins=$((wins+1)); else grep -q 'R32_BUDGET_EXHAUSTED' "$tmp/a.err"; fi
+if [[ "$status_b" -eq 0 ]]; then wins=$((wins+1)); else grep -q 'R32_BUDGET_EXHAUSTED' "$tmp/b.err"; fi
+if [[ "$wins" -ne 1 ]]; then
+ cat "$tmp/a.err" "$tmp/b.err" >&2
+ echo "R32 budget double-spent or both rejected" >&2;exit 1
+fi
+assert_query "SELECT count(*) FROM r32_private.credit_receipts;" "1"
+assert_query "SELECT count(*) FROM r32_private.outbox WHERE state='consumed';" "1"
+assert_query "SELECT reserved_minor FROM r32_private.programme;" "2500"
+assert_query "SELECT (SELECT COALESCE(sum(reserved_minor),0) FROM r32_private.credit_receipts)=
+ (SELECT reserved_minor FROM r32_private.programme);" "t"
+
+# Verify observed UPDATE-then-INSERT order is transactionally all-or-nothing:
+# a failed future transaction must not create an orphan outbox row.
+r32_reset
+pg -c "BEGIN;
+ INSERT INTO r32_pickup.orders(id,shop_id,customer_uid,merchant_uid,origin,
+    registered,is_test,status,payment_status)
+ VALUES('00000000-0000-4000-8000-000000000620'::uuid,'shop-1','rollback','merchant-1',
+ 'server_created_pickup',true,false,'ready_for_pickup','unpaid');
+ INSERT INTO r32_pickup.checkout_proofs(order_id,shop_id,customer_uid,programme_version,
+   qualifies_kota,eligible_units,enrolled_at_purchase,approved_at_purchase,captured_at)
+ SELECT id,shop_id,customer_uid,'future-v1',true,4,true,true,created_at
+ FROM r32_pickup.orders WHERE customer_uid='rollback';
+ SELECT r32_pickup.command('00000000-0000-4000-8000-000000000620'::uuid,'merchant-1',
+  'confirm_payment','00000000-0000-4000-8000-000000000720'::uuid,0);
+ SELECT r32_pickup.command('00000000-0000-4000-8000-000000000620'::uuid,'merchant-1',
+  'collect','00000000-0000-4000-8000-000000000820'::uuid,1);
+ ROLLBACK;" >/dev/null
+assert_query "SELECT count(*) FROM r32_pickup.orders WHERE customer_uid='rollback';" "0"
+assert_query "SELECT count(*) FROM r32_private.outbox;" "0"
+echo "R32_INTERNAL_WORKER_FENCING_POISON_RECOVERY_ATOMIC_CREDIT_PASS"
