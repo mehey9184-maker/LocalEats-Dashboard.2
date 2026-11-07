@@ -92,6 +92,7 @@ export function createInertR31PickupOutboxPreview(deps:PreviewOutboxDependencies
            programme.active!==true ||
            !goodId(programme.version) ||
            !Number.isFinite(timestamp(order.created_at)) ||
+           !Number.isFinite(timestamp(programme.starts_at)) ||
            timestamp(order.created_at)<timestamp(programme.starts_at) ||
            !Number.isFinite(timestamp(snapshot.captured_at)) ||
            timestamp(snapshot.captured_at)>timestamp(order.created_at) ||
