@@ -192,7 +192,11 @@ export async function formatFirebaseUserSession(fbUser: FirebaseUser): Promise<U
       full_name: name,
       name: name,
       phone: fbUser.phoneNumber || (userMeta.phone as string) || "",
-      ...userMeta,
+      ...Object.fromEntries([
+        "full_name", "name", "phone", "whatsapp", "location", "address", "city",
+        "avatar_url", "marketing_preferences", "dark_mode", "auto_schedule_enabled",
+        "operating_hours", "weekly_operating_hours", "holiday_schedule",
+      ].filter(key => Object.hasOwn(userMeta, key)).map(key => [key, userMeta[key]])),
     },
   };
 }
@@ -234,7 +238,6 @@ export async function firebaseSignUp(
     email: email.trim(),
     full_name: userData.full_name || "",
     phone: userData.phone || "",
-    role: "merchant",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
