@@ -80,6 +80,18 @@ INSERT INTO r33_private.audit_events(event_id,order_id,kind)
 VALUES
 ('00000000-0000-4000-8000-000000000740'::uuid,
  '00000000-0000-4000-8000-000000000733'::uuid,'synthetic-entitlement');
+-- Artificial financial liability seed simulates an existing obligation
+-- solely to verify the rollback STOP gate. Not a live reward award.
+UPDATE r33_private.programme SET budget_minor=2500,committed_minor=2500
+ WHERE version='future-v1';
+-- Second order event is for cross-order foreign-key denial ONLY.
+INSERT INTO r33_source.pickup_order_events
+(id,order_id,command_id,revision,command_hash,kind,actor_uid)
+VALUES
+('00000000-0000-4000-8000-000000000741'::uuid,
+ '00000000-0000-4000-8000-000000000734'::uuid,
+ '00000000-0000-4000-8000-000000000742'::uuid,
+ 1,repeat('f',64),'collected','merchant-r33');
 COMMIT;
 
 DO $r33checks$
@@ -109,6 +121,21 @@ BEGIN
    RAISE EXCEPTION 'R33_ORPHAN_ORDER_ACCEPTED';
  EXCEPTION WHEN foreign_key_violation THEN NULL;
  END;
+ -- Outbox cannot reference a collected event from a different order.
+ BEGIN
+   DELETE FROM r33_private.outbox WHERE order_id=
+     '00000000-0000-4000-8000-000000000733'::uuid;
+   INSERT INTO r33_private.outbox(order_id,collected_event_id)
+   VALUES('00000000-0000-4000-8000-000000000733'::uuid,
+     '00000000-0000-4000-8000-000000000741'::uuid);
+   RAISE EXCEPTION 'R33_CROSS_ORDER_EVENT_ACCEPTED';
+ EXCEPTION WHEN foreign_key_violation THEN NULL;
+ END;
+ IF (SELECT count(*) FROM r33_private.outbox)<>1 THEN
+    RAISE EXCEPTION 'R33_CROSS_ORDER_EXCEPTION_DID_NOT_ROLLBACK'; END IF;
+ IF (SELECT committed_minor FROM r33_private.programme WHERE version='future-v1')<>2500 OR
+    (SELECT COALESCE(sum(amount_minor),0) FROM r33_private.financial_obligations)<>2500
+ THEN RAISE EXCEPTION 'R33_EXISTING_LIABILITY_UNBALANCED'; END IF;
  -- A private append-only proof cannot change following a menu update.
  BEGIN
    UPDATE r33_private.original_lines SET qualifies_kota=false;
