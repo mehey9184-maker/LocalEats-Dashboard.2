@@ -40,7 +40,7 @@ jobs:
             return ''
           }
           $dummy = Join-Path $env:RUNNER_TEMP 'must-not-be-created'
-          $env:LOCALEATS_STAGE_DB_URL = 'postgresql://postgres:fake@db.rgpbdajhlrwfmhopzgzk.supabase.co/postgres'
+          $env:LOCALEATS_STAGE_DB_URL = 'postgresql://postgres.rgpbdajhlrwfmhopzgzk:fake@aws-example.pooler.supabase.com:5432/postgres'
           try {
             $caught = $false
             try {
