@@ -39,7 +39,6 @@ export const assertNewDeliveryCreationAllowed = (input: CreateOrderInput): void 
   }
 };
 
-export const isPickupPilotShop = (location: unknown): boolean => typeof location === 'string' && /\b(?:tembisa|thembisa|ivory\s+park)\b/i.test(location);
 
 export interface ShopForOrder {
   id: string;
