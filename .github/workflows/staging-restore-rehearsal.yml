@@ -61,7 +61,11 @@ jobs:
           } finally {
             Remove-Item Env:\LOCALEATS_STAGE_DB_URL -ErrorAction SilentlyContinue
             Remove-Item Function:\docker -ErrorAction SilentlyContinue
+            # Mock CLI sets LASTEXITCODE=1; clear it after testing expected denial
+            # so PowerShell's job wrapper does not report a spurious failed step.
+            $global:LASTEXITCODE = 0
           }
+          Write-Host 'DOCKER_UNAVAILABLE_FAILS_BEFORE_SECRET_AND_BACKUP_PASS'
       - name: Construct fictional P5 backup files (never download connected staging)
         shell: bash
         run: |
