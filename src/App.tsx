@@ -70,7 +70,6 @@ import {
   onAuthStateChanged,
   getFirestoreShopById,
   getFirestoreOrders,
-  sendPushNotification,
   updateFirestoreShop,
   getFirestoreMenuItems,
 } from "./lib/firebase";
@@ -1492,41 +1491,6 @@ function App() {
   // Future auto-accept requires a separately approved server-authoritative policy.
 
 
-  const sendRiderNudge = async (riderId: string, message: string) => {
-    // 1. Record database nudge
-    const { error } = await supabase.rpc("nudge_rider", {
-      rider_id: riderId,
-      message,
-    });
-
-    // 2. Trigger silent push notification via send-alert edge function
-    try {
-      const sessionRes = await supabase.auth.getSession();
-      const token = sessionRes?.data?.session?.access_token;
-      await sendPushNotification({
-        userId: riderId,
-        title: "LocalEats Courier Nudge",
-        body: message || "Order update: Please check your active delivery mission!",
-        data: {
-          type: "nudge",
-          silent: true,
-          rider_id: riderId,
-          timestamp: Date.now(),
-        },
-        userJwt: token,
-      });
-    } catch (pushErr) {
-      console.warn("Push notification edge function warning:", pushErr);
-    }
-
-    if (error) {
-      console.error("Nudge error:", error);
-      toast.success("Silent push nudge dispatched to courier device!");
-    } else {
-      toast.success("Silent push nudge sent to courier!");
-    }
-  };
-
   const handleSignOut = async () => {
     setOrders([]);
     await supabase.auth.signOut();
@@ -2348,7 +2312,6 @@ function App() {
                   onRequestRider={requestRider}
                   onUnassignRider={unassignRider}
                   onTabChange={setActiveTab}
-                  sendRiderNudge={sendRiderNudge}
                   currentShop={currentShop}
                   printingFormat={printingFormat}
                   setPrintingFormat={setPrintingFormat}

@@ -25,3 +25,10 @@ test("Only the Riders route is locked; existing Orders page remains wired", () =
   assert.match(app, /onRequestRider=\{requestRider\}/);
   assert.match(app, /onDispatchToRider=\{dispatchOrderToRider\}/);
 });
+
+test("Merchant Orders cannot send a rider nudge or show a nudge success message", () => {
+  const orders = readFileSync(new URL("../src/components/OrdersManagement.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(app, /nudge_rider|sendRiderNudge|LocalEats Courier Nudge/);
+  assert.doesNotMatch(orders, /sendRiderNudge|Wake to Tip|Rider nudged successfully/);
+  assert.match(orders, /<PickupOrderActions\s+order=/);
+});
