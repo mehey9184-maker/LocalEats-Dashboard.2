@@ -1,4 +1,4 @@
-name: Rewards R2-R2.9 isolated PG17 ledger UUID permission and restore gate
+name: Rewards R2-R3.0 isolated PG17 private finance executor gate
 on:
   pull_request:
     branches: [main]
@@ -29,6 +29,8 @@ jobs:
           test -f localeats-api/tests/rewards/pg17/private-r28-assertions.SYNTHETIC_ONLY.sql
           test -f localeats-api/tests/rewards/pg17/compat-r29.SYNTHETIC_ONLY.sql
           test -f localeats-api/tests/rewards/pg17/compat-r29-assertions.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/executor-r30.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/executor-r30-assertions.SYNTHETIC_ONLY.sql
           test -f localeats-api/tests/rewards/pg17/run-synthetic-pg17.sh
           ! grep -En 'supabase\.co|DATABASE_URL|service_role|PRODUCTION_DATABASE|apply_migration|public\.pickup_create_order' \
             localeats-api/tests/rewards/pg17/*.sql
