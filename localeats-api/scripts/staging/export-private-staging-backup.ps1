@@ -14,6 +14,22 @@ try {
   $pool = $uri.Host -match '(^|\.)pooler\.supabase\.com$' -and $username -eq "postgres.$expectedRef"
   if (-not ($direct -or $pool)) {throw 'REFUSED: database URL is not the approved LocalEats staging project'}
   if ($uri.AbsolutePath -ne '/postgres') {throw 'REFUSED: unexpected database name'}
+  if ($pool -and $uri.Port -ne 5432) {
+    throw 'This backup requires the Session pooler (port 5432), not the Transaction pooler (6543). Copy Session pooler from Supabase staging Connect.'
+  }
+  # The Supabase Free direct db.<project>.supabase.co endpoint normally
+  # publishes IPv6 only. Windows/Docker on IPv4-only networks may report
+  # "could not translate host name". Check DNS BEFORE creating any files.
+  if ($direct) {
+    $directIPv4 = @()
+    try {
+      $directIPv4 = @([System.Net.Dns]::GetHostAddresses($uri.Host) |
+        Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork })
+    } catch { $directIPv4 = @() }
+    if ($directIPv4.Count -eq 0) {
+      throw 'STAGING_DIRECT_IPV6_DNS_UNAVAILABLE: This direct staging DB host has no usable IPv4 DNS record on this computer. In Supabase staging -> Connect choose Session pooler (port 5432), then supply that PRIVATE connection URL. Do not use Transaction pooler port 6543. No backup has started.'
+    }
+  }
   # Fail before creating a backup folder when Docker Desktop Linux engine
   # is unavailable. This avoids partial backup folders for a known blocker.
   if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'Docker CLI is missing' }
