@@ -52,13 +52,21 @@ try {
   Assert-Ok 'cannot create private local container'
   $started = $true
 
+  # A brand-new Postgres container briefly accepts connections during init
+  # and then restarts its server. pg_isready alone can therefore race with a
+  # temporary shutdown. Require the init completion log AND a real SQL read.
   $ready = $false
-  for ($i = 0; $i -lt 40; $i++) {
-    & docker exec $container pg_isready -U postgres -d postgres | Out-Null
-    if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+  for ($i = 0; $i -lt 60; $i++) {
+    $logText = ''
+    try { $logText = ((& docker logs $container 2>&1) | Out-String) } catch { $logText = '' }
+    if ($logText -like '*PostgreSQL init process complete*') {
+      $probe = $null
+      try { $probe = (& docker exec $container psql -X -At -U postgres -d postgres -c 'SELECT 1' 2>$null | Select-Object -Last 1) } catch { $probe = $null }
+      if ($LASTEXITCODE -eq 0 -and $probe -eq '1') { $ready = $true; break }
+    }
     Start-Sleep -Milliseconds 750
   }
-  if (-not $ready) { throw 'Local PostgreSQL container did not start' }
+  if (-not $ready) { throw 'Local PostgreSQL 17 did not complete initialization or pass SQL readiness check' }
 
   # Supabase CLI's five files are the only input. Docker has no host port and
   # --network none; this command never sends SQL to either connected project.
