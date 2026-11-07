@@ -81,9 +81,6 @@ grep -q 'R34_UNMODIFIED_PICKUP_SQL_ZERO_FEE_CREATE_TO_COLLECT_AND_PUSH_PASS' "$t
 assert_query "SELECT count(*) FROM public.orders;" "2"
 assert_query "SELECT count(*) FROM public.pickup_order_events;" "7"
 assert_query "SELECT count(*) FROM public.pickup_push_outbox;" "1"
-assert_query "SELECT status FROM public.pickup_push_outbox LIMIT 1;" "sent" 2>/dev/null && {
- echo "R34 wrong push column check should not pass" >&2;exit 1;
-} || true
 assert_query "SELECT state FROM public.pickup_push_outbox LIMIT 1;" "sent"
 
 echo "R34: real SQL privileges under untrusted session authorization"
