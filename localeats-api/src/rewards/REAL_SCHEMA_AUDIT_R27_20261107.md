@@ -35,6 +35,8 @@ Order origin in the live schema lacks explicit R2.4 test_record and simulated_ch
 
 **CONTEXT:** Advisor finds public.spatial_ref_sys without RLS and postgis extension in public; these are extension-related and not automatically fixable within the Rewards scope. Other RLS-enabled tables, including orders and pickup_order_events, have **no direct client policies**, consistent with a deny-by-default service-only design. Missing policies are not automatically a security defect.
 
+**ADDITIONAL REVIEW — Supabase Auth:** the main project's security advisor warns that leaked-password protection is disabled. LocalEats pickup currently authenticates through Firebase, so confirm whether any Supabase Auth email/password flows are actually enabled before treating this as a launch blocker. See [Supabase Auth password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). Do not change authentication settings from this audit.
+
 **POSITIVE:** The important pickup stored procedures are SECURITY INVOKER and private to service use. The orders and pickup events have dedicated data guards and uniqueness. Preserve those controls.
 
 ## 4. Proposed architecture for later approval (not a migration)
