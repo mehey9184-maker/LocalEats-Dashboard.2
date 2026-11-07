@@ -766,7 +766,8 @@ r32_reset(){
     VALUES('future-v1',true,now()-interval '1 day',2500);" >/dev/null
 }
 r32_seed(){
-  local id="$1" order="00000000-0000-4000-8000-0000000001"
+  local id="$1" order
+  order="00000000-0000-4000-8000-000000000$id"
   local pay="00000000-0000-4000-8000-000000000$((id+100))"
   local collected="00000000-0000-4000-8000-000000000$((id+200))"
   pg -c "INSERT INTO r32_pickup.orders(id,shop_id,customer_uid,merchant_uid,origin,
