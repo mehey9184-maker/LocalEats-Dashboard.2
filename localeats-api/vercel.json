@@ -1,6 +1,7 @@
 {
   "git": {
     "deploymentEnabled": {
+      "fix/central-customer-profiles-20261106": false,
       "integration/customer-api-read-compat": true,
       "main": false,
       "integration/merchant-original-ui-pickup": false,

@@ -16,6 +16,7 @@ import { riderRouter, merchantRiderRouter } from "./routes/riderAccess.js";
 import { isAllowedOrigin } from "./corsOrigins.js";
 import { customerProfilesRouter } from "./routes/customerProfiles.js";
 import { configureApiCacheSafety } from "./middleware/apiCacheSafety.js";
+import { customerProfileStagingRoutes } from "./profiles/customerProfileRuntime.js";
 
 dotenv.config();
 
@@ -45,6 +46,9 @@ app.use(cors({
 app.use(previewReadOnlyGate);
 app.use(legacyOrderGuard);
 app.use(pickupWriteGate);
+// The isolated profile parser bounds its own body and handles malformed JSON
+// without passing private profile input to the generic error logger.
+app.use("/api/v1/profiles/me", customerProfileStagingRoutes);
 app.use(express.json());
 
 // Routes
