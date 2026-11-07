@@ -1,28 +1,26 @@
-# Local-only helper: build a STAGING session-pooler URI from the template
-# copied from Supabase Dashboard → staging project → Connect → Session pooler.
-# The password must never be printed, logged or committed.
+# Staging-only connection builder for the exact Session pooler endpoint
+# already verified reachable in the owner's Windows backup logs.
+# No full connection URL template, hostname, username or port is entered
+# interactively. The only secret is the database password (hidden prompt).
 function New-StageSessionPoolerUrl {
-  param(
-    [Parameter(Mandatory=$true)][string]$Template,
-    [Parameter(Mandatory=$true)][string]$Password
-  )
-  $stagingRef = 'rgpbdajhlrwfmhopzgzk'
-  $placeholder = '[YOUR-PASSWORD]'
-  if (-not $Template.Contains($placeholder) -or
-      ([regex]::Matches($Template,[regex]::Escape($placeholder)).Count -ne 1)) {
-    throw 'Copy the original staging Session pooler connection template with [YOUR-PASSWORD] still present. Do not paste an existing password or a Production URL.'
+  param([Parameter(Mandatory=$true)][string]$Password)
+
+  $stagingRef='rgpbdajhlrwfmhopzgzk'
+  $hostName='aws-0-eu-west-1.pooler.supabase.com'
+  if ([string]::IsNullOrEmpty($Password)) {
+    throw 'Staging database password cannot be empty'
   }
-  $sanitizedUri = $null
-  try { $sanitizedUri = [Uri]$Template.Replace($placeholder,'synthetic-placeholder') }
-  catch { throw 'Invalid Session pooler connection template' }
-  if (@('postgresql','postgres') -cnotcontains $sanitizedUri.Scheme -or
-      $sanitizedUri.Host -notmatch '(^|\.)pooler\.supabase\.com$' -or
-      $sanitizedUri.Port -ne 5432 -or
-      $sanitizedUri.AbsolutePath -cne '/postgres' -or
-      $sanitizedUri.UserInfo -cne ("postgres." + $stagingRef + ":synthetic-placeholder") -or
-      $sanitizedUri.Fragment) {
-    throw 'REFUSED: use only LocalEats-Profile-Staging Session pooler, postgres.<staging-ref>, port 5432, database postgres.'
-  }
+
   $encodedPassword=[Uri]::EscapeDataString($Password)
-  return $Template.Replace($placeholder,$encodedPassword)
+  $url='postgresql://postgres.'+$stagingRef+':'+$encodedPassword+'@'+$hostName+':5432/postgres?sslmode=require'
+  # Fail closed if accidental future edits change any connection parameter.
+  $parsed=[Uri]$url
+  if ($parsed.Scheme -cne 'postgresql' -or
+      $parsed.Host -cne $hostName -or
+      $parsed.Port -ne 5432 -or
+      $parsed.AbsolutePath -cne '/postgres' -or
+      $parsed.UserInfo.Split(':',2)[0] -cne ('postgres.'+$stagingRef)) {
+    throw 'REFUSED: connection is not pinned to LocalEats-Profile-Staging Session pooler'
+  }
+  return $url
 }
