@@ -26,10 +26,19 @@ try {
   if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     throw 'Node.js is required for private backup integrity checks.'
   }
-  $secure = Read-Host -Prompt 'Paste ONLY the LocalEats-Profile-Staging DB connection URL (input hidden)' -AsSecureString
-  if ($null -eq $secure -or $secure.Length -eq 0) { throw 'No staging URL supplied' }
+  # Keep the Session pooler host/username exactly as copied from Supabase.
+  # Enter the DATABASE password in a separate hidden prompt; encode reserved
+  # characters automatically so URI parsing cannot modify the secret.
+  . (Join-Path $PSScriptRoot 'new-stage-session-url.ps1')
+  $stageTemplate = Read-Host -Prompt 'Paste STAGING Session pooler connection TEMPLATE with [YOUR-PASSWORD] placeholder (no secret)'
+  if ([string]::IsNullOrWhiteSpace($stageTemplate)) { throw 'Staging Session pooler template missing' }
+  $secure = Read-Host -Prompt 'Paste the STAGING DATABASE password, not Supabase login/API key (input hidden)' -AsSecureString
+  if ($null -eq $secure -or $secure.Length -eq 0) { throw 'Staging database password missing' }
   $secretPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-  $env:LOCALEATS_STAGE_DB_URL = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($secretPointer)
+  $dbPassword = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($secretPointer)
+  $env:LOCALEATS_STAGE_DB_URL = New-StageSessionPoolerUrl -Template $stageTemplate -Password $dbPassword
+  Remove-Variable dbPassword -ErrorAction SilentlyContinue
+  Remove-Variable stageTemplate -ErrorAction SilentlyContinue
   $secure.Dispose()
   [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($secretPointer)
   $secretPointer = [IntPtr]::Zero
