@@ -39,6 +39,21 @@ The script rejects mismatched database identifiers and refuses to save inside a 
 
 It then runs `verify-stage-dumps.mjs`, which verifies file presence and SHA-256 integrity and writes `integrity-manifest.json` **into the same private folder**. It intentionally reports **`RESTORE_NOT_VERIFIED`**. No secrets, data rows or SQL contents are printed by the verifier.
 
+### Run the genuine offline restore (new)
+
+After the export has finished, **do not stop at the SHA-256 manifest**. From the same checked-out PR #88 branch, with Docker Desktop running:
+
+```powershell
+.\localeats-api\scripts\staging\verify-stage-local-restore.ps1 -BackupDir "$HOME\Documents\LocalEats-Staging-Private-Backup"
+```
+
+The new script validates the five dump hashes against the private manifest, starts a **disposable Docker PostgreSQL 17 container with `--network none` and no published ports**, and executes roles/schema/data/migration-history SQL inside that container. It verifies the exact expected P5 table shape (14 columns, 13 constraints), forced RLS and server-only grants, zero profiles, and the pre-existing migration. It deletes the test container on both success and failure.
+
+Only if **all actual restore statements and the P5 checks succeed** will it print `LOCAL_RESTORE_P5_VERIFIED` and write a sanitized `restore-evidence.json` into the same private folder. **If it errors or does not print that exact marker, the backup gate is NOT passed.** This local restore check does not validate managed Supabase Auth or Firebase data, and does not authorize connected staging SQL by itself.
+
+Do not upload any dump/manifest/connection string. You may report only the marker and whether the container test succeeded; keep the evidence file private. The GitHub synthetic CI tests the script with fictional data but **cannot verify your actual backup**.
+
+
 **Important:** Supabase CLI's standard dump excludes managed `auth` and `storage` schema contents, including service configuration. Today these schemas have no user or stored-object rows, but their service settings, Firebase credentials, public grants, custom triggers and roles still need separate documentation if changed. The five SQL files are not a complete backup of Firebase, Vercel or external image assets.
 
 Before starting any cloud migration, encrypt the five SQL files and manifest at rest, store an **off-site** copy accessible only to the owner, then perform a **real restore in a fresh disposable PostgreSQL 17 or local Supabase environment**, never against Production or the existing staging project. Record whether the restore completed without errors; verify the restored `public.profiles` table, constraints, RLS/grants and the existing migration history. A file hash alone **does not prove the backup can be restored**. A failed restore blocks staging DDL.
