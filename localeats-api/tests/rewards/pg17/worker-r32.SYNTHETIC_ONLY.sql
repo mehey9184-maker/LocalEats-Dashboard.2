@@ -300,7 +300,7 @@ BEGIN
  THEN RAISE EXCEPTION 'R32_SOURCE_RECHECK_FAILED'; END IF;
  IF NOT EXISTS(SELECT 1 FROM r32_private.credit_receipts WHERE order_id=p_order) THEN
    UPDATE r32_private.programme SET reserved_minor=reserved_minor+2500
-      WHERE version=programme.version AND reserved_minor+2500<=budget_minor;
+      WHERE version='future-v1' AND reserved_minor+2500<=budget_minor;
    GET DIAGNOSTICS rows_written=ROW_COUNT;
    IF rows_written<>1 THEN RAISE EXCEPTION 'R32_BUDGET_EXHAUSTED'; END IF;
    INSERT INTO r32_private.credit_receipts
