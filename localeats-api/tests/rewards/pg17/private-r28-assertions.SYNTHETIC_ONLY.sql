@@ -24,6 +24,9 @@ COMMIT;
 DO $r28assert$
 DECLARE
  v_count integer;
+ v_replay integer;
+ v_payable text;
+ v_payable_replay text;
 BEGIN
   -- All food and reward eligibility are captured from the current trusted
   -- menu inside one locked transaction, not from price/loyalty client flags.
@@ -66,8 +69,9 @@ BEGIN
     IF SQLERRM NOT LIKE '%R28_NOT_PAID_AND_COLLECTED%' THEN RAISE; END IF;
   END;
   PERFORM r28_private.record_pickup_event('order-a','a-collected','collected',2,'merchant-1');
-  IF r28_private.credit_collected_order('order-a')<>4 OR
-    r28_private.credit_collected_order('order-a')<>0 OR
+  v_count:=r28_private.credit_collected_order('order-a');
+  v_replay:=r28_private.credit_collected_order('order-a');
+  IF v_count<>4 OR v_replay<>0 OR
     (SELECT rank FROM r28_private.progress WHERE customer_uid='alice')<>'silver' OR
     (SELECT committed_minor FROM r28_private.programme)<>2500 OR
     (SELECT count(*) FROM r28_private.grants)<>1 OR
@@ -143,10 +147,12 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN
     IF SQLERRM NOT LIKE '%R28_BRONZE_FOOD_INVALID%' THEN RAISE; END IF;
   END;
-  IF r28_private.fulfil_grant('grant:alice:bronze','shop-1',
-        'standard','handover-1')<>'payable:grant:alice:bronze'
-    OR r28_private.fulfil_grant('grant:alice:bronze','shop-1',
-        'standard','handover-1')<>'payable:grant:alice:bronze'
+  v_payable:=r28_private.fulfil_grant('grant:alice:bronze','shop-1',
+        'standard','handover-1');
+  v_payable_replay:=r28_private.fulfil_grant('grant:alice:bronze','shop-1',
+        'standard','handover-1');
+  IF v_payable<>'payable:grant:alice:bronze' OR
+    v_payable_replay<>'payable:grant:alice:bronze'
     OR (SELECT committed_minor FROM r28_private.programme)<>14900 OR
     (SELECT amount_minor FROM r28_private.payables WHERE grant_id='grant:alice:bronze')<>2400
   THEN RAISE EXCEPTION 'R28_HANDOVER_DEBT_OR_BUDGET_FAILED'; END IF;
