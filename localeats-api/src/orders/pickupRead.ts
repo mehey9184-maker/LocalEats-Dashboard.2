@@ -3,7 +3,6 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 import {OrderContractError,parseCreateOrderInput,assertShopCanAcceptOrder,calculateAuthoritativePrice,calculateDistanceKm,
  type ShopForOrder,type MenuItemForOrder} from "./orderContract.js";
 
-export const isPickupPilotShop=(location:unknown):boolean=>typeof location==="string" && /\b(?:tembisa|thembisa|ivory\s+park)\b/i.test(location);
 const fail=(status:number,code:string):never=>{throw new OrderContractError(status,code,code);};
 const object=(value:unknown):Record<string,unknown>=>{
  if(!value || typeof value!=="object" || Array.isArray(value))return fail(400,"INVALID_REQUEST");
@@ -55,7 +54,6 @@ export async function pickupReadQuote(repository:PickupReadRepository,uid:string
  if(!shop)return fail(404,"SHOP_NOT_FOUND");
  if(shop.archived_at!==null)return fail(409,"SHOP_UNAVAILABLE");
  assertShopCanAcceptOrder(shop,input);
- if(!isPickupPilotShop(shop.location))return fail(422,"OUTSIDE_PICKUP_PILOT");
  const lat=shop.lat ?? shop.latitude,lng=shop.lng ?? shop.longitude;
  if(typeof lat!=="number" || !Number.isFinite(lat) || Math.abs(lat)>90 || typeof lng!=="number" || !Number.isFinite(lng) || Math.abs(lng)>180)return fail(409,"SHOP_LOCATION_UNAVAILABLE");
  if(calculateDistanceKm(lat,lng,location.lat,location.lng)>4)return fail(422,"OUTSIDE_PICKUP_RADIUS");
