@@ -1,0 +1,80 @@
+name: Stage pickup secure-from-creation tables — disposable P5 PG17 rehearsal
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'security/drafts/staging_pickup_secure_base_DISPOSABLE_ONLY.sql'
+      - 'tests/staging/pickup_secure_base_p5_fixture.sql'
+      - 'tests/staging/pickup_secure_base_assertions.sql'
+      - '.github/workflows/staging-secure-pickup-base-pg17.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  secure-stage-base:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-stage-only
+          POSTGRES_DB: localeats_stage_base_disposable
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d localeats_stage_base_disposable"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: '127.0.0.1'
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-stage-only
+      PGDATABASE: localeats_stage_base_disposable
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Assert fixed disposable database, no cloud credentials and no preexisting public tables
+        run: |
+          set -eu
+          test "$PGHOST" = '127.0.0.1'
+          test "$PGDATABASE" = 'localeats_stage_base_disposable'
+          test -z "${DATABASE_URL:-}"
+          test -z "${SUPABASE_URL:-}"
+          test -z "${SUPABASE_SERVICE_ROLE_KEY:-}"
+          test "$(psql -X -At -c 'select current_database()')" = 'localeats_stage_base_disposable'
+          test "$(psql -X -At -c 'show server_version_num' | cut -c1-2)" = '17'
+          test "$(psql -X -At -c "select count(*) from pg_tables where schemaname='public'")" = '0'
+      - name: Reproduce synthetic P5-only profile table and fingerprint
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/staging/pickup_secure_base_p5_fixture.sql
+      - name: Create shops, menu and orders with locked-down grants/RLS atomically
+        run: psql -X -v ON_ERROR_STOP=1 -f security/drafts/staging_pickup_secure_base_DISPOSABLE_ONLY.sql
+      - name: Check base DDL is fail-closed on repeated application
+        run: |
+          set -eu
+          if psql -X -v ON_ERROR_STOP=1 -f security/drafts/staging_pickup_secure_base_DISPOSABLE_ONLY.sql > /tmp/repeat.log 2>&1; then
+            echo 'Unsafe repeated creation unexpectedly succeeded' >&2
+            exit 1
+          fi
+          grep -q 'STAGE_P5_BASELINE_OR_OBJECT_COLLISION' /tmp/repeat.log
+      - name: Install reviewed order, zero-fee, availability, Super Admin and any-town SQL on disposable DB
+        run: |
+          set -eu
+          psql -X -v ON_ERROR_STOP=1 -f supabase/drafts/pickup_launch_foundation.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/drafts/pickup_zero_fee.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/drafts/merchant_availability.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/archived-migrations/20260902234040_phase4g_admin_approval_foundation.sql
+          psql -X -v ON_ERROR_STOP=1 -f security/drafts/pickup_any_town_4km_create_REVIEW_ONLY.sql
+      - name: Create ONLY synthetic test merchant and menu after secure schema
+        run: |
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO public.shops(id,owner_id,name,location,approval_status,is_active,lat,lng,latitude,longitude)
+          VALUES ('shop','merchant','Fixture shop','Pretoria','pending',false,-26,28,-26,28);
+          INSERT INTO public.menu_items(id,shop_id,name,price,is_available)
+          VALUES ('550e8400-e29b-41d4-a716-446655440000','shop','Fixture meal',25,true);
+          SQL
+      - name: Check original P5 fingerprint and Admin approval through to pickup ordering
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/staging/pickup_secure_base_assertions.sql
