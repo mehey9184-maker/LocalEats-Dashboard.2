@@ -343,7 +343,7 @@ DO $r29rls$ DECLARE t record; BEGIN
     EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY',t.schemaname,t.tablename);
     EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY',t.schemaname,t.tablename);
  END LOOP;
-END $r29rls$;
+END; $r29rls$;
 
 -- An explicitly scoped future-status projection. Observer may see ONLY this
 -- constant view, not private data; view is invoker and no source table used.
