@@ -73,6 +73,9 @@ export const createAdminRiderRouter = (
   repository: AdminRiderRepository = supabaseAdminRiderRepository,
   authenticate: RequestHandler = authenticateAdminFirebase as RequestHandler,
   authorize: RequestHandler = authorizeSuperAdmin as RequestHandler,
+  // Server-only, strict default-off pickup-pilot switch. The test runner may
+  // inject a synthetic reader; browser payloads never control this.
+  riderVerificationWritesEnabled: () => boolean = () => process.env.ADMIN_RIDER_VERIFICATION_WRITES_ENABLED === "true",
 ): ReturnType<typeof Router> => {
   const router = Router();
   router.use(authenticate, authorize);
@@ -125,6 +128,16 @@ export const createAdminRiderRouter = (
 
   router.patch("/:riderId/verification", async (req: SuperAdminRequest, res: Response): Promise<void> => {
     res.setHeader("Cache-Control", "no-store");
+    // Auth + super-admin authorization run before this guard. No verification
+    // reads or writes may occur during the pickup-only launch pilot.
+    if (!riderVerificationWritesEnabled()) {
+      res.status(503).json({
+        success: false,
+        code: "RIDER_VERIFICATION_COMING_SOON",
+        error: "Rider verification is not available during the pickup-only pilot.",
+      });
+      return;
+    }
     const riderId = req.params.riderId;
     if (typeof riderId !== "string" || !RIDER_UUID.test(riderId)) {
       res.status(400).json({ success: false, error: "Invalid riderId" });
