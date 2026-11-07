@@ -32,6 +32,16 @@ If successful, the script prints exactly:
 
 If the restore fails, do **not** disable its safety checks or run connected staging SQL. Describe the error without sharing secrets; the verifier can be reviewed and corrected then retried with a new private backup folder.
 
+## Windows/Docker DNS issue — choose IPv4 Session pooler
+
+The owner's Windows backup attempt reached `pg_dumpall` but the Docker container could not resolve `db.rgpbdajhlrwfmhopzgzk.supabase.co`. This is consistent with the **direct database endpoint being IPv6-only on Supabase Free**, while the local Docker/Windows route has no usable IPv6 DNS/address path. Supabase documents that **Session pooler is available over IPv4** on Free.
+
+Use **Supabase staging → Connect → Session pooler**, not Direct connection or Transaction pooler. Copy the exact URI shown by Supabase, replacing its password privately. It should have **port 5432**, a hostname ending `.pooler.supabase.com`, and a username of `postgres.rgpbdajhlrwfmhopzgzk`. **Do not construct a pooler hostname from the region or paste the URI into GitHub or ChatGPT.** Use the copy action; host names vary by cluster. Check special characters in the password are percent-encoded in the URI.
+
+The export helper verifies the staging-only host/account/database and refuses **Transaction pooler port 6543**. On a direct connection without IPv4 DNS, it now fails **before creating a backup folder** with `STAGING_DIRECT_IPV6_DNS_UNAVAILABLE`, explaining how to switch to Session pooler. This does not imply the Supabase database or password is incorrect, and does not require an IPv4 add-on or paid plan.
+
+Reference: https://supabase.com/docs/guides/database/connecting-to-postgres and https://supabase.com/docs/reference/cli/supabase-db-dump .
+
 ## Backup first — run on a trusted computer, NOT CI
 
 The connected Supabase integration available here has **no database dump / restore-backup action**. SQL catalogs and checksums are not a restorable backup, and the zero row count is **not** permission to overwrite the existing profile schema.
