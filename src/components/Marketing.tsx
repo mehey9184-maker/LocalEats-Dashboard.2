@@ -15,7 +15,6 @@ import {
   Flame,
   Utensils,
   Percent,
-  Truck,
   Palette,
   Eye,
   Gift,
