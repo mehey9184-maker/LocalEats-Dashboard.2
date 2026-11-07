@@ -5,7 +5,27 @@ set -Eeuo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../../../.." && pwd)"
 r34="$here/../r34"
-name="localeats_pickup_r35_$$"
+# Two explicit, disconnected sources: historical recorded statement archive
+# or the previous review-draft/effective-behavior lab. NEVER choose by URL.
+case "${R36_PICKUP_REPLAY_MODE:-r35_draft}" in
+  r35_draft)
+    foundation="$repo/supabase/drafts/pickup_launch_foundation.sql"
+    zero_fee="$repo/supabase/drafts/pickup_zero_fee.sql"
+    availability="$repo/supabase/drafts/merchant_availability.sql"
+    methods="$here/effective-payment-methods.SYNTHETIC_ONLY.sql"
+    ;;
+  recorded_applied)
+    archive="$repo/supabase/recovered_applied_readonly"
+    foundation="$archive/20261030111305_pickup_launch_foundation.sql.txt"
+    zero_fee="$archive/20261031073608_pickup_zero_fee.sql.txt"
+    availability="$archive/20261031073645_merchant_availability.sql.txt"
+    methods="$archive/20261101160331_pickup_payment_methods.sql.txt"
+    ;;
+  *)
+    echo "R36_INVALID_DISPOSABLE_REPLAY_MODE" >&2;exit 1
+    ;;
+esac
+name="localeats_pickup_r35_$"
 tmp="$(mktemp -d)"
 cleanup(){ docker rm -f "$name" >/dev/null 2>&1 || true; rm -rf "$tmp"; }
 trap cleanup EXIT
@@ -14,12 +34,12 @@ for file in \
  "$r34/baseline.SYNTHETIC_ONLY.sql" \
  "$r34/fixtures.SYNTHETIC_ONLY.sql" \
  "$r34/checkout-e2e.SYNTHETIC_ONLY.sql" \
- "$here/effective-payment-methods.SYNTHETIC_ONLY.sql" \
+ "$methods" \
  "$here/payment-pre-e2e.SYNTHETIC_ONLY.sql" \
  "$here/payment-post-e2e.SYNTHETIC_ONLY.sql" \
- "$repo/supabase/drafts/pickup_launch_foundation.sql" \
- "$repo/supabase/drafts/pickup_zero_fee.sql" \
- "$repo/supabase/drafts/merchant_availability.sql"; do
+ "$foundation" \
+ "$zero_fee" \
+ "$availability"; do
  if [[ ! -f "$file" ]]; then
    echo "R35_REQUIRED_SOURCE_MISSING: $file" >&2;exit 1
  fi
@@ -68,11 +88,11 @@ restore_expect(){
 
 echo "R3.5: restore minimal legacy prerequisites and original checked-in pickup SQL"
 run_file "$r34/baseline.SYNTHETIC_ONLY.sql" >"$tmp/baseline.log"
-run_file "$repo/supabase/drafts/pickup_launch_foundation.sql" >"$tmp/foundation.log"
-run_file "$repo/supabase/drafts/pickup_zero_fee.sql" >"$tmp/zero-fee.log"
-run_file "$repo/supabase/drafts/merchant_availability.sql" >"$tmp/availability.log"
+run_file "$foundation" >"$tmp/foundation.log"
+run_file "$zero_fee" >"$tmp/zero-fee.log"
+run_file "$availability" >"$tmp/availability.log"
 echo "R3.5: apply SELECT-only OBSERVED effective payment-methods behavior, OFFLINE"
-run_file "$here/effective-payment-methods.SYNTHETIC_ONLY.sql" >"$tmp/pay-methods.log"
+run_file "$methods" >"$tmp/pay-methods.log"
 run_file "$r34/fixtures.SYNTHETIC_ONLY.sql" >"$tmp/fixtures.log"
 run_file "$here/payment-pre-e2e.SYNTHETIC_ONLY.sql" >"$tmp/payment-pre.log"
 grep -q 'R35_EFFECTIVE_PAYMENT_METHODS_PRECHECK_PASS' "$tmp/payment-pre.log"
