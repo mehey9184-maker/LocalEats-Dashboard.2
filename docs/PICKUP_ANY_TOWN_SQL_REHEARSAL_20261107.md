@@ -39,7 +39,7 @@ This is a carefully scoped *candidate*, **not a license to apply it in the real 
 - Builds minimal synthetic tables/roles/accounts/shops/menu and **extracts the exact existing zero-fee function body** from the committed draft; the baseline function SHA must match Production's read-only hash.
 - Reproduces original server-only privileges before applying review SQL *only to disposable PG17*.
 - Checks successfully persisted R25 pickup orders for shops labelled Cosmo City, Pretoria and a shop with **no town text** when their GPS is within 4 km.
-- Checks replay idempotency, cross-customer idempotency conflict, order/event counts and service-fee=R0.
+- Checks replay idempotency, cross-customer idempotency conflict, hashes of the full synthetic order and event rows and service-fee=R0.
 - Checks denial for >4 km, closed, unapproved, archived and invalid-coordinate shops, and for forged R1 client totals.
 - Checks replaying the migration is explicitly rejected on source drift.
 
@@ -56,3 +56,5 @@ This is a carefully scoped *candidate*, **not a license to apply it in the real 
 **No Production/staging DB writes, merged PRs, real orders, billing, Riders/Delivery, deployments, or hosting purchases in this PR.**
 
 The guarded check rejects a missing function search_path as well as an unexpected setting. Run the exact review SQL from the Git LF bytes. A Windows CRLF copy can cause the one-line guard to fail closed, as observed in the local rehearsal. The LF copy passed the PostgreSQL 17 authority and radius assertions, and rejected repeat application. Do not bypass a hash or guard failure.
+
+Rollback rehearsal: capture the current function definition and its owner, grants, configuration and security mode before the cutover. The isolated workflow restores that captured definition in a single transaction after checking the exact forward hash. It requires the original hash afterward and compares ownership, permissions and hashes of the full synthetic order and event rows. Production rollback would first disable pickup writes and requires its own approval.
