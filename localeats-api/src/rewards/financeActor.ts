@@ -32,6 +32,8 @@ export async function verifyFinancialActor(
   if(typeof details.uid!=="string" || !details.uid || details.uid.length>160 ||
      details.uid.trim()!==details.uid || /[\x00-\x1f\x7f\s]/.test(details.uid) ||
      !firebase || typeof firebase!=="object" || Array.isArray(firebase) ||
+     typeof (firebase as Record<string,unknown>).sign_in_provider!=="string" ||
+     !(firebase as Record<string,unknown>).sign_in_provider ||
      (firebase as Record<string,unknown>).sign_in_provider==="anonymous")return invalid();
   return {uid:details.uid,verifiedBy:"firebase-admin-revocation-checked",anonymous:false};
 }
