@@ -11,7 +11,9 @@ export const DUMPS=["roles.sql","schema.sql","data.sql","history_schema.sql","hi
 export function summarizeDumpFiles(directory,read=readFileSync,stat=statSync){
  const files=[];
  for(const name of DUMPS){
-  const path=resolve(directory,name), info=stat(path);
+  const path=resolve(directory,name);
+  let info;
+  try { info=stat(path); } catch { throw Error("Required staging backup artifact missing or empty: "+name); }
   if(!info.isFile() || info.size<16)throw Error("Required staging backup artifact missing or empty: "+name);
   const bytes=read(path);
   if(!Buffer.isBuffer(bytes) || bytes.length!==info.size)throw Error("Backup artifact cannot be verified: "+name);
