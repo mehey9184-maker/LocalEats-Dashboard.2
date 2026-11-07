@@ -1,6 +1,6 @@
 # ONE COMMAND, staging-only, owner's Windows computer.
 # Requires Supabase CLI, Docker Desktop, Node.js, staging DB password.
-# Reads the staging connection URL in private hidden input. NEVER paste it
+# Reads ONLY the staging database password in private hidden input. NEVER paste it
 # into chat, GitHub or logs. Backs up ONLY the pinned stage DB then rehearses
 # an actual LOCAL restore. No connected database writes.
 param([string]$OutputDir = (Join-Path $HOME ('Documents\LocalEats-Staging-Backup-'+(Get-Date -Format 'yyyyMMdd-HHmmss'))))
@@ -26,22 +26,23 @@ try {
   if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     throw 'Node.js is required for private backup integrity checks.'
   }
-  # Keep the Session pooler host/username exactly as copied from Supabase.
-  # Enter the DATABASE password in a separate hidden prompt; encode reserved
-  # characters automatically so URI parsing cannot modify the secret.
+  # Exact Session pooler host, port, project ref and username are pinned
+  # from the owner's already verified reachable staging endpoint. Only
+  # ask for the database password; do NOT paste a URL or placeholder.
   . (Join-Path $PSScriptRoot 'new-stage-session-url.ps1')
-  $stageTemplate = Read-Host -Prompt 'Paste STAGING Session pooler connection TEMPLATE with [YOUR-PASSWORD] placeholder (no secret)'
-  if ([string]::IsNullOrWhiteSpace($stageTemplate)) { throw 'Staging Session pooler template missing' }
-  $secure = Read-Host -Prompt 'Paste the STAGING DATABASE password, not Supabase login/API key (input hidden)' -AsSecureString
+  Write-Host 'Target: LocalEats-Profile-Staging Session pooler (eu-west-1, port 5432), not Production.'
+  $secure = Read-Host -Prompt 'Enter STAGING DATABASE password only (hidden; not Supabase login/API key)' -AsSecureString
   if ($null -eq $secure -or $secure.Length -eq 0) { throw 'Staging database password missing' }
   $secretPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
   $dbPassword = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($secretPointer)
-  $env:LOCALEATS_STAGE_DB_URL = New-StageSessionPoolerUrl -Template $stageTemplate -Password $dbPassword
-  Remove-Variable dbPassword -ErrorAction SilentlyContinue
-  Remove-Variable stageTemplate -ErrorAction SilentlyContinue
-  $secure.Dispose()
-  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($secretPointer)
-  $secretPointer = [IntPtr]::Zero
+  try {
+    $env:LOCALEATS_STAGE_DB_URL = New-StageSessionPoolerUrl -Password $dbPassword
+  } finally {
+    Remove-Variable dbPassword -ErrorAction SilentlyContinue
+    $secure.Dispose()
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($secretPointer)
+    $secretPointer = [IntPtr]::Zero
+  }
 
   & (Join-Path $PSScriptRoot 'export-private-staging-backup.ps1') -OutputDir $OutputDir
   if ($LASTEXITCODE -ne 0) { throw 'Private staging backup export did not complete' }
