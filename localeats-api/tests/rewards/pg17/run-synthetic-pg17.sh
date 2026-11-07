@@ -10,7 +10,13 @@ docker run -d --name "$name" --rm \
   -e POSTGRES_PASSWORD=local_ci_only -e POSTGRES_DB=rewards_lab postgres:17-alpine >/dev/null
 ready=0
 for attempt in $(seq 1 45); do
-  if docker exec "$name" pg_isready -U postgres -d rewards_lab >/dev/null 2>&1; then ready=1; break; fi
+  # The official image starts and stops a temporary init server; only use
+  # the final service AFTER the initialization shutdown/restart has finished.
+  if docker logs "$name" 2>&1 | grep -q 'PostgreSQL init process complete; ready for start up.' &&
+    docker exec "$name" psql -X -qAt -v ON_ERROR_STOP=1 -U postgres -d rewards_lab -c 'SELECT 1' 2>/dev/null | grep -qx '1'; then
+    ready=1
+    break
+  fi
   sleep 1
 done
 if [[ "$ready" -ne 1 ]]; then echo "isolated PostgreSQL 17 did not start" >&2; exit 1; fi
