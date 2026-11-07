@@ -1,3 +1,4 @@
+import { waitUntil } from "@vercel/functions";
 import { getApps } from "firebase-admin/app";
 import { getMessaging } from "firebase-admin/messaging";
 import { pickupRpc, type RpcClient } from "./pickupService.js";
@@ -8,7 +9,12 @@ const sendFcm:PushSender=async job=>{
   await getMessaging().send({token:job.token,data:{type:"pickup_ready",event_id:job.event_id,order_id:job.order_id},
     android:{ttl:60_000},webpush:{headers:{TTL:"60"}}});
 };
-// Exactly one awaited attempt per relevant request, no timer, detached promise, cron or worker.
+// Keep the leased attempt alive after sending the HTTP response on Vercel.
+export function schedulePickupPush(client:RpcClient,uid:string):void {
+  waitUntil(drainPickupPush(client,uid));
+}
+
+// Exactly one attempt per relevant request, with completion fenced by the lease.
 export async function drainPickupPush(client:RpcClient,uid:string,sender?:PushSender):Promise<void> {
   if (!uid || (!sender && !getApps().length)) return;
   try {

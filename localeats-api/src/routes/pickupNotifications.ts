@@ -3,7 +3,7 @@ import { authenticateFirebase, type AuthenticatedRequest } from "../middleware/a
 import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 import { object, onlyKeys, UUID } from "../orders/pickupService.js";
 import { OrderContractError } from "../orders/orderContract.js";
-import { drainPickupPush } from "../orders/pickupPush.js";
+import { schedulePickupPush } from "../orders/pickupPush.js";
 export const pickupNotificationRoutes=Router();
 const errorResponse=(res:Response,error:unknown):void=>{
   const e=error instanceof OrderContractError ? error : new OrderContractError(503,"NOTIFICATION_SERVICE_UNAVAILABLE","Notifications unavailable.");
@@ -23,7 +23,7 @@ pickupNotificationRoutes.get("/notifications",authenticateFirebase,async(req:Aut
     }
     const {data,error}=await query.order("occurred_at",{ascending:false}).order("id",{ascending:false}).limit(50);
     if(error) throw error;
-    await drainPickupPush(supabaseAdmin,uid);
+    schedulePickupPush(supabaseAdmin,uid);
     const events=data ?? [], last=events.at(-1);
     res.json({success:true,notifications:events,next_cursor:events.length===50 && last ? {before:last.occurred_at,before_id:last.id} : null});
   } catch(error) { errorResponse(res,error); }
@@ -38,7 +38,7 @@ pickupNotificationRoutes.put("/push-subscriptions/:installationId",authenticateF
     const {error}=await supabaseAdmin.from("pickup_push_subscriptions").upsert({user_id:uid,installation_id:installation,
       fcm_token:body.fcm_token,revoked_at:null},{onConflict:"user_id,installation_id"});
     if(error) throw new OrderContractError(error.code==="23505" ? 409 : 503,"SUBSCRIPTION_NOT_SAVED","Subscription not saved.");
-    await drainPickupPush(supabaseAdmin,uid);
+    schedulePickupPush(supabaseAdmin,uid);
     res.json({success:true});
   } catch(error) { errorResponse(res,error); }
 });
