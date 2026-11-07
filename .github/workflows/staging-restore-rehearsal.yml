@@ -1,0 +1,58 @@
+name: Staging private backup local restore verifier — synthetic Docker test
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/scripts/staging/**'
+      - '.github/workflows/staging-restore-rehearsal.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-windows-script-restore-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Verify PowerShell and Docker available; do not use cloud credentials
+        shell: bash
+        run: |
+          set -eu
+          command -v pwsh
+          command -v docker
+          docker version --format '{{.Server.Version}}'
+          if printenv DATABASE_URL >/dev/null || printenv SUPABASE_URL >/dev/null || printenv SUPABASE_SERVICE_ROLE_KEY >/dev/null; then
+            echo 'Refusing cloud configuration' >&2
+            exit 1
+          fi
+      - name: Construct fictional P5 backup files (never download connected staging)
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/local-only-backup"
+          printf 'CREATE ROLE anon NOLOGIN;\nCREATE ROLE authenticated NOLOGIN;\nCREATE ROLE service_role NOLOGIN BYPASSRLS;\n' > "$RUNNER_TEMP/local-only-backup/roles.sql"
+          cp localeats-api/scripts/staging/fixtures/restore-test-profiles.sql "$RUNNER_TEMP/local-only-backup/schema.sql"
+          printf '%s\n' '-- No real staging or customer rows are present in this test.' > "$RUNNER_TEMP/local-only-backup/data.sql"
+          printf 'CREATE SCHEMA supabase_migrations;\nCREATE TABLE supabase_migrations.schema_migrations (version text PRIMARY KEY);\n' > "$RUNNER_TEMP/local-only-backup/history_schema.sql"
+          printf "INSERT INTO supabase_migrations.schema_migrations(version) VALUES ('20261103140914');\n" > "$RUNNER_TEMP/local-only-backup/history_data.sql"
+          node localeats-api/scripts/staging/verify-stage-dumps.mjs --directory "$RUNNER_TEMP/local-only-backup" --manifest "$RUNNER_TEMP/local-only-backup/integrity-manifest.json"
+      - name: Rehearse real PowerShell restore gate with isolated Docker PG17
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./localeats-api/scripts/staging/verify-stage-local-restore.ps1 -BackupDir "$env:RUNNER_TEMP/local-only-backup"
+          $result = Get-Content "$env:RUNNER_TEMP/local-only-backup/restore-evidence.json" -Raw | ConvertFrom-Json
+          if ($result.result -cne 'LOCAL_RESTORE_P5_VERIFIED' -or $result.stage_project_ref -cne 'rgpbdajhlrwfmhopzgzk') {
+            throw 'Offline restore evidence did not report the correct staging-only gate'
+          }
+      - name: Never publish backup SQL or private restore artifacts
+        shell: bash
+        run: |
+          set -eu
+          test -f "$RUNNER_TEMP/local-only-backup/restore-evidence.json"
+          ! grep -R -i -E 'production-secret|customer-email|JWT' "$RUNNER_TEMP/local-only-backup"
