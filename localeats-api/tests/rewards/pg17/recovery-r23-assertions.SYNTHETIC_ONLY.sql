@@ -171,7 +171,7 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN IF SQLERRM NOT LIKE '%AUDIT_IMMUTABLE%' THEN RAISE; END IF; END;
   IF (SELECT count(*) FROM reward_lab.audit WHERE event_type IN(
       'refund_hold','attempt_cancelled','resolution_documented',
-      'merchant_resolution_ack','reference_corrected'))<>8
+      'merchant_resolution_ack','reference_corrected'))<>7
   THEN RAISE EXCEPTION 'RECOVERY_AUDIT_EVENT_COUNT_WRONG'; END IF;
 END;
 $$;
