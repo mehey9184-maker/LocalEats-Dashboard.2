@@ -940,3 +940,102 @@ pg -c "BEGIN;
 assert_query "SELECT count(*) FROM r32_pickup.orders WHERE customer_uid='rollback';" "0"
 assert_query "SELECT count(*) FROM r32_private.outbox;" "0"
 echo "R32_INTERNAL_WORKER_FENCING_POISON_RECOVERY_ATOMIC_CREDIT_PASS"
+
+# R3.3: reduced real pickup-source metadata and additive private schema safety.
+# These schema names do NOT exist in connected Supabase and all evidence is
+# fabricated inside the existing disposable Docker PostgreSQL 17 CI runner.
+echo "R3.3 PG17: pickup metadata drift, private ledger rollback and restore drill"
+run_file "$here/staging-r33.SYNTHETIC_ONLY.sql" >"$tmp/r33-schema.out"
+run_file "$here/staging-r33-assertions.SYNTHETIC_ONLY.sql" >"$tmp/r33-assertions.out"
+grep -q 'R33_STAGING_MINIMUM_CONTRACT_AND_LIABILITY_ROLLBACK_GATE_PASS' "$tmp/r33-assertions.out"
+assert_query "SELECT r33_private.assert_source_contract();" "t"
+assert_query "SELECT count(*) FROM r33_source.orders;" "2"
+assert_query "SELECT count(*) FROM r33_private.checkout_snapshots;" "1"
+assert_query "SELECT count(*) FROM r33_private.original_lines;" "1"
+assert_query "SELECT count(*) FROM r33_private.financial_obligations;" "1"
+assert_query "SELECT committed_minor FROM r33_private.programme WHERE version='future-v1';" "2500"
+assert_query "SELECT active FROM r33_private.programme WHERE version='future-v1';" "f"
+
+r33_denied(){
+ local sql="$1"
+ if pg -c "$sql" >"$tmp/r33-denied.out" 2>"$tmp/r33-denied.err"; then
+    echo "R33 unauthorized role was able to access private schema: $sql" >&2
+    exit 1
+ fi
+ if ! grep -q 'permission denied' "$tmp/r33-denied.err"; then
+    cat "$tmp/r33-denied.err" >&2
+    echo "R33 unexpected failure (not a role denial)" >&2
+    exit 1
+ fi
+}
+r33_denied "SET SESSION AUTHORIZATION r33_browser; SELECT * FROM r33_private.checkout_snapshots;"
+r33_denied "SET SESSION AUTHORIZATION r33_worker; SELECT * FROM r33_private.financial_obligations;"
+r33_denied "SET SESSION AUTHORIZATION r33_worker;
+ INSERT INTO r33_private.outbox(order_id,collected_event_id)
+ VALUES('00000000-0000-4000-8000-000000000733'::uuid,
+        '00000000-0000-4000-8000-000000000736'::uuid);"
+r33_denied "SET SESSION AUTHORIZATION r33_worker;
+ SELECT r33_private.assert_safe_to_remove();"
+r33_denied "SET SESSION AUTHORIZATION r33_worker; SET ROLE postgres;"
+
+# Failed additive migration is all-or-nothing: no new table, changed budget or
+# source order after ROLLBACK. A real financial ledger is NEVER dropped here.
+pg -c "BEGIN;
+ CREATE TABLE r33_private.preview_rollback_probe (id integer);
+ UPDATE r33_private.programme SET budget_minor=9999
+ WHERE version='future-v1';
+ ROLLBACK;" >/dev/null
+assert_query "SELECT to_regclass('r33_private.preview_rollback_probe') IS NULL;" "t"
+assert_query "SELECT budget_minor FROM r33_private.programme WHERE version='future-v1';" "2500"
+assert_query "SELECT count(*) FROM r33_private.checkout_snapshots;" "1"
+assert_query "SELECT count(*) FROM r33_private.outbox;" "1"
+
+# Restore a dump of ONLY the two scratch schemas, inside a second DB in the
+# SAME disposable Docker container. No remote DB, dump, customer or keys.
+r33_source_before="$(pg -c "SELECT count(*) FROM r33_source.orders;")"
+r33_events_before="$(pg -c "SELECT count(*) FROM r33_source.pickup_order_events;")"
+r33_snapshot_before="$(pg -c "SELECT count(*) FROM r33_private.checkout_snapshots;")"
+r33_liability_before="$(pg -c "SELECT COALESCE(sum(amount_minor),0) FROM r33_private.financial_obligations;")"
+docker exec "$name" pg_dump -U postgres -d rewards_lab \
+  -n r33_source -n r33_private -F c -f /tmp/r33-private-restore.dump
+docker exec "$name" createdb -U postgres rewards_r33_restore
+docker exec "$name" pg_restore -U postgres --no-owner \
+  -d rewards_r33_restore /tmp/r33-private-restore.dump
+r33_restore(){
+ docker exec "$name" psql -X -A -t -q -v ON_ERROR_STOP=1 -U postgres \
+  -d rewards_r33_restore -c "$1"
+}
+if [[ "$(r33_restore "SELECT count(*) FROM r33_source.orders;")" != "$r33_source_before" ||
+      "$(r33_restore "SELECT count(*) FROM r33_source.pickup_order_events;")" != "$r33_events_before" ||
+      "$(r33_restore "SELECT count(*) FROM r33_private.checkout_snapshots;")" != "$r33_snapshot_before" ||
+      "$(r33_restore "SELECT COALESCE(sum(amount_minor),0) FROM r33_private.financial_obligations;")" != "$r33_liability_before" ]]; then
+ echo "R33 scratch backup/restore changed source facts or financial obligations" >&2
+ exit 1
+fi
+if [[ "$(r33_restore "SELECT r33_private.assert_source_contract();")" != "t" ||
+      "$(r33_restore "SELECT active FROM r33_private.programme WHERE version='future-v1';")" != "f" ||
+      "$(r33_restore "SELECT committed_minor FROM r33_private.programme WHERE version='future-v1';")" != "2500" ||
+      "$(r33_restore "SELECT has_schema_privilege('r33_browser','r33_private','USAGE');")" != "f" ||
+      "$(r33_restore "SELECT has_schema_privilege('r33_worker','r33_private','USAGE');")" != "f" ]]; then
+ echo "R33 restored contract, programme flag or private grants changed" >&2
+ exit 1
+fi
+if [[ "$(r33_restore "SELECT count(*) FROM r33_private.checkout_snapshots s
+ JOIN r33_source.orders o ON o.id=s.order_id AND o.shop_id=s.shop_id AND o.user_id=s.customer_uid;")" != "$r33_snapshot_before" ||
+      "$(r33_restore "SELECT count(*) FROM r33_private.outbox x
+ JOIN r33_source.pickup_order_events e ON e.id=x.collected_event_id AND e.order_id=x.order_id;")" != "1" ]]; then
+ echo "R33 restored source identity or outbox event cross-reference invalid" >&2
+ exit 1
+fi
+if [[ "$(r33_restore "SELECT bool_and(c.relrowsecurity AND c.relforcerowsecurity)
+ FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname='r33_private' AND c.relkind='r';")" != "t" ]]; then
+ echo "R33 restored RLS/FORCE RLS changed" >&2; exit 1
+fi
+# Guard continues to deny destruction after restored obligations.
+if r33_restore "SELECT r33_private.assert_safe_to_remove();" \
+    >"$tmp/r33-rollback-guard.out" 2>"$tmp/r33-rollback-guard.err"; then
+ echo "R33 restored ledger was incorrectly deletable" >&2; exit 1
+fi
+grep -q 'R33_PRESERVE_LEDGER_AND_OBLIGATIONS' "$tmp/r33-rollback-guard.err"
+echo "R33_PICKUP_CONTRACT_DRIFT_ROLE_AND_RESTORE_PASS"
