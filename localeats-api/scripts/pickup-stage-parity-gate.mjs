@@ -14,7 +14,7 @@ export const REQUIREMENTS = Object.freeze([
   ["table","public.pickup_push_outbox"],
   ["table","public.admin_users"],
   ["table","public.shop_approval_events"],
-  ["table","public.rider_notifications"],
+  ["table","public.pickup_push_subscriptions"],
   ["view","public.shops_with_availability"],
   ["column","public.profiles.user_id"],
   ["column","public.profiles.role"],
@@ -22,16 +22,13 @@ export const REQUIREMENTS = Object.freeze([
   ["column","public.shops.is_active"],
   ["column","public.orders.idempotency_key"],
   ["column","public.orders.revision"],
-  ["function","public.handle_new_user()"],
   ["function","public.transition_shop_approval(text,text,text,text,text)"],
   ["function","public.merchant_set_availability(text,text,boolean,boolean,bigint)"],
   ["function","public.pickup_create_order(text,text,jsonb)"],
   ["function","public.pickup_order_command(text,uuid,text,uuid,bigint,text,text,boolean)"],
   ["function","public.pickup_claim_push(text)"],
   ["function","public.pickup_push_sendable(text,uuid,integer,timestamp with time zone,text)"],
-  ["function","public.pickup_finish_push(text,uuid,integer,timestamp with time zone,boolean,boolean)"],
-  ["function","public.nudge_rider(uuid,text)"],
-  ["function","public.nudge_rider_by_id(uuid,bigint,text)"]
+  ["function","public.pickup_finish_push(text,uuid,integer,timestamp with time zone,boolean,boolean)"]
 ]);
 const PRIVILEGED_SERVER_FUNCTIONS = new Set([
   "public.transition_shop_approval(text,text,text,text,text)",
@@ -40,9 +37,7 @@ const PRIVILEGED_SERVER_FUNCTIONS = new Set([
   "public.pickup_order_command(text,uuid,text,uuid,bigint,text,text,boolean)",
   "public.pickup_claim_push(text)",
   "public.pickup_push_sendable(text,uuid,integer,timestamp with time zone,text)",
-  "public.pickup_finish_push(text,uuid,integer,timestamp with time zone,boolean,boolean)",
-  "public.nudge_rider(uuid,text)",
-  "public.nudge_rider_by_id(uuid,bigint,text)"
+  "public.pickup_finish_push(text,uuid,integer,timestamp with time zone,boolean,boolean)"
 ]);
 
 /**
