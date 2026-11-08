@@ -5,11 +5,11 @@ Source of approved founder intent: repository root **LOCAL_EATS_MASTER_PLAN.md**
 
 ## 1. Owner decisions versus open launch choices
 
-**CONFIRMED:** R500 maximum promotion envelope; one eligible free kota after first four qualifying paid-collected kota units, ONCE per customer; Gold promotional food-credit amount R80 and Platinum R150 as intended future full-ladder benefits; credit redeemable at any participating shop, with customer allowed to pay any remainder directly at the shop; customer keeps rank permanently; LocalEats reimburses confirmed reward handover merchants. Founder wants verified repeat paying customers as investor evidence, not inflated registration counts.
+**CONFIRMED:** R500 maximum promotion envelope; one eligible free kota ONCE per customer after FOUR paid-collected qualifying kota units across at least TWO distinct verified paid-and-collected pickup orders on DIFFERENT Africa/Johannesburg calendar dates, each counted order containing one or more paid eligible kotas; Gold promotional food-credit amount R80 and Platinum R150 as intended future full-ladder benefits; credit redeemable at any participating shop, with customer allowed to pay any remainder directly at the shop; customer keeps rank permanently; LocalEats reimburses confirmed reward handover merchants. Founder wants verified repeat paying customers as investor evidence, not inflated registration counts.
 
 **CONFIRMED merchant policy direction:** new shops receive one calendar month of trial starting after shop approval and genuine trading; planned Super Admin-only +1 Month Free button subject to backend authority and separate release. Current 30-day frontend approximation is not trustworthy. Do not automatically charge any shop.
 
-**OPEN:** whether pilot launches only the first free-kota reward or promises all stages; exact admitted customer count; whether four kota units must be spread across at least two distinct visits; Gold/Platinum thresholds; eligible item and merchant list; customer terms/cancellation/refund; exact shop trial start event, number of allowed free-month extensions and billing terms; cash actually reserved. No unrestricted customer enrolment or public Gold/Platinum promise.
+**OPEN:** whether pilot launches only the first free-kota reward or promises all stages; exact admitted customer count; Gold/Platinum thresholds; eligible item and merchant list; customer terms/cancellation/refund; exact shop trial start event, number of allowed free-month extensions and billing terms; cash actually reserved. No unrestricted customer enrolment or public Gold/Platinum promise.
 
 ## 2. Candidate R500 pilot budget — not yet approved to activate
 
@@ -29,7 +29,7 @@ Do not release any active campaign until actual cash is ring-fenced and merchant
 
 **Recruitment (example 12 participants):** transparent, limited enrolment of 12 genuine customers. Do not offer employer/staff/test accounts, old test orders or hidden invitations as normal customer demand. Record incentive exposure in advance. Obtain lawful basis for analytics and report aggregate outcomes.
 
-**Observation:** customers make normal paid-at-shop pickup orders. Follow each first-time paid customer for a full 30 days; do not count users whose observation window is incomplete as failed returners. Check paid-and-collected order proofs, actual unique orders, different real trading days, genuine merchant shop fulfilment and whether later orders were customer-funded.
+**Observation:** customers make normal paid-at-shop pickup orders. Bronze eligibility now has TWO independent verified conditions: four purchased eligible kota units and at least two genuine paid-and-collected pickup orders on distinct local calendar dates, with at least one eligible paid kota unit per counted order. Customer examples: 3 kotas collected on Monday + 1 on Thursday qualifies; 4 kotas in a single Monday pickup does not; two Monday pickups containing 3+1 units also do not. These are real distinct order IDs with server-confirmed pickup timestamps; no geolocation surveillance or browser-entered dates. A free-kota redemption itself must NOT count as the second paying order or a post-reward paid return. Follow each first-time paying customer for a full 30 days; do not classify customers without a complete observation window as failed returners. Check paid-and-collected order proofs, independently verified trading dates, merchant fulfilment and whether later orders were customer-funded.
 
 **After rewards:** track whether customers return for a second independent PAID pickup after the first gift has been redeemed and no further credit was used. This is stronger evidence of product utility than a no-charge redemption.
 
@@ -50,7 +50,7 @@ Do not release any active campaign until actual cash is ring-fenced and merchant
 | Retention by cohort | Week of first genuine paid pickup, with separate observed 30- and 60-day repeat purchase rates where complete |
 | Incentive-dependence | Separate fully paid visits, mixed-credit+customer cash visits and reward-only handovers; label aggregate outcomes as incentivised when appropriate |
 
-Do not silently label four kota UNITS in one basket as four repeat purchases. Existing four-unit milestone is confirmed, but a founder proposal for ≥2 real visits is OPEN. A customer can qualify under the old unit-only rule without independently returning, so data collection must measure separate visits whatever qualification rule is eventually approved.
+**Owner APPROVED on 8 November 2026:** first free kota requires four genuine paid qualifying kota UNITS spread over at least two DISTINCT merchant-confirmed paid-and-collected pickup ORDERS on DIFFERENT Africa/Johannesburg calendar days (with >=1 purchased eligible kota unit in each counted order). Never count one four-kota basket as repeated patronage, two orders same day as two qualifying visits, a simulated checkout, a duplicated ID, a reward-funded unit, or a later no-payment gift redemption as a paying return. The initial qualifying second order establishes an early repeat signal, but investor evidence should separately measure additional **customer-funded visits after the gift is redeemed**. This is a rule approved for design only: no live reward engine exists.
 
 ## 5. Investor presentation template (fill with actual verified data, never invented numbers)
 
