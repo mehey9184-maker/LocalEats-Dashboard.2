@@ -1,0 +1,45 @@
+name: LocalEats R4.3 legacy payment owner scope and ID bridge (offline only)
+
+on:
+  pull_request:
+    branches:
+      - main
+      - review/r42-integrated-pickup-payment-staging-20261108
+    paths:
+      - 'localeats-api/tests/pickup/r43/**'
+      - 'localeats-api/tests/pickup/r42/**'
+      - 'docs/R43_PAYMENT_OWNER_SCOPE_STAGING_REVIEW.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/pickup-r43-payment-owner-scope.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-merchant-payment-owner-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      LOCALEATS_PREVIEW_READ_ONLY: 'true'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      REWARDS_ENABLED: 'false'
+    steps:
+      - name: Checkout exact synthetic staging review source without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - name: Audit source/legacy mapping and intentional unimplemented host gates
+        run: node --test localeats-api/tests/pickup/r43/review-contract.test.mjs
+      - name: Run fake Firebase identity and A/B payment owner contract tests
+        run: node --test localeats-api/tests/pickup/r43/payment-owner-scope.test.mjs
+      - name: Preserve R4.2 static schema hardening guard
+        run: node --test localeats-api/tests/pickup/r42/staging-contract.test.mjs
+      - name: Rehearse archived pickup, R3.9 policy, and R4.3 mapping negatives in disposable PostgreSQL 17
+        run: bash localeats-api/tests/pickup/r42/run-integrated-staging-r42.sh
