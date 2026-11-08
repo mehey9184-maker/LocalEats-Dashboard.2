@@ -1,4 +1,5 @@
 interface CorsOriginEnvironment {
+  LOCALEATS_STAGING_ONLY?: string;
   MERCHANT_DASHBOARD_ORIGIN?: string;
   MERCHANT_DASHBOARD_PREVIEW_HOST_PREFIX?: string;
   MERCHANT_DASHBOARD_PREVIEW_HOST_SUFFIX?: string;
@@ -40,6 +41,13 @@ export const isAllowedOrigin = (
   environment: CorsOriginEnvironment = process.env
 ): boolean => {
   if (origin === undefined) return true;
+  if (environment.LOCALEATS_STAGING_ONLY === "true") {
+    // A dedicated staging API must NEVER grant browser CORS to the live site.
+    // Only the exactly configured, HTTPS staging Customer origin is permitted.
+    const stagingOrigin = normalizeExactBrowserOrigin(environment.CUSTOMER_APP_ORIGIN);
+    return stagingOrigin !== null && stagingOrigin.startsWith("https://") &&
+      stagingOrigin.endsWith(".vercel.app") && origin === stagingOrigin;
+  }
   // Canonical Customer Production origin only; Firebase still authorizes private reads/quotes.
   if (origin === "https://www.localeatssa.co.za") return true;
 
