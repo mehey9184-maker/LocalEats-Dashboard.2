@@ -74,6 +74,7 @@ Current source may include earlier Firestore compatibility layers, legacy delive
 | RW-12 | First-time guide after registration/login settles, dismissible and not interrupting checkout, with How Rewards Work accessible from Profile. | PROPOSED onboarding flow | NOT LIVE |
 | RW-13 | Determine an AFFORDABLE programme budget before any offer goes live. | CONFIRMED intention, actual amount OPEN | NOT LIVE |
 | RW-14 | Preserve all planning, app responsibilities, rules, risks, decisions and future handover instructions in ONE living GitHub document, including conflicts and change history. | CONFIRMED | THIS DOCUMENT |
+| RW-15 | **OPTIONAL SPLIT PAYMENT**: if the eligible food bill exceeds available reward credit, customer can apply the remaining credit and pay the rest **directly at the physical shop** by cash or the shop's card terminal. No online payment. A fully covered eligible purchase never needs extra cash. | CONFIRMED 2026-11-08 | NOT LIVE |
 
 **Important change to existing specifications:** The merged Super Admin Rewards R1 design in docs/LOCALEATS_REWARDS_R1_OWNER_FUNDED_SPEC_20261107.md and Merchant/API Rewards R2.1 offline domain model describe a higher-rank R125/R200 SINGLE FOOD BUNDLE. RW-05 now supersedes that **bundle-only reward format** as a BUSINESS PLAN. Their anti-fraud rules, one-time Bronze grant, budgeting, merchant confirmation and audit concepts still stand. Existing implementation HAS NOT yet been updated to spendable balance. Any agent who implements the old bundle format without asking is using outdated instructions.
 
@@ -85,9 +86,9 @@ Silver: progress toward Gold under a threshold TO BE CONFIRMED; earlier idea was
 
 Gold: when the agreed milestone is reached, the customer receives an agreed amount of PROMOTIONAL FOOD CREDIT (working example R125). The header may show: LocalEats | Food Rewards R125. Member rank is Gold. Credit is not withdrawable cash.
 
-**Proposed example, contingent on owner approval of split tender:** A Gold customer has R125 credit. They buy R60 in qualifying food from participating Shop A and complete verified pickup. LocalEats credit applied: R60. New balance: R65. LocalEats owes Shop A R60. Later they choose R100 eligible food at participating Shop B; apply remaining R65 credit and pay R35 at Shop B in cash or via shop's physical card terminal. On server-confirmed collection, remaining credit is R0 and LocalEats owes Shop B R65, NOT R100. Later orders are paid normally. GOLD rank remains permanent.
+**APPROVED split-payment example (business rule; NOT implemented):** A Gold customer has R125 credit. They buy R60 in eligible food from participating Shop A and complete verified pickup. LocalEats credit applied: R60. New balance: R65. LocalEats owes Shop A R60. Later they choose R100 eligible food at participating Shop B; apply remaining R65 credit and pay **R35 directly at Shop B** in cash or through Shop B's physical card terminal. Only after the authenticated merchant confirms actual R35 payment AND food handover does the server finalise a R65 promotional spend, set available credit to R0 and create a R65 LocalEats merchant reimbursement payable (NOT R100). Later orders are paid normally; GOLD rank remains permanent. This is a customer/merchant payment split, not in-app cash collection.
 
-**This split tender is a PROPOSAL.** The founder has not yet explicitly confirmed whether customers may combine reward balance and money in one purchase, or must choose an item fully covered by the remaining credit.
+**No mandatory top-up:** A shopper can spend reward credit alone on eligible goods fully covered by that credit. The split-payment option is only used when the customer independently chooses eligible food costing more than their remaining credit; it must not become a forced extra purchase or minimum order. If the cash remainder cannot be paid, the server releases the temporary credit hold and no merchant reimbursement becomes due. A payment-collected flag or client screen alone is not proof of collection.
 
 Platinum: after a higher milestone TO BE CONFIRMED (earlier proposal 40 more), grant an agreed additional food-credit entitlement (working example R200). Do not erase any unspent Gold balance on promotion. Whether multiple grants aggregate in one visible number, what is spent first and any expiry are OPEN.
 
@@ -101,15 +102,15 @@ Separate records: (A) permanent rank and earned qualifying units, (B) customer e
 
 EARN: only the central API can establish qualifying paid-and-collected source evidence, eligibility, programme version and unique unit ID. Reserve enough budget before granting any binding future reward promise, and reject duplicate/replayed grants. Old test orders are excluded.
 
-RESERVE: when the customer selects approved food at a participating shop, API calculates a time-limited reward hold, validates available balance, merchant eligibility, real menu item prices and any unpaid remainder. Cross-shop concurrent requests must never spend the same R65 twice. A failed order releases the reservation.
+RESERVE: when the customer selects approved food at a participating shop, API calculates a time-limited reward hold, validates available balance, merchant eligibility, real menu item prices and the **optional split-payment remainder**. For a R100 eligible order and R65 verified credit, the quote clearly identifies R65 LocalEats-funded and R35 to be paid by the customer **at the shop**. The customer must accept the server-confirmed split before pickup. Cross-shop concurrent requests must never spend the same R65 twice. A failed order releases the reservation. Credit-only redemptions (no remainder) must remain possible for items the credit fully covers.
 
-FULFIL: merchant confirms actual pickup and valid tender for any remainder. Server moves the held credit to SPENT exactly once. Only at confirmed handover create the merchant payable for the exact credit-funded portion and immutable menu price snapshot. Cancellation, non-payment or no handover releases any hold and creates NO payable. No local frontend success state is sufficient.
+FULFIL: verified merchant must confirm **the customer paid the shop any cash/card-terminal remainder** AND the food was actually handed over. Server atomically moves only the reserved promotional portion to SPENT exactly once and creates an equal LocalEats merchant payable using the immutable checkout price snapshot. For the R100/R65/R35 example, the shop receives R35 from the customer and LocalEats owes the shop R65; do not create a R100 LocalEats payable or deduct R100 in credit. Cancellation, insufficient cash, shop closure, rejection or no handover releases any credit hold and creates NO payable. The UI can show a pending reservation but cannot call it settled/collected without server confirmation. All records must support idempotent retries and reconciliation after a network interruption.
 
 REIMBURSE: Super Admin lists owed amounts by merchant and reward reference. LocalEats owner pays shop externally and records transaction reference/amount/date. Status then becomes PAYMENT SENT, AWAITING MERCHANT CONFIRMATION, never auto-settled. Correct authenticated merchant can confirm bank receipt or dispute; only confirmed receipt becomes SETTLED. Partial/batched payouts require immutable allocations and a dispute trail.
 
 SUPPORT: refund/reversal, stock problems, merchant withdrawal, account recovery, outage after food delivery, duplicate request, fraud, tax and expired token scenarios require explicit handling before launch. All money in integer cents and ZAR; no negative balances, silent deletion, orphan payables, double reimbursement or impersonated owner.
 
-No payment gateway, top-up, transfer-to-friends, cash withdrawal, unapproved voucher stacking or in-app wallet functionality should be introduced by this plan.
+No payment gateway, transfer-to-friends, cash withdrawal, unapproved voucher stacking or in-app wallet functionality should be introduced by this plan. Customer out-of-pocket **split payment at the shop** is allowed; it is not a promotional balance top-up and does not add cash into the Rewards account.
 
 ## 7. Cost realism and pilot affordability
 
@@ -126,6 +127,20 @@ At the working caps R25 once + R125 Gold credit + R200 Platinum credit, the maxi
 Under the **unconfirmed** cumulative 4 + 20 + 40 = 64 qualifying units, if each qualifying kota hypothetically sells for R25, 64 x R25 = R1,600 in **MERCHANT SALES**. R350 reward spending is 21.875% of those merchant sales, but that is NOT revenue to LocalEats. The founder must not confuse GMV with platform profit. Shop subscriptions are not active during the initial three-month free period and cannot be assumed to fund rewards.
 
 **Recommendation, NOT a budget approval:** Begin at R0 with synthetic Preview only. If the founder can safely reserve R500 for a future live pilot, that amount covers one potential R350 full-rank commitment and R150 remaining cushion, not unlimited full-rank promises. R700 would cover up to two full-rank commitments without extra contingency. If the founder cannot afford full-rank liabilities, design a clearly disclosed, separately funded BRONZE-ONLY pilot and do not imply that Gold/Platinum credit is guaranteed until a later programme version. Never withdraw already earned benefits without a fair, legally reviewed policy.
+
+### Funding options — illustrative admissions, not authorisations
+
+**Model A: Bronze-only (not Gold/Platinum guaranteed).** Reserve R25 per eligible admitted customer for the once-only first gift, with an illustrative separate **20% cash safety reserve**. Under a R250 total cash envelope, set aside R50 buffer and reserve at most R200 for **8** customers. Under a R500 envelope, keep R100 buffer and reserve at most R400 for **16** customers. These caps apply to admitted eligible customers whose promise could mature, NOT just rewards already redeemed. Communicate a limited Bronze programme/version clearly before earning starts. Do not quietly promise later Gold/Platinum money if not funded.
+
+**Model B: Full rank ladder (only if final rewards stay R25 + R125 + R200).** Maximum possible commitment is R350 per participant; an illustrative 20% buffer is R70 more per participant. R500 can safely cover **1** complete participant at R350 plus R150 remaining; R1,000 covers **2** participants at R700, with R300 remaining. Ten full-ladder participants imply R3,500 potential rewards, and a 20% R700 contingency takes the planning envelope to R4,200. The 20% buffer is a **planning assumption**, not a law or proof of sufficiency; it cannot replace analysis of all expected claims or support costs.
+
+**Campaign admission rule (proposal):** Do not advertise uncapped milestone credit to an unlimited base while reserving only for customers who have already unlocked it. An openly capped, funded pilot with a clear enrolment state, mutually agreed merchant participation, and a future version for higher ranks is safer. Reserve for all promised rewards up to the approved participant and amount caps. If budget is insufficient to admit a new user, don't promise them an entitlement; do not retroactively cancel a reward that has already been lawfully earned.
+
+**Accounting separation:** (1) cash reserved against promised or already-earned unspent customer credit, (2) cash owed to shops for actual completed handovers, (3) bank transfers sent and awaiting merchant confirmation, (4) buffer for reversals/disputes. Those are NOT all incremental charges on top of the same credit: a funded commitment moves from outstanding customer benefit to merchant payable when redeemed. Track state transitions to avoid double-counting while making sure cash is available until shop reimbursement.
+
+**Commercial challenge:** At launch, paid kota order totals generally go to shops. If LocalEats earns zero transaction fee, 32 hypothetical R25 kota purchases by eight customers produce R800 merchant sales but **R0 direct per-order LocalEats revenue** (before any future independently approved business model). Funding eight R25 first gifts costs up to R200 in LocalEats marketing expense, plus support and fraud risk. A good promotion may build retention and future merchant value, but it is not self-financing without independently proven incremental LocalEats income.
+
+**ROI measurement proposal:** Record paid qualifying units attributable to the pilot, repeat purchase rate, net additional active customers, actual fully fulfilled credit cost, outstanding reward obligations, merchant reimbursement delay/disputes, customer support burden, and any actual LocalEats revenue. Do not assume growth from fake sign-ups, a scan count or gross merchant sales alone.
 
 **Open budget inputs:** Actual money available AFTER essential expenses; proposed number of pilot customers and shops; item price distribution; reimbursement timing; merchant agreement; whether capacity is invitation-based or capped; fraud/support reserve; and what legal/consumer remedy applies when funding runs low. Do not enroll unlimited participants and hope later subscriptions pay for promised food.
 
@@ -164,7 +179,7 @@ South Africa's Consumer Protection Act 68 of 2008, section 35 governs loyalty cr
 
 | Phase | Work | Mandatory gate |
 | --- | --- | --- |
-| RM-1 | Agree on Gold/Platinum milestone counts, final credit values, split tender, eligible food items, rollover and expiry | Founder updates CONFIRMED decisions in this master file |
+| RM-1 | Agree on Gold/Platinum milestone counts, final credit values, eligible food items, rollover and expiry; split tender is CONFIRMED | Founder updates CONFIRMED decisions in this master file |
 | RM-2 | Establish affordable budget and expected business return, participant cap, shop opt-in and reimbursement timetable | Founder confirms actual cash exposure separately |
 | RM-3 | Design versioned, server-owned immutable credit grants, reserve/spend, merchant payable, refund and payout models | Security/reconciliation review only |
 | RM-4 | Run synthetic multi-merchant PostgreSQL/Firebase tests for concurrency, replay, loss, fraud, budgets, partial payments | Exact-commit passing tests and owner review |
@@ -179,7 +194,7 @@ South Africa's Consumer Protection Act 68 of 2008, section 35 governs loyalty cr
 | --- | --- |
 | Q1 | Gold threshold: 20 additional qualifying kotas, 20 lifetime, or different? Platinum threshold: 40 additional, 40 lifetime, or another progression? |
 | Q2 | Exact Gold and Platinum credit grant amounts: R125/R200 or other funded amounts? |
-| Q3 | Can a shopper spend remaining R65 credit on a R100 food order and pay R35 AT SHOP (split tender)? |
+| Q3 | **RESOLVED 2026-11-08:** optional split payment APPROVED: use R65 credit, pay R35 at shop, handover required before spending credit. No forced top-up. Remaining open: detailed payment confirmation and dispute user experience. |
 | Q4 | Eligibility: all foods, only approved menu foods, drinks/extras? Does a partially credit-funded kota count toward rank? |
 | Q5 | When Platinum is reached, do leftover Gold credits remain and combine into the displayed available total? Any expiry and minimum-term promises? |
 | Q6 | What actual pilot budget is affordable? How many people can be admitted without financial overpromise? |
@@ -206,3 +221,4 @@ For an AI/developer handover, the founder can send:
 | 2026-11-08 | RW-06 | Available reward credit near LocalEats logo; rank/historical details in Profile. | CONFIRMED PREFERENCE | Original UI preserved until preview reviewed |
 | 2026-11-08 | RW-08 / RW-09 | Thresholds beyond four and exact example R125/R200 credit values remain open. | OPEN | No public promise |
 | 2026-11-08 | RW-13 | Founder wants one persistent GitHub Master Plan for personal recall and successor AI/developer handover. | CONFIRMED | This draft, not yet merged |
+| 2026-11-08 | RW-15 | Customer can apply earned credit to eligible food and pay any remainder **at the physical shop**; e.g. R100 order = R65 LocalEats promo + R35 customer cash/card-terminal. Full-credit purchases must not require extra cash; grant/spend, shop handover and merchant debt require trusted server confirmation. | CONFIRMED | Design documented; zero route/UI/DB activation |
