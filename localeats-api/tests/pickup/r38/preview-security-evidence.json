@@ -1,0 +1,59 @@
+{
+  "phase": "R3.8",
+  "date": "2026-11-08",
+  "merchant_screenshot": "We couldn't verify your merchant shop. Please check your connection and try again.",
+  "merchant_screen_failure_class": "Fail-closed authoritative merchant/shop lookup. The screenshot alone does not prove the particular network failure.",
+  "investigation": {
+    "frontend_shop_endpoint": "GET /api/v1/merchant/shop",
+    "frontend_error_status_null_message": "Please check your connection and try again.",
+    "preview_default_api_host": "localeats-b8q20qm47-mehey9184-makers-projects.vercel.app",
+    "stale_default_preview_endpoint": "Vercel deployment lookup returned 404/not-found using current connected project access. Could also reflect access scope; do not infer customer's exact network failure from this alone.",
+    "replacement_api_preview_host": "localeats-3g6iqj2ky-mehey9184-makers-projects.vercel.app",
+    "replacement_api_preview_deployment": "dpl_8SksKaK4qCbKsUuBh5qEoMb3vzzb",
+    "replacement_api_health_get": 200,
+    "replacement_preview_api_source_read_only_gate": true,
+    "replacement_preview_pickup_writes_flag": false,
+    "merchant_review_git_branch": "review/r37-exact-main-readonly-preview-20261108",
+    "branch_specific_variables": {
+      "VITE_LOCALEATS_API_URL": "https://localeats-3g6iqj2ky-mehey9184-makers-projects.vercel.app",
+      "VITE_MERCHANT_PREVIEW_READ_ONLY": "true",
+      "VITE_PICKUP_ORDERING_ENABLED": "false",
+      "VITE_PICKUP_PAYMENT_SETTINGS_ENABLED": "false"
+    },
+    "new_preview_deployment": "dpl_AkRTDuRMbZ711Gf1LULz4Tz2yPGg",
+    "new_preview_host": "local-eats-dashboard-2-6m8o-20ren6m6k-mehey9184-makers-projects.vercel.app",
+    "new_preview_git_sha": "5aedc5424d7070ee7156a080cc69e6a550acc1a4",
+    "new_preview_is_production": false,
+    "new_preview_get_status": 200,
+    "bundle_contains_replacement_api_origin": true,
+    "bundle_contains_stale_api_origin": false,
+    "authenticated_real_merchant_shop_verification_passed": false
+  },
+  "financial_security": {
+    "connected_supabase_mutated": false,
+    "payments_policy": "Payments access",
+    "authenticated_role_permissions": [
+      "SELECT",
+      "INSERT",
+      "UPDATE",
+      "DELETE"
+    ],
+    "authenticated_policy_command": "ALL",
+    "using_expression": "true",
+    "with_check_expression": "true",
+    "mitigation_applied_to_production": false,
+    "synthetic_migration_rehearsal": "remove browser direct grants and permissive policy, preserve backend read, restore no personal data",
+    "caller_inventory": {
+      "Merchant": "src/components/PaymentHistory.tsx uses ../lib/supabase, a Firestore compatibility adapter, not the Supabase Data API",
+      "Customer": "No direct .from('payments') match found on reviewed main GitHub source",
+      "MerchantAPI": "No direct .from('payments') match found on reviewed main API source",
+      "external_consumers_proven_absent": false
+    }
+  },
+  "owner_acceptance": {
+    "screenshot_resolved_with_signed_in_user": false,
+    "owner_screen_test_required": true,
+    "manual_steps": "Open only the new Merchant Preview, sign in and use Retry; do not edit shops or operate orders. Report if error remains, without sharing tokens.",
+    "pending": true
+  }
+}
