@@ -16,6 +16,10 @@ const apiKeys=[
  "FIREBASE_PROJECT_ID","FIREBASE_PRIVATE_KEY","FIREBASE_CLIENT_EMAIL",
  "SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","PICKUP_WRITES_ENABLED"
 ];
+const dedicatedApiKeys=[
+ "FIREBASE_PROJECT_ID","FIREBASE_PRIVATE_KEY","FIREBASE_CLIENT_EMAIL",
+ "SUPABASE_URL","SUPABASE_SECRET_KEY","PICKUP_WRITES_ENABLED"
+];
 
 function hasIsolatedBranchScope(scopes,branch,key){
  if(!branch || !Array.isArray(scopes))return false;
@@ -57,11 +61,14 @@ export function evaluateHostedR52Preflight(m){
      p.deployment.target!=="preview"||p.deployment.state!=="READY"){
    reasons.push(label.toUpperCase()+"_EXACT_PREVIEW_DEPLOYMENT_UNVERIFIED");
   }
-  const keys=label==="customer"?customerKeys:apiKeys;
+  const keys=label==="customer"?customerKeys:(p.mode==="dedicated_staging"?dedicatedApiKeys:apiKeys);
   if(p.mode==="dedicated_staging"){
    if(!dedicatedProjectEvidence(p,m.productionVercelProjectIds))
     reasons.push(label.toUpperCase()+"_DEDICATED_PROJECT_ISOLATION_UNVERIFIED");
    const missing=keys.filter(key=>!dedicatedScope(p.envScopes,p.branch,key));
+   if(label==="api" && Array.isArray(p.envScopes) &&
+      p.envScopes.some(item=>item.key==="SUPABASE_SERVICE_ROLE_KEY"))
+     reasons.push("API_LEGACY_SERVICE_ROLE_NOT_ALLOWED_IN_DEDICATED_STAGING");
    if(missing.length) reasons.push(label.toUpperCase()+"_DEDICATED_PREVIEW_SCOPES_UNVERIFIED");
   } else {
    // Original branch-specific mode is unchanged and still rejects inherited
