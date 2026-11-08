@@ -25,6 +25,27 @@ function hasIsolatedBranchScope(scopes,branch,key){
  return Array.isArray(targets) && targets.length===1 && targets[0]==="preview";
 }
 const good=(s)=>typeof s==="string" && Boolean(s.trim());
+// R5.2D dedicated Vercel staging projects use project-wide Preview-only variables.
+ // Project identity, absence of Production targets/inheritance and exact deployment
+ // are STILL separate mandatory evidence; a name containing "staging" proves nothing.
+function dedicatedScope(scopes,branch,key){
+ if(!Array.isArray(scopes))return false;
+ const matches=scopes.filter(item=>item.key===key);
+ if(matches.length!==1)return false;
+ const item=matches[0];
+ return Array.isArray(item.target) && item.target.length===1 &&
+   item.target[0]==="preview" && (!item.gitBranch || item.gitBranch===branch);
+}
+function dedicatedProjectEvidence(p,productionIds){
+ return good(p.projectId) && Array.isArray(productionIds) &&
+   productionIds.length>=2 && productionIds.every(good) &&
+   !productionIds.includes(p.projectId) &&
+   p.projectIdentityVerified===true &&
+   p.productionTargetEmptyVerified===true &&
+   p.inheritedEnvAbsentVerified===true &&
+   p.credentialProvenanceVerifiedNonproduction===true;
+}
+
 export function evaluateHostedR52Preflight(m){
  const reasons=[];
  if(!m || typeof m!=="object")return {ready:false,reasons:["EVIDENCE_REQUIRED"]};
@@ -37,10 +58,22 @@ export function evaluateHostedR52Preflight(m){
    reasons.push(label.toUpperCase()+"_EXACT_PREVIEW_DEPLOYMENT_UNVERIFIED");
   }
   const keys=label==="customer"?customerKeys:apiKeys;
-  const missing=keys.filter(key=>!hasIsolatedBranchScope(p.envScopes,p.branch,key));
-  if(missing.length) reasons.push(label.toUpperCase()+"_BRANCH_CREDENTIAL_SCOPES_UNVERIFIED");
+  if(p.mode==="dedicated_staging"){
+   if(!dedicatedProjectEvidence(p,m.productionVercelProjectIds))
+    reasons.push(label.toUpperCase()+"_DEDICATED_PROJECT_ISOLATION_UNVERIFIED");
+   const missing=keys.filter(key=>!dedicatedScope(p.envScopes,p.branch,key));
+   if(missing.length) reasons.push(label.toUpperCase()+"_DEDICATED_PREVIEW_SCOPES_UNVERIFIED");
+  } else {
+   // Original branch-specific mode is unchanged and still rejects inherited
+   // Preview/Production credentials from existing live Vercel projects.
+   const missing=keys.filter(key=>!hasIsolatedBranchScope(p.envScopes,p.branch,key));
+   if(missing.length) reasons.push(label.toUpperCase()+"_BRANCH_CREDENTIAL_SCOPES_UNVERIFIED");
+  }
  }
  const c=m.customer||{},a=m.api||{};
+ if(c.mode==="dedicated_staging" && a.mode==="dedicated_staging" &&
+    c.projectId===a.projectId)
+  reasons.push("CUSTOMER_AND_API_STAGING_PROJECT_COLLISION");
  if(c.firebaseConfigSource!=="environment")
   reasons.push("CUSTOMER_ENVIRONMENT_ONLY_FIREBASE_NOT_CONFIRMED");
  if(!good(c.firebaseProjectId)||!good(a.firebaseProjectId)||
