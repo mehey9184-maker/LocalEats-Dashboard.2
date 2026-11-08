@@ -1,0 +1,43 @@
+name: Merchant Settings P1 pickup-only trust and card-safety Preview gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/App.tsx'
+      - 'tests/merchant-settings-pickup-trust.test.mjs'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/merchant-settings-pickup-trust-p1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safe-settings-preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VITE_MERCHANT_PREVIEW_READ_ONLY: 'true'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      VITE_PICKUP_PAYMENT_SETTINGS_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - name: Checkout reviewed source without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Assert no fake invoice, sensitive PAN/CVV storage or delivery write UI
+        run: node --test tests/merchant-settings-pickup-trust.test.mjs
+      - name: Existing merchant pickup regression suite
+        run: npm run test:merchant-pickup
+      - name: Production-compatible build with Preview actions locked
+        run: npm run build

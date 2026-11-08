@@ -259,14 +259,6 @@ function App() {
   const [autoAcceptOrders, setAutoAcceptOrders] = useState<boolean>(false);
   const [autoPrint, setAutoPrint] = useState<boolean>(() => localStorage.getItem("autoPrint") === "true");
   const [printingFormat, setPrintingFormat] = useState<"80mm" | "58mm">(() => (localStorage.getItem("printingFormat") as "80mm" | "58mm") || "80mm");
-  const [deliverySettings, setDeliverySettings] = useState({ 
-    type: "fixed", 
-    baseFee: 15, 
-    freeDeliveryOver: 200, 
-    minOrderAmount: 0, 
-    maxDistanceKm: 10,
-    radiusEnabled: true,
-  });
   const [kitchenMode, setKitchenMode] = useState<boolean>(() => localStorage.getItem("localeats_kitchen_mode") === "true");
 
   useEffect(() => {
@@ -431,32 +423,6 @@ function App() {
     },
   });
 
-  const shopId = currentShop?.id;
-  const deliveryRadiusKm = currentShop?.delivery_radius_km;
-  const deliveryRadiusEnabled = currentShop?.delivery_radius_enabled;
-
-  useEffect(() => {
-    if (shopId) {
-      setDeliverySettings((prev) => {
-        const nextDist = deliveryRadiusKm ?? prev.maxDistanceKm ?? 10;
-        const nextEnabled = deliveryRadiusEnabled ?? prev.radiusEnabled ?? true;
-        if (prev.maxDistanceKm === nextDist && prev.radiusEnabled === nextEnabled) {
-          return prev;
-        }
-        return {
-          ...prev,
-          maxDistanceKm: nextDist,
-          radiusEnabled: nextEnabled,
-        };
-      });
-
-    }
-  }, [
-    shopId,
-    deliveryRadiusKm,
-    deliveryRadiusEnabled,
-  ]);
-
   const trialInfo = useMemo(() => {
     if (!currentShop) return null;
 
@@ -493,49 +459,14 @@ function App() {
     { day: "Sun", open: "08:00", close: "17:00", active: false },
   ]);
 
-  const [billingDetails, setBillingDetails] = useState<{
-    companyName: string;
-    taxNumber: string;
-    billingEmail: string;
-    cardNumber: string;
-    expiryDate: string;
-    cvv: string;
-    cardholderName: string;
-    isCardSaved: boolean;
-  }>(() => {
-    try {
-      const saved = localStorage.getItem("localeats_billing_details");
-      return saved ? JSON.parse(saved) : {
-        companyName: "",
-        taxNumber: "",
-        billingEmail: "",
-        cardNumber: "",
-        expiryDate: "",
-        cvv: "",
-        cardholderName: "",
-        isCardSaved: false
-      };
-    } catch {
-      return {
-        companyName: "",
-        taxNumber: "",
-        billingEmail: "",
-        cardNumber: "",
-        expiryDate: "",
-        cvv: "",
-        cardholderName: "",
-        isCardSaved: false
-      };
-    }
-  });
-
-  const [selectedInvoice, setSelectedInvoice] = useState<{
-    id: string;
-    date: string;
-    amount: string;
-  } | null>(null);
-
   const [updateDismissed, setUpdateDismissed] = useState<boolean>(false);
+
+  // Retire the unlaunched Billing prototype's browser-stored PAN/CVV.
+  // Never load, inspect, log or save card details here.
+  useEffect(() => {
+    try { localStorage.removeItem("localeats_billing_details"); }
+    catch { /* localStorage may be unavailable */ }
+  }, []);
 
   useEffect(() => {
     if (user?.user_metadata?.weekly_operating_hours) {
@@ -2610,33 +2541,16 @@ function App() {
 
                     {settingsCategory === "storefront" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <a
-                    href="https://rider.localeatssa.co.za/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex items-center justify-between p-5 bg-blue-500/5 hover:bg-blue-500/10 rounded-2xl transition-all border border-blue-500/20 group shadow-sm shadow-blue-500/5"
-                  >
+                  <div className="w-full flex items-center justify-between gap-4 p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
-                        <TrendingUp size={24} />
-                      </div>
+                      <div className="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-on-surface-variant"><Bike size={20} /></div>
                       <div className="text-left">
-                        <p className="font-bold text-on-surface">
-                          Rider Marketplace
-                        </p>
-                        <p className="text-xs text-on-surface-variant">
-                          Access the dedicated platform for deliveries and
-                          missions.
-                        </p>
+                        <p className="font-bold text-on-surface">Rider Marketplace</p>
+                        <p className="text-xs text-on-surface-variant">Coming soon. Pickup is the only available order option.</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black uppercase text-blue-500/60 bg-blue-500/10 px-2 py-0.5 rounded-md">
-                        External
-                      </span>
-                      <DollarSign size={18} className="text-blue-500" />
-                    </div>
-                  </a>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant whitespace-nowrap">Coming soon</span>
+                  </div>
                       </div>
                     )}
 
@@ -2940,229 +2854,14 @@ function App() {
                     )}
 
                     {settingsCategory === "delivery" && (
-                      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h3 className="font-headline font-bold text-lg mb-2">Delivery & Logistics Settings</h3>
-
-                        {/* Location Sync & Boundary Alignment Indicator */}
-                        {currentShop && (
-                          <LocationSyncIndicator
-                            locationState={currentShopLocation}
-                            syncAnalysis={currentShopLocationSync}
-                            isLocating={isLocatingShopGPS}
-                            isSaving={isSavingShopLocation}
-                            onDetectGPS={detectShopGPS}
-                            onAutoAlign={autoAlignShopCity}
-                            onSave={() => saveShopLocationSettings()}
-                            onOpenStorefrontMap={() => setActiveTab("storefront")}
-                          />
-                        )}
-
-                  {/* Delivery & Dispatch Settings */}
-                  <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-6">
-                    <div className="flex items-center justify-between border-b border-outline-variant/10 pb-4">
-                      <div className="flex items-center gap-2">
-                        <Truck size={18} className="text-primary" />
-                        <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Delivery Logistics</h3>
-                      </div>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-primary bg-primary/10 px-2.5 py-1 rounded-full">
-                        Live Radius Engine
-                      </span>
-                    </div>
-
-                    {/* Delivery Radius Restriction Card */}
-                    <div className="p-4 bg-surface-container rounded-xl border border-primary/20 space-y-4">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm text-on-surface">Enforce Maximum Delivery Radius</span>
-                            {deliverySettings.radiusEnabled ? (
-                              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded">Active</span>
-                            ) : (
-                              <span className="text-[10px] font-black uppercase tracking-wider bg-surface-container-highest text-on-surface-variant/70 px-2 py-0.5 rounded">Disabled</span>
-                            )}
-                          </div>
-                          <p className="text-xs text-on-surface-variant leading-relaxed">
-                            Restrict incoming orders to customers within a specific straight-line distance (KM) from your shop pin to preserve food freshness and delivery speeds.
-                          </p>
+                      <section aria-labelledby="pickup-delivery-coming-soon" className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <h3 id="pickup-delivery-coming-soon" className="font-headline font-bold text-lg">Delivery — Coming soon</h3>
+                        <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-3">
+                          <p className="text-sm font-bold text-on-surface">LocalEats currently supports pickup only.</p>
+                          <p className="text-sm text-on-surface-variant">Riders, delivery radius settings, delivery fees and dispatch are not available. Customers collect and pay at your shop.</p>
+                          <button type="button" onClick={() => setSettingsCategory("storefront")} className="px-4 py-2.5 bg-primary/10 text-primary rounded-xl font-bold text-sm hover:bg-primary/20 transition-colors">View pickup Storefront settings</button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setDeliverySettings({ ...deliverySettings, radiusEnabled: !deliverySettings.radiusEnabled })}
-                          className={cn(
-                            "w-12 h-6 rounded-full transition-all relative shrink-0",
-                            deliverySettings.radiusEnabled ? "bg-primary" : "bg-surface-container-highest border border-outline-variant/30"
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              "absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm",
-                              deliverySettings.radiusEnabled ? "left-7" : "left-1"
-                            )}
-                          />
-                        </button>
-                      </div>
-
-                      {deliverySettings.radiusEnabled && (
-                        <div className="pt-3 border-t border-outline-variant/10 space-y-3 animate-in fade-in duration-200">
-                          <div className="flex items-center justify-between">
-                            <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/80">
-                              Maximum Delivery Distance (KM)
-                            </label>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                min="1"
-                                max="50"
-                                value={deliverySettings.maxDistanceKm}
-                                onChange={(e) => setDeliverySettings({ ...deliverySettings, maxDistanceKm: Math.max(1, Number(e.target.value)) })}
-                                className="w-16 text-right text-xs font-black text-primary font-mono bg-surface-container-high border border-outline-variant/20 rounded-lg px-2 py-1 focus:outline-none focus:border-primary"
-                              />
-                              <span className="text-xs font-bold text-on-surface-variant">KM</span>
-                            </div>
-                          </div>
-                          <input 
-                            type="range" 
-                            min="1" 
-                            max="30" 
-                            value={deliverySettings.maxDistanceKm}
-                            onChange={(e) => setDeliverySettings({ ...deliverySettings, maxDistanceKm: Number(e.target.value) })}
-                            className="w-full accent-primary h-2 bg-outline-variant/20 rounded-lg appearance-none cursor-pointer"
-                          />
-                          <p className="text-[11px] font-medium text-on-surface-variant/70 italic">
-                            Map view in Storefront Profile will display a {deliverySettings.maxDistanceKm} KM circular boundary overlay.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-3">
-                        <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                          Delivery Fee Model
-                        </label>
-                        <div className="flex bg-surface-container-high p-1 rounded-xl border border-outline-variant/5">
-                          {(["fixed", "distance"] as const).map((type) => (
-                            <button
-                              key={type}
-                              type="button"
-                              onClick={() => setDeliverySettings({...deliverySettings, type})}
-                              className={cn(
-                                "flex-1 px-4 py-2 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all",
-                                deliverySettings.type === type ? "bg-primary text-on-primary shadow-sm" : "text-on-surface-variant hover:bg-surface-container-highest"
-                              )}
-                            >
-                              {type === "fixed" ? "Fixed Rate" : "Per KM"}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                         <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                           {deliverySettings.type === "fixed" ? "Base Delivery Fee (R)" : "Rate Per KM (R)"}
-                         </label>
-                         <input 
-                           type="number" 
-                           value={deliverySettings.baseFee}
-                           onChange={(e) => setDeliverySettings({...deliverySettings, baseFee: Number(e.target.value)})}
-                           className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
-                         />
-                      </div>
-
-                      <div className="space-y-3">
-                         <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                           Free Delivery Threshold (R)
-                         </label>
-                         <input 
-                           type="number" 
-                           value={deliverySettings.freeDeliveryOver}
-                           onChange={(e) => setDeliverySettings({...deliverySettings, freeDeliveryOver: Number(e.target.value)})}
-                           className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
-                           placeholder="e.g. 300 (0 for no free delivery)"
-                         />
-                      </div>
-
-                      <div className="space-y-3">
-                         <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                           Minimum Order Amount (R)
-                         </label>
-                         <input 
-                           type="number" 
-                           value={deliverySettings.minOrderAmount}
-                           onChange={(e) => setDeliverySettings({...deliverySettings, minOrderAmount: Number(e.target.value)})}
-                           className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
-                           placeholder="e.g. 50"
-                         />
-                      </div>
-                    </div>
-
-                    <div className="pt-4 border-t border-outline-variant/10 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!currentShop?.id) {
-                            toast.error("No active shop found to save delivery settings.");
-                            return;
-                          }
-                          const nowISO = new Date().toISOString();
-                          try {
-                            // Update Firestore
-                            try {
-                              await updateFirestoreShop(currentShop.id, {
-                                delivery_radius_enabled: deliverySettings.radiusEnabled,
-                                delivery_radius_km: deliverySettings.maxDistanceKm,
-                                updated_at: nowISO,
-                              });
-                            } catch (fsErr) {
-                              console.warn("Firestore delivery settings update warning:", fsErr);
-                            }
-
-                            const { error } = await supabase
-                              .from("shops")
-                              .update({
-                                delivery_radius_enabled: deliverySettings.radiusEnabled,
-                                delivery_radius_km: deliverySettings.maxDistanceKm,
-                                updated_at: nowISO,
-                              })
-                              .eq("id", currentShop.id);
-
-                            if (error && error.code !== "42703") {
-                              console.warn("Supabase delivery settings update warning:", error.message);
-                            }
-
-                            setShops((prev) => {
-                              const updated = prev.map((s) =>
-                                s.id === currentShop.id
-                                  ? {
-                                      ...s,
-                                      delivery_radius_enabled: deliverySettings.radiusEnabled,
-                                      delivery_radius_km: deliverySettings.maxDistanceKm,
-                                      updated_at: nowISO,
-                                    }
-                                  : s
-                              );
-                              try {
-                                localStorage.setItem("localeats_cached_shops", JSON.stringify(updated));
-                              } catch {
-                                // ignore
-                              }
-                              return updated;
-                            });
-
-                            toast.success(`Delivery settings saved! (${deliverySettings.radiusEnabled ? `${deliverySettings.maxDistanceKm} KM radius active` : "Radius restriction disabled"})`);
-                          } catch (err: unknown) {
-                            const e = err as Error;
-                            toast.error("Error saving delivery settings: " + e.message);
-                          }
-                        }}
-                        className="px-6 py-2.5 bg-primary text-on-primary font-bold text-xs uppercase tracking-wider rounded-xl shadow-md active:scale-95 transition-all hover:bg-primary/90"
-                      >
-                        Save Delivery Settings
-                      </button>
-                    </div>
-
-                  </div>
-                      </div>
+                      </section>
                     )}
 
                     {settingsCategory === "hardware" && (
@@ -3382,384 +3081,26 @@ function App() {
 
                     {settingsCategory === "account" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  {/* Financial & Payout Settings */}
-                  <div className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
-                        <Wallet size={20} />
-                      </div>
-                      <div className="text-left">
-                        <p className="font-bold text-on-surface">Payouts & Banking</p>
-                        <p className="text-xs text-on-surface-variant">Manage your bank account for weekly payouts.</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                       <span className="text-[10px] items-center font-bold uppercase tracking-wider text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full whitespace-nowrap hidden md:inline-flex">
-                         Verified
-                       </span>
-                       <ChevronRight size={18} className="text-on-surface-variant/40" />
-                    </div>
-                  </div>
-
-                  {/* Staff & Access Control */}
-                  <div className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center text-orange-600 group-hover:scale-110 transition-transform">
-                        <Users size={20} />
-                      </div>
-                      <div className="text-left">
-                        <p className="font-bold text-on-surface">Staff & Managers</p>
-                        <p className="text-xs text-on-surface-variant">Add staff accounts and configure permission roles.</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                       <span className="text-[10px] items-center font-bold uppercase tracking-wider text-orange-600 bg-orange-500/10 px-2 py-0.5 rounded-full whitespace-nowrap hidden md:inline-flex">
-                         1 Active
-                       </span>
-                       <ChevronRight size={18} className="text-on-surface-variant/40" />
+                  {/* Merchant receives cash/card-machine payments directly. */}
+                  <div className="w-full flex items-center gap-4 p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary"><Wallet size={20} /></div>
+                    <div className="text-left">
+                      <p className="font-bold text-on-surface">Payment at your shop</p>
+                      <p className="text-xs text-on-surface-variant">Customers pay you at pickup, by cash or your own card machine. LocalEats bank payouts are not active.</p>
                     </div>
                   </div>
                       </div>
                     )}
 
                     {settingsCategory === "billing" && (
-                      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-outline-variant/10 pb-4">
-                          <div className="text-left">
-                            <h3 className="font-headline font-bold text-lg text-on-surface">Billing & App Subscription</h3>
-                            <p className="text-xs text-on-surface-variant">Manage your subscription, set up future billing info, and view invoices.</p>
-                          </div>
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary uppercase tracking-wider self-start sm:self-auto">
-                            <Sparkles size={12} />
-                            Early Partner Benefit
-                          </span>
+                      <section aria-labelledby="pickup-billing-coming-soon" className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <h3 id="pickup-billing-coming-soon" className="font-headline font-bold text-lg">Billing & Subscription</h3>
+                        <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-3">
+                          <p className="text-sm font-bold text-on-surface">Coming soon — no subscription billing is active.</p>
+                          <p className="text-sm text-on-surface-variant">LocalEats is launching with pickup and payment directly at your shop. Subscription plans are being prepared; no card details, online payments, invoices or automatic payouts are collected here.</p>
+                          <p className="text-xs text-on-surface-variant">We will explain the final plans and free period before subscriptions are activated.</p>
                         </div>
-
-                        {/* Top Banner: Current Subscription Plan */}
-                        <div className="p-6 bg-surface-container-low border border-primary/20 rounded-2xl relative overflow-hidden shadow-sm shadow-primary/5 text-left">
-                          {/* Warm coral highlight corner decor */}
-                          <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-xl pointer-events-none" />
-
-                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                            <div className="space-y-2 text-left">
-                              <span className="text-[10px] uppercase font-black tracking-widest text-primary bg-primary/10 px-2.5 py-1 rounded-full">
-                                Current Plan
-                              </span>
-                              <h4 className="text-xl font-headline font-extrabold text-on-surface flex items-center gap-2 mt-1">
-                                Early Partner Plan
-                              </h4>
-                              <p className="text-sm text-on-surface-variant max-w-xl">
-                                Thank you for being a founding member of LocalEats. You have full access to our comprehensive merchant delivery tools <strong>completely free of charge</strong> during our initial beta phase.
-                              </p>
-                              <div className="flex flex-wrap gap-4 pt-2 text-xs font-medium text-on-surface-variant">
-                                <span className="flex items-center gap-1.5 text-emerald-600 bg-emerald-500/5 px-2.5 py-1 rounded-lg border border-emerald-500/10">
-                                  <Circle size={14} /> Active Status
-                                </span>
-                                <span className="flex items-center gap-1.5 text-primary bg-primary/5 px-2.5 py-1 rounded-lg border border-primary/10">
-                                  <Sparkles size={14} /> Unlimited Features Included
-                                </span>
-                              </div>
-                            </div>
-                            <div className="bg-surface-container-high/60 border border-outline-variant/10 rounded-2xl p-5 text-center shrink-0 min-w-[180px]">
-                              <p className="text-xs text-on-surface-variant/80 font-bold uppercase tracking-wider">Subscription Cost</p>
-                              <p className="text-3xl font-headline font-black text-on-surface mt-1">R0 <span className="text-xs font-bold text-on-surface-variant/60">/mo</span></p>
-                              <span className="text-[9px] px-2 py-0.5 bg-primary/10 text-primary font-bold uppercase rounded mt-2 inline-block">
-                                100% Lifetime Discount
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Middle Section: 2 Columns */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                          {/* Column A: Future Pricing / Plans & Billing Details */}
-                          <div className="space-y-6">
-
-                            {/* Card 1: Subscription Roadmap */}
-                            <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
-                              <h4 className="font-headline font-bold text-base text-on-surface flex items-center gap-2 text-left">
-                                <Zap size={18} className="text-primary" /> Future Subscription Tiers
-                              </h4>
-                              <p className="text-xs text-on-surface-variant leading-relaxed text-left">
-                                When LocalEats transitions out of beta, we will offer simple, predictable flat-rate subscriptions. Early partners are guaranteed a <strong>permanent 50% discount</strong> on whichever tier they choose.
-                              </p>
-
-                              <div className="space-y-3 pt-2">
-                                {/* Plan 1 */}
-                                <div className="p-3 bg-surface-container-high/40 rounded-xl border border-outline-variant/5 flex items-center justify-between">
-                                  <div className="text-left">
-                                    <p className="text-xs font-black text-on-surface">LocalEats Lite</p>
-                                    <p className="text-[10px] text-on-surface-variant">For small kitchens & takeaway stalls</p>
-                                    <span className="text-[9px] text-on-surface-variant/60 mt-0.5 block">Max 150 monthly orders • 1 staff manager</span>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-sm font-headline font-bold text-on-surface">R199 <span className="text-[9px] font-normal text-on-surface-variant">/mo</span></p>
-                                    <span className="text-[9px] font-bold text-primary">Your cost: R99/mo</span>
-                                  </div>
-                                </div>
-
-                                {/* Plan 2 */}
-                                <div className="p-3 bg-primary/5 rounded-xl border border-primary/10 flex items-center justify-between relative overflow-hidden">
-                                  <div className="absolute top-0 right-0 text-[8px] bg-primary text-on-primary font-black uppercase tracking-wider px-2 py-0.5 rounded-bl-lg">
-                                    Recommended
-                                  </div>
-                                  <div className="text-left">
-                                    <p className="text-xs font-black text-on-surface flex items-center gap-1">
-                                      LocalEats Growth
-                                    </p>
-                                    <p className="text-[10px] text-on-surface-variant">For full service restaurants & dark kitchens</p>
-                                    <span className="text-[9px] text-on-surface-variant/60 mt-0.5 block">Unlimited orders • Route Optimization • Analytics</span>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-sm font-headline font-bold text-on-surface">R499 <span className="text-[9px] font-normal text-on-surface-variant">/mo</span></p>
-                                    <span className="text-[9px] font-bold text-primary">Your cost: R249/mo</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Card 2: Legal/Company Billing Details */}
-                            <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
-                              <h4 className="font-headline font-bold text-base text-on-surface flex items-center gap-2 text-left">
-                                <Info size={18} className="text-on-surface-variant/60" /> Company Billing Details
-                              </h4>
-                              <p className="text-xs text-on-surface-variant leading-relaxed text-left">
-                                Enter your company's official registration details here to automatically populate tax-compliant PDF invoices.
-                              </p>
-
-                              <div className="space-y-3 text-left">
-                                <div>
-                                  <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Company Registered Name</label>
-                                  <input
-                                    type="text"
-                                    placeholder="e.g. Local Eats SA (Pty) Ltd"
-                                    value={billingDetails.companyName}
-                                    onChange={(e) => {
-                                      const next = { ...billingDetails, companyName: e.target.value };
-                                      setBillingDetails(next);
-                                    }}
-                                    className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                  />
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Tax / VAT Number</label>
-                                    <input
-                                      type="text"
-                                      placeholder="e.g. 4010123456"
-                                      value={billingDetails.taxNumber}
-                                      onChange={(e) => {
-                                        const next = { ...billingDetails, taxNumber: e.target.value };
-                                        setBillingDetails(next);
-                                      }}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Billing Email Address</label>
-                                    <input
-                                      type="email"
-                                      placeholder="e.g. billing@myshop.co.za"
-                                      value={billingDetails.billingEmail}
-                                      onChange={(e) => {
-                                        const next = { ...billingDetails, billingEmail: e.target.value };
-                                        setBillingDetails(next);
-                                      }}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-                                </div>
-
-                                <button
-                                  onClick={() => {
-                                    localStorage.setItem("localeats_billing_details", JSON.stringify(billingDetails));
-
-                                  }}
-                                  className="w-full bg-primary/10 text-primary py-2.5 rounded-xl text-xs font-black uppercase hover:bg-primary/20 transition-colors"
-                                >
-                                  Save Billing Info
-                                </button>
-                              </div>
-                            </div>
-
-                          </div>
-
-                          {/* Column B: Card Vault Setup & Invoice History */}
-                          <div className="space-y-6">
-
-                            {/* Card 1: Secure Card Vault */}
-                            <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
-                              <h4 className="font-headline font-bold text-base text-on-surface flex items-center justify-between text-left">
-                                <span className="flex items-center gap-2">
-                                  <CreditCard size={18} className="text-primary" />
-                                  Secure Credit Card Link
-                                </span>
-                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                                  <ShieldCheck size={10} /> PCI-DSS Secure
-                                </span>
-                              </h4>
-                              <p className="text-xs text-on-surface-variant leading-relaxed text-left">
-                                Link a payment card via our secure Yoco/Peach tokenization vault. You won't be charged anything during the free Beta period.
-                              </p>
-
-                              {billingDetails.isCardSaved ? (
-                                <div className="p-4 bg-surface-container-high/60 rounded-xl border border-emerald-500/20 flex items-center justify-between animate-in fade-in duration-300">
-                                  <div className="flex items-center gap-3 text-left">
-                                    <div className="w-10 h-7 bg-zinc-950 rounded-md flex items-center justify-center text-white text-[10px] font-black uppercase tracking-wider shadow border border-outline-variant/20">
-                                      {billingDetails.cardNumber.startsWith("4") ? "Visa" : "MC"}
-                                    </div>
-                                    <div className="text-left">
-                                      <p className="text-xs font-black text-on-surface">•••• •••• •••• {billingDetails.cardNumber.slice(-4) || "4242"}</p>
-                                      <p className="text-[9px] text-on-surface-variant">Expires: {billingDetails.expiryDate || "12/28"} • {billingDetails.cardholderName || "Store Owner"}</p>
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() => {
-                                      const cleared = {
-                                        ...billingDetails,
-                                        cardholderName: "",
-                                        cardNumber: "",
-                                        expiryDate: "",
-                                        cvv: "",
-                                        isCardSaved: false
-                                      };
-                                      setBillingDetails(cleared);
-                                      localStorage.setItem("localeats_billing_details", JSON.stringify(cleared));
-
-                                    }}
-                                    className="text-[10px] font-bold text-error/80 hover:text-error hover:bg-error/5 px-2.5 py-1.5 rounded-lg transition-all"
-                                  >
-                                    Remove Card
-                                  </button>
-                                </div>
-                              ) : (
-                                <div className="space-y-3 pt-1 text-left">
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Cardholder Name</label>
-                                    <input
-                                      type="text"
-                                      placeholder="e.g. Jane Doe"
-                                      value={billingDetails.cardholderName}
-                                      onChange={(e) => setBillingDetails({ ...billingDetails, cardholderName: e.target.value })}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Card Number</label>
-                                    <input
-                                      type="text"
-                                      placeholder="4000 1234 5678 9010"
-                                      maxLength={19}
-                                      value={billingDetails.cardNumber}
-                                      onChange={(e) => {
-                                        const cleanVal = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-                                        const formatted = cleanVal.match(/.{1,4}/g)?.join(' ') || cleanVal;
-                                        setBillingDetails({ ...billingDetails, cardNumber: formatted });
-                                      }}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-3 text-left">
-                                    <div>
-                                      <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Expiry Date (MM/YY)</label>
-                                      <input
-                                        type="text"
-                                        placeholder="12/28"
-                                        maxLength={5}
-                                        value={billingDetails.expiryDate}
-                                        onChange={(e) => {
-                                          let val = e.target.value.replace(/[^0-9/]/g, '');
-                                          if (val.length === 2 && !val.includes('/')) {
-                                            val = val + '/';
-                                          }
-                                          setBillingDetails({ ...billingDetails, expiryDate: val });
-                                        }}
-                                        className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">CVV / CVC</label>
-                                      <input
-                                        type="password"
-                                        placeholder="•••"
-                                        maxLength={4}
-                                        value={billingDetails.cvv}
-                                        onChange={(e) => setBillingDetails({ ...billingDetails, cvv: e.target.value.replace(/[^0-9]/g, '') })}
-                                        className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <button
-                                    onClick={() => {
-                                      if (!billingDetails.cardholderName || !billingDetails.cardNumber || !billingDetails.expiryDate || !billingDetails.cvv) {
-                                        toast.error("Please fill in all credit card fields first.");
-                                        return;
-                                      }
-                                      if (billingDetails.cardNumber.replace(/\s/g, '').length < 15) {
-                                        toast.error("Please enter a valid credit card number.");
-                                        return;
-                                      }
-
-                                      const updated = { ...billingDetails, isCardSaved: true };
-                                      setBillingDetails(updated);
-                                      localStorage.setItem("localeats_billing_details", JSON.stringify(updated));
-                                      toast.success("Card linked securely to Yoco vault! Rate plan R0 applied.");
-                                    }}
-                                    className="w-full bg-primary text-on-primary py-2.5 rounded-xl text-xs font-black uppercase hover:bg-opacity-90 shadow-sm transition-all flex items-center justify-center gap-2"
-                                  >
-                                    <ShieldCheck size={14} /> Securely Link Card
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Card 2: Invoice History */}
-                            <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
-                              <h4 className="font-headline font-bold text-base text-on-surface flex items-center gap-2 text-left">
-                                <Ticket size={18} className="text-on-surface-variant/60" /> Invoice & Statement History
-                              </h4>
-                              <p className="text-xs text-on-surface-variant leading-relaxed text-left">
-                                Access your generated monthly invoices. Since you are on our Early Partner Plan, your subscription fees are fully discounted.
-                              </p>
-
-                              <div className="divide-y divide-outline-variant/10">
-                                {[
-                                  { id: "INV-2026-003", date: "June 1, 2026", amount: "R 0.00", status: "Paid", detail: "Early Partner Beta Month" },
-                                  { id: "INV-2026-002", date: "May 1, 2026", amount: "R 0.00", status: "Paid", detail: "Early Partner Beta Month" },
-                                  { id: "INV-2026-001", date: "April 1, 2026", amount: "R 0.00", status: "Paid", detail: "Beta Launch Special" }
-                                ].map((inv) => (
-                                  <div
-                                    key={inv.id}
-                                    onClick={() => setSelectedInvoice(inv)}
-                                    className="py-3 flex items-center justify-between group cursor-pointer hover:bg-surface-container-high/40 px-2 rounded-xl transition-colors"
-                                  >
-                                    <div className="text-left">
-                                      <p className="text-xs font-black text-on-surface group-hover:text-primary transition-colors">{inv.id}</p>
-                                      <p className="text-[10px] text-on-surface-variant">{inv.date} • {inv.detail}</p>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                      <div className="text-right">
-                                        <p className="text-xs font-black text-on-surface">{inv.amount}</p>
-                                        <span className="text-[9px] font-bold text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase">
-                                          {inv.status}
-                                        </span>
-                                      </div>
-                                      <ChevronRight size={14} className="text-on-surface-variant/30 group-hover:text-primary transition-colors" />
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                          </div>
-
-                        </div>
-                      </div>
+                      </section>
                     )}
 
                     {settingsCategory === "preferences" && (
@@ -3981,100 +3322,6 @@ function App() {
                   </div>
                 </div>
 
-                {selectedInvoice && (
-                  <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/70 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-surface-container rounded-2xl max-w-md w-full overflow-hidden border border-outline-variant/10 shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
-                      {/* Header */}
-                      <div className="p-4 border-b border-outline-variant/10 flex items-center justify-between bg-surface-container-high">
-                        <span className="text-xs font-black uppercase text-primary tracking-wider">Invoice Receipt</span>
-                        <button
-                          onClick={() => setSelectedInvoice(null)}
-                          className="p-1 rounded-full hover:bg-surface-container-highest text-on-surface-variant transition-colors"
-                        >
-                          <AlertTriangle size={16} />
-                        </button>
-                      </div>
-
-                      {/* Invoice body */}
-                      <div className="p-6 space-y-6 overflow-y-auto max-h-[80vh] text-left">
-                        {/* Brand Logo & Invoice Info */}
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h5 className="font-headline font-black text-xl text-primary leading-none">LocalEats</h5>
-                            <p className="text-[10px] text-on-surface-variant/80 mt-1">Founders Partner Network</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xs font-black text-on-surface">{selectedInvoice.id}</p>
-                            <p className="text-[9px] text-on-surface-variant">Date: {selectedInvoice.date}</p>
-                            <p className="text-[9px] text-on-surface-variant">Status: Paid</p>
-                          </div>
-                        </div>
-
-                        <div className="border-t border-dashed border-outline-variant/20 pt-4 grid grid-cols-2 gap-4 text-xs">
-                          <div>
-                            <p className="font-bold text-[10px] uppercase text-on-surface-variant/70">Provider</p>
-                            <p className="font-semibold text-on-surface mt-1">LocalEats Platform SA</p>
-                            <p className="text-[10px] text-on-surface-variant">Cape Town, South Africa</p>
-                          </div>
-                          <div>
-                            <p className="font-bold text-[10px] uppercase text-on-surface-variant/70">Billed To</p>
-                            <p className="font-semibold text-on-surface mt-1">{billingDetails.companyName || currentShop?.name || "Founding Merchant"}</p>
-                            {billingDetails.taxNumber && <p className="text-[10px] text-on-surface-variant">VAT: {billingDetails.taxNumber}</p>}
-                            <p className="text-[10px] text-on-surface-variant truncate">{billingDetails.billingEmail || user?.email || "No email set"}</p>
-                          </div>
-                        </div>
-
-                        {/* Line Items */}
-                        <div className="border-t border-dashed border-outline-variant/20 pt-4 space-y-3">
-                          <p className="font-bold text-[10px] uppercase text-on-surface-variant/70">Invoice Breakdown</p>
-
-                          <div className="space-y-2">
-                            <div className="flex justify-between text-xs">
-                              <span className="text-on-surface-variant">LocalEats Platform Subscription (June 2026)</span>
-                              <span className="font-bold text-on-surface">R 499.00</span>
-                            </div>
-                            <div className="flex justify-between text-xs text-primary font-medium">
-                              <span>Early Partner Loyalty Discount (100% Off)</span>
-                              <span>-R 499.00</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Total */}
-                        <div className="border-t border-dashed border-outline-variant/20 pt-4 flex justify-between items-center bg-primary/5 p-4 rounded-xl border border-primary/10">
-                          <div>
-                            <p className="text-xs font-extrabold text-on-surface">Total Charged</p>
-                            <p className="text-[9px] text-on-surface-variant">Zero subscription due for Early Partner</p>
-                          </div>
-                          <p className="text-2xl font-headline font-black text-on-surface">{selectedInvoice.amount}</p>
-                        </div>
-
-                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2 text-emerald-600">
-                          <Circle size={16} className="shrink-0" />
-                          <p className="text-[10px] font-bold leading-tight text-left">Paid in full. Your card ending in {billingDetails.cardNumber ? billingDetails.cardNumber.slice(-4) : "4242"} was not charged.</p>
-                        </div>
-                      </div>
-
-                      {/* Action Footer */}
-                      <div className="p-4 bg-surface-container-high border-t border-outline-variant/10 flex gap-2">
-                        <button
-                          onClick={() => {
-                            window.print();
-                          }}
-                          className="flex-1 bg-surface-container-highest border border-outline-variant/20 text-on-surface-variant py-2 rounded-xl text-xs font-black uppercase hover:bg-opacity-95 transition-all flex items-center justify-center gap-2"
-                        >
-                          Print Invoice
-                        </button>
-                        <button
-                          onClick={() => setSelectedInvoice(null)}
-                          className="flex-1 bg-primary text-on-primary py-2 rounded-xl text-xs font-black uppercase hover:bg-opacity-95 transition-all"
-                        >
-                          Close Receipt
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
             {activeTab === "storefront" && (
