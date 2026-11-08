@@ -53,7 +53,11 @@ for n in $(seq 1 13); do
 done
 [[ "$success" == 12 && "$rejected" == 1 ]] || { echo R42_ENROLLMENT_RACE_FAILED >&2; exit 1; }
 expect "SELECT admissions||':'||reserved_minor||':'||uncommitted_minor FROM r42_lab.pool;" "12:30000:20000"
-expect "SELECT r42_lab.admit('c1');" REPLAY
+# Concurrent admission order is intentionally nondeterministic: c1 can be
+# the one rejected. Select a real winner to verify idempotent replay safely.
+admitted_customer="$(pg -c "SELECT customer_id FROM r42_lab.customers ORDER BY customer_id LIMIT 1;")"
+[[ -n "$admitted_customer" ]] || { echo R42_NO_ADMITTED_CUSTOMER >&2; exit 1; }
+expect "SELECT r42_lab.admit('$admitted_customer');" REPLAY
 deny "SELECT r42_lab.admit('c14');" R42_COHORT_FULL
 expect "SELECT r42_lab.reconcile();" t
 echo R42_POSTGRES_CONCURRENT_12_CUSTOMER_CAP_PASS
