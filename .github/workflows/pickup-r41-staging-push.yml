@@ -1,0 +1,49 @@
+name: LocalEats R4.1 offline staging boundary and FCM simulation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/src/orders/pickupPushR41.test.ts'
+      - 'localeats-api/src/orders/pickupPush.ts'
+      - 'localeats-api/tests/pickup/r41/**'
+      - 'docs/R41_OFFLINE_STAGING_AND_PUSH_ACCEPTANCE.md'
+      - '.github/workflows/pickup-r41-staging-push.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  r41-review-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      REWARDS_ENABLED: 'false'
+      LOCALEATS_PREVIEW_READ_ONLY: 'true'
+    steps:
+      - name: Checkout safely without persisted Git credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Use Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Verify Preview blocks writes and staging is not falsely certified
+        run: node --test localeats-api/tests/pickup/r41/staging-readiness.test.mjs
+      - name: Install API dependencies with no hosted credentials
+        working-directory: localeats-api
+        run: npm ci --no-audit --no-fund
+      - name: Compile actual pickup notification code
+        working-directory: localeats-api
+        run: npm run build
+      - name: Test fake FCM failures and fenced outbox responses
+        working-directory: localeats-api
+        run: node --test dist/orders/pickupPushR41.test.js
+      - name: Re-run R3.9 reversible boundary rehearsal in a disposable PG17 container
+        run: bash localeats-api/tests/pickup/r39/run-payment-policy-review-r39.sh
