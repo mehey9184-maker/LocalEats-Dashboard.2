@@ -1,0 +1,65 @@
+name: LocalEats R4.4 unmounted server payment history authorization (offline only)
+
+on:
+  pull_request:
+    branches:
+      - main
+      - review/r43-payment-owner-scope-staging-20261108
+    paths:
+      - 'localeats-api/src/payments/merchantPaymentHistoryR44*.ts'
+      - 'localeats-api/tests/pickup/r44/**'
+      - 'docs/R44_SERVER_PAYMENT_HISTORY_ACCEPTANCE.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/pickup-r44-payment-history.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  r44-server-authority-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      REWARDS_ENABLED: 'false'
+      LOCALEATS_PREVIEW_READ_ONLY: 'true'
+    steps:
+      - name: Check out review branch without persisted Git credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Use Node 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Assert service remains unmounted and does not activate payment reads
+        run: node --test localeats-api/tests/pickup/r44/release-boundary.test.mjs
+      - name: Install API dependencies locally without hosted credentials
+        working-directory: localeats-api
+        run: npm ci --no-audit --no-fund
+      - name: Compile real API and review-only payment history service
+        working-directory: localeats-api
+        run: npm run build
+      - name: Test real TypeScript service with fake merchant and payment adapters
+        working-directory: localeats-api
+        run: node --test dist/payments/merchantPaymentHistoryR44.test.js
+      - name: Re-run API authority, route, security and pickup regressions
+        working-directory: localeats-api
+        # Existing mounted-route tests assert normal local auth semantics (401).
+        # This CI has no hosted credentials, so suppress the Preview-only 503
+        # barrier for that one local test step. The real gate stays unchanged.
+        env:
+          LOCALEATS_PREVIEW_READ_ONLY: 'false'
+        run: npm test
+      - name: Re-run R4.3 fake merchant identity and legacy mapping tests
+        run: |
+          node --test localeats-api/tests/pickup/r43/review-contract.test.mjs
+          node --test localeats-api/tests/pickup/r43/payment-owner-scope.test.mjs
+      - name: Rehearse pickup and payment policy in disposable PG17 only
+        run: bash localeats-api/tests/pickup/r42/run-integrated-staging-r42.sh
