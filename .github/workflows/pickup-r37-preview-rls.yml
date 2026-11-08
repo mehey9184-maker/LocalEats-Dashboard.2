@@ -1,0 +1,44 @@
+name: Pickup R3.7 exact-preview evidence and synthetic payments RLS gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/tests/pickup/r37/**'
+      - '.github/workflows/pickup-r37-preview-rls.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preview-evidence-and-payment-permissions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      REWARDS_ENABLED: 'false'
+    steps:
+      - name: Checkout test-only evidence without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Test exact-commit preview SHA, HTTP evidence and pending manual gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test localeats-api/tests/pickup/r37/preview-evidence.test.mjs
+      - name: Reject remote database actions in R3.7 lab
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f localeats-api/tests/pickup/r37/payments-rls-lab.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/pickup/r37/run-rls-offline-r37.sh
+          ! grep -Ein 'supabase\.co|SUPABASE_SERVICE_ROLE_KEY|DATABASE_URL|db push|apply_migration|--remote|--publish| -p [0-9]+:' \
+            localeats-api/tests/pickup/r37/*.sql \
+            localeats-api/tests/pickup/r37/*.sh
+      - name: Reproduce overbroad payments policy and deny after synthetic hardening
+        shell: bash
+        run: bash localeats-api/tests/pickup/r37/run-rls-offline-r37.sh
