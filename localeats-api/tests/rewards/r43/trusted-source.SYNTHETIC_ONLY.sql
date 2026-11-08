@@ -12,7 +12,7 @@ CREATE TABLE r43_lab.customers (
  anonymous boolean NOT NULL,
  test_account boolean NOT NULL
 );
-INSERT INTO r43_lab.customers VALUES('customer-1',true,false,false);
+INSERT INTO r43_lab.customers VALUES('customer-1',true,false,false),('customer-2',true,false,false);
 CREATE TABLE r43_lab.shops (
  shop_id text PRIMARY KEY,
  owner_uid text NOT NULL,
@@ -122,7 +122,8 @@ BEGIN
  IF p_variant IS NULL OR length(p_variant) NOT BETWEEN 1 AND 60
  OR p_variant !~ '^[a-z-]+$' THEN RAISE EXCEPTION 'R43_INVALID_FIXTURE_NAME'; END IF;
  INSERT INTO r43_lab.orders VALUES
- (oid,'customer-1',CASE WHEN p_variant='other-shop' THEN 'shop-b' ELSE 'my-kota' END,
+ (oid,CASE WHEN p_variant='race-refund' THEN 'customer-2' ELSE 'customer-1' END,
+ CASE WHEN p_variant='other-shop' THEN 'shop-b' ELSE 'my-kota' END,
  CASE WHEN p_variant='delivery' THEN 'delivery' ELSE 'collection' END,
  CASE WHEN p_variant='uncollected' THEN 'ready_for_pickup' ELSE 'collected' END,
  CASE WHEN p_variant='unpaid' THEN 'unpaid' ELSE 'paid' END,
@@ -146,7 +147,8 @@ BEGIN
  IF p_variant<>'missing-code' THEN
  INSERT INTO r43_lab.customer_pickup_proofs VALUES
  ('proof:'||oid,oid,
- CASE WHEN p_variant='wrong-customer-code' THEN 'not-the-customer' ELSE 'customer-1' END,
+ CASE WHEN p_variant='wrong-customer-code' THEN 'not-the-customer'
+ WHEN p_variant='race-refund' THEN 'customer-2' ELSE 'customer-1' END,
  CASE WHEN p_variant='wrong-shop-code' THEN 'shop-b' ELSE 'my-kota' END,
  CASE WHEN p_variant='request-body-code' THEN 'client-request-body'
  ELSE 'server-verified-one-time-pickup-code' END,
