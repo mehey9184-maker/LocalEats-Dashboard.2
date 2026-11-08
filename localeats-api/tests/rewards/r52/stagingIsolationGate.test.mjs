@@ -108,3 +108,72 @@ test("R5.2 synthetic user, credential isolation, and owner test authorization ca
  const n=hypothetical();n.actualHostedVerificationApproved=false;
  assert.ok(evaluateHostedR52Preflight(n).reasons.includes("HOSTED_TEST_OWNER_APPROVAL_REQUIRED"));
 });
+
+
+function dedicatedHypothetical(){
+ const m=hypothetical();
+ m.productionVercelProjectIds=["synthetic-prod-customer","synthetic-prod-api"];
+ for(const label of ["customer","api"]){
+  const p=m[label];
+  p.mode="dedicated_staging";
+  p.projectId="synthetic-"+label+"-stage-project";
+  p.projectIdentityVerified=true;
+  p.productionTargetEmptyVerified=true;
+  p.inheritedEnvAbsentVerified=true;
+  p.credentialProvenanceVerifiedNonproduction=true;
+  p.envScopes=(label==="customer"?customerKeys:apiKeys)
+    .map(key=>({key,target:["preview"]}));
+ }
+ return m;
+}
+
+test("R5.2D a fully evidenced dedicated staging fixture satisfies scope policy ONLY in synthetic evidence",()=>{
+ const m=dedicatedHypothetical();
+ assert.deepEqual(evaluateHostedR52Preflight(m),{ready:true,reasons:[]});
+});
+
+test("R5.2D dedicated project with live Vercel ID must never be accepted",()=>{
+ const m=dedicatedHypothetical();
+ m.customer.projectId=m.productionVercelProjectIds[0];
+ assert.ok(evaluateHostedR52Preflight(m).reasons.includes("CUSTOMER_DEDICATED_PROJECT_ISOLATION_UNVERIFIED"));
+});
+
+test("R5.2D dedicated project collision, missing independent provenance or inherited vars are blocked",()=>{
+ const shared=dedicatedHypothetical();
+ shared.api.projectId=shared.customer.projectId;
+ assert.ok(evaluateHostedR52Preflight(shared).reasons.includes("CUSTOMER_AND_API_STAGING_PROJECT_COLLISION"));
+ for(const field of ["projectIdentityVerified","productionTargetEmptyVerified","inheritedEnvAbsentVerified","credentialProvenanceVerifiedNonproduction"]){
+  const m=dedicatedHypothetical(); m.api[field]=false;
+  assert.ok(evaluateHostedR52Preflight(m).reasons.includes("API_DEDICATED_PROJECT_ISOLATION_UNVERIFIED"),field);
+ }
+});
+
+test("R5.2D dedicated Preview project must reject Production scope, duplicated keys and wrong branch",()=>{
+ const a=dedicatedHypothetical();
+ a.customer.envScopes[0].target=["production","preview"];
+ assert.ok(evaluateHostedR52Preflight(a).reasons.includes("CUSTOMER_DEDICATED_PREVIEW_SCOPES_UNVERIFIED"));
+ const b=dedicatedHypothetical();
+ b.api.envScopes.push({...b.api.envScopes[0]});
+ assert.ok(evaluateHostedR52Preflight(b).reasons.includes("API_DEDICATED_PREVIEW_SCOPES_UNVERIFIED"));
+ const c=dedicatedHypothetical();
+ c.customer.envScopes[1].gitBranch="main";
+ assert.ok(evaluateHostedR52Preflight(c).reasons.includes("CUSTOMER_DEDICATED_PREVIEW_SCOPES_UNVERIFIED"));
+});
+
+test("R5.2D actual safe empty project shells remain blocked without API secrets, HTTPS origin and exact deployment",()=>{
+ const m=dedicatedHypothetical();
+ m.customer.deployment=null;
+ m.api.deployment=null;
+ m.customer.stagingApiOrigin="";
+ m.api.stagingApiOrigin="";
+ m.customer.envScopes=m.customer.envScopes.filter(v=>v.key!=="VITE_LOCALEATS_API_URL");
+ m.api.envScopes=m.api.envScopes.filter(v=>!["FIREBASE_PRIVATE_KEY","FIREBASE_CLIENT_EMAIL","SUPABASE_SERVICE_ROLE_KEY"].includes(v.key));
+ m.productionCredentialsNotUsed=false; // credentials not yet independently verified
+ m.actualHostedVerificationApproved=false;
+ const res=evaluateHostedR52Preflight(m);
+ assert.equal(res.ready,false);
+ for(const key of ["CUSTOMER_EXACT_PREVIEW_DEPLOYMENT_UNVERIFIED","API_EXACT_PREVIEW_DEPLOYMENT_UNVERIFIED",
+   "CUSTOMER_DEDICATED_PREVIEW_SCOPES_UNVERIFIED","API_DEDICATED_PREVIEW_SCOPES_UNVERIFIED",
+   "STAGING_API_ORIGIN_UNVERIFIED","HOSTED_TEST_OWNER_APPROVAL_REQUIRED"])
+  assert.ok(res.reasons.includes(key),key);
+});
