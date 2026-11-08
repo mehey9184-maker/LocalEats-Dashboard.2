@@ -135,6 +135,12 @@ expect "SELECT count(*) FROM public.pickup_push_outbox;" "1"
 expect "SELECT count(*) FROM public.orders WHERE delivery_type IS DISTINCT FROM 'collection' OR rider_id IS NOT NULL;" "0"
 expect "SELECT count(*) FROM public.payments;" "2"
 
+# R4.3 stacked review: test adverse legacy ID mapping in the same
+# isolated database, then ROLLBACK synthetic extra records.
+load "$root/localeats-api/tests/pickup/r43/owner-legacy-mapping.SYNTHETIC_ONLY.sql" > "$tmp/r43-owner-mapping.log"
+grep -q "R43_SYNTHETIC_OWNER_MAPPING_NEGATIVES_PASS" "$tmp/r43-owner-mapping.log"
+expect "SELECT count(*) FROM public.payments;" "2"
+
 # Backup contains SCHEMA ONLY, and restore must preserve security boundaries.
 docker exec "$name" pg_dump -U postgres -d r42_rehearsal \
  --schema-only --schema=public --schema=r34_fixture -F c -f /tmp/r42-synthetic-schema.dump

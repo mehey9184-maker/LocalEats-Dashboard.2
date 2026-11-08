@@ -39,7 +39,7 @@ test("R4.2 candidate is R3.9's unchanged REVIEW_ONLY template, not deployable SQ
 test("R4.2 fake legacy shop/payment IDs, privileges, and post-policy pickup checks exist",()=>{
  const fake=read("localeats-api/tests/pickup/r42/legacy-payment-fixture.SYNTHETIC_ONLY.sql");
  const sh=read("localeats-api/tests/pickup/r42/run-integrated-staging-r42.sh");
- assert.match(fake,/shop_id bigint NOT NULL/);
+ assert.match(fake,/shop_id bigint\s*,/);
  assert.match(fake,/public\.payments/);
  assert.match(fake,/USING \(true\) WITH CHECK \(true\)/);
  assert.match(fake,/R42_FAKE_MERCHANT_A/);
