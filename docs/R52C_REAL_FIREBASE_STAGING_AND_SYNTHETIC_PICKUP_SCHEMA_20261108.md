@@ -51,3 +51,14 @@ Use dedicated staging-only Customer/API/Merchant projects if within plan limits,
 - Browser sign-in/revoke/relogin and real hosted latency tests — NOT STARTED.
 
 Customer PR #82, API PR #124, and Super Admin PR #4 remain DRAFT and UNMERGED. No Production, paid services, hosted database, live user or financial system altered.
+
+
+## Subsequent owner-provided Firebase evidence — 8 November 2026
+
+**The earlier F1 statement ("not created in this session") remains true for this agent's operations, but the OWNER has now created the separate Firebase staging project through the Firebase console.** Successive screenshots confirm: **LocalEats Staging**, Firebase project ID `localeats-staging`, Spark plan, registered `LocalEats Customer Staging` Web app, Email/Password authentication enabled, `(default)` Firestore database created, and Firestore browser rules with `allow read, write: if false;`. The SDK web configuration shown is consistent with `localeats-staging.firebaseapp.com` Auth domain and messaging sender ID `805045126244`.
+
+This closes **owner-reported manual project creation and basic Web/Auth/Firestore setup** at screenshot-evidence level. It does NOT close API Admin service identity verification, Vercel Customer/API Preview credential separation, actual hosted database/schema integration, synthetic test-user approval or real hosted browser session recovery. The screenshots do not confirm Firestore region. No Firebase API key or Admin private key is stored in code or project documents.
+
+Use the Customer draft mapping in `docs/LOCALEATS_R52C_FIREBASE_WEB_CONFIG_RECEIVED_20261108.md` (Customer PR #82). API staging must use `FIREBASE_PROJECT_ID=localeats-staging` ONLY in a separately isolated nonproduction server config, with staging-only Admin identity and no Firebase Auth Emulator override, matched to independently verified Profile-Staging Supabase credentials. DO NOT populate current shared Preview/Production credential entries, update Vercel, create service accounts, deploy or seed users solely based on screenshots.
+
+**Updated gates:** F1 owner-created project = screenshot-confirmed; F1 backend linkage/independent project verification = OPEN; S1 disposable PG17 rehearsal = passed; S2 hosted pickup schema = not applied; E1 isolated Vercel = open; hosted auth/browser tests = blocked. All PRs draft and unmerged.
