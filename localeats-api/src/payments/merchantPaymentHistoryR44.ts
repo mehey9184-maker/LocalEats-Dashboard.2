@@ -54,7 +54,10 @@ const authorizedQuery=(query:Record<string,unknown>):number=>{
   return offset;
 };
 const safeAmount=(amount:unknown):string=>{
-  if(typeof amount==="number" && Number.isFinite(amount) && amount>=0) return String(amount);
+  if(typeof amount==="number" && Number.isFinite(amount) && amount>=0) {
+    const formatted=String(amount);
+    if(/^(0|[1-9][0-9]{0,13})(\.[0-9]{1,4})?$/.test(formatted))return formatted;
+  }
   if(typeof amount==="string" && /^(0|[1-9][0-9]{0,13})(\.[0-9]{1,4})?$/.test(amount))return amount;
   return fail(503,"PAYMENT_HISTORY_INTEGRITY_FAILURE");
 };
@@ -100,8 +103,8 @@ export const readMerchantPaymentHistory=async(
   // Inspect all 51 rows, including lookahead; leaking rows cannot hide.
   for(const [i,row] of records.entries()) {
     if(!row || String(row.shop_id)!==legacyId || typeof row.id!=="string" || !UUID.test(row.id) ||
-       typeof row.status!=="string" || row.status.length>80 ||
-       typeof row.payment_method!=="string" || row.payment_method.length>80 ||
+       typeof row.status!=="string" || !row.status.trim() || row.status.length>80 ||
+       typeof row.payment_method!=="string" || !row.payment_method.trim() || row.payment_method.length>80 ||
        (row.payment_date!==null && (typeof row.payment_date!=="string" ||
          !Number.isFinite(Date.parse(row.payment_date)))))
        return fail(503,"PAYMENT_HISTORY_INTEGRITY_FAILURE");
