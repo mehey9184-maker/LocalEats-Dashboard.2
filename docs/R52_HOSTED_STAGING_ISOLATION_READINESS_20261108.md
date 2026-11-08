@@ -24,3 +24,7 @@ No deployment was found for the Customer PR #82 exact branch docs/rewards-master
 ## Status
 
 R5.2 code/CI/docs: DRAFT POLICY ONLY. R5.2 REAL HOSTED STAGING: **BLOCKED**. No Production deployment, database write, Firebase revocation, feature flag change, merchant payout, reward credit, order creation, PR merge, Super Admin release or LocalPay activation.
+
+
+### Additional read-only Supabase project discovery (8 November 2026)
+The connected Supabase account lists two independently identified active project references: **LocalEats** and **LocalEats-Profile-Staging**. The latter is a real separate project resource, so creation of another Supabase project may be unnecessary IF this staging project is suitable. It has NOT been proven to be the API PR's effective database or to contain appropriately synthetic pickup test data. Vercel still has unverified Preview/Production-overlapping SUPABASE_URL and service-role credential scopes, no exact current draft deployment, and Firebase isolation is not established. Do not redirect deployed applications, reuse Production credentials, query customer records, migrate schema, or create data without a reviewed isolation plan and owner approval.
