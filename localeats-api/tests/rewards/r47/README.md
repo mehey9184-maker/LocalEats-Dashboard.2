@@ -1,5 +1,9 @@
 # LocalPay R4.7 — Isolated Authentication & Pickup-Evidence Adapter Tests
 
+**HISTORICAL SECURITY FINDING SUPERSEDED IN DRAFT SOURCE BY R4.8 (2026-11-08):** The R4.7 test originally detected that active API middleware omitted `checkRevoked=true`. R4.8 subsequently changed `src/middleware/authenticateFirebase.ts` to require `authAdmin.verifyIdToken(token,true)` **on draft PR #124 only**, and updated the R4.7 assertion to REQUIRE the change. A separate local Firebase Authentication Emulator passed 5/5 and the revised R4.7 checks passed 49/49. This does **not** mean Production or the connected real Firebase project has been updated; see [R4.8 handover](../r48/README.md). The original R4.7 discussion below describes its historical discovery before R4.8.
+
+
+
 **8 November 2026 | Founder authorised R4.7 TESTING ONLY.** No real Firebase project, live token, real customer/order, Supabase connection, SQL migration, Rewards payout, merchant bank transfer, Production change, Preview deployment, UI redesign, or merge.
 
 ## Confirmed GitHub Actions evidence (8 November 2026)
