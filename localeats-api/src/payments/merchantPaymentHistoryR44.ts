@@ -97,15 +97,18 @@ export const readMerchantPaymentHistory=async(
   catch {return fail(503,"PAYMENT_HISTORY_UNAVAILABLE");}
   if(!Array.isArray(records)||records.length>51) return fail(503,"PAYMENT_HISTORY_INTEGRITY_FAILURE");
   const payments:PaymentPage["payments"]=[];
-  for(const row of records.slice(0,50)) {
+  // Inspect all 51 rows, including lookahead; leaking rows cannot hide.
+  for(const [i,row] of records.entries()) {
     if(!row || String(row.shop_id)!==legacyId || typeof row.id!=="string" || !UUID.test(row.id) ||
        typeof row.status!=="string" || row.status.length>80 ||
        typeof row.payment_method!=="string" || row.payment_method.length>80 ||
        (row.payment_date!==null && (typeof row.payment_date!=="string" ||
          !Number.isFinite(Date.parse(row.payment_date)))))
        return fail(503,"PAYMENT_HISTORY_INTEGRITY_FAILURE");
-    payments.push({id:row.id,amount:safeAmount(row.amount),
+    const amount=safeAmount(row.amount);
+    if(i<50) payments.push({id:row.id,amount,
       status:row.status,payment_method:row.payment_method,payment_date:row.payment_date});
   }
+  if(records.length>50 && offset===5000) return fail(503,"PAYMENT_HISTORY_PAGING_LIMIT");
   return {payments,next_offset:records.length>50?offset+50:null};
 };
