@@ -1,0 +1,70 @@
+name: LocalPay R4.6 — Disposable PG17 Evidence Transactions
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'localeats-api/tests/rewards/r46/**'
+      - 'localeats-api/tests/rewards/r42/ledger.SYNTHETIC_ONLY.sql'
+      - '.github/workflows/localpay-r46-disposable-evidence-pg17.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  r46-private-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: localpay-r46-synthetic-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      LOCALPAY_R46_ISOLATED: '1'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: localpay-r46-synthetic-only
+      PGSSLMODE: disable
+      PGDATABASE: localpay_r46_disposable
+      PICKUP_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      REWARDS_ACTIVATION_ENABLED: 'false'
+      LOCALPAY_LIVE_WALLET_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - name: Checkout draft PR without stored GitHub credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Block hosted database and validate isolated PostgreSQL 17 fixture
+        run: |
+          test -z "${DATABASE_URL:-}"
+          test -z "${DIRECT_URL:-}"
+          test -z "${SUPABASE_URL:-}"
+          test -z "${SUPABASE_DB_URL:-}"
+          test -z "${PGHOSTADDR:-}"
+          test "$PGHOST" = 127.0.0.1
+          test "$PGDATABASE" = localpay_r46_disposable
+          test "$REWARDS_ACTIVATION_ENABLED" = false
+          PGDATABASE=postgres createdb localpay_r46_disposable
+          test "$(psql -X -At -c 'select current_database()')" = localpay_r46_disposable
+      - name: Verify atomic eligibility and independent pickup proof under concurrent requests
+        run: bash localeats-api/tests/rewards/r46/run-disposable-r46.sh
+      - name: Assert no actual Rewards migration, API or route introduced
+        run: |
+          test -f localeats-api/tests/rewards/r46/trusted-evidence.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/r46/run-disposable-r46.sh
+          test ! -e supabase/migrations/R46_LOCALPAY.sql
+          test ! -e localeats-api/src/rewards/r46LocalPayRoutes.ts
