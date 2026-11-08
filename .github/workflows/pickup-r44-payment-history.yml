@@ -51,6 +51,11 @@ jobs:
         run: node --test dist/payments/merchantPaymentHistoryR44.test.js
       - name: Re-run API authority, route, security and pickup regressions
         working-directory: localeats-api
+        # Existing mounted-route tests assert normal local auth semantics (401).
+        # This CI has no hosted credentials, so suppress the Preview-only 503
+        # barrier for that one local test step. The real gate stays unchanged.
+        env:
+          LOCALEATS_PREVIEW_READ_ONLY: 'false'
         run: npm test
       - name: Re-run R4.3 fake merchant identity and legacy mapping tests
         run: |
