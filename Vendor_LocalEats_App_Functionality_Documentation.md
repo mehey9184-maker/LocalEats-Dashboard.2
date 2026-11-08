@@ -488,3 +488,10 @@ Review-only API branch: after verified Firebase authentication and active `admin
 
 ## Controlled pickup quote eligibility
 The quote response adds can_submit for the verified customer and requested shop, based on the existing pilot gate. Prices remain available while submission is disabled. Clients treat a missing or false result as quote-only. The create route independently rechecks all authorization and pricing.
+
+
+## Living cross-app decision memory — LocalEats Master Plan (2026-11-08; documentation-only)
+
+The founder established **LOCAL_EATS_MASTER_PLAN.md at repository root** as the canonical cross-app record of approved business intent, disputed/proposed decisions, financial safety, promotion budget exposure, rollout gates and AI/developer handover. Read this file alongside AGENTS.md, current source, this Vendor documentation and the Customer/Super Admin architecture files, noting the master file is a draft until separately reviewed and merged. It does NOT replace code/tests or authorise any Production or hosted changes.
+
+New **confirmed** Rewards direction: initial free kota is earned **once** after the first four qualifying purchased kota units; customer reward can be redeemed at **any participating LocalEats shop**; **Gold and Platinum benefit formats are multi-use promotional food credit**, shown near the logo, rather than mandatory one-off food bundles; the customer retains permanent rank after credit is exhausted; LocalEats funds merchant reimbursement following verified handover, owner manual external transfer and authenticated merchant confirmation. The prior R125/R200 single-bundle design remains historical and is superseded **as business format only**; existing synthetic Rewards source was NOT modified. Exact higher-rank purchase thresholds, exact Gold/Platinum credit amounts, split-tender/top-up policy, budget capacity, eligible items and expiry/rollover terms remain **OPEN**. No Rewards activation, new financial state, Customer UI change, payment flow or public offer occurred. Read LOCAL_EATS_MASTER_PLAN.md before implementing any new Rewards phase.
