@@ -60,3 +60,33 @@ Background shop revalidation retains the approved same-account display while the
 
 ## Controlled pickup quote eligibility
 The quote response adds can_submit for the verified customer and requested shop, based on the existing pilot gate. Prices remain available while submission is disabled. Clients treat a missing or false result as quote-only. The create route independently rechecks all authorization and pricing.
+
+
+## R5.1 Customer identity cross-repository note (2026-11-08)
+
+Inspect Customer src/lib/supabase.ts BEFORE calling Customer Login a separate Supabase Auth provider: that module is actually a Firebase Auth compatibility wrapper. API authentication still must verify signed Firebase ID tokens with revoked/disabled status, then verify shop ownership/roles server-side. Never substitute email or browser UID claims. Current R5.1 is DRAFT-ONLY Customer token-change observer + emulator tests; no API auth changes, staging/Production deployment, database writes, orders, financial or rewards activation. Hosted staging isolation and browser verification are still open; see docs/R51_CUSTOMER_FIREBASE_AUTH_IDENTITY_HANDOVER_20261108.md.
+
+
+## R5.2 API hosted staging STOP gate — 2026-11-08
+
+Read-only Vercel metadata shows current localeats-api Preview and Production share several credential variables (Firebase Admin and Supabase); no exact branch deployment exists for API draft PR #124. The Customer Preview likewise shares Firebase configuration. Do not create/revoke real Firebase accounts, query user records, test hosted login, or change hosted env/DB/Production under R5.2 until a wholly isolated and independently verified staging project/database/API/branch configuration exists. Synthetic-only source gate is at localeats-api/tests/rewards/r52/stagingIsolationGate.mjs; a passing test against mock metadata is NOT cloud isolation evidence. See docs/R52_HOSTED_STAGING_ISOLATION_READINESS_20261108.md. All pickup/merchant/profile/LocalPay/rewards writes remain OFF, no merge.
+
+
+## R5.2B staging setup and isolation STOP gate — 2026-11-08
+
+Existing LocalEats-Profile-Staging Supabase is a distinct ACTIVE project but currently has only public.profiles; do not claim that it is suitable for pickup order-history or merchant ownership rehearsals without a reviewed isolated schema. Firebase hosted staging and exact Customer/API branch deployments remain unverified. Existing Preview/Production shared Vercel credentials must not be treated as isolated just because a Preview URL exists. Older demo- Firebase branch settings are emulator-only, not a real hosted identity service. New offline, synthetic-only R5.2B metadata evidence gate: localeats-api/tests/rewards/r52b/. Read docs/R52B_DEDICATED_STAGING_SETUP_AND_ACCEPTANCE_20261108.md. Do not access real Auth users, run hosted tests, copy production data, enable writes, create billable services, deploy Production or merge without separate scoped approval.
+
+
+## R5.2C real Firebase staging preparation only — 2026-11-08
+
+No connected Firebase management tool is exposed for project provisioning: do not claim that a real Firebase staging project was created. Current Supabase Profile-Staging exists but only profiles is deployed. The R5.2C pickup SQL is a disposable-only PG17 fixture guarded against running on hosted Supabase; DO NOT copy/apply it to the hosted staging or Production database. Production shop availability depends on schedule helpers, whereas the lab view deliberately forces all shops closed. Use docs/R52C_REAL_FIREBASE_STAGING_AND_SYNTHETIC_PICKUP_SCHEMA_20261108.md for project setup prerequisites and manual owner consent gates. Customer strict-stage Firebase config refuses demo-prefixed and mixed bundled Production values. All hosted Auth user creation/revocation, schema, data, Vercel secrets, deployment, payments, orders, LocalPay, Production and merge actions remain blocked pending separate verification.
+
+
+## R5.2D — Dedicated Vercel staging projects created but no deploy (2026-11-08)
+
+Two new, unlinked, deployment-disabled Vercel staging projects are now real: Customer `localeats-customer-staging-r52d` and API `localeats-api-staging-r52d`. Their Preview settings are strictly nonproduction: Firebase `localeats-staging`, API Supabase URL points to separate Profile-Staging, ordering/profile/rewards/LocalPay gates off. No Git integration, deployment, domain, Production-targeted variable, Admin credential, service-role key or hosted SQL was added. The original live Vercel projects remain untouched. The API R5.2 preflight now also supports dedicated project evidence but STILL REJECTS these empty staging shells for hosted acceptance: no exact PR deployment, API Admin keys, profile-staging pickup tables, or Customer HTTPS API URL. Use docs/R52D_DEDICATED_VERCEL_CUSTOMER_API_SHELLS_20261108.md. Do not connect Git, enable Preview deployment, create test users, run hosted login or order, merge, change billing or activate financial systems without separate verified authorization.
+
+
+## R5.2E — Server-only staging secrets and schema STOP gate (2026-11-08)
+
+Under owner-requested R5.2E, the new isolated Vercel API project `localeats-api-staging-r52d` has `LOCALEATS_STAGING_ONLY=true` scoped to Preview only and still no Git connection, deployments, Admin private key/email, Supabase staging server secret or Customer HTTPS origin. Production environments are unchanged. New opt-in `src/lib/r52eStagingSafety.ts` requires exact `localeats-staging` Firebase project, corresponding staging service-account email, PEM-shaped private key, staging Supabase project URL and modern `sb_secret_` server key, proper Customer Preview HTTPS origin, `VERCEL_ENV=preview`, NO Auth Emulator and all pickup/profile/rider/Rewards/LocalPay flags FALSE. The stage-only CORS rule denies Production and unknown browser origins. Default Production code/legacy Supabase key behavior is preserved. No secrets are committed or logged. Read `docs/R52E_STAGING_API_CREDENTIALS_AND_SCHEMA_APPROVAL_20261108.md` before requesting secret entry. Do not move `schema.SYNTHETIC_ONLY.sql` to hosted Supabase: Profile-Staging still contains only `profiles` and lacks pickup tables/view/functions. Hosted SQL, new users, API/Customer deploys, financial writes, release activation, merges and Vercel Production changes remain forbidden until separate reviewed approval.

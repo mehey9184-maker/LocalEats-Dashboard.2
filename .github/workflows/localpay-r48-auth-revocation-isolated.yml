@@ -1,0 +1,114 @@
+name: LocalPay R4.8 — Draft Firebase Revocation and Merchant Auth
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'localeats-api/tests/rewards/r48/**'
+      - 'localeats-api/src/middleware/authenticateFirebase.ts'
+      - 'localeats-api/src/rewards/financeActor.ts'
+      - 'localeats-api/src/routes/orders.ts'
+      - 'localeats-api/package.json'
+      - '.github/workflows/localpay-r48-auth-revocation-isolated.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  r48-draft-auth-middleware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      REWARDS_ACTIVATION_ENABLED: 'false'
+      LOCALPAY_LIVE_WALLET_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - name: Checkout draft branch with no persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Use Node 22 with isolated test dependencies
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Refuse any hosted backend or Firebase keys
+        run: |
+          test -z "${DATABASE_URL:-}"
+          test -z "${DIRECT_URL:-}"
+          test -z "${SUPABASE_URL:-}"
+          test -z "${SUPABASE_DB_URL:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT:-}"
+          test -z "${FIREBASE_PRIVATE_KEY:-}"
+          test -z "${FIREBASE_PROJECT_ID:-}"
+          test -z "${FIREBASE_AUTH_EMULATOR_HOST:-}"
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$REWARDS_ACTIVATION_ENABLED" = false
+      - name: Install locked API dependencies without lifecycle scripts
+        working-directory: localeats-api
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test actual revocation-hardened middleware and merchant shop ownership
+        working-directory: localeats-api
+        run: npm run test:r48
+      - name: Confirm the historical R4.7 revocation-gap detector was replaced by a fix assertion
+        working-directory: localeats-api
+        run: npm run test:r47
+      - name: Verify no active LocalPay write route or migration was created
+        run: |
+          test -f localeats-api/tests/rewards/r48/revocationMiddleware.test.mjs
+          test ! -e localeats-api/src/rewards/r48LocalPayRoutes.ts
+          test ! -e supabase/migrations/R48_LOCALPAY.sql
+
+  r48-firebase-auth-emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      CI: 'true'
+      GCLOUD_PROJECT: demo-localeats-r48
+      PICKUP_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      REWARDS_ACTIVATION_ENABLED: 'false'
+      LOCALPAY_LIVE_WALLET_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - name: Checkout draft without real Firebase credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Node 22 for disposable Auth Emulator
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Reject real Firebase and hosted database secrets
+        run: |
+          test "$GCLOUD_PROJECT" = demo-localeats-r48
+          test -z "${FIREBASE_PROJECT_ID:-}"
+          test -z "${FIREBASE_PRIVATE_KEY:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT:-}"
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${DATABASE_URL:-}"
+          test -z "${SUPABASE_URL:-}"
+          test "$PICKUP_WRITES_ENABLED" = false
+      - name: Install locked API dependencies
+        working-directory: localeats-api
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compile actual API modules used by emulator test
+        working-directory: localeats-api
+        run: npm run build
+      - name: Use isolated demo Firebase Auth Emulator, never real project
+        working-directory: localeats-api
+        run: |
+          npx --yes firebase-tools@15.35.0 emulators:exec \
+            --only auth --project demo-localeats-r48 \
+            --config tests/rewards/r48/firebase.emulator.json \
+            "node --test tests/rewards/r48/firebaseAuthEmulator.test.mjs"
+      - name: Confirm no real Firebase or Supabase setup modified
+        run: |
+          test -f localeats-api/tests/rewards/r48/firebase.emulator.json
+          test ! -e supabase/migrations/R48_LOCALPAY.sql

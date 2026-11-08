@@ -1,0 +1,52 @@
+name: LocalPay R4.5 — Trusted Evidence Design Contract Only
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'localeats-api/tests/rewards/r45/**'
+      - 'localeats-api/package.json'
+      - '.github/workflows/localpay-r45-evidence-design-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  r45-offline-evidence-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      REWARDS_ACTIVATION_ENABLED: 'false'
+      LOCALPAY_LIVE_WALLET_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - name: Checkout the draft test-only branch without stored credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install Node 22 only (no database, network app, or bank integrations)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Refuse hosted database and financial activation settings
+        run: |
+          test -z "${DATABASE_URL:-}"
+          test -z "${DIRECT_URL:-}"
+          test -z "${SUPABASE_URL:-}"
+          test -z "${SUPABASE_DB_URL:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT:-}"
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$REWARDS_ACTIVATION_ENABLED" = false
+      - name: Test hypothetical private records against missing/forged evidence
+        working-directory: localeats-api
+        run: npm run test:r45
+      - name: Assert all R4.5 additions remain outside live API routes and SQL migrations
+        run: |
+          test -f docs/R45_LOCALPAY_TRUSTED_EVIDENCE_RECORDS_AND_PROCESS_20261108.md
+          test -f localeats-api/tests/rewards/r45/designEvidenceGate.mjs
+          test -f localeats-api/tests/rewards/r45/designEvidenceGate.test.mjs
+          test ! -e localeats-api/src/rewards/r45LocalPayRoutes.ts
+          test ! -e supabase/migrations/R45_LOCALPAY.sql

@@ -1,0 +1,77 @@
+name: LocalEats R5.2C — Disposable PG17 Pickup Schema Only
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'localeats-api/tests/pickup/r52c/**'
+      - '.github/workflows/localpay-r52c-pickup-schema-disposable-pg17.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  r52c-pickup-schema-no-hosted-access:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-only-do-not-reuse
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-only-do-not-reuse
+      PGSSLMODE: disable
+      PGDATABASE: r52c_synthetic_only
+      PGOPTIONS: '-c r52c.synthetic_only=yes'
+      R52C_SYNTHETIC_ONLY: 'yes'
+      PICKUP_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      REWARDS_ACTIVATION_ENABLED: 'false'
+      LOCALPAY_LIVE_WALLET_ENABLED: 'false'
+    steps:
+      - name: Checkout API draft without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Reject hosted database and Firebase credentials
+        run: |
+          set -euo pipefail
+          test -z "$(printenv DATABASE_URL || true)"
+          test -z "$(printenv DIRECT_URL || true)"
+          test -z "$(printenv SUPABASE_URL || true)"
+          test -z "$(printenv SUPABASE_SERVICE_ROLE_KEY || true)"
+          test -z "$(printenv FIREBASE_PRIVATE_KEY || true)"
+          test -z "$(printenv FIREBASE_PROJECT_ID || true)"
+          test -z "$(printenv GOOGLE_APPLICATION_CREDENTIALS || true)"
+          test "$PGHOST" = 127.0.0.1
+          test "$VITE_PICKUP_ORDERING_ENABLED" = false
+          test "$REWARDS_ACTIVATION_ENABLED" = false
+      - name: Create disposable database ONLY on local PostgreSQL service
+        run: |
+          set -euo pipefail
+          test "$PGHOST" = 127.0.0.1
+          test "$PGPORT" = 5432
+          PGDATABASE=postgres createdb r52c_synthetic_only
+          test "$(psql -X -At -c 'select current_database()')" = r52c_synthetic_only
+      - name: Run R5.2C schema guard, RLS denial and no-writes rehearsal
+        run: bash localeats-api/tests/pickup/r52c/verify-disposable.sh
+      - name: No live migration or wallet route is part of this phase
+        run: |
+          test -f localeats-api/tests/pickup/r52c/schema.SYNTHETIC_ONLY.sql
+          test ! -e supabase/migrations/R52C_STAGE.sql
+          test ! -e localeats-api/src/rewards/r52cLocalPayRoutes.ts

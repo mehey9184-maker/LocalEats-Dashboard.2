@@ -1,0 +1,61 @@
+name: LocalPay R4.4 — Read-only Pickup Contract Adapter
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'localeats-api/tests/rewards/r44/**'
+      - 'localeats-api/src/orders/pickupService.ts'
+      - 'localeats-api/src/orders/orderService.ts'
+      - 'localeats-api/src/rewards/trustedEvidence.ts'
+      - 'localeats-api/src/rewards/financeActor.ts'
+      - 'localeats-api/src/routes/orders.ts'
+      - 'localeats-api/package.json'
+      - '.github/workflows/localpay-r44-pickup-contract-readonly.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pickup-readonly-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      REWARDS_ACTIVATION_ENABLED: 'false'
+      LOCALPAY_LIVE_WALLET_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - name: Checkout draft test-only branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Prepare Node 22 for isolated contract tests
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Deny any hosted finance/database connection configuration
+        run: |
+          test -z "${DATABASE_URL:-}"
+          test -z "${DIRECT_URL:-}"
+          test -z "${SUPABASE_URL:-}"
+          test -z "${SUPABASE_DB_URL:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT:-}"
+          test "${PICKUP_WRITES_ENABLED}" = false
+          test "${REWARDS_ACTIVATION_ENABLED}" = false
+      - name: Install locked API dependencies without running project scripts
+        working-directory: localeats-api
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Exercise actual pickup quote, merchant command receipts and inert trusted-evidence validator
+        working-directory: localeats-api
+        run: npm run test:r44
+      - name: Ensure no new active LocalPay routes or migrations
+        run: |
+          test -f localeats-api/tests/rewards/r44/contractReadOnlyAdapter.mjs
+          test -f localeats-api/tests/rewards/r44/contractReadOnlyAdapter.test.mjs
+          test ! -e localeats-api/src/rewards/r44LocalPayRoutes.ts
+          test ! -e supabase/migrations/R44_LOCALPAY.sql

@@ -1,0 +1,67 @@
+name: LocalPay R4.3 — Disposable PG17 Trusted Pickup Evidence
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'localeats-api/tests/rewards/r43/**'
+      - 'localeats-api/tests/rewards/r42/ledger.SYNTHETIC_ONLY.sql'
+      - '.github/workflows/localpay-r43-trusted-evidence-pg17.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  r43-private-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: localpay-r43-synthetic-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      LOCALPAY_R43_ISOLATED: '1'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: localpay-r43-synthetic-only
+      PGSSLMODE: disable
+      PGDATABASE: localpay_r43_disposable
+      PICKUP_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      REWARDS_ACTIVATION_ENABLED: 'false'
+      LOCALPAY_LIVE_WALLET_ENABLED: 'false'
+    steps:
+      - name: Checkout reviewed draft without retained GitHub credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Prove isolated connection and create fresh empty PostgreSQL 17 database
+        run: |
+          test -z "${DATABASE_URL:-}"
+          test -z "${SUPABASE_URL:-}"
+          test -z "${DIRECT_URL:-}"
+          test "$PGHOST" = 127.0.0.1
+          test "$PGDATABASE" = localpay_r43_disposable
+          PGDATABASE=postgres createdb localpay_r43_disposable
+          test "$(psql -X -At -c 'select current_database()')" = localpay_r43_disposable
+      - name: Validate persisted synthetic merchant events, customer handover and refund gates
+        run: bash localeats-api/tests/rewards/r43/run-trusted-evidence-r43.sh
+      - name: Verify there are no active finance migrations or API routes for R4.3
+        run: |
+          test -f localeats-api/tests/rewards/r43/trusted-source.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/r43/run-trusted-evidence-r43.sh
+          test ! -e supabase/migrations/R43_LOCALPAY.sql
+          test ! -e localeats-api/src/rewards/r43LocalPayRoutes.ts

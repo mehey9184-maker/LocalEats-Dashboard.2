@@ -1,8 +1,12 @@
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import dotenv from "dotenv";
+import {assertR52EStagingSafety} from "./r52eStagingSafety.js";
 
 dotenv.config();
+
+// Enforced only when the dedicated staging project explicitly opts in.
+assertR52EStagingSafety(process.env);
 
 const projectId = process.env.FIREBASE_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
