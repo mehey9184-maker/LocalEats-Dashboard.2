@@ -44,7 +44,9 @@ The disposable PG17 runner exercises:
 
 ## R4.6 result and next exit gates
 
-The workflow `.github/workflows/localpay-r46-disposable-evidence-pg17.yml` is **PR-triggered only** and uses a fresh ephemeral Postgres service. Test success must be confirmed at the actual GitHub commit and job log; no unverified run is a pass.
+**Verified SUCCESS:** GitHub Actions run **42491589087**, job **128764939296**, on test-source commit `1008065b51aef6050e5205f62f720e921dc9d05b` completed PASS. The job log explicitly printed `R46_PRIVATE_SCHEMA_AND_UNTRUSTED_ROLE_DENIAL_PASS`, `R46_ATOMIC_PURCHASE_SNAPSHOT_AND_ROLLBACK_PASS`, `R46_MERCHANT_PAID_AND_COLLECTED_FLAGS_ALONE_BLOCKED_PASS`, `R46_TWO_CONNECTIONS_ONE_CUSTOMER_HANDOVER_PASS`, `R46_IDEMPOTENT_REVIEW_ONLY_NO_GRANT_OR_SHOP_DEBT_PASS`, `R46_REFUND_PAUSES_EARLIER_REVIEW_NO_SILENT_CLAWBACK_PASS`, `R46_PICKUP_TOKEN_ATTEMPT_CAP_AND_EXPIRY_PASS`, `R46_REFUND_VS_CANDIDATE_ORDER_ROW_LOCK_RACE_PASS`, and `R46_DISPOSABLE_PG17_FINANCIAL_EVIDENCE_TESTS_PASS`. This CI result uses **fabricated proof**, not live Firebase/bank/payment sources.
+
+The workflow `.github/workflows/localpay-r46-disposable-evidence-pg17.yml` is **PR-triggered only** and uses a fresh ephemeral Postgres service. Source-code changes after this recorded commit require fresh CI verification; a PASS in this lab is not approval to run any real SQL migration.
 
 **Not demonstrated:** real `verifyIdToken(token,true)` authentication or shop ownership at action time; a separate true customer-authenticated pickup code/QR journey; cryptographic server-side challenge issuance and trusted clock; real cash/card-machine receipt and payment dispute workflow; actual owner funds or banking; true multi-line existing checkout schema; integrated real Supabase SQL role ownership/RLS; operational bank transfer and physical merchant acknowledgment; legal/POPIA/Consumer Protection Act review; available balance, issuer, subscription settlement, future Gold/Platinum lots or customer UI.
 
