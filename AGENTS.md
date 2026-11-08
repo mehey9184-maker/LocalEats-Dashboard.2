@@ -65,3 +65,8 @@ The quote response adds can_submit for the verified customer and requested shop,
 ## R5.1 Customer identity cross-repository note (2026-11-08)
 
 Inspect Customer src/lib/supabase.ts BEFORE calling Customer Login a separate Supabase Auth provider: that module is actually a Firebase Auth compatibility wrapper. API authentication still must verify signed Firebase ID tokens with revoked/disabled status, then verify shop ownership/roles server-side. Never substitute email or browser UID claims. Current R5.1 is DRAFT-ONLY Customer token-change observer + emulator tests; no API auth changes, staging/Production deployment, database writes, orders, financial or rewards activation. Hosted staging isolation and browser verification are still open; see docs/R51_CUSTOMER_FIREBASE_AUTH_IDENTITY_HANDOVER_20261108.md.
+
+
+## R5.2 API hosted staging STOP gate — 2026-11-08
+
+Read-only Vercel metadata shows current localeats-api Preview and Production share several credential variables (Firebase Admin and Supabase); no exact branch deployment exists for API draft PR #124. The Customer Preview likewise shares Firebase configuration. Do not create/revoke real Firebase accounts, query user records, test hosted login, or change hosted env/DB/Production under R5.2 until a wholly isolated and independently verified staging project/database/API/branch configuration exists. Synthetic-only source gate is at localeats-api/tests/rewards/r52/stagingIsolationGate.mjs; a passing test against mock metadata is NOT cloud isolation evidence. See docs/R52_HOSTED_STAGING_ISOLATION_READINESS_20261108.md. All pickup/merchant/profile/LocalPay/rewards writes remain OFF, no merge.
