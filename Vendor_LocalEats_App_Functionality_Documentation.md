@@ -488,3 +488,7 @@ Review-only API branch: after verified Firebase authentication and active `admin
 
 ## Controlled pickup quote eligibility
 The quote response adds can_submit for the verified customer and requested shop, based on the existing pilot gate. Prices remain available while submission is disabled. Clients treat a missing or false result as quote-only. The create route independently rechecks all authorization and pricing.
+
+### Merchant pickup payment history
+
+Payments displays collection orders from the authenticated Orders inbox for the verified shop. It shows the order total, recorded payment method and server-confirmed payment status. Staff confirm money received in Orders. The payment history and its PDF have no settlement action. If the inbox refresh fails, previously verified rows are labeled as potentially outdated and PDF export is disabled until a successful refresh.

@@ -2399,13 +2399,7 @@ function App() {
               )}
               {activeTab === "payments" && (
                 currentShop ? (
-                  <PaymentHistory 
-                    shopId={currentShop.id} 
-                    currentShop={currentShop}
-                    setShops={setShops}
-                    orders={orders}
-                    setOrders={setOrders}
-                  />
+                  <PaymentHistory shop={currentShop} orders={orders} readState={orderReadStatus.state} />
                 ) : (
                   <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
                     <p className="text-on-surface-variant font-medium">Create a shop first to view payments.</p>
