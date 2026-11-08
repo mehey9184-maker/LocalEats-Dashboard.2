@@ -149,6 +149,8 @@ Track distinct real customers and merchants with consent-aware aggregate analyti
 
 **Investor evidence must be labelled accurately:** offer data from incentivised and non-incentivised customers side by side; a 30-day pilot is only an early signal, not proof of durable product-market fit. A few artificially subsidised redemptions must never be presented as organic recurring demand. Follow cohort metrics rather than claiming raw downloads prove retention (YC: https://www.ycombinator.com/library/8H-analytics-for-startups).
 
+**Working pilot scorecard / successor handover:** see [docs/REWARDS_R500_PILOT_AND_INVESTOR_EVIDENCE_20261108.md](docs/REWARDS_R500_PILOT_AND_INVESTOR_EVIDENCE_20261108.md) for suggested 12-person funding/reserve, mature cohort definitions, cost-per-paid-repeater calculations, truthful investor presentation fields and no-live-activity acceptance gates. That plan is NOT an executed marketing experiment.
+
 ### Unit-economics reality
 
 Under the earlier **unconfirmed** full-ladder threshold 4 + 20 + 40 = 64 purchased kota units, 64 × R25 hypothetical selling price = **R1,600 of merchant food sales**. The full R255 incentive commitment is 15.9375% of that illustrative merchant sales figure, but it is NOT 15.9375% of LocalEats revenue. LocalEats does not receive merchant gross sales automatically. A R500 promotion must be funded as a marketing expense. At least until separate billing authorisation, predicted Plus/Pro/Premium subscriptions cannot be treated as earned revenue.
