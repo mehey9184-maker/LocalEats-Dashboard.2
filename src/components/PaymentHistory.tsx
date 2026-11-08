@@ -1,234 +1,95 @@
-import React, { useState, useEffect } from "react";
-import { Download, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Shop, Order, Payment } from "../types";
-import { supabase } from "../lib/supabase";
+import type { Order, Shop } from "../types";
+import { isPickupOrder, pickupPaymentLabel } from "../services/merchantPickupPolicy";
 
 interface PaymentHistoryProps {
-  shopId: number;
-  currentShop?: Shop;
-  setShops?: React.Dispatch<React.SetStateAction<Shop[]>>;
-  orders?: Order[];
-  setOrders?: React.Dispatch<React.SetStateAction<Order[]>>;
+  shop: Shop;
+  orders: Order[];
+  readState: "unverified" | "fresh" | "failed";
 }
 
-export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
-  shopId,
-  currentShop,
-  orders = [],
-}) => {
-  const [paymentsSubTab, setPaymentsSubTab] = useState<"billing" | "cod">("billing");
-  const [settledCodOrders, setSettledCodOrders] = useState<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem("localeats_settled_cod_orders") || "[]");
-    } catch {
-      return [];
-    }
-  });
+const formatAmount = (amount: number) =>
+  Number.isFinite(amount) && amount >= 0 ? `R ${amount.toFixed(2)}` : "Amount unavailable";
 
-  const toggleCodSettlement = (orderId: string) => {
-    setSettledCodOrders((prev) => {
-      const isSettled = prev.includes(orderId);
-      const next = isSettled ? prev.filter((id) => id !== orderId) : [...prev, orderId];
-      localStorage.setItem("localeats_settled_cod_orders", JSON.stringify(next));
+const formatMethod = (method?: string) =>
+  method === "cash" ? "Cash" : method === "card_machine" ? "Card at shop" : "Method unavailable";
 
-      toast.success(isSettled ? "Status updated to Pending Handover" : "Marked Cash Handover Settled!", {
-        description: `Order #${orderId.slice(0, 8)} updated.`,
-        icon: isSettled ? <ShieldAlert size={16} className="text-amber-500" /> : <ShieldCheck size={16} className="text-emerald-500" />,
-      });
-      return next;
-    });
-  };
+export function PaymentHistory({ shop, orders, readState }: PaymentHistoryProps) {
+  const rows = orders
+    .filter((order) => readState !== "unverified" && isPickupOrder(order) && String(order.shop_id) === String(shop.id))
+    .map((order) => ({
+      id: order.id,
+      amount: formatAmount(order.total_price),
+      method: formatMethod(order.payment_method),
+      status: pickupPaymentLabel(order),
+    }));
 
-  const generateFinancialAndCodReport = () => {
+  const exportReport = () => {
+    if (readState !== "fresh" || rows.length === 0) return;
     try {
       const doc = new jsPDF();
-      const shopName = currentShop?.name || "LocalEats Vendor";
-      const dateStr = new Date().toLocaleDateString("en-ZA", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-
-      doc.setFillColor(24, 24, 27);
-      doc.rect(0, 0, 210, 28, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(15);
-      doc.setTextColor(255, 255, 255);
-      doc.text("LocalEats - Financial & COD Reconciliation Report", 14, 16);
-
-      doc.setFontSize(8.5);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Store: ${shopName} | Generated: ${dateStr}`, 14, 23);
-
-      const codOrders = orders.filter(
-        (o) => o.payment_method?.toLowerCase().includes("cash") || o.payment_method?.toLowerCase().includes("cod")
-      );
-
-      const codRows = codOrders.map((o) => [
-        o.id.slice(0, 8).toUpperCase(),
-        o.customer_name || "Guest Customer",
-        o.rider_name || "Assigned Courier",
-        `R ${(Number(o.total_price) || 0).toFixed(2)}`,
-        settledCodOrders.includes(o.id) ? "SETTLED & CLEARED" : "PENDING HANDOVER",
-        new Date(o.created_at).toLocaleDateString("en-ZA"),
-      ]);
-
+      doc.text("LocalEats pickup payments", 14, 16);
+      doc.setFontSize(10);
+      doc.text(shop.name, 14, 24);
       autoTable(doc, {
-        startY: 35,
-        head: [["Order ID", "Customer Name", "Courier Handshake", "Amount", "Handshake Status", "Date"]],
-        body: codRows.length > 0 ? codRows : [["No COD orders logged", "-", "-", "R 0.00", "-", "-"]],
-        headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontStyle: "bold" },
-        styles: { fontSize: 8 },
-        theme: "striped",
+        startY: 30,
+        head: [["Order", "Order total", "Method", "Payment status"]],
+        body: rows.map(({ id, amount, method, status }) => [id, amount, method, status]),
       });
-
-      const filename = `Financial_COD_Report_${shopName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
-      doc.save(filename);
-      toast.success("Financial & COD Report downloaded!", {
-        description: `Saved as ${filename}`,
-        icon: <Download className="text-emerald-500" />,
-      });
-    } catch (err) {
-      console.error("PDF export error:", err);
-      toast.error("Failed to generate PDF financial report.");
+      doc.save("localeats-pickup-payments.pdf");
+    } catch {
+      toast.error("Could not download the pickup payments report.");
     }
   };
 
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchPayments = async () => {
-      setLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from("payments")
-          .select("*")
-          .eq("shop_id", shopId)
-          .order("payment_date", { ascending: false })
-          .limit(100);
-
-        if (error) throw error;
-        setPayments((data as unknown as Payment[]) || []);
-      } catch (error) {
-        console.error("Error fetching payments:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPayments();
-  }, [shopId]);
-
   return (
-    <div className="w-full space-y-6 bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs">
-      <div className="flex items-center justify-between pb-4 border-b border-outline-variant/15">
+    <section className="mx-auto max-w-5xl space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-extrabold text-on-surface">Payment & COD Financial Ledger</h2>
-          <p className="text-xs text-on-surface-variant mt-0.5">
-            Track subscription payments, voucher redemptions, and cash-on-delivery handshakes.
+          <h1 className="font-headline text-2xl font-black text-on-surface">Pickup payments</h1>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Payment status for pickups in your Orders inbox. Confirm money received from the order in Orders.
           </p>
         </div>
         <button
-          onClick={generateFinancialAndCodReport}
-          className="px-4 py-2 rounded-2xl bg-emerald-600 text-white text-xs font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all cursor-pointer shadow-xs"
+          type="button"
+          onClick={exportReport}
+          disabled={readState !== "fresh" || rows.length === 0}
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
         >
-          <Download size={15} />
-          <span>Export Financial PDF</span>
+          <Download size={16} aria-hidden="true" />
+          Download report
         </button>
       </div>
 
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setPaymentsSubTab("billing")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            paymentsSubTab === "billing" ? "bg-primary text-on-primary" : "bg-surface-container text-on-surface-variant"
-          }`}
-        >
-          Subscription & Billing History
-        </button>
-        <button
-          onClick={() => setPaymentsSubTab("cod")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            paymentsSubTab === "cod" ? "bg-primary text-on-primary" : "bg-surface-container text-on-surface-variant"
-          }`}
-        >
-          COD Cash Reconciliation ({orders.filter((o) => o.payment_method?.toLowerCase().includes("cash")).length})
-        </button>
-      </div>
-
-      {paymentsSubTab === "billing" ? (
-        <div className="overflow-x-auto">
-          {loading ? (
-            <p className="text-xs text-on-surface-variant py-8 text-center">Loading payments...</p>
-          ) : payments.length === 0 ? (
-            <p className="text-xs text-on-surface-variant py-8 text-center">No payment transactions recorded.</p>
-          ) : (
-            <table className="w-full text-left text-xs text-on-surface">
-              <thead>
-                <tr className="border-b border-outline-variant/15 text-on-surface-variant font-bold">
-                  <th className="py-2.5 px-3">Transaction ID</th>
-                  <th className="py-2.5 px-3">Method</th>
-                  <th className="py-2.5 px-3">Amount</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payments.map((p) => (
-                  <tr key={p.id} className="border-b border-outline-variant/10 hover:bg-surface-container/30">
-                    <td className="py-2.5 px-3 font-mono font-bold text-primary">{p.transaction_id}</td>
-                    <td className="py-2.5 px-3">{p.payment_method}</td>
-                    <td className="py-2.5 px-3 font-bold">R {Number(p.amount).toFixed(2)}</td>
-                    <td className="py-2.5 px-3">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-500/10 text-emerald-600">
-                        {p.status}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-on-surface-variant">
-                      {new Date(p.payment_date).toLocaleDateString("en-ZA")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {orders
-            .filter((o) => o.payment_method?.toLowerCase().includes("cash") || o.payment_method?.toLowerCase().includes("cod"))
-            .map((order) => {
-              const isSettled = settledCodOrders.includes(order.id);
-              return (
-                <div
-                  key={order.id}
-                  className="flex items-center justify-between p-4 rounded-2xl bg-surface-container-low border border-outline-variant/15"
-                >
-                  <div>
-                    <span className="text-xs font-mono font-bold text-primary">#{order.id.slice(0, 8)}</span>
-                    <h4 className="font-bold text-sm text-on-surface">{order.customer_name || "Guest Customer"}</h4>
-                    <p className="text-xs text-on-surface-variant">
-                      Total Cash to Collect: <strong className="text-on-surface">R {Number(order.total_price || 0).toFixed(2)}</strong>
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => toggleCodSettlement(order.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      isSettled ? "bg-emerald-600 text-white" : "bg-amber-500/20 text-amber-700 dark:text-amber-300"
-                    }`}
-                  >
-                    {isSettled ? "Settled & Cleared ✓" : "Mark Settled"}
-                  </button>
-                </div>
-              );
-            })}
-        </div>
+      {readState !== "fresh" && (
+        <p role="status" className="rounded-xl bg-surface-container-high p-4 text-sm text-on-surface">
+          {readState === "failed"
+            ? "Orders could not be refreshed. Displayed payment statuses may be out of date."
+            : "Waiting for verified order history."}
+        </p>
       )}
-    </div>
-  );
-};
 
-export default PaymentHistory;
+      {rows.length > 0 ? (
+        <ul className="divide-y divide-outline-variant/20 rounded-2xl border border-outline-variant/20 bg-surface-container-low">
+          {rows.map(({ id, amount, method, status }) => (
+            <li key={id} className="flex flex-wrap justify-between gap-3 p-4 text-sm">
+              <div className="min-w-0">
+                <p className="break-all font-bold text-on-surface">Order {id}</p>
+                <p className="text-on-surface-variant">{method} · {status}</p>
+              </div>
+              <p className="font-bold text-on-surface">{amount}</p>
+            </li>
+          ))}
+        </ul>
+      ) : readState === "fresh" && (
+        <p className="rounded-2xl bg-surface-container-low p-5 text-sm text-on-surface-variant">
+          No pickup orders in the verified inbox.
+        </p>
+      )}
+    </section>
+  );
+}
