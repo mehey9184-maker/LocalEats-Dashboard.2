@@ -23,7 +23,7 @@ export function createSyntheticPaymentReader({verifyFirebase,activeOwnedShops,le
     // The caller cannot send any shop id, role, user id, limit or financial status.
     if(!query || Object.keys(query).length) fail(400,"CLIENT_PAYMENT_SCOPE_FORBIDDEN");
     if(typeof authorization!=="string"||!authorization.startsWith("Bearer fb-")
-      ||authorization.length<13) fail(401,"FIREBASE_AUTH_REQUIRED");
+      ||authorization.slice("Bearer fb-".length).length===0) fail(401,"FIREBASE_AUTH_REQUIRED");
     let principal;
     try {
       principal=await verifyFirebase(authorization.slice("Bearer fb-".length),true);
