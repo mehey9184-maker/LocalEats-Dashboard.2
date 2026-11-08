@@ -1,0 +1,56 @@
+{
+  "document": "R3.6 read-only Supabase applied pickup migration statement archive",
+  "retrieved_at_utc_date": "2026-11-08",
+  "query": "SELECT version,name,statements[1] AS recorded_sql FROM supabase_migrations.schema_migrations WHERE version IN (...) ORDER BY version",
+  "statement_count_per_version": 1,
+  "remote_migration_metadata_complete": true,
+  "historical_source_recovered": true,
+  "original_local_source_files_restored": false,
+  "deployable_migration_chain_complete": false,
+  "effective_full_schema_parity_verified": false,
+  "app_public_launch_approved": false,
+  "hosted_sql_changes": false,
+  "archive_rules": "These files are .sql.txt, NOT Supabase migrations; never execute against connected Supabase. Recorded statements may contain historical review-draft comments and are evidence, not authorization.",
+  "versions": [
+    {
+      "version": "20261030111305",
+      "name": "pickup_launch_foundation",
+      "recorded_statement_count": 1,
+      "recorded_sql_md5": "6bdcc11d2ca85ab3c3994b62a343b2c6",
+      "recorded_sql_utf8_char_length": 35892,
+      "archived_path": "supabase/recovered_applied_readonly/20261030111305_pickup_launch_foundation.sql.txt",
+      "alternative_existing_review_source": "supabase/drafts/pickup_launch_foundation.sql",
+      "note": "Existing draft differs only in formatting/comments after lexical normalization; historical file retained verbatim"
+    },
+    {
+      "version": "20261031073608",
+      "name": "pickup_zero_fee",
+      "recorded_statement_count": 1,
+      "recorded_sql_md5": "e79cfe2114c86f4fc85894075dd64334",
+      "recorded_sql_utf8_char_length": 6033,
+      "archived_path": "supabase/recovered_applied_readonly/20261031073608_pickup_zero_fee.sql.txt",
+      "alternative_existing_review_source": "supabase/drafts/pickup_zero_fee.sql",
+      "note": "Historical preflight function-hash is DIFFERENT from post-apply corrected draft; do not rewrite original history"
+    },
+    {
+      "version": "20261031073645",
+      "name": "merchant_availability",
+      "recorded_statement_count": 1,
+      "recorded_sql_md5": "f77fcf4d7063ca0456f1fc6e5bde1c88",
+      "recorded_sql_utf8_char_length": 5705,
+      "archived_path": "supabase/recovered_applied_readonly/20261031073645_merchant_availability.sql.txt",
+      "alternative_existing_review_source": "supabase/drafts/merchant_availability.sql",
+      "note": "Existing draft differs only in formatting/comments after lexical normalization"
+    },
+    {
+      "version": "20261101160331",
+      "name": "pickup_payment_methods",
+      "recorded_statement_count": 1,
+      "recorded_sql_md5": "11ad1d3b55f86f5d9fe48ea50101daea",
+      "recorded_sql_utf8_char_length": 4962,
+      "archived_path": "supabase/recovered_applied_readonly/20261101160331_pickup_payment_methods.sql.txt",
+      "alternative_existing_review_source": "localeats-api/tests/pickup/r35/effective-payment-methods.SYNTHETIC_ONLY.sql",
+      "note": "Previously missing: migration's recorded statements recovered; R35 effective-only reconstruction is NOT original and must not replace history"
+    }
+  ]
+}

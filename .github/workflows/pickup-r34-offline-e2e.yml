@@ -1,0 +1,42 @@
+name: Pickup R3.4 original SQL disposable PG17 end-to-end gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/tests/pickup/r34/**'
+      - '.github/workflows/pickup-r34-offline-e2e.yml'
+      - 'supabase/drafts/pickup_launch_foundation.sql'
+      - 'supabase/drafts/pickup_zero_fee.sql'
+      - 'supabase/drafts/merchant_availability.sql'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pickup-offline-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout test-only repository SQL
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify safe disposable-only input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f localeats-api/tests/pickup/r34/baseline.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/pickup/r34/fixtures.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/pickup/r34/checkout-e2e.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/pickup/r34/run-local-pickup-r34.sh
+          test -f supabase/drafts/pickup_launch_foundation.sql
+          test -f supabase/drafts/pickup_zero_fee.sql
+          test -f supabase/drafts/merchant_availability.sql
+          ! grep -En 'supabase\.co|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY|apply_migration|db push|db reset --remote|--remote' \
+            localeats-api/tests/pickup/r34/*.sql \
+            localeats-api/tests/pickup/r34/*.sh
+      - name: Execute actual checked-in pickup RPCs on disposable PostgreSQL 17
+        shell: bash
+        run: bash localeats-api/tests/pickup/r34/run-local-pickup-r34.sh

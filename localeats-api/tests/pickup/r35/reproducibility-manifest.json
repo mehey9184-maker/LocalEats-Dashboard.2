@@ -1,0 +1,69 @@
+{
+  "source": "Read-only Supabase migration history, original statements[1] recovered on 2026-11-08; no remote application data copied",
+  "production_project_id_redacted": true,
+  "complete": false,
+  "compatibility": "All four applied pickup SQL statements recovered verbatim as non-runnable archive .sql.txt; full deployable migration chain and 1:1 effective schema parity NOT verified",
+  "applied": [
+    {
+      "version": "20260921085319",
+      "name": "align_order_shop_ids",
+      "repo_source": "supabase/migrations/20260921085319_align_order_shop_ids.sql",
+      "state": "versioned-migration-present"
+    },
+    {
+      "version": "20260926193602",
+      "name": "rider_access_prerequisite",
+      "repo_source": "supabase/migrations/20260926193602_rider_access_prerequisite.sql",
+      "state": "versioned-migration-present"
+    },
+    {
+      "version": "20260926194744",
+      "name": "rider_onboarding_pairing_authority",
+      "repo_source": "supabase/migrations/20260926194744_rider_onboarding_pairing_authority.sql",
+      "state": "versioned-migration-present"
+    },
+    {
+      "version": "20260926202836",
+      "name": "rider_pool_verification_authority",
+      "repo_source": "supabase/migrations/20260926202836_rider_pool_verification_authority.sql",
+      "state": "versioned-migration-present"
+    },
+    {
+      "version": "20261030111305",
+      "name": "pickup_launch_foundation",
+      "repo_source": "supabase/recovered_applied_readonly/20261030111305_pickup_launch_foundation.sql.txt",
+      "state": "recorded-statement-archived-not-versioned",
+      "review_draft": "supabase/drafts/pickup_launch_foundation.sql"
+    },
+    {
+      "version": "20261031073608",
+      "name": "pickup_zero_fee",
+      "repo_source": "supabase/recovered_applied_readonly/20261031073608_pickup_zero_fee.sql.txt",
+      "state": "recorded-statement-archived-not-versioned",
+      "review_draft": "supabase/drafts/pickup_zero_fee.sql"
+    },
+    {
+      "version": "20261031073645",
+      "name": "merchant_availability",
+      "repo_source": "supabase/recovered_applied_readonly/20261031073645_merchant_availability.sql.txt",
+      "state": "recorded-statement-archived-not-versioned",
+      "review_draft": "supabase/drafts/merchant_availability.sql"
+    },
+    {
+      "version": "20261101160331",
+      "name": "pickup_payment_methods",
+      "repo_source": "supabase/recovered_applied_readonly/20261101160331_pickup_payment_methods.sql.txt",
+      "state": "recorded-statement-archived-not-versioned",
+      "review_draft": "localeats-api/tests/pickup/r35/effective-payment-methods.SYNTHETIC_ONLY.sql"
+    }
+  ],
+  "manually_pending": [
+    "Convert recovered SQL statements into a reviewed, reversible, owner-approved LOCAL migration restoration plan; do not assume remote source can be replayed automatically",
+    "Full effective Production table/constraint/index/trigger/RLS/policy/grant parity and restore test",
+    "Real Customer and Merchant Preview visual acceptance with real identity but no live orders",
+    "End-to-end reliable FCM push delivery and reconnect tests",
+    "Resolution of overly broad public.payments authenticated ALL policy and public definer function review",
+    "Owner approval before real online ordering or future Rewards activation"
+  ],
+  "recovered_recorded_applied_statements": true
+}

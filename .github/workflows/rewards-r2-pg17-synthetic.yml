@@ -1,0 +1,45 @@
+name: Rewards R2-R3.3 isolated PG17 staging contract and restore gate
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/tests/rewards/pg17/**'
+      - '.github/workflows/rewards-r2-pg17-synthetic.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rewards-pg17-isolated:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify no hosted DB credentials or Supabase connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f localeats-api/tests/rewards/pg17/schema.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/recovery-r23.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/recovery-r23-assertions.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/purchase-r25.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/purchase-r25-assertions.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/private-r28.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/private-r28-assertions.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/compat-r29.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/compat-r29-assertions.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/executor-r30.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/executor-r30-assertions.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/outbox-r31.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/outbox-r31-assertions.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/worker-r32.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/worker-r32-assertions.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/staging-r33.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/staging-r33-assertions.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/rewards/pg17/run-synthetic-pg17.sh
+          ! grep -En 'supabase\.co|DATABASE_URL|service_role|PRODUCTION_DATABASE|apply_migration|public\.pickup_create_order' \
+            localeats-api/tests/rewards/pg17/*.sql
+      - name: Run deterministic and two-session PostgreSQL 17 contract tests
+        shell: bash
+        run: bash localeats-api/tests/rewards/pg17/run-synthetic-pg17.sh

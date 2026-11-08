@@ -1,0 +1,92 @@
+{
+  "phase": "R3.7",
+  "date": "2026-11-08",
+  "source": "GitHub main SHA + Vercel deployment metadata and authenticated read-only HTML GET",
+  "ready_for_public_launch": false,
+  "public_launch_progress_estimate_percent": 60,
+  "progress_is_certification": false,
+  "no_real_orders_submitted": true,
+  "no_prod_database_mutations": true,
+  "deployments": {
+    "customer": {
+      "repository": "mehey9184-maker/LocalEats-app",
+      "review_branch": "review/r37-exact-main-readonly-preview-20261108",
+      "main_sha": "01069d9e6db41325c4ad9a086a0148efa32edce7",
+      "deployment_id": "dpl_J94kpwCPbYp67q7J8s287g8ksjfi",
+      "url": "https://project-x7cvt-7hg9ian4x-mehey9184-makers-projects.vercel.app/",
+      "deployment_state": "READY",
+      "target": null,
+      "http_get_status": 200,
+      "authenticated_browser_walkthrough": false,
+      "visual_screenshots_inspected": false,
+      "real_push_verified": false
+    },
+    "merchant": {
+      "repository": "mehey9184-maker/LocalEats-Dashboard.2",
+      "review_branch": "review/r37-exact-main-readonly-preview-20261108",
+      "main_sha": "5aedc5424d7070ee7156a080cc69e6a550acc1a4",
+      "deployment_id": "dpl_6WuaU4yc1dr7i18Pnk34jC1zxedW",
+      "url": "https://local-eats-dashboard-2-6m8o-82gac7vcv-mehey9184-makers-projects.vercel.app/",
+      "deployment_state": "READY",
+      "target": null,
+      "http_get_status": 200,
+      "authenticated_browser_walkthrough": false,
+      "visual_screenshots_inspected": false,
+      "real_push_verified": false
+    }
+  },
+  "verified_observations": [
+    "Two NEW non-production, exact-current-main-sha preview deployments READY; Production aliases not modified",
+    "Both root HTML pages returned HTTP 200 through the Vercel authenticated deployment connection",
+    "Customer index.html <title> says Delivery even though the launch is pickup only; title and keywords need a reviewed source copy correction",
+    "Merchant HTML title says LocalEats Merchant, includes SPA assets and PWA manifest",
+    "Client/merchant content beyond initial HTML and logged-in flows has NOT been visually inspected"
+  ],
+  "approval_gates": [
+    {
+      "id": "login_guest_profile",
+      "status": "pending_owner_browser"
+    },
+    {
+      "id": "customer_original_shop_card_location",
+      "status": "pending_owner_browser"
+    },
+    {
+      "id": "closed_shop_menu_browse",
+      "status": "pending_owner_browser"
+    },
+    {
+      "id": "menu_cart_no_write_simulation",
+      "status": "pending_owner_browser"
+    },
+    {
+      "id": "merchant_settings_storefront",
+      "status": "pending_owner_browser"
+    },
+    {
+      "id": "merchant_pickup_orders_visibility",
+      "status": "pending_owner_browser"
+    },
+    {
+      "id": "real_fcm_push_reconnect",
+      "status": "pending_separate_approved_staging"
+    },
+    {
+      "id": "safety_rewards_rider_delivery_payments_off",
+      "status": "pending_owner_browser"
+    }
+  ],
+  "blocking_security_issue": {
+    "table": "public.payments",
+    "authenticated_rls_policy": "Payments access",
+    "policy_cmd": "ALL",
+    "using_expression": "true",
+    "with_check_expression": "true",
+    "authenticated_has_select": true,
+    "authenticated_has_insert": true,
+    "authenticated_has_update": true,
+    "authenticated_has_delete": true,
+    "mitigation_status": "NOT_APPLIED_TO_PRODUCTION",
+    "source": "read-only Supabase pg_catalog.pg_policies / privilege checks"
+  }
+}

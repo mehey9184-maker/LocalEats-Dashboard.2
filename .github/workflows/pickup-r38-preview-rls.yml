@@ -1,0 +1,44 @@
+name: Pickup R3.8 merchant Preview recovery and payments RLS rehearsal gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/tests/pickup/r38/**'
+      - '.github/workflows/pickup-r38-preview-rls.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  merchant-preview-and-payments-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      REWARDS_ENABLED: 'false'
+    steps:
+      - name: Checkout reviewed source without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify Merchant ownership and branch-only repair evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test localeats-api/tests/pickup/r38/preview-security-evidence.test.mjs
+      - name: Reject any live SQL or deployment from synthetic inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f localeats-api/tests/pickup/r38/payments-source.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/pickup/r38/payments-restricted.SYNTHETIC_ONLY.sql
+          test -f localeats-api/tests/pickup/r38/run-payments-rls-rehearsal.sh
+          ! grep -Ein 'supabase\.co|SUPABASE_SERVICE_ROLE_KEY|DATABASE_URL|db push|apply_migration|--remote|--publish| -p [0-9]+:' \
+            localeats-api/tests/pickup/r38/*.sql \
+            localeats-api/tests/pickup/r38/*.sh
+      - name: Run actual-shape RLS and schema-only restore in disposable PG17
+        shell: bash
+        run: bash localeats-api/tests/pickup/r38/run-payments-rls-rehearsal.sh

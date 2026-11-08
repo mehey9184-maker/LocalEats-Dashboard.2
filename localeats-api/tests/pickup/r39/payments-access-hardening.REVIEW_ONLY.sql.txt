@@ -1,0 +1,71 @@
+-- LocalEats R3.9 — REVIEW_ONLY.sql.txt — NEVER EXECUTE ON CONNECTED SUPABASE.
+-- Source is a TEMPLATE with unexpanded placeholders; not a migration.
+-- A separate, owner-approved, staged process must generate a versioned migration.
+-- For *disposable PG17 CI only*, placeholders are substituted into r38_lab.
+--
+-- Preconditions: exact broad legacy policy and service SELECT grant.
+-- This candidate removes Data API access; it does NOT supply a new
+-- Firebase-authenticated, owner-scoped merchant billing endpoint.
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '20s';
+DO $preflight$
+BEGIN
+  IF to_regclass('__SCHEMA__.payments') IS NULL THEN
+    RAISE EXCEPTION 'R39_MISSING_PAYMENTS_TABLE';
+  END IF;
+  IF (SELECT relrowsecurity FROM pg_catalog.pg_class
+      WHERE oid='__SCHEMA__.payments'::regclass) IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'R39_RLS_NOT_ENABLED';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_policies
+    WHERE schemaname='__SCHEMA__' AND tablename='payments'
+      AND policyname='Payments access' AND cmd='ALL'
+      AND roles=ARRAY['__CLIENT_ROLE__']::name[]
+      AND qual='true' AND with_check='true'
+  ) THEN
+    RAISE EXCEPTION 'R39_LEGACY_PAYMENT_POLICY_NOT_AS_REVIEWED';
+  END IF;
+  IF NOT has_table_privilege('__BACKEND_ROLE__','__SCHEMA__.payments','SELECT') THEN
+    RAISE EXCEPTION 'R39_BACKEND_READER_NOT_READY';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_policies
+    WHERE schemaname='__SCHEMA__' AND tablename='payments'
+      AND policyname<>'Payments access'
+      AND (roles && ARRAY['public','__ANON_ROLE__','__CLIENT_ROLE__']::name[])
+  ) THEN
+    RAISE EXCEPTION 'R39_ADDITIONAL_PUBLIC_POLICY_REQUIRES_REVIEW';
+  END IF;
+END;
+$preflight$;
+
+-- Remove all inherited PUBLIC/anon/authenticated table grants, then
+-- the unrestricted authenticated policy. No payment rows are modified.
+REVOKE ALL ON TABLE __SCHEMA__.payments
+  FROM PUBLIC, __ANON_ROLE__, __CLIENT_ROLE__;
+DROP POLICY "Payments access" ON __SCHEMA__.payments;
+
+DO $verification$
+DECLARE role_name text;
+BEGIN
+  FOREACH role_name IN ARRAY ARRAY['__ANON_ROLE__','__CLIENT_ROLE__']::text[] LOOP
+    IF has_table_privilege(role_name,'__SCHEMA__.payments','SELECT')
+    OR has_table_privilege(role_name,'__SCHEMA__.payments','INSERT')
+    OR has_table_privilege(role_name,'__SCHEMA__.payments','UPDATE')
+    OR has_table_privilege(role_name,'__SCHEMA__.payments','DELETE') THEN
+      RAISE EXCEPTION 'R39_CLIENT_GRANTS_STILL_PRESENT_%',role_name;
+    END IF;
+  END LOOP;
+  IF NOT has_table_privilege('__BACKEND_ROLE__','__SCHEMA__.payments','SELECT') THEN
+    RAISE EXCEPTION 'R39_BACKEND_READER_LOST';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_policies
+    WHERE schemaname='__SCHEMA__' AND tablename='payments'
+      AND policyname='Payments access'
+  ) THEN RAISE EXCEPTION 'R39_OLD_BROAD_POLICY_STILL_PRESENT'; END IF;
+END;
+$verification$;
+COMMIT;
