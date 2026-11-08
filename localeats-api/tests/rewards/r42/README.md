@@ -8,6 +8,10 @@
 
 These successful tests do NOT claim any live financial operation or verified external cash transfer. Subsequent documentation-only commits do not alter the successful test code; workflow outcomes for new source commits must be checked separately.
 
+### R5.0 maintenance: deterministic concurrency assertion (8 November 2026)
+
+While checking R5.0's draft cross-app CI, the R4.2 workflow run **42498415198** failed despite **correctly enforcing the 12-customer cap**. The shell runner had an invalid test assumption: following 13 concurrent admissions for 12 funded places, it demanded that a specific racer (`c1`) had won, although any one of the 13 customers may legitimately lose. **Only the test assertion was corrected** in `run-isolated-r42.sh` to select a customer actually committed to the scratch `r42_lab.customers` table and verify replay idempotency. The R4.2 SQL funding lock/cap/ledger and real app/API code are **unchanged**. Corrected GitHub Actions workflow **42498583676**, job **128786177966**, **SUCCESS**, including all concurrency, forced rollback, no double-spend, one-time gift, mock transfer and full reconciliation markers. This is an isolated database test stabilization, not permission to activate money, merge or deploy.
+
 ## Scope and safety
 
 - All SQL resides at `localeats-api/tests/rewards/r42/ledger.SYNTHETIC_ONLY.sql` and creates only a brand-new `r42_lab` schema in an ephemeral, localhost-only `localpay_r42_disposable` database.
