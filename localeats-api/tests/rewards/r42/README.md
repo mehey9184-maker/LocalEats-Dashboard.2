@@ -2,6 +2,12 @@
 
 **Owner authorised R4.2 ISOLATED TESTS ONLY on 8 Nov 2026. No Production, staging Supabase, online payments, real merchant bank transactions, API reward routes, or migrations.** This phase follows the R4.1 23/23 synthetic test suite (see `localeats-api/tests/r41LocalPayFinance.test.mjs`).
 
+## Verified test result (8 November 2026)
+
+**GitHub Actions SUCCESS:** run `42446210782`, job `128625569250` on the test-code commit `55876dcf8dcd4fc767b63483d26f6c449b5bdb6b`. The log confirms the following markers: `R42_POSTGRES_ISOLATION_PASS`, `R42_POSTGRES_CONCURRENT_12_CUSTOMER_CAP_PASS`, `R42_POSTGRES_FORCED_BACKEND_TERMINATION_ROLLBACK_PASS`, `R42_POSTGRES_ONE_TIME_BRONZE_AND_REPLAY_PASS`, `R42_POSTGRES_CONCURRENT_HOLDS_AND_CANCEL_PASS`, `R42_POSTGRES_ONE_R24_FOOD_GIFT_NO_R1_REUSE_PASS`, `R42_POSTGRES_BANK_EVIDENCE_AND_MERCHANT_ACK_PASS`, and `R42_DISPOSABLE_PG17_FINANCIAL_INTEGRITY_PASS`. This is actual scratch-PG17 database processing, not merely parsing SQL. An earlier CI run found the Docker-bridge network address differs from host loopback; the health check was corrected while retaining the **exact client PGHOST=127.0.0.1 safety guard**.
+
+These successful tests do NOT claim any live financial operation or verified external cash transfer. Subsequent documentation-only commits do not alter the successful test code; workflow outcomes for new source commits must be checked separately.
+
 ## Scope and safety
 
 - All SQL resides at `localeats-api/tests/rewards/r42/ledger.SYNTHETIC_ONLY.sql` and creates only a brand-new `r42_lab` schema in an ephemeral, localhost-only `localpay_r42_disposable` database.
