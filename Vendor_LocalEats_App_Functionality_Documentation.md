@@ -488,3 +488,10 @@ Review-only API branch: after verified Firebase authentication and active `admin
 
 ## Controlled pickup quote eligibility
 The quote response adds can_submit for the verified customer and requested shop, based on the existing pilot gate. Prices remain available while submission is disabled. Clients treat a missing or false result as quote-only. The create route independently rechecks all authorization and pricing.
+
+
+## R4.2 — integrated pickup/payment authorization rehearsal (review-only, 2026-11-08)
+
+The owner accepted all five Merchant Settings P1 Preview items, but R4.1 PR #120 and the Settings correction PR #119 remain separate unmerged drafts. R4.2 tests, in **one Docker-only PostgreSQL 17 instance**, the four unmodified recovered applied pickup migration statements from R3.6 on the R34 synthetic legacy prerequisites, the existing checkout and pickup-method flow, fake legacy public.payments and the unchanged R3.9 guarded payment-access template. The same disposable database checks client denial after the proposed grants/policy removal, backend read preservation for fake numeric shop IDs, a new fake zero-fee cash pickup after hardening, and schema-only restore of the protected SQL definitions. All names/payments/tokens are synthetic; it uses no Production or hosted database credentials, writes or real FCM sends. The CI and review evidence are in docs/R42_INTEGRATED_PICKUP_SECURITY_REHEARSAL.md and localeats-api/tests/pickup/r42/.
+
+**Scope warning:** This does not reproduce the complete effective Production schema, authenticate a merchant through Firebase, certify actual shop ID compatibility, provide a deployed payment-history endpoint, or constitute a hosted pickup staging environment. The profile-only staging project is separate. Payment and rider security policies in the live primary database are NOT changed. A separate full isolated staging, caller compatibility review, real device tests, production backup/restore verification and owner sign-off are required before any launch or database security migration. Pickup-only, pay-at-shop and no rider/delivery/Rewards/billing activation remain unchanged.
