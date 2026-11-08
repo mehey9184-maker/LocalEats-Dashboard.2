@@ -8,7 +8,6 @@ on:
       - 'localeats-api/tests/rewards/r42/**'
       - '.github/workflows/localpay-r42-disposable-postgres.yml'
       - 'localeats-api/package.json'
-  workflow_dispatch:
 
 permissions:
   contents: read
