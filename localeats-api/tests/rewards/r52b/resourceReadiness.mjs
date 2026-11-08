@@ -26,6 +26,8 @@ export function assessR52BResources(observed){
   if(missing.length)reasons.push("STAGING_PICKUP_SCHEMA_INCOMPLETE");
   if(f.independentStagingProjectVerified!==true)
     reasons.push("FIREBASE_STAGING_PROJECT_NOT_VERIFIED");
+  if(f.hostedFirebaseProjectVerified!==true)
+    reasons.push("HOSTED_FIREBASE_PROJECT_NOT_VERIFIED");
   if(f.clientApiProjectMatchVerified!==true)
     reasons.push("FIREBASE_CLIENT_API_PROJECT_MATCH_UNVERIFIED");
   if(v.customerDraftDeploymentVerified!==true ||
