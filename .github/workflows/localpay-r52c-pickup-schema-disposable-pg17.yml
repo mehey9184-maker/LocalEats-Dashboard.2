@@ -64,7 +64,8 @@ jobs:
       - name: Create disposable database ONLY on local PostgreSQL service
         run: |
           set -euo pipefail
-          test "$(PGDATABASE=postgres psql -X -At -c 'select inet_server_addr() is null or inet_server_addr()=inet_client_addr()')" = t
+          test "$PGHOST" = 127.0.0.1
+          test "$PGPORT" = 5432
           PGDATABASE=postgres createdb r52c_synthetic_only
           test "$(psql -X -At -c 'select current_database()')" = r52c_synthetic_only
       - name: Run R5.2C schema guard, RLS denial and no-writes rehearsal
