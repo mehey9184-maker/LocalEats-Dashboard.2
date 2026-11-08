@@ -109,12 +109,12 @@ test('R4.7 eight overlapping inspections never mint rewards or create merchant p
  assert.equal(h.calls.length,16);
  assert.ok(h.calls.every(c=>c.checkRevoked===true));
 });
-test('R4.7 known gap: current pickup middleware omits Firebase revocation=true',()=>{
+test('R4.7 historical gap now patched by R4.8 draft: current middleware requires checkRevoked=true',()=>{
  const source=readFileSync(new URL('../../../src/middleware/authenticateFirebase.ts',import.meta.url),'utf8');
- // This deliberate detection is a RELEASE BLOCKER, not a simulated pass
- // for the live middleware. The strict financeActor gate is NOT mounted.
- assert.match(source,/authAdmin\.verifyIdToken\(token\s*\)/);
- assert.doesNotMatch(source,/authAdmin\.verifyIdToken\(token\s*,\s*true\s*\)/);
+ // R4.8 fixes the source contract ONLY on this draft branch.
+ // A green source check alone is not a live Firebase emulator pass.
+ assert.match(source,/authAdmin\.verifyIdToken\(token\s*,\s*true\s*\)/);
+ assert.doesNotMatch(source,/authAdmin\.verifyIdToken\(token\s*\)/);
 });
 test('R4.7 auth rejects missing, malformed, unknown, revoked or unavailable Firebase token BEFORE DB read',async()=>{
  for(const change of [
