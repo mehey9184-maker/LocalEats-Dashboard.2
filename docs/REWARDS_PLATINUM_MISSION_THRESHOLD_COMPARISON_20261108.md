@@ -1,13 +1,13 @@
 # LocalEats Platinum Mission — compare +30 vs +40 paid kotas after Gold
 
-**8 November 2026 | BUSINESS EVALUATION ONLY | Platinum target NOT APPROVED. No live feature, customer credits, billing, Production data writes, or merge.**
+**8 November 2026 | FOUNDER APPROVED FUTURE PLATINUM PURCHASE MILESTONE +30 | NO LIVE BENEFIT, CUSTOMER CREDITS, BILLING, PRODUCTION DATA WRITES OR MERGE.**
 Canonical owner-confirmed rules: [LocalEats Master Plan](../LOCAL_EATS_MASTER_PLAN.md), draft PR #124. This analysis supports a specific next owner decision rather than silently changing a reward.
 
 ## Decisions we must preserve
 
 1. **Bronze → Silver:** one free qualifying kota after **four** genuinely paid-and-collected eligible purchased kota units, even if all four are purchased in **one** valid order on the same day. Exactly one initial gift per customer; no forced different-day/visit requirement.
 2. **Silver → Gold:** founder explicitly APPROVED **20 ADDITIONAL** qualifying paid-and-collected purchased kotas after Silver (24 lifetime qualifying purchased kotas). No timer, no forced visits, permanent earned ranks. Gold's planned **R80 food credit is NOT yet live or promised** to customers under the Bronze-only R500 pilot.
-3. **Gold → Platinum:** **purchase threshold OPEN**; founder requested reviewing 30 versus 40 MORE qualifying purchased kota units after reaching Gold. The future planned reward is **R150** in restricted spendable promotional food credit. Platinum community recognition and ability to **apply** for possible ambassador opportunities remain future directions, not jobs or paid rewards already offered.
+3. **Gold → Platinum:** **OWNER-APPROVED FUTURE TARGET = 30 ADDITIONAL** qualifying genuinely paid-and-collected purchased kota units AFTER Gold, **54 CUMULATIVE**, rather than the historical 40 option (64 cumulative). The future planned reward is **R150** in restricted spendable promotional food credit. Platinum community recognition and ability to **apply** for possible ambassador opportunities remain future directions, not jobs or paid rewards already offered.
 4. Funded pilot structure already owner-approved for PLANNING ONLY: **R500 total ceiling**, up to **12 Bronze-only customers** receiving up to **one R25 gift each**, at most R300 in gift obligations with R200 buffer. No actual pilot activation, live orders, online payment, subscription billing or merchandise promise is authorised.
 5. Owner hopes funds could be available in 4–6 months, but this is a **hypothesis**, not a bank balance. Merchants would have two free subscription months after verified genuine trading, with a future optional Super Admin-approved third month; DO NOT assume that unpaid merchant plans fund Platinum.
 
@@ -36,7 +36,7 @@ For perspective, assuming the same 4–5 purchased eligible units per month unin
 
 ## Recommendation — and a challenge to our own assumptions
 
-**Prefer +30 after Gold as the next PLATINUM THRESHOLD HYPOTHESIS, not as a confirmed promise.** +30 is 25% shorter than +40 in unit count, and with the same R150 benefit may sustain engagement better once a genuine funded programme launches. Yet **+30 could still be demotivating** if actual customers buy only one or two qualifying kotas each month, especially after a +20 Gold mission. Do not pretend +30 is proven optimal.
+**Founder-approved +30 after Gold as the future PLATINUM PURCHASE THRESHOLD.** The approval concerns the **number of qualifying purchased kota units**, NOT activation or a currently guaranteed prize. +30 is 25% shorter than the historical +40 option in unit count, and with the same future R150 benefit it may sustain engagement better once a genuine funded programme launches. Yet **+30 could still be demotivating** if actual customers buy only one or two qualifying kotas each month, especially after a +20 Gold mission. Do not pretend +30 is proven optimal.
 
 **Conditional decision rule for later owner sign-off (proposal):** Observe actual paid-and-collected units/customer/month and the fraction of Gold-eligible customers likely to complete +30 or +40 within the following six or twelve months. Review the median and 25th/75th-percentile purchase rates (exclude owners/test orders, simulated redemptions and fully reward-funded items). If both milestones are unrealistic, consider a more reachable +15/+20 or nonfinancial intermediate milestones, but only with a separate founder decision and no reward obligation created by hidden progress. Do NOT manipulate purchases by forcing separate days, minimum basket top-ups, fabricated bonus stamps or misleading deadlines.
 
@@ -55,8 +55,8 @@ For perspective, assuming the same 4–5 purchased eligible units per month unin
 - Kivetz, Urminsky & Zheng, *Journal of Marketing Research* (2006): field and other studies found purchasing can accelerate as customers approach a loyalty reward. This supports meaningful, visible mission progress but **does not prove a +30 or +40 threshold is right for LocalEats**. https://journals.sagepub.com/doi/10.1509/jmkr.43.1.39
 - South African Consumer Protection Act 68 of 2008, section 35: loyalty-offer documents must state the award and steps clearly; awards must be provided as offered. A visually locked Platinum tier can be an honest future teaser, but **do not advertise an earnable R150 credit** until its funding, eligibility, participating shops, terms and real activation are settled. https://www.gov.za/sites/default/files/32186_467.pdf
 
-## Next owner decision and safe handover
+## Resolved threshold and remaining live-programme decisions
 
-**Platinum target OPEN:** endorse +30 additional paid-and-collected qualifying purchased kota units after Gold (54 cumulative since Bronze), prefer +40 (64 cumulative), or wait for actual sample purchases before locking either. In every case Platinum R150 remains **planned but not active**, and all merchant billing, reward reimbursement, wallet and online payment safety boundaries stay unchanged.
+**Platinum threshold RESOLVED by owner on 2026-11-08:** choose **30 ADDITIONAL qualifying genuinely PAID-AND-COLLECTED purchased kota units AFTER reaching Gold**, for **54 total from Bronze** (4 + 20 + 30). The former 40-unit additional target is SUPERSEDED as a future business rule (but may still appear in historic offline code). No hidden distinct-day or calendar waiting condition. **Platinum R150 remains a planned benefit but is NOT OFFERED, funded or active in the R500 Bronze-only pilot**. Still OPEN: funding, customer eligibility and enrolment version, expiry/rollover, treatment of purchases before campaign activation, merchant reimbursement and legal/published terms; all merchant billing, wallet, online payment and Production safety boundaries remain unchanged.
 
 No app UI, ledger code, payout API, merchant subscription or Production settings were changed by this comparison. The existing offline rewards rehearsal still contains historical numbers/format and must not be treated as a live rollout.
