@@ -1,0 +1,42 @@
+# LocalEats Rewards — proposed rules for credit expiry, carryover and combining
+
+**8 November 2026 | RECOMMENDATION ONLY — founder approval OPEN | No live Rewards, credit, payouts, subscription billing, SQL, merge or Production change.**
+Authoritative founder milestones live in the root LOCAL_EATS_MASTER_PLAN.md (draft PR #124): Bronze 4 real paid-collected eligible kota units → one free kota (once); Silver → Gold +20 more, 24 cumulative; Gold → Platinum +30 more, 54 cumulative. Future funded intended benefits: Gold R80, Platinum R150 spendable eligible FOOD credit; these higher ranks and benefits are NOT offered in the accepted R500, 12-person Bronze-only pilot.
+
+## Recommendation awaiting founder approval
+
+1. **36 calendar months per funded credit grant.** Each R80 Gold or R150 Platinum grant has its OWN award date and provisional expiry date three calendar years after actual server-confirmed issuance. This is a proposed voluntary conservative minimum pending qualified South African legal review of the credit's substance and any applicable statutory validity rules. If legally required or contractually promised validity is longer, apply the longer period. Never expire an already earned credit earlier than disclosed or by changing its issue date.
+2. **Keep unused credit when ranking up.** If Gold has R40 unspent when Platinum is earned and a funded R150 Platinum grant is legally made, display R190 total. The R40 still belongs to its earlier Gold grant and expiry. Platinum receives a fresh 36-month validity period; earning a new rank does NOT reset older grant dates, delete old credit, or affect permanent membership rank.
+3. **Spend earliest-expiring credit first (FIFO by expiry, stable issue date tie-breaker)** across all eligible participating shops. The same customer sees one simple verified available balance, with grant-by-grant history and separate dates in Profile.
+4. **Permit partial usage and pay-at-shop split tender.** A R60 eligible purchase with Gold R40 + Platinum R150 available consumes R40 older Gold plus R20 Platinum, leaving R130 from Platinum. If available balance is insufficient, the customer can pay ONLY the difference physically at the merchant by cash or their card terminal. Credit may pay the entire eligible bill with no mandatory top-up or extra spend. No online payments, cash-out, P2P transfers, in-app wallet funding, hidden fees or gift-funded qualification points.
+5. **No surprise expiration.** Before credit is actually awarded, show amount, qualifying steps, eligible shops/foods and expiry terms. Show expiry in Profile at all times. Send optional consented reminders about 30 and 7 days before expiry (in-app regardless of push opt-in); send a neutral expired-credit event/history. Never misrepresent an unknown server balance as R0.
+6. **True server-owned grant and financial reserve.** Each one-time award has a unique customer/programme/version/milestone ID, credit ledger entries and a separate ring-fenced full nominal liability R80/R150. Grants, holds, spends, cancellations, refunds, releases and expiry are idempotent, atomic and logged; merchants cannot mint credits, customers cannot change dates. Support merchant reimbursement only after actual customer payment of any remainder and independently verified collected food handover. On failed order or cancellation release reserved credits; on refund restore consumed amounts to originating grant lots if still valid. If the app/merchant error delays redemption past expiry, apply an audited fair extension rather than penalising the customer. Reserve/expiry and outstanding merchant payables must reconcile with owner funds. Do not recycle expired liabilities until valid expiration and accounting/legal review.
+7. **No premature future mission earning.** A user may reach Silver under an active limited Bronze pilot, but this does not automatically create an active +20 Gold or +30 Platinum ledger, and prelaunch purchases are NOT promised retroactive Gold/Platinum credit. Start dates and treatment of historical purchases for a later funded programme remain separately open and require clear pre-purchase public terms.
+
+## Worked example: separate credits preserved on promotion
+
+| Event | Gold credit lot | Platinum credit lot | Total available |
+| --- | ---: | ---: | ---: |
+| Future Gold reward legally granted (only after full funding and active offer) | R80 | R0 | R80 |
+| Customer buys R40 of eligible food, verified collected | R40 | R0 | R40 |
+| Future Platinum reward legally granted | R40, original expiry retained | R150, newly issued with own expiry | R190 |
+| Customer purchases R60 eligible food and redeems older credit first | R0 | R130 | R130 |
+| Customer purchases R150 eligible food, pays remainder R20 physically at shop | R0 | R0 | R0 |
+
+Illustration only: prices, menu eligibility and actual grant dates are not known. Two credit lots can be displayed as one number without merging their legal obligation histories or changing their individual expiry dates. The merchant's payable for the last transaction is only the R130 promotional food portion after verified payment of R20 and actual handover, NOT R150. If the R20 remainder is unpaid, release the temporary R130 hold and do not owe a merchant payout.
+
+## Business cost and policy gate
+
+- Maximum cumulative intended rewards per fully progressing customer: first eligible free kota up to R25 + Gold R80 + Platinum R150 = R255. A customer who already spent the Gold R80 before receiving Platinum has R150 newly available, not R230; combined R230 is possible only if the whole Gold credit remains unspent on Platinum grant.
+- The R500 Bronze-only 12-person design reserves up to R300 for twelve R25 gifts and R200 as a buffer; it cannot finance the higher credits. Twelve full-ladder customer reward promises could reach R3,060. A future reward programme must have actual ring-fenced cash and defined enrolment caps BEFORE issuing or advertising these credits, irrespective of their expected usage, breakage or expiry.
+- Avoid treating unused credit as zero cost, falsely labelling merchant gross food sales as LocalEats income, or counting unpaid subscriptions as cash funding. Credit liability persists until genuinely spent, lawfully expired or otherwise discharged.
+
+## South African consumer law: avoid a rushed 30-day expiration
+
+- Section 35 of Consumer Protection Act 68 of 2008 regulates offered loyalty awards: they are legally usable as consideration within the scheme and marketing must clearly disclose the benefit, qualifying steps, available foods and where/when to redeem; do not offer awards you do not intend to honour. https://api.acts.co.za/consumer-protection-act-2008/35_customer_loyalty_programmes.php
+- Section 63 prescribes three-year minimum validity for **covered prepaid** credits/vouchers exchanged for consideration. Whether LocalEats earned, owner-funded promotional credit is legally covered by section 63 or different loyalty rules is not established by this memo; a published legal analysis notes uncertainty about expiry of loyalty awards compared with prepaid vouchers. Do not assert that all earned loyalty benefits legally have a compulsory three-year expiry. https://lawlibrary.org.za/akn/za/act/2008/68/eng@2015-03-13 and https://www.scielo.org.za/scielo.php?pid=S1727-37812010000300009&script=sci_arttext
+- Founder recommendation is THREE YEARS as a voluntary customer-protective floor, subject to law review, not permission to implement expiry. If a qualified lawyer concludes different requirements apply, comply with the more protective applicable commitment. Public promotion must state every essential term in advance.
+
+## Remaining owner decisions
+
+**OPEN:** accept three years per individual grant; explicit rollover/combining and oldest-first spending; reminder cadence; fair cancelled/refunded/expired-grant handling. Implementation, bank liability, eligible items, programme enrolment, historical purchase counting, merchant opt-in and activation must each pass separate design, legal, finance, security and preview acceptance gates. Once approved, update master RW-20 and Q5 and make future source/test specifications match.
