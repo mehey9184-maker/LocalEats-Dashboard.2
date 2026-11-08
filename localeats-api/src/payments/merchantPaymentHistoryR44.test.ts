@@ -154,3 +154,19 @@ test("R4.4: paged history stays bounded, rejects forged pagination and reports m
   await denies(read("A",{offset}),400,"INVALID_PAYMENT_OFFSET");
  }
 });
+
+
+test("R4.4: malicious lookahead row 51 cannot leak across tenant boundary",async()=>{
+ const pages=Array.from({length:50},(_,i)=>record(
+  "00000000-0000-4000-8000-"+String(7400+i).padStart(12,"0"),legacyA));
+ pages.push(record(idB,"202"));
+ const {read}=make({readScopedPayments:async()=>pages});
+ await denies(read("A"),503,"PAYMENT_HISTORY_INTEGRITY_FAILURE");
+});
+
+test("R4.4: at the bounded maximum a truncated response fails rather than implies complete history",async()=>{
+ const all=Array.from({length:51},(_,i)=>record(
+  "00000000-0000-4000-8000-"+String(8400+i).padStart(12,"0"),legacyA));
+ const {read}=make({readScopedPayments:async()=>all});
+ await denies(read("A",{offset:"5000"}),503,"PAYMENT_HISTORY_PAGING_LIMIT");
+});
