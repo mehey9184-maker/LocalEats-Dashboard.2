@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'localeats-api/tests/rewards/r52/**'
+      - 'localeats-api/tests/rewards/r52b/**'
       - '.github/workflows/localpay-r52-hosted-staging-preflight.yml'
 
 permissions:
@@ -42,7 +43,9 @@ jobs:
           test "$PICKUP_WRITES_ENABLED" = false
           test "$REWARDS_ACTIVATION_ENABLED" = false
       - name: Test fail-closed staging isolation metadata policy
-        run: node --test localeats-api/tests/rewards/r52/stagingIsolationGate.test.mjs
+        run: |
+          node --test localeats-api/tests/rewards/r52/stagingIsolationGate.test.mjs
+          node --test localeats-api/tests/rewards/r52b/resourceReadiness.test.mjs
       - name: No hosted request or financial activation in R5.2 contract
         run: |
           test -f localeats-api/tests/rewards/r52/stagingIsolationGate.mjs
