@@ -1,5 +1,10 @@
 # LocalPay R4.5 — trusted evidence records, verification process and no-live plan
 
+## Later R4.6 approval and verified isolated database tests (8 November 2026)
+
+The owner subsequently **approved R4.6 isolated PostgreSQL evidence-schema testing**. The disposable `localeats-api/tests/rewards/r46/` schema and independent-connection runner are documented in [R4.6](../localeats-api/tests/rewards/r46/README.md). GitHub Actions run **42491589087** succeeded on test-source commit `1008065b51aef6050e5205f62f720e921dc9d05b`. Where this historical R4.5 specification says R4.6 would need future approval, that approval has now been granted **for test-only scratch SQL**, not Production, migrations, real Rewards, customer-code UX or payments. Actual bank and token evidence remains unverified.
+
+
 **Date:** 8 November 2026  
 **Approval:** Founder requested **R4.5 trusted evidence DESIGN** following R4.4. This is a design/test-only addition in draft Merchant/API PR #124, **not** consent to create real database tables, alter pickup or Customer/Merchant UX, make a bank transfer, issue LocalPay balance, activate real ordering, approve legal terms, deploy, or merge.
 
