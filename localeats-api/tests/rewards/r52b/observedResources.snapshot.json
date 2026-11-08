@@ -11,7 +11,8 @@
   },
   "firebase": {
     "independentStagingProjectVerified": false,
-    "clientApiProjectMatchVerified": false
+    "clientApiProjectMatchVerified": false,
+    "hostedFirebaseProjectVerified": false
   },
   "vercel": {
     "customerDraftDeploymentVerified": false,
