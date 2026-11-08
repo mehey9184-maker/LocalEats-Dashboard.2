@@ -114,4 +114,23 @@ assert "SELECT count(*) FROM r42_lab.grants;" 1
 assert "SELECT count(*) FROM r42_lab.payables;" 0
 assert "SELECT r42_lab.reconcile();" t
 echo R43_LATER_REFUND_BLOCKS_AUTO_REPLAY_NO_AUTOMATIC_GIFT_CLAWBACK_PASS
+
+# Refund-report and claim racing on the same order must serialize on its row.
+# Depending which session locks first, either credit succeeds before a review
+# opens or credit is rejected. It cannot credit AFTER the refund is recorded.
+assert "SELECT r42_lab.admit('customer-2');" ADMITTED
+assert "SELECT r43_lab.seed_fixture('race-refund');" order-race-refund
+race "SELECT r43_lab.credit_from_verified_source('order-race-refund');" \
+ "SELECT r43_lab.record_refund_fixture('order-race-refund','race-refund-report');"
+[[ "$status_b" == 0 ]] || { cat "$work/b.err" >&2; exit 1; }
+if [[ "$status_a" != 0 ]]; then
+ grep -Fq R43_REFUND_OR_DISPUTE_REQUIRES_REVIEW "$work/a.err" ||
+ { cat "$work/a.err" >&2; exit 1; }
+fi
+assert "SELECT count(*) FROM r43_lab.refund_reviews WHERE order_id='order-race-refund';" 1
+deny "SELECT r43_lab.credit_from_verified_source('order-race-refund');" R43_REFUND_OR_DISPUTE_REQUIRES_REVIEW
+assert "SELECT (SELECT bought_units FROM r42_lab.customers WHERE customer_id='customer-2') IN (0,4);" t
+assert "SELECT count(*) <= 1 FROM r42_lab.grants WHERE customer_id='customer-2';" t
+assert "SELECT r42_lab.reconcile();" t
+echo R43_REFUND_VS_CREDIT_SAME_ORDER_LOCK_RACE_PASS
 echo R43_DISPOSABLE_PG17_TRUSTED_PAYMENT_PICKUP_EVIDENCE_PASS
