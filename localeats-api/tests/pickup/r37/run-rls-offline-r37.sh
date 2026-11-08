@@ -14,7 +14,7 @@ docker run -d --name "$name" --rm \
  -e POSTGRES_DB=r37_rls_lab postgres:17-alpine >/dev/null
 ready=0
 for i in $(seq 1 45); do
- if docker exec "$name" pg_isready -U postgres -d r37_rls_lab >/dev/null 2>&1; then ready=1; break; fi
+ if docker exec "$name" psql -X -qAt -v ON_ERROR_STOP=1 -U postgres -d r37_rls_lab -c 'SELECT 1' 2>/dev/null | grep -qx '1'; then ready=1; break; fi
  sleep 1
 done
 if [[ "$ready" != 1 ]]; then echo "R37_POSTGRES_NOT_READY" >&2; exit 1;fi
