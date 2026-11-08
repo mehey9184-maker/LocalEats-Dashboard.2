@@ -12,7 +12,7 @@ VALUES
 
 CREATE TABLE public.payments (
  id uuid PRIMARY KEY,
- shop_id bigint NOT NULL,
+ shop_id bigint,
  amount numeric NOT NULL,
  payment_method text NOT NULL,
  transaction_id text,
