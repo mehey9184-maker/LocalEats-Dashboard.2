@@ -56,7 +56,7 @@ const harness=(modify=x=>x,options={})=>{
   async readOnlySnapshot(fn){
    stats.snapshots++;
    return fn(Object.freeze({
-    async readBundle(orderId){assert.equal(orderId,id);stats.reads++;return clone(modify(clone(evidence)))},
+    async readBundle(orderId){assert.equal(orderId,id);stats.reads++;const trial=clone(evidence);const changed=modify(trial);return clone(changed===undefined?trial:changed)},
     async insert(){stats.writes++;throw Error('R47_NEVER_WRITE')},
     async rpc(){stats.writes++;throw Error('R47_NEVER_RPC')}
    }));
