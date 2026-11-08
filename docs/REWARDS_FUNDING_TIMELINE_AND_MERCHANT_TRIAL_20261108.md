@@ -1,13 +1,13 @@
 # LocalEats — Future Gold funding horizon and 2-month merchant trial (2026-11-08)
 
-**Planning status: founder expects or hopes for external funding 4–6 months from now; no funding is assured. The founder has stated that shops should pay LocalEats AFTER two months; actual merchant subscription billing is NOT approved or activated. Gold threshold recommendation below is NOT yet accepted.** Read the canonical root `LOCAL_EATS_MASTER_PLAN.md` and `AGENTS.md` before acting.
+**Planning status: founder expects or hopes for external funding 4–6 months from now; no funding is assured. The founder has stated that shops should pay LocalEats AFTER two months; actual merchant subscription billing is NOT approved or activated. Gold threshold of **20 additional verified paid-and-collected qualifying kotas after Silver** is **OWNER-APPROVED on 2026-11-08**, but Gold is NOT live or funded under the Bronze-only pilot.** Read the canonical root `LOCAL_EATS_MASTER_PLAN.md` and `AGENTS.md` before acting.
 
 ## Founder input and recommended interpretations
 
 1. Founder intends to seek funding around four to six months after 8 November 2026 (approximately March–May 2027), so later customer missions should be judged against realistic purchasing patterns across that interval. This is a **planning scenario**, not an investor commitment, fund receipt, campaign launch date or reason to mislead customers.
 2. Founder now proposes merchants **pay LocalEats after two months**. Recommended interpretation: **new merchant subscriptions get TWO FREE CALENDAR MONTHS by default**, replacing the previously confirmed one-month merchant trial; the subscription may become payable only from month three, under transparent terms and after a separate billing/security approval. Keep existing promised merchant terms when longer. This amendment is a COMMERCIAL BUSINESS DIRECTION, not an executable charge.
 3. Keep the previously planned restricted **Super Admin '+1 Month Free'** button: after a default two-month free trial it can grant an optional THIRD free month to a shop, with server-authoritative dates, reason, one-time idempotent audited grant and clear policy. Number of grants, exceptional cases and final billing terms remain open.
-4. The founder has not yet selected a new Silver-to-Gold threshold or approved using customer purchases before a future Gold offer is funded. **RECOMMEND +20 additional paid-and-collected qualifying kota units after Silver**, making 24 cumulative paid qualifying kota units (four before Silver + 20 after Silver). This replaces the earlier assistant's **+10 RECOMMENDATION**, NOT any final previously approved owner number. Avoid forcing different-day purchases or waiting a calendar interval; the founder rejected manipulation. Purchase pace must be measured with actual data before selecting +20 permanently.
+4. **OWNER CONFIRMED +20 additional qualifying genuinely paid-and-collected purchased kota units after Silver**, making **24 cumulative paid qualifying kota units** (four to Silver + twenty more to Gold). The earlier assistant's +10 recommendation was never approved and is superseded. There is NO different-day visit quota or calendar-duration requirement. The Gold reward (future R80 food credit) can be offered only after new funding, clear consumer terms, merchant participation, owner approval and launch-safe implementation; the 12-customer R500 Bronze-only pilot cannot promise or award Gold credit. Measure purchase pace honestly to test whether the approved target is appropriate, and revisit formally if the data warrants a change.
 
 ## Demand pacing arithmetic — illustrative only
 
@@ -49,7 +49,7 @@ Illustration ONLY: five merchants each genuinely paying Plus R199 would be R995 
 | Months 0–2 after safe pilot start | Limited Bronze mission at four genuine paid-and-collected kotas; finish pickup security, onboarding, merchant real order flow and trusted history | No active higher-tier credit; R500 is only the approved planning ceiling; enrolment and spend still need separate go-live authorisation |
 | At each merchant's +2 calendar months from verified trading start | Review first real paid orders, shop support needs and suitability for a paid plan or an exceptional +1 free month | No retroactive billing, automatic payment or fake MRR; existing longer promises honoured |
 | Months 2–4 | Observe paid repeat customer visits, real shop traction, reliability, budget outgoings and genuine willingness to pay | Exclude subsidised-only pickups when presenting organic paid retention |
-| Months 4–6 | Reassess actual fundraising and merchant subscription collections, forecast cash capacity and check if Gold (R80, likely +20 purchased units) can be funded at a stated participant cap | Do not activate or retrospectively guarantee Gold until funding available, programme terms published, legal/merchant/security review and founder approval |
+| Months 4–6 | Reassess actual fundraising and merchant subscription collections, forecast cash capacity and check whether the **confirmed +20 additional qualifying kota** Gold mission with R80 food credit can be funded at a stated participant cap | Do not activate or retrospectively guarantee Gold until funding available, programme terms published, legal/merchant/security review and founder approval |
 | Beyond 6 months or if funding delayed | Continue organic Bronze-complete retention and funded operations; revise target with customer actual unit distribution | Don't grow promotional liability merely to match a fundraising date |
 
 ## Evidence and caution
@@ -58,9 +58,9 @@ Illustration ONLY: five merchants each genuinely paying Plus R199 would be R995 
 - Y Combinator on growth and second purchases: https://www.ycombinator.com/blog/growth-office-hours-with-anu-hariharan-and-gustaf-alstromer . Actual separate paid orders and paying merchant conversion are more convincing than in-app mission taps.
 - South African Consumer Protection Act, section 35: do not offer loyalty awards without intending to provide them as represented; disclose earning steps, goods, participating providers and availability. https://api.acts.co.za/consumer-protection-act-2008/35_customer_loyalty_programmes.php . Obtain local legal review of consumer and shop terms.
 
-## Next owner decision
+## Confirmed Gold milestone and remaining launch decisions
 
-**Gold:** approve 20 ADDITIONAL purchased kotas after Silver, keep +10 alternative, or collect enough genuine purchase data first? This number is currently RECOMMENDED, not accepted.
+**Gold — owner RESOLVED 2026-11-08:** 20 ADDITIONAL eligible genuinely paid-and-collected purchased kota units after Silver (24 cumulative), with no forced additional purchase days or time gate. Still OPEN: funding source, future programme start date, eligible shops/items, whether/which prior purchases can count after programme activation, expiry/rollover, fraud/refund handling and legal terms. R80 Gold credit remains inactive under the Bronze-only R500 pilot.
 
 **Merchant trial:** two-month default is the user's new commercial preference, but the trigger for first genuine trading day, merchant treatment when no orders are received and repeated free-month extension policy still need final founder approval.
 
