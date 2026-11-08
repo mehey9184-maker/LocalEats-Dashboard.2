@@ -13,6 +13,10 @@ const apiKeys=[
  "FIREBASE_PROJECT_ID","FIREBASE_PRIVATE_KEY","FIREBASE_CLIENT_EMAIL",
  "SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","PICKUP_WRITES_ENABLED"
 ];
+const dedicatedApiKeys=[
+ "FIREBASE_PROJECT_ID","FIREBASE_PRIVATE_KEY","FIREBASE_CLIENT_EMAIL",
+ "SUPABASE_URL","SUPABASE_SECRET_KEY","PICKUP_WRITES_ENABLED"
+];
 const customerBranch="docs/rewards-master-handover-pointer-20261108";
 const apiBranch="docs/rewards-master-plan-credit-20261108";
 const makeScopes=(keys,branch)=>keys.map(key=>({key,target:["preview"],gitBranch:branch}));
@@ -121,7 +125,7 @@ function dedicatedHypothetical(){
   p.productionTargetEmptyVerified=true;
   p.inheritedEnvAbsentVerified=true;
   p.credentialProvenanceVerifiedNonproduction=true;
-  p.envScopes=(label==="customer"?customerKeys:apiKeys)
+  p.envScopes=(label==="customer"?customerKeys:dedicatedApiKeys)
     .map(key=>({key,target:["preview"]}));
  }
  return m;
@@ -167,7 +171,7 @@ test("R5.2D actual safe empty project shells remain blocked without API secrets,
  m.customer.stagingApiOrigin="";
  m.api.stagingApiOrigin="";
  m.customer.envScopes=m.customer.envScopes.filter(v=>v.key!=="VITE_LOCALEATS_API_URL");
- m.api.envScopes=m.api.envScopes.filter(v=>!["FIREBASE_PRIVATE_KEY","FIREBASE_CLIENT_EMAIL","SUPABASE_SERVICE_ROLE_KEY"].includes(v.key));
+ m.api.envScopes=m.api.envScopes.filter(v=>!["FIREBASE_PRIVATE_KEY","FIREBASE_CLIENT_EMAIL","SUPABASE_SECRET_KEY"].includes(v.key));
  m.productionCredentialsNotUsed=false; // credentials not yet independently verified
  m.actualHostedVerificationApproved=false;
  const res=evaluateHostedR52Preflight(m);
@@ -176,4 +180,13 @@ test("R5.2D actual safe empty project shells remain blocked without API secrets,
    "CUSTOMER_DEDICATED_PREVIEW_SCOPES_UNVERIFIED","API_DEDICATED_PREVIEW_SCOPES_UNVERIFIED",
    "STAGING_API_ORIGIN_UNVERIFIED","HOSTED_TEST_OWNER_APPROVAL_REQUIRED"])
   assert.ok(res.reasons.includes(key),key);
+});
+
+test("R5.2E dedicated API requires modern SUPABASE_SECRET_KEY, never legacy service_role",()=>{
+ const a=dedicatedHypothetical();
+ a.api.envScopes=a.api.envScopes.filter(item=>item.key!=="SUPABASE_SECRET_KEY");
+ assert.ok(evaluateHostedR52Preflight(a).reasons.includes("API_DEDICATED_PREVIEW_SCOPES_UNVERIFIED"));
+ const b=dedicatedHypothetical();
+ b.api.envScopes.push({key:"SUPABASE_SERVICE_ROLE_KEY",target:["preview"]});
+ assert.ok(evaluateHostedR52Preflight(b).reasons.includes("API_LEGACY_SERVICE_ROLE_NOT_ALLOWED_IN_DEDICATED_STAGING"));
 });
