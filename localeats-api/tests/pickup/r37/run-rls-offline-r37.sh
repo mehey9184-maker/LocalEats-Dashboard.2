@@ -3,7 +3,7 @@
 # Not an applied migration. Do NOT pass Supabase connection strings to this.
 set -Eeuo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
-name="localeats_r37_rls_\${BASHPID}"
+name="localeats_r37_rls_${BASHPID}"
 cleanup(){ docker rm -f "$name" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 if [[ ! -f "$here/payments-rls-lab.SYNTHETIC_ONLY.sql" ]]; then
