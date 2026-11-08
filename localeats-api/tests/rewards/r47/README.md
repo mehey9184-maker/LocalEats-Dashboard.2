@@ -2,6 +2,10 @@
 
 **8 November 2026 | Founder authorised R4.7 TESTING ONLY.** No real Firebase project, live token, real customer/order, Supabase connection, SQL migration, Rewards payout, merchant bank transfer, Production change, Preview deployment, UI redesign, or merge.
 
+## Confirmed GitHub Actions evidence (8 November 2026)
+
+**R4.7 isolated workflow SUCCESS:** run **42493117407**, job **128769557110** at test-source commit `a3b68097b90f4962e74554a8da66e19cc8fa3d2e`. GitHub Node test report: **49 tests, 49 passed, 0 failed**. The 49 include 41 deliberately invalid evidence-record variants, independent simulated merchant and customer auth, wrong token, revoked/anonymous/unknown identities, repeated read-only inspections, rejected browser financial claims and a **passing test that DETECTS the still-unfixed omission of `checkRevoked=true`** in the current pickup middleware. Initial CI setup was blocked by a mistyped pinned `setup-node` action SHA; a later run reached tests but exposed a broken fixture mutation harness (41 cases stopped at missing bundle). Both were corrected; the final 49 tests exercised their intended rejection paths. **This pass proves contract behaviour with injected fake tokens and mock order records, NOT live Firebase cryptography or verified bank/cash events.**
+
 ## What this phase actually exercises
 
 R4.6 established transaction/unique constraint safety against mock PostgreSQL evidence. R4.7 now imports **existing compiled LocalEats API functions** into a separate inert module `localeats-api/tests/rewards/r47/authenticatedPickupEvidence.mjs`:
