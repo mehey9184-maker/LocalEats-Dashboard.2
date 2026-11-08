@@ -100,7 +100,7 @@ test('R4.4 real pickup service quote emits the same menu line units as stored pi
 test('R4.4 real merchantCommandReceipt derives command UUID, owner and revision',()=>{
   const b=fixture();
   assert.deepEqual(merchantCommandReceipt({order:b.order,event:b.pickupEvents[2]}),{
-    command_id:collectedId,order_id,actor_uid:'merchant-1',kind:'collected',revision:3
+    command_id:collectedId,order_id:orderId,actor_uid:'merchant-1',kind:'collected',revision:3
   });
   assert.throws(()=>merchantCommandReceipt({order:b.order,event:{...b.pickupEvents[2],command_id:null}}));
 });
