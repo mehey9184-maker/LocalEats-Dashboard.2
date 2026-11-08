@@ -1,0 +1,40 @@
+name: LocalEats R4.2 integrated offline pickup and legacy payments policy rehearsal
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/tests/pickup/r42/**'
+      - 'docs/R42_INTEGRATED_PICKUP_SECURITY_REHEARSAL.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/pickup-r42-integrated-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-pg17-payment-and-pickup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      REWARDS_ENABLED: 'false'
+      LOCALEATS_PREVIEW_READ_ONLY: 'true'
+    steps:
+      - name: Checkout without persistent credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Set up Node 22 for source-only tests
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - name: Verify recovered original SQL statement checksums and manifest
+        run: node --test localeats-api/tests/pickup/r35/reproducibility.test.mjs
+      - name: Check boundaries and no deployable migration/hosted connection
+        run: node --test localeats-api/tests/pickup/r42/staging-contract.test.mjs
+      - name: Rebuild historical pickup and rehearse payment RLS hardening in one disposable PG17
+        run: bash localeats-api/tests/pickup/r42/run-integrated-staging-r42.sh
