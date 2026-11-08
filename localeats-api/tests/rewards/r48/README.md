@@ -22,7 +22,7 @@ The former R4.7 source assertion that intentionally required the *absence* of `c
 
 CI workflow `.github/workflows/localpay-r48-auth-revocation-isolated.yml` has a normal locked-dependency mocked-auth job and a separate actual local Auth Emulator job. Both run on the existing draft PR, no secrets or Prod DB connectivity. `npm run test:r48` runs mock route tests and full `npm test` includes these tests plus the earlier R4.7 regression. The emulator uses an exact pinned test CLI version with no changes to application package dependencies.
 
-**CI verification result:** This section must record the specific workflow job ID, successful conclusion and tested commit before R4.8 can be considered passing; do not treat queued, setup failures or only mock passes as genuine emulator verification.
+**Verified CI:** GitHub Actions run **42495129249**, source-code commit **`8467e6027be5bdf1fd59302788294a9e01c03d16`**, both jobs completed **SUCCESS**: mocked middleware/merchant permissions job **128775739152** ran **8/8 R4.8 tests** and **49/49 retained R4.7 tests**, and genuine local Auth Emulator job **128775739405** ran **5/5 Firebase Admin Emulator tests** (including revoked and disabled synthetic accounts). The emulator job ran with only a local fake demo project, no real service keys or actual user accounts. A later documentation-only commit may trigger fresh CI; always check the current PR head before release.
 
 ## Finances and remaining go-live blockers
 
