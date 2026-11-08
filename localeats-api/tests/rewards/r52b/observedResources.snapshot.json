@@ -1,0 +1,27 @@
+{
+  "assessedAt": "2026-11-08",
+  "note": "Read-only point-in-time metadata snapshot; not valid for authorizing hosted tests or provisioning.",
+  "supabase": {
+    "productionProjectExists": true,
+    "stagingProjectExists": true,
+    "distinctProjectsVerified": true,
+    "stagingPublicTables": [
+      "public.profiles"
+    ]
+  },
+  "firebase": {
+    "independentStagingProjectVerified": false,
+    "clientApiProjectMatchVerified": false
+  },
+  "vercel": {
+    "customerDraftDeploymentVerified": false,
+    "apiDraftDeploymentVerified": false,
+    "customerBranchOnlyIsolationVerified": false,
+    "apiBranchOnlyIsolationVerified": false
+  },
+  "data": {
+    "syntheticFixturesApproved": false,
+    "productionRecordsExcluded": false,
+    "billingAndProjectProvisioningReviewed": false
+  }
+}
