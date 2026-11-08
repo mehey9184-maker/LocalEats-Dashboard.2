@@ -1,8 +1,8 @@
 # LocalEats Gold Mission threshold — decision comparison
 
-> **LATER AMENDMENT, 2026-11-08:** This is the HISTORICAL first comparison in which the assistant preferred +10. After the founder explained hoped-for funding in 4–6 months, the UPDATED recommendation is **+20 ADDITIONAL purchased kotas after Silver** (24 lifetime, illustrated 4–5/month), subject to verified real demand and later owner approval. **No Gold threshold is confirmed, no guaranteed R80 offer exists during the R500 Bronze-only pilot.** Consult [the updated funding and merchant trial analysis](REWARDS_FUNDING_TIMELINE_AND_MERCHANT_TRIAL_20261108.md) and the canonical [Master Plan](../LOCAL_EATS_MASTER_PLAN.md) for current advice. Do not implement +10 or +20 as approved merely from either comparison.
+> **FINAL OWNER MILESTONE DECISION, 2026-11-08:** This remains the HISTORICAL first comparison, where the assistant preferred +10. After the founder gave a hoped-for 4–6-month funding horizon and reviewed the +20 recommendation, the founder **APPROVED 20 ADDITIONAL qualifying genuinely paid-and-collected purchased kota units AFTER Silver** (24 cumulative including four Bronze purchased units) as the future Gold mission target. The +10 suggestion is SUPERSEDED. There is NO multi-day purchase restriction or calendar wait. **The purchase milestone is confirmed but Gold's R80 food credit is still NOT FUNDED, OFFERED OR ACTIVE in the R500 Bronze-only pilot.** See the [latest funding and merchant trial plan](REWARDS_FUNDING_TIMELINE_AND_MERCHANT_TRIAL_20261108.md) and canonical [Master Plan](../LOCAL_EATS_MASTER_PLAN.md). Historical recommendation text below does NOT override this decision.
 
-**8 November 2026 | BUSINESS RESEARCH AND RECOMMENDATION ONLY | Gold threshold remains OPEN.**
+**8 November 2026 | HISTORICAL RESEARCH COMPARISON | Silver→Gold threshold now OWNER-CONFIRMED +20; R80 benefit still inactive/unfunded.**
 Read the canonical [LOCAL_EATS_MASTER_PLAN.md](../LOCAL_EATS_MASTER_PLAN.md) before using this document. Do not deploy, promise, activate or backdate Gold credit based on this analysis. No code/database/UI modifications are authorised.
 
 ## What we know from the founder
@@ -46,6 +46,6 @@ The data should show distribution of real basket quantities, days between genuin
 
 ## Decision gate
 
-**OPEN:** Should LocalEats adopt *10 ADDITIONAL eligible purchased kotas after reaching Silver* as the future Gold mission threshold? Alternatives are 8, 12, 20 or a founder-defined goal. This must be resolved in the Master Plan decision log and reflected in future tests **before** any live Gold credit offer is made. Platinum threshold and refund handling stay separately open.
+**RESOLVED by founder, 2026-11-08:** adopt **20 ADDITIONAL eligible purchased and genuinely paid-and-collected kotas after reaching Silver** (24 total). The +8/+10/+12 alternatives were evaluated but not selected. Implementation tests and consumer-facing future Gold terms must use +20; Gold R80 must not be represented as currently earnable until separate funding, publicly disclosed start/eligibility terms, participating shops, policy review and owner launch approval. Platinum's purchased-unit threshold, refund handling, expired credit and treatment of prelaunch purchases remain separately OPEN.
 
 **Safeguards:** Keep original Customer/Merchant UX, pickup and pay at shop, no riders or online payments, no automatic billing/subscription activation, no live Rewards, no Production database writes and no merges without separate authorisation.
