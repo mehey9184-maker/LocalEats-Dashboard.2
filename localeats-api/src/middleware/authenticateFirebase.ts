@@ -31,7 +31,15 @@ export const authenticateFirebase = async (
       return;
     }
 
-    const decoded = await authAdmin.verifyIdToken(token);
+    // R4.8 draft-only security fix: reject revoked and disabled accounts.
+    // Firebase Admin checks revocation with an additional backend lookup.
+    // Do not deploy without isolated auth tests, latency review and owner release approval.
+    const decoded = await authAdmin.verifyIdToken(token, true);
+    if (typeof decoded?.uid !== "string" || !decoded.uid ||
+        decoded.uid.length > 160 || decoded.uid.trim() !== decoded.uid ||
+        /[\s\x00-\x1f\x7f]/.test(decoded.uid)) {
+      throw new Error("INVALID_VERIFIED_UID");
+    }
 
     req.authUser = {
       uid: decoded.uid,
