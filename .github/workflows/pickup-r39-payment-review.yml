@@ -1,0 +1,41 @@
+name: Pickup R3.9 reviewed-only payments authorization template PG17 gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/tests/pickup/r39/**'
+      - '.github/workflows/pickup-r39-payment-review.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-payment-migration-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      REWARDS_ENABLED: 'false'
+    steps:
+      - name: Checkout reviewed source without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify source caller and nondeployable migration template
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test localeats-api/tests/pickup/r39/review-plan.test.mjs
+      - name: Refuse any hosted database actions or published ports
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f localeats-api/tests/pickup/r39/payments-access-hardening.REVIEW_ONLY.sql.txt
+          ! grep -Ein 'supabase\.co|SUPABASE_SERVICE_ROLE_KEY|DATABASE_URL|db push|apply_migration|--remote|--publish| -p [0-9]+:' \
+            localeats-api/tests/pickup/r39/*.sh
+      - name: Test strict policy preconditions and schema-only restore on isolated PG17
+        shell: bash
+        run: bash localeats-api/tests/pickup/r39/run-payment-policy-review-r39.sh
