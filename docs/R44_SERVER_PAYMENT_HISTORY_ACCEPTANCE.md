@@ -4,7 +4,7 @@
 
 ## Context and original launch task
 
-Make LocalEats ready for a pickup-only, pay-at-shop pilot, with reliable Customer/Merchant workflows and future Super-LocalAdmin review. Do not redesign the original UI, launch Riders/Delivery, activate online card payments, subscriptions, Rewards, or write live orders. Keep Production changes and merges subject to separate owner approval.
+Make LocalEats ready for a pickup-only, pay-at-shop pilot, with reliable Customer/Merchant workflows and future Super-LocalAdmin review. Do not redesign the original UI, launch Riders/Delivery, activate online card payments, subscriptions, Rewards, or write live orders. R4.4 creates no live orders. Keep Production changes and merges subject to separate owner approval.
 
 ## What R4.4 really implements
 
@@ -14,7 +14,7 @@ localeats-api/src/payments/merchantPaymentHistoryR44.ts with a fake-dependencies
 Every request to the service must:
 1. Reject client-controlled owner, shop, role, status, limit and other filters. The only optional input is bounded page offset, multiples of 50 and at most 5000.
 2. Require a Firebase-shaped bearer token to be verified by a server-provided Firebase Admin verifier with revocation check explicitly enabled. Anonymous identities are denied.
-3. Resolve exactly one **currently active, approved, unarchived** shop using the verified Firebase UID; no user-metadata, unverified token role, browser shop ID or local cache may establish ownership.
+3. Resolve exactly one **current, approved, unarchived** shop using the verified Firebase UID; no user-metadata, unverified token role, browser shop ID or local cache may establish ownership.
 4. Look up an **explicitly verified legacy mapping** (owner UID, current shop text ID, legacy bigint ID, fixed provenance) via a server-only adapter. Never infer one from numeric-looking current shop IDs or string casts. Preserve the bigint as text to avoid Number precision loss. An absent, altered, out-of-range or unsupported mapping fails closed.
 5. Call a **server-only** payment repository with that mapped ID, fixed page size 51 and scope enforced in the query. Then verify every returned row—including the 51st lookahead row—has the exact mapped legacy ID. Invalid, null-shop, cross-shop or malformed financial rows fail closed rather than returning partial data.
 6. Return only a minimal allowlist of ID, amount-as-decimal-string, status, payment method and timestamp. Never echo transaction metadata, PII or raw payment rows. The service never writes to payments or claims payment collected.
