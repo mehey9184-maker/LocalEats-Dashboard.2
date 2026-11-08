@@ -1,5 +1,7 @@
 # LocalEats Gold Mission threshold — decision comparison
 
+> **LATER AMENDMENT, 2026-11-08:** This is the HISTORICAL first comparison in which the assistant preferred +10. After the founder explained hoped-for funding in 4–6 months, the UPDATED recommendation is **+20 ADDITIONAL purchased kotas after Silver** (24 lifetime, illustrated 4–5/month), subject to verified real demand and later owner approval. **No Gold threshold is confirmed, no guaranteed R80 offer exists during the R500 Bronze-only pilot.** Consult [the updated funding and merchant trial analysis](REWARDS_FUNDING_TIMELINE_AND_MERCHANT_TRIAL_20261108.md) and the canonical [Master Plan](../LOCAL_EATS_MASTER_PLAN.md) for current advice. Do not implement +10 or +20 as approved merely from either comparison.
+
 **8 November 2026 | BUSINESS RESEARCH AND RECOMMENDATION ONLY | Gold threshold remains OPEN.**
 Read the canonical [LOCAL_EATS_MASTER_PLAN.md](../LOCAL_EATS_MASTER_PLAN.md) before using this document. Do not deploy, promise, activate or backdate Gold credit based on this analysis. No code/database/UI modifications are authorised.
 
