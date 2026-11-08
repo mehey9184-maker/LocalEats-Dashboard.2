@@ -60,3 +60,8 @@ Background shop revalidation retains the approved same-account display while the
 
 ## Controlled pickup quote eligibility
 The quote response adds can_submit for the verified customer and requested shop, based on the existing pilot gate. Prices remain available while submission is disabled. Clients treat a missing or false result as quote-only. The create route independently rechecks all authorization and pricing.
+
+
+## R5.1 Customer identity cross-repository note (2026-11-08)
+
+Inspect Customer src/lib/supabase.ts BEFORE calling Customer Login a separate Supabase Auth provider: that module is actually a Firebase Auth compatibility wrapper. API authentication still must verify signed Firebase ID tokens with revoked/disabled status, then verify shop ownership/roles server-side. Never substitute email or browser UID claims. Current R5.1 is DRAFT-ONLY Customer token-change observer + emulator tests; no API auth changes, staging/Production deployment, database writes, orders, financial or rewards activation. Hosted staging isolation and browser verification are still open; see docs/R51_CUSTOMER_FIREBASE_AUTH_IDENTITY_HANDOVER_20261108.md.
