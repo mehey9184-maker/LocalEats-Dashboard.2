@@ -1,5 +1,7 @@
 # LocalEats Rewards R2.1 — Offline-only domain rehearsal
 
+> **IMPORTANT BUSINESS-DESIGN UPDATE (2026-11-08):** See the canonical project document at repository root: **LOCAL_EATS_MASTER_PLAN.md**, especially decisions RW-05, RW-08 and RW-09. The founder has **superseded the single R125/R200 food-bundle-only format** for higher tiers with a planned **spendable food-credit balance across multiple participating-shop purchases**. The figures R125 and R200 and higher-stage thresholds are not yet final. This file still describes the EXISTING **offline-only prototype**, not a verified live multi-use credit engine. DO NOT adapt it into Production or advertise it without the founder resolving open budget, split-tender, credit-ledger and legal questions.
+
 **This module does not make rewards live.** It has no HTTP routes, database schema, background jobs, Supabase writes, bank transfers or app UI. The default model is inactive. Only the Node test suite creates a synthetic active programme.
 
 ## Covered in the isolated model
