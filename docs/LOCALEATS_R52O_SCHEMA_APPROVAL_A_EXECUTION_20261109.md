@@ -40,6 +40,12 @@ Read-only metadata query and Supabase table/migration listing verified:
 - `GET https://localeats-api-staging-r52d-mehey9184-makers-projects.vercel.app/api/v1/catalog/pickup-shops?lat=-26.0000&lng=28.0000` → HTTP **200** and JSON `{"success":true,"shops":[]}`.
 - Existing API deployment `dpl_3iuTisu3ErPEivYhhaH8ov9MQJbr` remained **READY**, target `staging`. No new Vercel deployment was made.
 
+## Post-migration security advisor — reviewed
+
+Supabase Security Advisor returned one **INFO** lint group, `rls_enabled_no_policy`, listing `public.profiles`, `public.shops`, and `public.menu_items` (count 3). This is **expected for the current server-only design**: RLS enabled, no browser-facing policies, explicit `anon`/`authenticated` direct SELECT denied, only backend service role SELECT. Do not add permissive RLS policies to silence the lint. Reference: https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+
+Additional live metadata checks passed: `anon` and `authenticated` both denied SELECT on `menu_items`, `service_role` denied DELETE on menu, `anon` denied EXECUTE on the two catalogue functions and revision trigger function, `service_role` allowed EXECUTE on the expected safe availability function. All three public application tables still have zero rows.
+
 ## Independent scope boundaries and remaining risks
 
 **Schema Approval A = COMPLETE.** This deliberately creates empty synthetic-only constrained catalogue tables/view; the API empty reads are expected until test fixtures are separately approved.
