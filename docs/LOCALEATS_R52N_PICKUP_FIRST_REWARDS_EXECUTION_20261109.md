@@ -146,6 +146,19 @@ Independent **read-only** connected staging queries confirmed: `public.profiles`
 
 **Safe next check:** without adding another DB stack or touching any hosted DB, run a **transactional local-only** `DROP TABLE public.profiles RESTRICT` followed by replay of the original schema file, check `f/f/t` privileges *before any manual table REVOKE*, then `ROLLBACK` and verify the original local table still exists. This tests the corrected **local `postgres` default privileges** against the real schema without leaving changes behind. Any error triggers transaction rollback on connection close. Full data/managed migration recovery remains blocked.
 
+### Transactional original schema replay with corrected defaults — PASS (2026-11-09)
+
+The owner executed against **local-only** `supabase_db_LocalEats-Restore-Lab` Postgres 17.11, in a **single psql connection** with `ON_ERROR_STOP=1`:
+
+1. `BEGIN`; `DROP TABLE public.profiles RESTRICT`.
+2. Replayed **original immutable exported `schema.sql`**, receiving `CREATE TABLE`, `ALTER TABLE`, `COMMENT`, `GRANT`, and `ALTER DEFAULT PRIVILEGES` without an error.
+3. Queried access on the freshly recreated local table: `anon_select=f`, `authenticated_select=f`, `service_role_select=t` **without post-creation REVOKE**.
+4. `ROLLBACK`; `to_regclass('public.profiles')` returned `profiles`, demonstrating preservation of the pre-existing local application table.
+
+The owner output ended `LOCAL TRANSACTIONAL SCHEMA TEST COMPLETED`. This is **PASS for transactional application schema replay and SELECT privilege parity under corrected local defaults**. It is not proof of a clean untouched target's default privileges, complete table ACL/grant equivalence across all operations, Auth/Storage managed migration version compatibility, backup of Production, or end-to-end app recovery. No remote DB modifications, payment, rewards or order activation.
+
+**Next gap:** confirm local app-migration history availability and compare full profiles privilege matrix / RLS / ownership with hosted staging. The exported `data.sql` does not contain `supabase_migrations.schema_migrations`; the remote project still lists its single P5 migration. Do not fabricate migration history rows or deploy the R5.2K catalogue until the owner reviews the recovery gap and separate staging schema approval gate.
+
 ## Approval gates that remain distinct
 
 - **Staging Schema Approval A:** actual staging backup restored successfully and reviewed exact SQL + signed owner scope.
