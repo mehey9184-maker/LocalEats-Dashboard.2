@@ -108,6 +108,17 @@ This mismatch is consistent with local Supabase database default grants when imp
 
 
 
+### Local default-privilege root cause observed (2026-11-09)
+
+Owner's **read-only** `pg_default_acl` query on isolated `supabase_db_LocalEats-Restore-Lab` returned two sets of `public` default table privileges:
+
+- `supabase_admin` objects: grants `arwdDxtm` to `postgres`, `anon`, `authenticated`, `service_role`.
+- `postgres` objects: grants `arwdDxtm` to `postgres`, `anon`, `authenticated`, `service_role`.
+
+This supports the observed restore drift: newly created `public.profiles` automatically inherited `anon/authenticated` privileges even though source `relacl` grants only `postgres` and `service_role`. The manual `REVOKE` fixed only the existing local table and cannot protect future clean restores. See official Supabase API grants/defaults guidance at https://supabase.com/docs/guides/api/securing-your-api and dump migration note at https://supabase.com/docs/reference/cli/supabase-db-dump.
+
+**Next safe local action:** change the **local `postgres` table defaults only** using `ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated`, then create a *transaction-rolled-back* probe table to verify new future table access (expect `f/f/t`). This does not retroactively affect any existing table. Only after this preflight, consider a guarded new schema replay. Do not run the SQL against any remote Supabase project. Full managed-data recovery remains unverified.
+
 ## Approval gates that remain distinct
 
 - **Staging Schema Approval A:** actual staging backup restored successfully and reviewed exact SQL + signed owner scope.
