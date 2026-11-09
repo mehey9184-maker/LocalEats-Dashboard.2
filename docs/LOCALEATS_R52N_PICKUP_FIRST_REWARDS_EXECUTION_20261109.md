@@ -76,9 +76,15 @@ The owner then restored only `roles.sql` + `schema.sql` into local Supabase usin
 
 **Result:** Local P5 application schema structure restored and matching six core metrics. **Still not proven:** cross-role read denial/service-only read, complete column-by-column/type/index/ACL equivalence, source data recoverability, Supabase Auth/Storage/application migration restore, actual file objects (if any), durable encrypted copy, production backup, or full end-to-end pickup behavior. Schema Approval A remains on hold until the comprehensive recovery decision is approved; no R5.2K schema or fixtures applied.
 
-### Next controlled check
+### Owner's local access-control comparison — FAIL, needs local-only ACL correction
 
-On the same **local lab** only, verify table privileges and RLS access boundaries without writes, then compare to staging. Do not rerun the full data import into a possibly nonempty database, replace original SQL files, or bypass RLS. Do not share local service keys or Storage credentials from `supabase start`.
+The owner executed the read-only local `has_table_privilege` probe. Results from the locally restored `public.profiles`: `anon SELECT=true`, `authenticated SELECT=true`, `service_role SELECT=true`, index count 1. Rechecked **actual hosted staging via SELECT only**: `anon=false`, `authenticated=false`, `service_role=true`, index count 1; table owner `postgres`; exact source `relacl`: `{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}`. Both local and source have RLS enabled/forced and zero policies. **Schema restore does not currently preserve privilege parity.**
+
+This mismatch is consistent with local Supabase database default grants when importing a backup containing only grants that explicitly existed on the source; `public.profiles` must be denied to anon and authenticated by SQL privileges as well as RLS. Supabase CLI documentation explicitly advises revoking target public table default privileges before restore to preserve source grants: https://supabase.com/docs/reference/cli/supabase-db-dump
+
+**Release gate remains BLOCKED.** Proposed next owner-controlled lab step: `REVOKE ALL PRIVILEGES ON TABLE public.profiles FROM anon, authenticated;` on the isolated local container only, then recheck `has_table_privilege` and table/index/RLS counts. This is an explicit **post-restore local repair**, so success cannot be misreported as an unmodified exact restore. A stronger future clean-room restore must first revoke target default privileges in the disposable destination, then load the original SQL under a single transaction and compare exact ACLs, without hosted changes. Do not apply these REVOKEs to hosted staging or Production and do not remove RLS.
+
+
 
 ## Approval gates that remain distinct
 
