@@ -125,6 +125,27 @@ The owner ran `ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOK
 
 **Next recovery validation:** safely inspect original immutable `data.sql` to enumerate source COPY table names and row counts (no row contents), check for managed Auth and Storage migration records, and choose an appropriate clean-room restoration strategy. Do not delete or rewrite the original SQL, remove nonempty migration history, or weaken roles to force a green import. Staging Schema Approval A remains blocked; no hosted writes or activation occurred.
 
+### Owner export-data inventory and source migration baseline (2026-11-09)
+
+The owner ran a **checksum-verified, read-only** PostgreSQL `COPY` block scan of the original `data.sql`; original SHA-256 `CA28252CCCC08733FB5E056C509BF963CA9BA7C6580EB28E85AB26536E3DF3D0` was verified unchanged.
+
+| Data section | COPY rows in original export |
+| --- | ---: |
+| `public.profiles` | 0 |
+| `auth.users` | 0 |
+| `storage.objects` | 0 |
+| `storage.buckets_vectors` | 0 |
+| `storage.vector_indexes` | 0 |
+| `auth.schema_migrations` | not present |
+| `storage.migrations` | not present |
+| `supabase_migrations.schema_migrations` | not present |
+
+Independent **read-only** connected staging queries confirmed: `public.profiles` 0; `auth.users` 0; `storage.objects` 0; `storage.buckets` 0; `auth.schema_migrations` **82**; `storage.migrations` **80**; `supabase_migrations.schema_migrations` **1**. The one application migration is **`20261103140914_create_isolated_profile_staging_p5`** (version `20261103140914`, name `create_isolated_profile_staging_p5`). The source public schema contains only `public.profiles` (14 columns, 13 constraints, forced RLS).
+
+**Interpretation:** Current staging application/Auth/Storage user-data tables are empty, but a successful export is NOT a complete migration-history or operational recovery. Managed Auth/Storage migration history is owned by the target Supabase installation; do not overwrite it with versions from a different stack. The missing application migration-history export must be recorded and reconciled by a controlled, target-compatible recovery procedure. The `data.sql` empty COPY sections and the absent migration tables are not proof that *all* recoverability requirements are met.
+
+**Safe next check:** without adding another DB stack or touching any hosted DB, run a **transactional local-only** `DROP TABLE public.profiles RESTRICT` followed by replay of the original schema file, check `f/f/t` privileges *before any manual table REVOKE*, then `ROLLBACK` and verify the original local table still exists. This tests the corrected **local `postgres` default privileges** against the real schema without leaving changes behind. Any error triggers transaction rollback on connection close. Full data/managed migration recovery remains blocked.
+
 ## Approval gates that remain distinct
 
 - **Staging Schema Approval A:** actual staging backup restored successfully and reviewed exact SQL + signed owner scope.
