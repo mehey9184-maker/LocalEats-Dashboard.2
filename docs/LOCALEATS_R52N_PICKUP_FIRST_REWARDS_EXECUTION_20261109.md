@@ -9,6 +9,14 @@
 
 **Next gate: distinct owner approval for Fixture Approval B**, inserting only reviewed *fictional* shop and menu records into isolated staging. **Not authorized yet:** fixture B, identities C, pickup writes, Production, merchant payouts, Rewards grants, or merges. Complete Supabase managed-data/migration-history recovery remains unresolved despite owner-tested encrypted offsite archives. Earlier sections below record the historical plan and backup tests and must not be interpreted as current absence of catalogue tables.
 
+## Latest status — Fixture Approval B COMPLETE (2026-11-09)
+
+The founder expressly approved **Fixture Approval B** for the isolated staging project only. Exact inspected 3,060-character SQL fixture from draft PR #127, blob `8f531e2e7235fd1089c0bc6f1d015e79d978927c`, was executed on `rgpbdajhlrwfmhopzgzk` with the documented staging guard and an already-passed read-only schema/empty-table preflight. **Read-back PASSED:** five synthetic shops, three synthetic menu items; approved visible 3, pending 1, archived 1, P5 profile rows 0, Auth users 0, two staging migrations unchanged, RLS and service-only read permissions preserved. 
+
+Hosted staging API tests via Vercel returned HTTP **200** with three approved catalogued shops; fixed synthetic origin `(-26.0000, 28.0000)` gave only the two nearest shops (open + closed) inside 4 km; far origin returned only far shop; open/closed menus accessible; pending menu returned 404. Existing Customer Preview HTML and staging API health both returned HTTP 200. **Actual Customer UI acceptance not yet tested by owner**; synthetic location does not represent the user's location. Details: [R5.2P Fixture Approval B execution](LOCALEATS_R52P_FIXTURE_APPROVAL_B_EXECUTION_20261109.md).
+
+**Next owner gate:** verify original Customer ShopCard/Home/Discover/menu/cart with Chrome's temporary browser-only simulated geolocation to fixed fixture origin, without attempting a real order. Separate Identity Approval C is required before adding any staged Firebase account or Merchant identity. No Production, real ordering, reward activation, payments, Rider, live promotion or PR merge was performed. The full managed Supabase recovery gate remains open despite application-schema recovery and owner-protected backups.
+
 ## Immediate release order
 
 1. **Recoverable isolated staging first (BLOCKED)** — Complete actual staging PostgreSQL 17 backup from project `rgpbdajhlrwfmhopzgzk`, protect the export and independently restore it. The Supabase organization is on Free; metadata-only baselines or synthetic test dumps cannot pass this. Existing R5.2M [backup/restore plan](LOCALEATS_R52M_ACTUAL_STAGING_BACKUP_RECOVERY_GATE_20261109.md) remains authoritative for safety, and PR #129 stays draft.
