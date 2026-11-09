@@ -1,4 +1,5 @@
 # R5.2N — Owner-run, READ-ONLY export for isolated Supabase staging.
+# Supabase CLI 3.x: explicit --remote=<project-ref>, NOT old --linked flag.
 # NEVER use for Production. Requires locally installed Supabase CLI and Docker.
 # A successful export is NOT an independently verified restore.
 # Credentials are entered only into official Supabase CLI prompts; never into
@@ -52,6 +53,10 @@ foreach ($command in @("supabase", "docker")) {
 }
 Invoke-Checked -Name "docker" -Arguments @("info", "--format", "{{.ServerVersion}}")
 Invoke-Checked -Name "supabase" -Arguments @("--version")
+$dumpHelp = & supabase db dump --help
+if ($LASTEXITCODE -ne 0 -or -not ($dumpHelp -match "--remote")) {
+  throw "CLI does not advertise explicit --remote target. Stop and inspect supabase db dump --help."
+}
 
 Write-Host "READ-ONLY BACKUP SOURCE: $projectName ($stagingRef)" -ForegroundColor Yellow
 Write-Host "This is NOT a Production backup. It creates files in a private local folder."
@@ -63,13 +68,10 @@ if ($typedRef -cne $expectedConfirmation) {
 
 $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
 $runFolder = Join-Path $fullBackupRoot ("LocalEats-Staging-" + $stamp)
-$workDir = Join-Path $runFolder "supabase-cli-work"
-[void](New-Item -ItemType Directory -Path $workDir -Force)
-Push-Location $workDir
+[void](New-Item -ItemType Directory -Path $runFolder -Force)
+Push-Location $runFolder
 try {
-  Invoke-Checked -Name "supabase" -Arguments @("init")
-  Write-Host "Linking ONLY $projectName ($stagingRef) via the official Supabase CLI."
-  Invoke-Checked -Name "supabase" -Arguments @("link", "--project-ref", $stagingRef)
+  Write-Host "Using the explicit remote project $projectName ($stagingRef); never a default linked project."
   $exportFiles = @(
     @{ Name = "roles.sql"; Args = @("--role-only") },
     @{ Name = "schema.sql"; Args = @() },
@@ -79,7 +81,7 @@ try {
   foreach ($item in $exportFiles) {
     $name = $item.Name
     $filePath = Join-Path $runFolder $name
-    $args = @("db", "dump", "--linked", "-f", $filePath) + $item.Args
+    $args = @("db", "dump", "--remote=$stagingRef", "-f", $filePath) + $item.Args
     Invoke-Checked -Name "supabase" -Arguments $args
     if (-not (Test-Path -LiteralPath $filePath)) {
       throw "$name was not created."
