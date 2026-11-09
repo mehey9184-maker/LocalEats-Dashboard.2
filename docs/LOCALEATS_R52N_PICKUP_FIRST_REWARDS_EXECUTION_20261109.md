@@ -203,6 +203,18 @@ On the trusted Windows workstation, owner ran `manage-bde -status C:` (read-only
 
 **No archive encryption completed/verified yet.** The owner should provide a non-secret "archive created and tested" status without sharing file bytes, passphrases or recovery keys. Original staging and Production unchanged. Full managed Auth/Storage and application migration-history recovery remains independently blocked.
 
+### Owner tested three encrypted archives; original SQL absent (2026-11-09)
+
+Owner reported **7-Zip archives tested successfully** for the three original staging exports and confirmed **no loose original SQL files remain in the backup folder**. Windows Explorer screenshot showed `roles.7z`, `schema.7z`, `data.7z`, and another unclassified `data backup.7z` in `C:\\Users\\Business_man\\LocalEats-Private-Staging-Backups`. The extra archive is **not** part of accepted recovery evidence and should not be substituted. Owner has not yet furnished independent archive encryption-option proof, matching post-extraction export SHA-256, a second independent encrypted copy, or a proof that residual plaintext in Docker volumes / the unencrypted Windows filesystem is unrecoverable. No archive password or private SQL uploaded.
+
+**Recovery policy:** preserve `roles.7z`, `schema.7z`, `data.7z` and their unique passphrase separately, keep one more copy on independent trusted media (copy the already-encrypted archives; never send plaintext), test each copied archive with 7-Zip before deleting or cleaning any originals, and assess full-disk encryption. Do not treat the presence of .7z extension alone as encryption proof. Local C: is fully decrypted and protection off. Once backup redundancy is verified, decide on encrypted-at-rest restore workflow and reconcile migration history.
+
+Independently rechecked actual connected staging **read-only** after the owner's archive checks:
+- Exactly one application migration `20261103140914`, `create_isolated_profile_staging_p5`.
+- Source `supabase_migrations.schema_migrations` has columns `version` (text NOT NULL), `statements` (nullable array), `name` (nullable text), `created_by` (nullable text), `idempotency_key` (nullable text), `rollback` (nullable array).
+- The original three-file export did not contain this migration table, and the local restore lab did not contain `supabase_migrations.schema_migrations`; no history entries are to be fabricated or written back to hosted staging.
+- **Staging schema gate remains BLOCKED** pending protected redundant source backup, full managed restoration scope and migration ledger reconciliation.
+
 ## Approval gates that remain distinct
 
 - **Staging Schema Approval A:** actual staging backup restored successfully and reviewed exact SQL + signed owner scope.
