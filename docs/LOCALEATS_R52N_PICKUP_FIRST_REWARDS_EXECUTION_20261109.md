@@ -76,6 +76,16 @@ The owner then restored only `roles.sql` + `schema.sql` into local Supabase usin
 
 **Result:** Local P5 application schema structure restored and matching six core metrics. **Still not proven:** cross-role read denial/service-only read, complete column-by-column/type/index/ACL equivalence, source data recoverability, Supabase Auth/Storage/application migration restore, actual file objects (if any), durable encrypted copy, production backup, or full end-to-end pickup behavior. Schema Approval A remains on hold until the comprehensive recovery decision is approved; no R5.2K schema or fixtures applied.
 
+### Owner's executable role-access security tests — PASS (2026-11-09)
+
+Against the isolated local PostgreSQL 17.11 container `supabase_db_LocalEats-Restore-Lab` (not hosted staging), following the **manual** privilege correction, the owner executed three separate read-only sessions:
+
+- `SET ROLE anon; SELECT COUNT(*) FROM public.profiles;` → `permission denied for table profiles` (expected)
+- `SET ROLE authenticated; SELECT COUNT(*) FROM public.profiles;` → `permission denied for table profiles` (expected)
+- `SET ROLE service_role; SELECT COUNT(*) FROM public.profiles;` → `count = 0` (expected)
+
+**PASS: local database authorization check.** This is stronger than inspecting `has_table_privilege` alone. PostgreSQL's suggested `GRANT SELECT` hints must NOT be followed; those roles are intentionally denied. No direct public profile reads. The local privilege test does not validate Firebase-authenticated API pathways or independently prove full backup recoverability. **Clean-room, unmanaged/default-privilege-safe source restoration plus managed Auth/Storage/migration recovery remain required before Schema Approval A.** No hosted DB migration, Production changes, app merge or feature activation was performed.
+
 ### Owner local-only ACL repair verification — PASS after manual correction (2026-11-09)
 
 Using the isolated `supabase_db_LocalEats-Restore-Lab` PostgreSQL 17.11 container **only**, the owner executed:
