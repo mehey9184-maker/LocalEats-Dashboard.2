@@ -76,6 +76,18 @@ The owner then restored only `roles.sql` + `schema.sql` into local Supabase usin
 
 **Result:** Local P5 application schema structure restored and matching six core metrics. **Still not proven:** cross-role read denial/service-only read, complete column-by-column/type/index/ACL equivalence, source data recoverability, Supabase Auth/Storage/application migration restore, actual file objects (if any), durable encrypted copy, production backup, or full end-to-end pickup behavior. Schema Approval A remains on hold until the comprehensive recovery decision is approved; no R5.2K schema or fixtures applied.
 
+### Owner local-only ACL repair verification — PASS after manual correction (2026-11-09)
+
+Using the isolated `supabase_db_LocalEats-Restore-Lab` PostgreSQL 17.11 container **only**, the owner executed:
+
+```sql
+REVOKE ALL PRIVILEGES ON TABLE public.profiles FROM anon, authenticated;
+```
+
+The SQL returned `REVOKE`; subsequent *local* `has_table_privilege` verification returned: `anon SELECT = f`, `authenticated SELECT = f`, `service_role SELECT = t`, matching the observed real staging source grants. **This is a post-import manual privilege repair, NOT evidence that the unmodified database export automatically recovered source ACLs.** Original staging and Production remain untouched. RLS and FORCE RLS remain enabled, with zero policies; no live order, rewards, payment or merge activation.
+
+**Next:** exercise `SET ROLE anon` and `SET ROLE authenticated` in the local restore lab, expecting permission-denied on `public.profiles`; also confirm service role access. Rehearse a *fresh* clean-room restore with destination default privilege revocation and real dump fidelity, then confirm auth/storage managed schema and application migration recovery before clearing Schema Approval A.
+
 ### Owner's local access-control comparison — FAIL, needs local-only ACL correction
 
 The owner executed the read-only local `has_table_privilege` probe. Results from the locally restored `public.profiles`: `anon SELECT=true`, `authenticated SELECT=true`, `service_role SELECT=true`, index count 1. Rechecked **actual hosted staging via SELECT only**: `anon=false`, `authenticated=false`, `service_role=true`, index count 1; table owner `postgres`; exact source `relacl`: `{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}`. Both local and source have RLS enabled/forced and zero policies. **Schema restore does not currently preserve privilege parity.**
