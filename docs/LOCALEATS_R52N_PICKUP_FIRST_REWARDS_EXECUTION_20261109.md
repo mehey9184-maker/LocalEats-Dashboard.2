@@ -195,6 +195,14 @@ Previous owner evidence additionally proved source-aligned 14 columns, 13 constr
 
 **Next:** keep source exports immutable and secure; prepare a checked, owner-approved migration-ledger recovery strategy on disposable infrastructure and a scope-accurate restore report. No hosted schema changes or live app flags before separate owner acceptance.
 
+### Owner's Windows backup-at-rest protection check — BLOCKED (2026-11-09)
+
+On the trusted Windows workstation, owner ran `manage-bde -status C:` (read-only). Observed **Fully Decrypted**, **0.0% encrypted**, **Encryption Method None**, **Protection Status Off**, and no key protectors. All original exported database files are currently located on this unencrypted disk and there are local Docker copies of SQL exports used for restoration. **Do not claim encrypted storage, backup durability, or Schema Approval A ready.**
+
+**Action for owner (outside repo):** create a password-protected encrypted archive containing only the original `roles.sql`, `schema.sql`, and `data.sql` using 7-Zip in `7z` format, AES-256, **Encrypt file names**; use a long unique passphrase that stays off ChatGPT/GitHub and is backed up separately; use **Test archive** and verify all expected files can be opened/checked before removing plaintext. Store a second separate encrypted copy on another trusted storage medium. Consider Windows Device Encryption/BitLocker for full-volume protection if edition/hardware allow. Merely creating an encrypted archive on a formerly unencrypted drive does not guarantee old plaintext is irrecoverable; encrypted drive protects future exports more robustly. Clean previous Docker `/tmp` plaintext export copies only after confirmed encrypted backup, and avoid exposing local Supabase services on untrusted networks. Do not disclose generated local Supabase credentials in logs or chat.
+
+**No archive encryption completed/verified yet.** The owner should provide a non-secret "archive created and tested" status without sharing file bytes, passphrases or recovery keys. Original staging and Production unchanged. Full managed Auth/Storage and application migration-history recovery remains independently blocked.
+
 ## Approval gates that remain distinct
 
 - **Staging Schema Approval A:** actual staging backup restored successfully and reviewed exact SQL + signed owner scope.
