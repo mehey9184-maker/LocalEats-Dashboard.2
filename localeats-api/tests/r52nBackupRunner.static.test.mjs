@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 
 const script = readFileSync(
-  new URL("../../../scripts/staging/r52n-export-staging-backup.ps1", import.meta.url),
+  new URL("../../scripts/staging/r52n-export-staging-backup.ps1", import.meta.url),
   "utf8",
 );
 
