@@ -215,6 +215,21 @@ Independently rechecked actual connected staging **read-only** after the owner's
 - The original three-file export did not contain this migration table, and the local restore lab did not contain `supabase_migrations.schema_migrations`; no history entries are to be fabricated or written back to hosted staging.
 - **Staging schema gate remains BLOCKED** pending protected redundant source backup, full managed restoration scope and migration ledger reconciliation.
 
+### R5.2O — Owner-confirmed backup redundancy and isolated staging schema preflight (2026-11-09)
+
+**Owner statement:** encrypted `roles.7z`, `schema.7z`, `data.7z` archives have been tested and the owner has uploaded/copied them to storage the owner considers safe. Accept the owner report as **completion of the owner-operated second-copy action**. Do not claim that ChatGPT verified offsite storage provider, encryption parameters, password escrow, independent successful restore of every SQL file, cloud ACL, or original managed migration history. Since the original plaintext SQL files are no longer present in the owner's backup folder, preserving and being able to extract the encrypted copies is particularly important. Separate, local plaintext SQL copies may still exist in Docker containers; don't request or expose them.
+
+**Connected Supabase target verified:** `rgpbdajhlrwfmhopzgzk`, isolated project `LocalEats-Profile-Staging`. Re-ran **read-only** schema preflight using Supabase connector. Actual returned `R52O_STAGING_PRECHECK_PASS`:
+- PostgreSQL 17, `public.profiles` exists, zero rows, 14 columns, 13 constraints, 1 index, zero RLS policies, RLS + FORCE RLS true, exact P5 sentinel matches.
+- No direct `anon`/`authenticated` SELECT grant; `service_role` SELECT granted.
+- `auth.users=0`, `storage.objects=0`.
+- Exactly one application migration `20261103140914 / create_isolated_profile_staging_p5`, confirmed independently with `list_migrations`.
+- No `public.shops`, `public.menu_items`, or `public.shops_with_availability`; `list_tables` returned only `public.profiles`.
+
+**Next release decision: separately approve or decline Schema Approval A.** Reviewed candidate remains `supabase/drafts/r52k_catalogue_staging_REVIEW_ONLY.sql` in draft PR #127. Narrow scope: isolated staging ONLY; create empty synthetic-ID constrained `shops`, `menu_items` and security-invoker catalogue view with RLS and `service_role` SELECT only. No data fixtures, merchant identities, order rows, real payments, reward credits, Production database writes, GitHub merge or live activation. Before any execution, operator must validate exact project reference and the read-only preflight again, explicit founder schema approval, check SQL revision unchanged, and preserve an emergency rollback. Prefer transaction-controlled staging-only execution; never silently assume source migration ledger is recoverable.
+
+**Recovery caveat remains:** verified local application schema and privileges are not the same as a full Supabase disaster-recovery drill. The app-migration ledger was omitted by normal dump and managed Auth/Storage histories were not independently recovered. Do not mark total backup-and-restore certification PASS, or approve Production deployment based on this preflight alone. Owner can accept an explicitly disclosed narrow staging-only residual risk as a distinct decision; do not unilaterally bypass the earlier full-recovery gate.
+
 ## Approval gates that remain distinct
 
 - **Staging Schema Approval A:** actual staging backup restored successfully and reviewed exact SQL + signed owner scope.
