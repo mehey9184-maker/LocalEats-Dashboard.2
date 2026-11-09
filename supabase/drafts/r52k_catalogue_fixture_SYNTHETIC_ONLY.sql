@@ -23,28 +23,28 @@ $fixture_preflight$;
 -- Fixed invented coordinate origin is (-26.0000, 28.0000); NOT device GPS.
 INSERT INTO public.shops
   (id,owner_id,name,description,location,category,approval_status,archived_at,
-   is_active,latitude,longitude,opening_time,closing_time)
+   is_active,latitude,longitude,opening_time,closing_time,availability_override_until)
 VALUES
   ('stg-test-shop-open','stg-test-owner-synthetic',
    'STAGING TEST — Open Kota','Fabricated open-shop fixture',
    'Synthetic fixture A (not a real business)','Kota','approved',NULL,
-   true,-26.0000,28.0000,'00:00','23:59'),
+   true,-26.0000,28.0000,'00:00','23:59',now() + interval '7 days'),
   ('stg-test-shop-closed','stg-test-owner-synthetic',
    'STAGING TEST — Closed Kota','Fabricated closed-shop fixture; menu browse only',
    'Synthetic fixture B (not a real business)','Kota','approved',NULL,
-   false,-26.0040,28.0010,'00:00','23:59'),
+   false,-26.0040,28.0010,'00:00','23:59',NULL),
   ('stg-test-shop-pending','stg-test-owner-synthetic',
    'STAGING TEST — Pending Shop','Must be excluded from public catalogues',
    'Synthetic fixture C (not a real business)','Kota','pending',NULL,
-   true,-26.0050,28.0000,'00:00','23:59'),
+   true,-26.0050,28.0000,'00:00','23:59',NULL),
   ('stg-test-shop-archived','stg-test-owner-synthetic',
    'STAGING TEST — Archived Shop','Must be excluded from public catalogues',
    'Synthetic fixture D (not a real business)','Kota','approved',now(),
-   true,-26.0060,28.0000,'00:00','23:59'),
+   true,-26.0060,28.0000,'00:00','23:59',NULL),
   ('stg-test-shop-far','stg-test-owner-synthetic',
    'STAGING TEST — Far Kota','Approved but more than 4 km from fixture origin',
    'Synthetic fixture E (not a real business)','Kota','approved',NULL,
-   true,-26.0800,28.0000,'00:00','23:59');
+   true,-26.0800,28.0000,'00:00','23:59',NULL);
 
 INSERT INTO public.menu_items
   (id,shop_id,name,price,description,category,is_available,customizations)
