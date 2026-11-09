@@ -3,6 +3,12 @@
 **Date:** 2026-11-09  
 **State:** EXECUTION IN PROGRESS / DRAFT ONLY. No customer rewards, live orders, Production DB writes, payment integrations, or merges have been authorized by this PR.
 
+## Latest decision — staging Schema Approval A COMPLETE (2026-11-09)
+
+**Latest state supersedes the early draft checklist below**: The owner explicitly approved the isolated staging schema despite disclosed incomplete full Supabase restore scope. The reviewed R5.2K empty catalogue schema was applied **only to `LocalEats-Profile-Staging` (project ref `rgpbdajhlrwfmhopzgzk`)** through Supabase migration `20261109165612 / r52o_isolated_staging_catalogue_schema_approval_a`. Post-apply verification confirms `public.shops` + `public.menu_items` + `public.shops_with_availability`, no rows, RLS enabled, service-only SELECT, no backend catalogue writes and the P5 profiles table intact. Both hosted API read routes now respond HTTP 200 with `{"success":true,"shops":[]}`. Security Advisor has only expected INFO `rls_enabled_no_policy` for the three server-protected tables. Detailed evidence: [R5.2O staging execution report](LOCALEATS_R52O_SCHEMA_APPROVAL_A_EXECUTION_20261109.md).
+
+**Next gate: distinct owner approval for Fixture Approval B**, inserting only reviewed *fictional* shop and menu records into isolated staging. **Not authorized yet:** fixture B, identities C, pickup writes, Production, merchant payouts, Rewards grants, or merges. Complete Supabase managed-data/migration-history recovery remains unresolved despite owner-tested encrypted offsite archives. Earlier sections below record the historical plan and backup tests and must not be interpreted as current absence of catalogue tables.
+
 ## Immediate release order
 
 1. **Recoverable isolated staging first (BLOCKED)** — Complete actual staging PostgreSQL 17 backup from project `rgpbdajhlrwfmhopzgzk`, protect the export and independently restore it. The Supabase organization is on Free; metadata-only baselines or synthetic test dumps cannot pass this. Existing R5.2M [backup/restore plan](LOCALEATS_R52M_ACTUAL_STAGING_BACKUP_RECOVERY_GATE_20261109.md) remains authoritative for safety, and PR #129 stays draft.
