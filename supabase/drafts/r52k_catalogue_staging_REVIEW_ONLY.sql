@@ -66,8 +66,8 @@ CREATE TABLE public.shops (
     CHECK (approval_status IN ('pending','approved','rejected','suspended')),
   archived_at timestamptz,
   is_active boolean NOT NULL DEFAULT false,
-  latitude double precision NOT NULL CHECK (isfinite(latitude) AND latitude BETWEEN -90 AND 90),
-  longitude double precision NOT NULL CHECK (isfinite(longitude) AND longitude BETWEEN -180 AND 180),
+  latitude double precision NOT NULL CHECK (latitude BETWEEN -90 AND 90),
+  longitude double precision NOT NULL CHECK (longitude BETWEEN -180 AND 180),
   opening_time text DEFAULT '00:00'
     CHECK (opening_time IS NULL OR opening_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
   closing_time text DEFAULT '23:59'
