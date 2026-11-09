@@ -1,5 +1,5 @@
 # R5.2N — Owner-run, READ-ONLY export for isolated Supabase staging.
-# Supabase CLI 3.x: explicit --remote=<project-ref>, NOT old --linked flag.
+# Supabase CLI 3.x: explicit --remote=<project-ref>, and no implicit project linking.
 # NEVER use for Production. Requires locally installed Supabase CLI and Docker.
 # A successful export is NOT an independently verified restore.
 # Credentials are entered only into official Supabase CLI prompts; never into
