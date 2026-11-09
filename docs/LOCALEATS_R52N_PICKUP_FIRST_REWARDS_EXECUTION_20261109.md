@@ -45,6 +45,41 @@ Before use, create a private local folder on encrypted storage outside any Git c
 
 It will ask you to type the exact staging project ref (`rgpbdajhlrwfmhopzgzk`) and handle any official Supabase CLI login/database password prompts *only on your local machine*. Never share credentials, generated SQL dumps, or complete connection strings in chat/GitHub. The script does **not** encrypt the files automatically; place it on an encrypted volume and keep an encrypted off-site copy. For managed Auth/Storage and migration-history recovery and an independent restoration test, follow the R5.2M guide. Your non-secret manifest metadata is safe to discuss; the manifest's `restoreStatus` is intentionally `NOT_VERIFIED` until an independent test passes.
 
+## Actual owner-operated staging recovery evidence (2026-11-09)
+
+**PARTIAL RECOVERY PASS; full staging backup-and-independent-restore gate still BLOCKED.**
+
+The owner ran Supabase CLI 3.0.0 and Docker 29.9.2 on their own Windows PC. Three separate remote exports were created with explicit `--remote=rgpbdajhlrwfmhopzgzk`, moved into a private local folder, and hashed. **Never upload the exported SQL or credentials to GitHub.**
+
+| Export | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `roles.sql` | 297 | `25873CEC56A2CC6514E204F420231777F85C03DA818CAA7090CDCDFA89776ECD` |
+| `schema.sql` | 5,057 | `AB421EA0F29A65AFE889C67952A70C3C8609776A2727A6798508524FA4BD293F` |
+| `data.sql` | 11,618 | `CA28252CCCC08733FB5E056C509BF963CA9BA7C6580EB28E85AB26536E3DF3D0` |
+
+Initial plain PostgreSQL 17 restore failed on absent managed Supabase role/schema; it was stopped. A new isolated Supabase local stack started on `127.0.0.1:55421` (API) / port `55422` (PostgreSQL 17.11). The original schema and data were not mutated.
+
+First all-in-one import into local Supabase failed within `--single-transaction -v ON_ERROR_STOP=1` due to `storage.buckets_vectors` INSERT restrictions. An owner-generated local **testing copy only** of `data.sql` omitted one verified-empty `storage.buckets_vectors` COPY and retried. That import also failed and rolled back due to `storage.vector_indexes` permissions. Neither failure should be treated as a recovered full database.
+
+Actual connected staging read-only metadata confirmed `storage.buckets_vectors` and `storage.vector_indexes` each had 0 rows and INSERT for role postgres was disallowed. Also `auth.schema_migrations` had 82 rows and `storage.migrations` had 80 rows: **do not strip managed nonempty migration data or grant broad privileges to force a restore**. `supabase_migrations.schema_migrations` had one application migration. No connected hosted DB changes were made.
+
+The owner then restored only `roles.sql` + `schema.sql` into local Supabase using one transaction and `ON_ERROR_STOP=1`. The command printed `LOCAL APPLICATION SCHEMA RESTORED`. A follow-up local SQL query returned:
+
+| Metadata | Actual staging baseline | Owner's local restored database |
+| --- | ---: | ---: |
+| public.profiles row count | 0 | 0 |
+| public.profiles columns | 14 | 14 |
+| public.profiles constraints | 13 | 13 |
+| public.profiles RLS policies | 0 | 0 |
+| RLS enabled | true | true |
+| FORCE RLS | true | true |
+
+**Result:** Local P5 application schema structure restored and matching six core metrics. **Still not proven:** cross-role read denial/service-only read, complete column-by-column/type/index/ACL equivalence, source data recoverability, Supabase Auth/Storage/application migration restore, actual file objects (if any), durable encrypted copy, production backup, or full end-to-end pickup behavior. Schema Approval A remains on hold until the comprehensive recovery decision is approved; no R5.2K schema or fixtures applied.
+
+### Next controlled check
+
+On the same **local lab** only, verify table privileges and RLS access boundaries without writes, then compare to staging. Do not rerun the full data import into a possibly nonempty database, replace original SQL files, or bypass RLS. Do not share local service keys or Storage credentials from `supabase start`.
+
 ## Approval gates that remain distinct
 
 - **Staging Schema Approval A:** actual staging backup restored successfully and reviewed exact SQL + signed owner scope.
