@@ -20,7 +20,8 @@ test("R52N backup runner exports separate role, schema and data files read-only"
   assert.match(script, /"data\.sql"/);
   assert.match(script, /--role-only/);
   assert.match(script, /--data-only/);
-  assert.match(script, /--linked/);
+  assert.match(script, /"--remote=\$stagingRef"/);
+  assert.doesNotMatch(script, /--linked|@\("link",/);
   assert.match(script, /Get-FileHash/);
   assert.match(script, /restoreStatus\s*=\s*"NOT_VERIFIED"/);
   assert.match(script, /actualProjectRecoveryReady\s*=\s*\$false/);
