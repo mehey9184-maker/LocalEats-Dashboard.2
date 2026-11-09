@@ -179,6 +179,22 @@ Independent source **read-only** schema fingerprint query over source `public.pr
 
 These are metadata-only consistency comparators, not independent backup receipts. A local comparison is the recommended next read-only acceptance test. Only then design the missing migration-history recovery procedure and full managed Auth/Storage compatibility plan.
 
+### Complete owner source-vs-recovery metadata fingerprint parity — PASS (2026-11-09)
+
+Owner executed the SQL CTE from the launch plan against the **isolated local PostgreSQL 17.11** recovery lab and returned three metadata-only digests. Every value **exactly equals** the independently queried live staging baseline for `public.profiles`:
+
+| Property | Actual staging | Local restore |
+| --- | --- | --- |
+| Ordered column definitions | `cc36687e28c2c82e91c30f05d76cf915` | **MATCH** |
+| Ordered constraint definitions | `3221cebb96aee5898e53bd37ed0e3182` | **MATCH** |
+| Ordered index definitions | `fd08bb978aa63dbb2a08cd383c6cee2e` | **MATCH** |
+
+Previous owner evidence additionally proved source-aligned 14 columns, 13 constraints, one index, zero profile rows, zero RLS policies, `relrowsecurity=true`, `relforcerowsecurity=true`, table owner `postgres`, direct SQL privileges denied for `anon/authenticated` and allowed for `service_role`, plus transactional schema replay with correctly preconfigured local defaults and rollback.
+
+**Status:** `R5.2N APPLICATION SCHEMA RECOVERY — PASS`. The checks are *source database metadata* compared with the owner's restored schema, **not** a full hosted staging recovery certification. Still unresolved: `supabase_migrations.schema_migrations` absent from local recovery, original Auth/Storage managed migration-history version compatibility, full supported restoration of all app/managed data, encrypted remote backup copy, and explicit staging Schema Approval A. Actual source migration ledger is one record: `20261103140914 / create_isolated_profile_staging_p5` (read-only confirmed through Supabase connector). The original `data.sql` does not contain that table, so source-vs-local migration history parity is **NOT verified**. Do **not** fabricate it or mark full restore complete.
+
+**Next:** keep source exports immutable and secure; prepare a checked, owner-approved migration-ledger recovery strategy on disposable infrastructure and a scope-accurate restore report. No hosted schema changes or live app flags before separate owner acceptance.
+
 ## Approval gates that remain distinct
 
 - **Staging Schema Approval A:** actual staging backup restored successfully and reviewed exact SQL + signed owner scope.
