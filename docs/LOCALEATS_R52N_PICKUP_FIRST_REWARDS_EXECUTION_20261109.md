@@ -159,6 +159,26 @@ The owner output ended `LOCAL TRANSACTIONAL SCHEMA TEST COMPLETED`. This is **PA
 
 **Next gap:** confirm local app-migration history availability and compare full profiles privilege matrix / RLS / ownership with hosted staging. The exported `data.sql` does not contain `supabase_migrations.schema_migrations`; the remote project still lists its single P5 migration. Do not fabricate migration history rows or deploy the R5.2K catalogue until the owner reviews the recovery gap and separate staging schema approval gate.
 
+### Complete local profile privilege matrix and migration-table gap — PASS / OPEN (2026-11-09)
+
+Owner's local-only read-only checks on the restored application table reported:
+
+| Actor | SELECT | INSERT | UPDATE | DELETE |
+| --- | --- | --- | --- | --- |
+| `anon` | f | f | f | f |
+| `authenticated` | f | f | f | f |
+| `service_role` | t | t | t | t |
+
+Table owner is `postgres`; RLS `true`, FORCE RLS `true`. **Local migration history relation** `to_regclass('supabase_migrations.schema_migrations')` returned **null**. The staged source has one application migration `20261103140914` named `create_isolated_profile_staging_p5`. Do not fabricate migration history, promote a new catalogue migration, or claim full database recovery based on successful schema replay.
+
+Independent source **read-only** schema fingerprint query over source `public.profiles` on staging PostgreSQL 17.11 provided the following expected SHA-like MD5 values:
+- ordered columns (attnum, name, formatted type, nullable, default; joined with `|`, lines joined with LF): `cc36687e28c2c82e91c30f05d76cf915`; count 14.
+- constraints (name, type, pg_get_constraintdef; sorted by name): `3221cebb96aee5898e53bd37ed0e3182`; count 13.
+- indexes (indexname, indexdef; sorted by name): `fd08bb978aa63dbb2a08cd383c6cee2e`; count 1.
+- table comment: `LocalEats Profile P5 isolated staging only; no direct anon/authenticated Data API access; Firebase UID scoped via server profile API.`
+
+These are metadata-only consistency comparators, not independent backup receipts. A local comparison is the recommended next read-only acceptance test. Only then design the missing migration-history recovery procedure and full managed Auth/Storage compatibility plan.
+
 ## Approval gates that remain distinct
 
 - **Staging Schema Approval A:** actual staging backup restored successfully and reviewed exact SQL + signed owner scope.
