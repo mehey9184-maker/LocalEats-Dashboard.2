@@ -119,6 +119,12 @@ This supports the observed restore drift: newly created `public.profiles` automa
 
 **Next safe local action:** change the **local `postgres` table defaults only** using `ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated`, then create a *transaction-rolled-back* probe table to verify new future table access (expect `f/f/t`). This does not retroactively affect any existing table. Only after this preflight, consider a guarded new schema replay. Do not run the SQL against any remote Supabase project. Full managed-data recovery remains unverified.
 
+### Owner local default-ACL test — PASS (2026-11-09)
+
+The owner ran `ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;` **only** in the isolated `supabase_db_LocalEats-Restore-Lab` Docker database. Then within `BEGIN ... ROLLBACK`, the owner created `public.r52n_acl_probe` and queried role SELECT privileges. Results: `anon=f`, `authenticated=f`, `service_role=t`; `ROLLBACK` completed. This confirms the intended defaults for future tables created **by postgres in this local lab**. It does not change existing tables, nor default privileges for objects created under `supabase_admin`, and it does not prove a fresh full restore.
+
+**Next recovery validation:** safely inspect original immutable `data.sql` to enumerate source COPY table names and row counts (no row contents), check for managed Auth and Storage migration records, and choose an appropriate clean-room restoration strategy. Do not delete or rewrite the original SQL, remove nonempty migration history, or weaken roles to force a green import. Staging Schema Approval A remains blocked; no hosted writes or activation occurred.
+
 ## Approval gates that remain distinct
 
 - **Staging Schema Approval A:** actual staging backup restored successfully and reviewed exact SQL + signed owner scope.
