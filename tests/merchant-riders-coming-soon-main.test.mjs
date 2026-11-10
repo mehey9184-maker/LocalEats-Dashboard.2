@@ -344,3 +344,149 @@ test("L1C-4: notification shake demo is preview-only, and alerts are truthful",(
   }
   function hookRead(){return readFileSync(new URL("../src/hooks/usePageNotificationAttention.ts",import.meta.url),"utf8");}
 });
+
+test("P3.1 payment page cannot settle money or fabricate financial PDF records",()=>{
+  const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
+  for(const forbidden of [
+    'localeats_settled_cod_orders','toggleCodSettlement','Mark Settled',
+    'Settled & Cleared','PENDING HANDOVER','Courier Handshake',
+    'generateFinancialAndCodReport','Export Financial PDF',
+    'jsPDF','autoTable(','localStorage.setItem(','supabase.from('
+  ])assert.ok(!pay.includes(forbidden),"P3.1 must not contain unsupported settlement or export: "+forbidden);
+  assert.ok(pay.includes("This page cannot mark a transaction paid, received or settled."));
+  assert.ok(pay.includes("not cash receipts, bank statements or proof of settlement"));
+  assert.ok(pay.includes('role="note"'));
+});
+
+test("P3.1 order payment flags are read-only and strictly from fresh verified owned shop API",()=>{
+  const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  assert.ok(pay.includes("ordersVerified=false"));
+  assert.ok(pay.includes("const verified=shopVerified && ordersVerified && !!currentShop"));
+  assert.ok(pay.includes("String(currentShop.id)===String(shopId)"));
+  assert.ok(pay.includes("String(order.shop_id)===String(shopId)"));
+  assert.ok(pay.includes('order.delivery_type==="collection"'));
+  assert.ok(pay.includes("if(!verified)return []"));
+  assert.ok(pay.includes("Order API: marked paid"));
+  assert.ok(pay.includes("Not independent payment proof"));
+  assert.ok(pay.includes("Verified order information unavailable"));
+  assert.ok(pay.includes("No pickup orders in the verified result"));
+  assert.ok(!pay.includes("from \"../lib/supabase\""));
+  assert.ok(!pay.includes('from("payments")'));
+  assert.ok(app.includes('ordersVerified={merchantShopGate.status==="ready"'));
+  assert.ok(app.includes('orderReadStatus.state==="fresh"'));
+  assert.ok(app.includes('orderReadScope==='));
+});
+
+test("P3.1 billing copy is honest, pickup-first, and no live payment features are enabled",()=>{
+  const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
+  assert.ok(pay.includes("Pickup-first · Customers pay at the shop."));
+  assert.ok(pay.includes("Online checkout and merchant payouts are not active."));
+  const plans=readFileSync(new URL("../src/components/MerchantSubscriptionPlans.tsx",import.meta.url),"utf8");
+  assert.ok(pay.includes("<MerchantSubscriptionPlans"));
+  assert.ok(plans.includes("Billing is not active"));
+  assert.ok(plans.includes("Planned three-month free introductory period"));
+  assert.ok(plans.includes("Not available for purchase yet"));
+  assert.ok(pay.includes('role="group" aria-label="Payment sections"'));
+  assert.ok(pay.includes('aria-pressed={tab==="pickup"}'));
+  assert.ok(pay.includes('aria-pressed={tab==="billing"}'));
+  assert.ok(pay.includes("shopId: string | number;"));
+  assert.ok(!pay.includes('role="tabpanel"'));
+  assert.ok(pay.includes("pickupOrders.slice(0,limit)"));
+  assert.ok(pay.includes("setLimit(n=>n+20)"));
+  assert.ok(!pay.includes("cash-on-delivery"));
+  assert.ok(!pay.includes("voucher redemptions"));
+  assert.ok(!pay.includes("payment handover"));
+});
+
+test("P3.2 planned Free/Plus/Pro/Premium cards show correct prices without collecting money",()=>{
+  const plans=readFileSync(new URL("../src/components/MerchantSubscriptionPlans.tsx",import.meta.url),"utf8");
+  const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
+  for(const tier of ['{id:"free",name:"Free",price:0}','{id:"plus",name:"Plus",price:199}','{id:"pro",name:"Pro",price:399}','{id:"premium",name:"Premium",price:499}']){
+    assert.ok(plans.includes(tier),"Missing approved plan: "+tier);
+  }
+  assert.ok(pay.includes("<MerchantSubscriptionPlans shop={currentShop} verified={"));
+  assert.ok(plans.includes("Your current plan"));
+  assert.ok(plans.includes("Billing is not active"));
+  assert.ok(plans.includes("Tier benefits and launch dates are not finalized"));
+  assert.ok(plans.includes("Not available for purchase yet"));
+  assert.ok(!plans.includes("onCheckout"));
+  assert.ok(!plans.includes("onActivateSubscription"));
+  assert.ok(!plans.includes("Mark as paid"));
+  for(const term of ["fetch(","supabase.","MerchantApi.","localStorage.setItem(","window.dispatchEvent("]){
+    assert.ok(!plans.includes(term),"No write-capable subscriptions in P3.2: "+term);
+  }
+});
+
+test("P3.2 expiry countdown requires explicit timezone-aware API date; no fabricated trial",()=>{
+  const plans=readFileSync(new URL("../src/components/MerchantSubscriptionPlans.tsx",import.meta.url),"utf8");
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  const home=readFileSync(new URL("../src/components/DashboardOverview.tsx",import.meta.url),"utf8");
+  assert.ok(plans.includes("typeof value!==\"string\""));
+  assert.ok(plans.includes("Date.parse(value)"));
+  assert.ok(plans.includes("shop.subscription_status===\"trial\""));
+  assert.ok(plans.includes("shop.trial_end_date"));
+  assert.ok(plans.includes("shop.subscription_expires_at"));
+  assert.ok(plans.includes("Expiry date awaiting confirmation"));
+  assert.ok(plans.includes("Africa/Johannesburg"));
+  assert.ok(plans.includes("setInterval(()=>setNow(Date.now()),1000)"));
+  assert.ok(plans.includes("window.clearInterval(interval)"));
+  assert.ok(plans.includes('aria-label={t.elapsed?'));
+  assert.ok(!plans.includes("shop.created_at"));
+  assert.ok(!plans.includes("shop.next_payment_date"));
+  assert.ok(app.includes("parsePlanExpiry(currentShop.trial_end_date)"));
+  assert.ok(!app.includes("30 * 24 * 60 * 60 * 1000"));
+  assert.ok(!app.includes("Default to a 30-day trial"));
+  assert.ok(home.includes('"Not verified"'));
+  assert.ok(home.includes('"See Payments"'));
+  assert.ok(!home.includes('"Active Plan"'));
+  assert.ok(!home.includes('"Professional"'));
+});
+
+test("P3.2 countdown sample is isolated to the no-write branch Preview",()=>{
+  const plans=readFileSync(new URL("../src/components/MerchantSubscriptionPlans.tsx",import.meta.url),"utf8");
+  assert.ok(plans.includes('VITE_MERCHANT_PREVIEW_READ_ONLY==="true"'));
+  assert.ok(plans.includes('VITE_PICKUP_ORDERING_ENABLED!=="true"'));
+  assert.ok(plans.includes('VITE_PAYMENTS_PLAN_DEMO_ENABLED==="true"'));
+  assert.ok(plans.includes('window.location.hostname'));
+  assert.ok(plans.includes('SAMPLE ONLY · Not this shop\'s subscription'));
+  assert.ok(plans.includes('data-testid="sample-subscription-countdown"'));
+  assert.ok(plans.includes('"verified-plan-clock"'));
+  assert.ok(plans.includes('data-testid="subscription-expiry-unverified"'));
+  assert.ok(plans.includes("Expiry does not automatically suspend the shop."));
+  assert.ok(plans.includes("later, separately approved backend phase"));
+});
+
+test("P3 final: shop-scoped pickup read does not coerce unknown settlement facts",()=>{
+  const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
+  assert.ok(pay.includes("shopId: string | number;"));
+  assert.ok(pay.includes("String(currentShop.id)===String(shopId)"));
+  assert.ok(pay.includes("String(order.shop_id)===String(shopId)"));
+  assert.ok(pay.includes('order.delivery_type==="collection"'));
+  assert.ok(pay.includes('aria-label="Payment sections"'));
+  assert.ok(!pay.includes('role="tab"'));
+  assert.ok(!pay.includes('role="tabpanel"'));
+  assert.ok(!pay.includes("Mark Settled"));
+});
+
+test("P3 final release: no plan or pickup payment label without authenticated current-shop ownership",()=>{
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
+  const plans=readFileSync(new URL("../src/components/MerchantSubscriptionPlans.tsx",import.meta.url),"utf8");
+  assert.ok(app.includes('shopVerified={merchantShopGate.status==="ready"'));
+  assert.ok(app.includes('currentShop.owner_id===user.id'));
+  assert.ok(app.includes('&& !!user?.id'));
+  assert.ok(pay.includes("shopVerified=false"));
+  assert.ok(pay.includes("const verified=shopVerified && ordersVerified"));
+  assert.ok(pay.includes('verified={shopVerified && !!currentShop'));
+  assert.ok(plans.includes('planFromVerifiedShop(verified?shop:undefined)'));
+  assert.ok(plans.includes('Owned shop not yet verified'));
+});
+
+test("P3 final UI: Free is an introductory mode, not something a merchant needs to purchase",()=>{
+  const plans=readFileSync(new URL("../src/components/MerchantSubscriptionPlans.tsx",import.meta.url),"utf8");
+  assert.ok(plans.includes('plan.id==="free"?"Introductory offer · launch date pending":"Not available for purchase yet"'));
+  assert.ok(plans.includes('text-xs text-on-surface-variant leading-5'));
+  assert.ok(plans.includes('min-h-10 rounded-lg'));
+  assert.ok(plans.includes('grid-cols-1 sm:grid-cols-2 xl:grid-cols-4'));
+});

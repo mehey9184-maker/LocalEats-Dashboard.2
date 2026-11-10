@@ -1,234 +1,116 @@
-import React, { useState, useEffect } from "react";
-import { Download, ShieldAlert, ShieldCheck } from "lucide-react";
-import { toast } from "sonner";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-import { Shop, Order, Payment } from "../types";
-import { supabase } from "../lib/supabase";
+import React, {useMemo, useState} from "react";
+import {Info, ReceiptText, ShieldAlert, Store} from "lucide-react";
+import {MerchantSubscriptionPlans} from "./MerchantSubscriptionPlans";
+import type {Order, Shop} from "../types";
 
 interface PaymentHistoryProps {
-  shopId: number;
+  shopId: string | number;
   currentShop?: Shop;
-  setShops?: React.Dispatch<React.SetStateAction<Shop[]>>;
   orders?: Order[];
-  setOrders?: React.Dispatch<React.SetStateAction<Order[]>>;
+  /** Authenticated, fresh merchant API read for this exact shop. */
+  ordersVerified?: boolean;
+  /** Server-verified authenticated ownership of the currently selected shop. */
+  shopVerified?: boolean;
 }
 
-export const PaymentHistory: React.FC<PaymentHistoryProps> = ({
-  shopId,
-  currentShop,
-  orders = [],
-}) => {
-  const [paymentsSubTab, setPaymentsSubTab] = useState<"billing" | "cod">("billing");
-  const [settledCodOrders, setSettledCodOrders] = useState<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem("localeats_settled_cod_orders") || "[]");
-    } catch {
-      return [];
-    }
-  });
+const orderValue=(value:unknown)=>
+  typeof value==="number" && Number.isFinite(value) && value>0
+    ? `R ${value.toFixed(2)}` : "Order value unavailable";
+const dateLabel=(value:string)=>{
+  const timestamp=new Date(value);
+  return Number.isNaN(timestamp.getTime())?"Date unavailable":timestamp.toLocaleDateString("en-ZA");
+};
 
-  const toggleCodSettlement = (orderId: string) => {
-    setSettledCodOrders((prev) => {
-      const isSettled = prev.includes(orderId);
-      const next = isSettled ? prev.filter((id) => id !== orderId) : [...prev, orderId];
-      localStorage.setItem("localeats_settled_cod_orders", JSON.stringify(next));
+export const PaymentHistory:React.FC<PaymentHistoryProps>=({
+  shopId,currentShop,orders=[],ordersVerified=false,shopVerified=false
+})=>{
+  const [tab,setTab]=useState<"pickup"|"billing">("pickup");
+  const [limit,setLimit]=useState(20);
+  const verified=shopVerified && ordersVerified && !!currentShop && String(currentShop.id)===String(shopId);
+  // Order records are not a bank statement or independently verified settlement ledger.
+  const pickupOrders=useMemo(()=>{
+    if(!verified)return [];
+    return orders
+      .filter(order=>String(order.shop_id)===String(shopId) && order.delivery_type==="collection")
+      .slice()
+      .sort((a,b)=>(Date.parse(b.created_at)||0)-(Date.parse(a.created_at)||0)
+        ||String(b.id).localeCompare(String(a.id)));
+  },[verified,orders,shopId]);
 
-      toast.success(isSettled ? "Status updated to Pending Handover" : "Marked Cash Handover Settled!", {
-        description: `Order #${orderId.slice(0, 8)} updated.`,
-        icon: isSettled ? <ShieldAlert size={16} className="text-amber-500" /> : <ShieldCheck size={16} className="text-emerald-500" />,
-      });
-      return next;
-    });
-  };
-
-  const generateFinancialAndCodReport = () => {
-    try {
-      const doc = new jsPDF();
-      const shopName = currentShop?.name || "LocalEats Vendor";
-      const dateStr = new Date().toLocaleDateString("en-ZA", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-
-      doc.setFillColor(24, 24, 27);
-      doc.rect(0, 0, 210, 28, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(15);
-      doc.setTextColor(255, 255, 255);
-      doc.text("LocalEats - Financial & COD Reconciliation Report", 14, 16);
-
-      doc.setFontSize(8.5);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Store: ${shopName} | Generated: ${dateStr}`, 14, 23);
-
-      const codOrders = orders.filter(
-        (o) => o.payment_method?.toLowerCase().includes("cash") || o.payment_method?.toLowerCase().includes("cod")
-      );
-
-      const codRows = codOrders.map((o) => [
-        o.id.slice(0, 8).toUpperCase(),
-        o.customer_name || "Guest Customer",
-        o.rider_name || "Assigned Courier",
-        `R ${(Number(o.total_price) || 0).toFixed(2)}`,
-        settledCodOrders.includes(o.id) ? "SETTLED & CLEARED" : "PENDING HANDOVER",
-        new Date(o.created_at).toLocaleDateString("en-ZA"),
-      ]);
-
-      autoTable(doc, {
-        startY: 35,
-        head: [["Order ID", "Customer Name", "Courier Handshake", "Amount", "Handshake Status", "Date"]],
-        body: codRows.length > 0 ? codRows : [["No COD orders logged", "-", "-", "R 0.00", "-", "-"]],
-        headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontStyle: "bold" },
-        styles: { fontSize: 8 },
-        theme: "striped",
-      });
-
-      const filename = `Financial_COD_Report_${shopName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
-      doc.save(filename);
-      toast.success("Financial & COD Report downloaded!", {
-        description: `Saved as ${filename}`,
-        icon: <Download className="text-emerald-500" />,
-      });
-    } catch (err) {
-      console.error("PDF export error:", err);
-      toast.error("Failed to generate PDF financial report.");
-    }
-  };
-
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchPayments = async () => {
-      setLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from("payments")
-          .select("*")
-          .eq("shop_id", shopId)
-          .order("payment_date", { ascending: false })
-          .limit(100);
-
-        if (error) throw error;
-        setPayments((data as unknown as Payment[]) || []);
-      } catch (error) {
-        console.error("Error fetching payments:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPayments();
-  }, [shopId]);
-
-  return (
-    <div className="w-full space-y-6 bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs">
-      <div className="flex items-center justify-between pb-4 border-b border-outline-variant/15">
-        <div>
-          <h2 className="text-xl font-extrabold text-on-surface">Payment & COD Financial Ledger</h2>
-          <p className="text-xs text-on-surface-variant mt-0.5">
-            Track subscription payments, voucher redemptions, and cash-on-delivery handshakes.
-          </p>
-        </div>
-        <button
-          onClick={generateFinancialAndCodReport}
-          className="px-4 py-2 rounded-2xl bg-emerald-600 text-white text-xs font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all cursor-pointer shadow-xs"
-        >
-          <Download size={15} />
-          <span>Export Financial PDF</span>
-        </button>
+  return <section data-testid="merchant-payments-p31"
+    className="w-full min-w-0 space-y-5 bg-surface-container-lowest p-4 sm:p-6 rounded-3xl border border-outline-variant/15 shadow-xs">
+    <header className="flex flex-wrap justify-between items-start gap-3 pb-4 border-b border-outline-variant/15">
+      <div className="space-y-1">
+        <h2 className="font-headline text-xl font-extrabold text-on-surface">Payments</h2>
+        <p className="text-xs text-on-surface-variant">
+          Pickup-first · Customers pay at the shop. Online checkout and merchant payouts are not active.
+        </p>
       </div>
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-low border border-outline-variant/15 px-3 py-1.5 text-[11px] font-bold text-on-surface-variant">
+        <ShieldAlert size={14} aria-hidden="true"/> Read only
+      </span>
+    </header>
 
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setPaymentsSubTab("billing")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            paymentsSubTab === "billing" ? "bg-primary text-on-primary" : "bg-surface-container text-on-surface-variant"
-          }`}
-        >
-          Subscription & Billing History
-        </button>
-        <button
-          onClick={() => setPaymentsSubTab("cod")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            paymentsSubTab === "cod" ? "bg-primary text-on-primary" : "bg-surface-container text-on-surface-variant"
-          }`}
-        >
-          COD Cash Reconciliation ({orders.filter((o) => o.payment_method?.toLowerCase().includes("cash")).length})
-        </button>
-      </div>
-
-      {paymentsSubTab === "billing" ? (
-        <div className="overflow-x-auto">
-          {loading ? (
-            <p className="text-xs text-on-surface-variant py-8 text-center">Loading payments...</p>
-          ) : payments.length === 0 ? (
-            <p className="text-xs text-on-surface-variant py-8 text-center">No payment transactions recorded.</p>
-          ) : (
-            <table className="w-full text-left text-xs text-on-surface">
-              <thead>
-                <tr className="border-b border-outline-variant/15 text-on-surface-variant font-bold">
-                  <th className="py-2.5 px-3">Transaction ID</th>
-                  <th className="py-2.5 px-3">Method</th>
-                  <th className="py-2.5 px-3">Amount</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payments.map((p) => (
-                  <tr key={p.id} className="border-b border-outline-variant/10 hover:bg-surface-container/30">
-                    <td className="py-2.5 px-3 font-mono font-bold text-primary">{p.transaction_id}</td>
-                    <td className="py-2.5 px-3">{p.payment_method}</td>
-                    <td className="py-2.5 px-3 font-bold">R {Number(p.amount).toFixed(2)}</td>
-                    <td className="py-2.5 px-3">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-500/10 text-emerald-600">
-                        {p.status}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-on-surface-variant">
-                      {new Date(p.payment_date).toLocaleDateString("en-ZA")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {orders
-            .filter((o) => o.payment_method?.toLowerCase().includes("cash") || o.payment_method?.toLowerCase().includes("cod"))
-            .map((order) => {
-              const isSettled = settledCodOrders.includes(order.id);
-              return (
-                <div
-                  key={order.id}
-                  className="flex items-center justify-between p-4 rounded-2xl bg-surface-container-low border border-outline-variant/15"
-                >
-                  <div>
-                    <span className="text-xs font-mono font-bold text-primary">#{order.id.slice(0, 8)}</span>
-                    <h4 className="font-bold text-sm text-on-surface">{order.customer_name || "Guest Customer"}</h4>
-                    <p className="text-xs text-on-surface-variant">
-                      Total Cash to Collect: <strong className="text-on-surface">R {Number(order.total_price || 0).toFixed(2)}</strong>
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => toggleCodSettlement(order.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      isSettled ? "bg-emerald-600 text-white" : "bg-amber-500/20 text-amber-700 dark:text-amber-300"
-                    }`}
-                  >
-                    {isSettled ? "Settled & Cleared ✓" : "Mark Settled"}
-                  </button>
-                </div>
-              );
-            })}
-        </div>
-      )}
+    <div role="note" className="rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3 flex items-start gap-3">
+      <Info size={17} aria-hidden="true" className="text-primary shrink-0 mt-0.5"/>
+      <p className="text-xs leading-5 text-on-surface">
+        Payment flags in order records are <strong>not cash receipts, bank statements or proof of settlement.</strong> This page cannot mark a transaction paid, received or settled.
+      </p>
     </div>
-  );
+
+    <div role="group" aria-label="Payment sections" className="flex flex-wrap gap-2">
+      <button type="button" aria-pressed={tab==="pickup"} onClick={()=>setTab("pickup")}
+        className={`min-h-11 px-4 py-2 rounded-xl text-xs font-bold transition-colors ${tab==="pickup"?"bg-primary text-on-primary":"bg-surface-container text-on-surface-variant"}`}>
+        Pickup orders
+      </button>
+      <button type="button" aria-pressed={tab==="billing"} onClick={()=>setTab("billing")}
+        className={`min-h-11 px-4 py-2 rounded-xl text-xs font-bold transition-colors ${tab==="billing"?"bg-primary text-on-primary":"bg-surface-container text-on-surface-variant"}`}>
+        Subscription & billing
+      </button>
+    </div>
+
+    {tab==="pickup"?<div aria-label="Pickup order payment information" className="space-y-3">
+      <div className="flex items-center gap-2">
+        <ReceiptText size={17} aria-hidden="true" className="text-primary"/>
+        <h3 className="font-headline text-sm font-bold text-on-surface">Pickup order payment information</h3>
+      </div>
+      {!verified?<div role="status" className="rounded-2xl bg-surface-container-low p-6 text-center space-y-2">
+        <ShieldAlert size={23} className="mx-auto text-on-surface-variant" aria-hidden="true"/>
+        <p className="font-bold text-sm text-on-surface">Verified order information unavailable</p>
+        <p className="text-xs text-on-surface-variant">A fresh, authenticated order read is required for this shop. Old or browser-saved payment labels are not displayed as current.</p>
+      </div>:pickupOrders.length===0?<div role="status" className="rounded-2xl bg-surface-container-low p-6 text-center space-y-2">
+        <Store size={23} className="mx-auto text-on-surface-variant" aria-hidden="true"/>
+        <p className="font-bold text-sm text-on-surface">No pickup orders in the verified result</p>
+        <p className="text-xs text-on-surface-variant">This does not confirm that no payments occurred. No independent payment ledger is connected.</p>
+      </div>:<>
+        <p className="text-[11px] text-on-surface-variant">Showing order facts for {currentShop?.name||"your shop"}, not a settlement report.</p>
+        <div className="space-y-2">
+          {pickupOrders.slice(0,limit).map(order=>{
+            const apiFlag=order.payment_status==="paid"?"Order API: marked paid"
+              :order.payment_status==="unpaid"?"Order API: not marked paid":"Order payment flag unavailable";
+            return <article key={order.id} className="min-w-0 flex flex-wrap justify-between items-center gap-3 rounded-2xl bg-surface-container-low border border-outline-variant/15 p-4">
+              <div className="min-w-0 space-y-1">
+                <p className="text-xs font-mono font-bold text-primary">#{String(order.id).slice(0,8).toUpperCase()}</p>
+                <p className="font-bold text-sm text-on-surface break-words">{order.customer_name||"Customer"}</p>
+                <p className="text-[11px] text-on-surface-variant">{dateLabel(order.created_at)} · Pickup · Pay at shop</p>
+              </div>
+              <div className="min-w-0 sm:text-right space-y-1">
+                <p className="text-sm font-bold text-on-surface">{orderValue(order.total_price)}</p>
+                <p className="text-[11px] text-on-surface-variant font-semibold">{apiFlag}</p>
+                <p className="text-[10px] text-on-surface-variant">Not independent payment proof</p>
+              </div>
+            </article>;
+          })}
+        </div>
+        {pickupOrders.length>limit&&<button type="button" onClick={()=>setLimit(n=>n+20)}
+          className="min-h-11 w-full rounded-xl border border-outline-variant/20 text-primary text-xs font-bold">
+          Show 20 more · {pickupOrders.length-limit} remaining
+        </button>}
+      </>}
+    </div>:<div aria-label="Subscription and billing plans">
+      <MerchantSubscriptionPlans shop={currentShop} verified={shopVerified && !!currentShop && String(currentShop.id)===String(shopId)}/>
+    </div>}
+  </section>;
 };
 
 export default PaymentHistory;

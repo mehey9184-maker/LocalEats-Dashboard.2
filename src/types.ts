@@ -21,6 +21,14 @@ export interface Shop {
   banner_url?: string;
   operating_hours?: { open: string; close: string };
   created_at?: string;
+  // Optional API-provided billing display fields. Their presence does NOT
+  // authorize payments, subscriptions, shop suspension or renewal.
+  subscription_status?: string | null;
+  subscription_plan?: string | null;
+  trial_start_date?: string | null;
+  trial_end_date?: string | null;
+  subscription_expires_at?: string | null;
+  next_payment_date?: string | null;
   instagram?: string;
   facebook?: string;
   whatsapp?: string;

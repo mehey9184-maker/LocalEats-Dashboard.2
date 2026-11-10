@@ -1845,8 +1845,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           >
             <StatCard
               title="Subscription"
-              value={trialInfo ? (trialInfo.isExpired ? "Expired" : `${trialInfo.daysRemaining} Days`) : "Active Plan"}
-              change={trialInfo ? (trialInfo.isExpired ? "Action Needed" : "Free Trial") : "Professional"}
+              value={trialInfo ? (trialInfo.isExpired ? "Deadline passed" : `${trialInfo.daysRemaining} days`) : "Not verified"}
+              change={trialInfo ? (trialInfo.isExpired ? "See Payments" : "Free introductory period") : "See Payments"}
               icon={Zap}
               colorClass={trialInfo?.isExpired ? "bg-red-500/10 text-red-600 dark:text-red-400" : "bg-primary/10 text-primary"}
             />
