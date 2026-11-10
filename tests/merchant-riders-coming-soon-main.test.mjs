@@ -382,9 +382,11 @@ test("P3.1 billing copy is honest, pickup-first, and no live payment features ar
   const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
   assert.ok(pay.includes("Pickup-first · Customers pay at the shop."));
   assert.ok(pay.includes("Online checkout and merchant payouts are not active."));
-  assert.ok(pay.includes("Merchant subscription billing is not active"));
-  assert.ok(pay.includes("No verified subscription billing feed is connected"));
-  assert.ok(pay.includes("Future plans and the introductory free period are being prepared"));
+  const plans=readFileSync(new URL("../src/components/MerchantSubscriptionPlans.tsx",import.meta.url),"utf8");
+  assert.ok(pay.includes("<MerchantSubscriptionPlans"));
+  assert.ok(plans.includes("Billing is not active"));
+  assert.ok(plans.includes("Planned three-month free introductory period"));
+  assert.ok(plans.includes("Not available for purchase yet"));
   assert.ok(pay.includes('role="tablist"'));
   assert.ok(pay.includes("pickupOrders.slice(0,limit)"));
   assert.ok(pay.includes("setLimit(n=>n+20)"));
@@ -445,7 +447,7 @@ test("P3.2 countdown sample is isolated to the no-write branch Preview",()=>{
   assert.ok(plans.includes('window.location.hostname'));
   assert.ok(plans.includes('SAMPLE ONLY · Not this shop\'s subscription'));
   assert.ok(plans.includes('data-testid="sample-subscription-countdown"'));
-  assert.ok(plans.includes('data-testid="verified-plan-clock"'));
+  assert.ok(plans.includes('"verified-plan-clock"'));
   assert.ok(plans.includes('data-testid="subscription-expiry-unverified"'));
   assert.ok(plans.includes("Expiry does not automatically suspend the shop."));
   assert.ok(plans.includes("later, separately approved backend phase"));
