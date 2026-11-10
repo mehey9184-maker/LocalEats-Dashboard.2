@@ -2377,6 +2377,9 @@ function App() {
                   <PaymentHistory
                     shopId={currentShop.id}
                     currentShop={currentShop}
+                    shopVerified={merchantShopGate.status==="ready"
+                      && !!user?.id
+                      && currentShop.owner_id===user.id}
                     orders={orders}
                     ordersVerified={merchantShopGate.status==="ready"
                       && orderReadStatus.state==="fresh"
