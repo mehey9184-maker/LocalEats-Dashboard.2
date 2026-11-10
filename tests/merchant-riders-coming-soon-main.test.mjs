@@ -448,5 +448,5 @@ test("P3.2 countdown sample is isolated to the no-write branch Preview",()=>{
   assert.ok(plans.includes('data-testid="verified-plan-clock"'));
   assert.ok(plans.includes('data-testid="subscription-expiry-unverified"'));
   assert.ok(plans.includes("Expiry does not automatically suspend the shop."));
-  assert.ok(plans.includes("future, separately approved backend phase"));
+  assert.ok(plans.includes("later, separately approved backend phase"));
 });
