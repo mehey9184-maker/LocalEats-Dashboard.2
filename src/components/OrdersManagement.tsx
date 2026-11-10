@@ -1,6 +1,8 @@
 import {receiptText} from "../utils/receiptText";
 import {PickupOrderActions} from "./PickupOrderActions";
 import {PreviewFakeOrderCard,PreviewFakeOrderTrigger,usePreviewFakeOrders} from "./PreviewFakeOrders";
+import {OrdersFocusedWorkspace} from "./OrdersFocusedWorkspace";
+import {isMerchantPreviewSimulatorEnabled} from "../services/merchantPreviewSimulator";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
 import React, { useState, useEffect, useMemo, useRef } from "react";
@@ -2702,6 +2704,40 @@ Notes: "${order.notes || "None"}"
           <Skeleton className="lg:col-span-4 h-96 rounded-3xl" />
         </div>
       </div>
+    );
+  }
+
+  // L1C-3 redesigned kitchen workspace is exclusive to the guarded, read-only Preview.
+  // Production and any unverified host continue to use the original Orders UI.
+  if (import.meta.env.VITE_MERCHANT_ORDERS_FOCUSED_UI === "true" &&
+      isMerchantPreviewSimulatorEnabled()) {
+    return (
+      <OrdersFocusedWorkspace
+        realOrders={displayedOrders}
+        fakeOrders={fakeOrders}
+        onDemoAction={onDemoAction}
+        incoming={incoming}
+        onSimulate={() => simulateIncoming(soundAlerts)}
+        onClear={clearFakeOrders}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        renderRealOrder={renderOrderCard}
+        onRefresh={onRefresh}
+        onExportCSV={exportToCSV}
+        onExportJSON={exportToJSON}
+        onDeleteAllOrders={onDeleteAllOrders}
+        readOnly={isReadOnlyPreview}
+        soundAlerts={soundAlerts}
+        setSoundAlerts={setSoundAlerts}
+        kitchenMode={kitchenMode}
+        setKitchenMode={setKitchenMode}
+        maxConcurrentOrders={maxConcurrentOrders}
+        setMaxConcurrentOrders={setMaxConcurrentOrders}
+        startDate={startDate}
+        endDate={endDate}
+        setStartDate={setStartDate}
+        setEndDate={setEndDate}
+      />
     );
   }
 
