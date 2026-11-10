@@ -234,3 +234,32 @@ test("L1C-3 notes: customer instructions are not stored or sent by the fake-tick
     }
   }
 });
+
+test("L1C-3 release: history has an accessible Show more action beyond 24 orders",()=>{
+  const board=readFileSync(new URL("../src/components/OrdersStyleBoard.tsx",import.meta.url),"utf8");
+  assert.ok(board.includes("const [visibleHistory,setVisibleHistory]=useState(24)"));
+  assert.ok(board.includes("allEntries.slice(0,visibleHistory)"));
+  assert.ok(board.includes("allEntries.length>shown.length"));
+  assert.ok(board.includes("setVisibleHistory(count=>count+24)"));
+  assert.ok(board.includes("Show 24 more history orders"));
+  assert.ok(!board.includes("Showing first 24 history records. Use search or date filters"));
+});
+
+test("L1C-3 release: expanding real pickup details does not duplicate action controls",()=>{
+  const board=readFileSync(new URL("../src/components/OrdersStyleBoard.tsx",import.meta.url),"utf8");
+  assert.ok(board.includes("pickup && !expanded ?"));
+  assert.ok(board.includes("!pickup && !expanded ?"));
+  assert.ok(board.includes("expanded&&<div"));
+  assert.ok(board.includes("renderRealOrder(order,index)"));
+  assert.equal((board.match(/<PickupOrderActions order=\{order\}/g)??[]).length,1);
+});
+
+test("L1C-3 release: no Production Orders style activation without a separate gate",()=>{
+  const orders=readFileSync(new URL("../src/components/OrdersManagement.tsx",import.meta.url),"utf8");
+  const guard=readFileSync(new URL("../src/services/merchantPreviewSimulator.ts",import.meta.url),"utf8");
+  assert.ok(orders.includes('VITE_MERCHANT_ORDERS_FOCUSED_UI === "true"'));
+  assert.ok(orders.includes("isMerchantPreviewSimulatorEnabled()"));
+  assert.ok(guard.includes('VITE_MERCHANT_PREVIEW_READ_ONLY === "true"'));
+  assert.ok(guard.includes('VITE_MERCHANT_FAKE_ORDERS_ENABLED === "true"'));
+  assert.ok(guard.includes("window.location.hostname"));
+});
