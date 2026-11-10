@@ -2488,7 +2488,7 @@ function App() {
                       </div>
                     )}
 
-                    {settingsCategory === "preferences" && (
+                    {settingsCategory === "account" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">App Preferences</h3>
                   <button
@@ -2520,7 +2520,7 @@ function App() {
                       </div>
                     )}
 
-                    {settingsCategory === "account" && (
+                    {settingsCategory === "future-staff" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <button
                     onClick={() =>
@@ -2552,7 +2552,7 @@ function App() {
                       </div>
                     )}
 
-                    {settingsCategory === "storefront" && (
+                    {settingsCategory === "future-riders" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <a
                     href="https://rider.localeatssa.co.za/"
@@ -3336,7 +3336,7 @@ function App() {
                       </div>
                     )}
 
-                    {settingsCategory === "account" && (
+                    {settingsCategory === "future-banking" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   {/* Financial & Payout Settings */}
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group">
@@ -3439,6 +3439,7 @@ function App() {
 
                     {settingsCategory === "preferences" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <h3 className="font-headline font-bold text-lg text-on-surface">Notifications & Appearance</h3>
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-4">
