@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useState} from "react";
-import {Bell, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Clock3, MoreHorizontal, RefreshCw, Search, ShieldCheck, SlidersHorizontal, X} from "lucide-react";
+import {Bell, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Clock3, MoreHorizontal, RefreshCw, Search, ShieldCheck, X} from "lucide-react";
 import type {Order} from "../types";
 import {PickupOrderActions} from "./PickupOrderActions";
 import {isPickupOrder, pickupPaymentLabel} from "../services/merchantPickupPolicy";
@@ -16,6 +16,7 @@ interface OrdersFocusedWorkspaceProps {
   onDemoAction: PreviewTestPickupAction;
   incoming: boolean;
   onSimulate: () => void;
+  onSimulateBatch: () => void;
   onClear: () => void;
   viewMode: ViewMode;
   onViewModeChange: (next: ViewMode) => void;
@@ -63,7 +64,7 @@ const stageMatches=(stage:Stage,status:string)=>
 
 export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const {
-    realOrders,fakeOrders,onDemoAction,incoming,onSimulate,onClear,viewMode,onViewModeChange,
+    realOrders,fakeOrders,onDemoAction,incoming,onSimulate,onSimulateBatch,onClear,viewMode,onViewModeChange,
     renderRealOrder,onRefresh,onExportCSV,onExportJSON,onDeleteAllOrders,readOnly,
     soundAlerts,setSoundAlerts,kitchenMode,setKitchenMode,maxConcurrentOrders,setMaxConcurrentOrders,
     startDate,endDate,setStartDate,setEndDate
@@ -115,6 +116,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
 
   const enterView=(mode:ViewMode)=>{setStage("all");setExpanded(null);onViewModeChange(mode);};
   const testArrival=()=>{setStage("all");onViewModeChange("active");setPage(1);onSimulate();};
+  const testBatch=()=>{setStage("all");onViewModeChange("active");setPage(1);onSimulateBatch();};
   const realActive=realOrders.length;
   const fakeActive=activeFake.length;
   const commonFocus="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -160,6 +162,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
               </summary>
               <div className="absolute z-30 right-0 top-full mt-2 w-64 max-w-[80vw] bg-surface-container-lowest border border-outline-variant/20 rounded-xl shadow-xl p-3 space-y-2">
                 <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Secondary tools</p>
+                <button type="button" onClick={testBatch} className="w-full rounded-lg text-left px-3 py-2 text-xs font-bold bg-amber-50 text-amber-900 hover:bg-amber-100 dark:bg-amber-950/20 dark:text-amber-100">Test busy queue · +24 FAKE orders</button>
                 <button type="button" onClick={onExportCSV} className="w-full rounded-lg text-left px-3 py-2 text-xs font-semibold hover:bg-surface-container-low">Export spreadsheet</button>
                 <button type="button" onClick={onExportJSON} className="w-full rounded-lg text-left px-3 py-2 text-xs font-semibold hover:bg-surface-container-low">Backup order data</button>
                 <label className="flex items-center justify-between gap-3 text-xs font-semibold p-2"><span>Sound alerts</span>
