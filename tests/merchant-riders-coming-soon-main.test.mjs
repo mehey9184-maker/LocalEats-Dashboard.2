@@ -41,20 +41,52 @@ test("L1C-3: Orders queue comes first and secondary settings are collapsed", () 
   assert.match(orders, /Notification settings & order limit/);
   assert.doesNotMatch(orders, /Status Dropdown:/);
   assert.doesNotMatch(orders, /across all delivery channels/);
-  assert.match(orders, /<PreviewFakeOrders \/>/);
+  assert.match(orders, /<PreviewFakeOrderTrigger/);
+  assert.equal((orders.match(/<PreviewFakeOrderCard key=\{order\.id\}/g) ?? []).length, 4);
   assert.match(orders, /disabled=\{isReadOnlyPreview\}/);
 });
 
-test("L1C-3: fake test orders are isolated from real Orders, payment and notifications", () => {
+test("L1C-3: incoming fake order enters the four Kanban columns without changing real counts", () => {
+  const orders = readFileSync(new URL("../src/components/OrdersManagement.tsx", import.meta.url), "utf8");
+  assert.match(orders, /SimulateIncoming\(soundAlerts\)/i);
+  assert.match(orders, /usePreviewFakeOrders\(\)/);
+  assert.match(orders, /<PreviewFakeOrderTrigger/);
+  assert.equal((orders.match(/<PreviewFakeOrderCard key=\{order\.id\}/g) ?? []).length, 4);
+  assert.match(orders, /displayedOrders\.length === 0 && \(viewMode !== "active" \|\| fakeOrders\.length===0\)/);
+  assert.match(orders, /\{displayedOrders\.length\} Real/);
+  assert.match(orders, /\+\{fakeOrders\.length\} FAKE/);
+  assert.doesNotMatch(orders, /\[\.\.\.orders,\.\.\.fakeOrders\]|\[\.\.\.fakeOrders,\.\.\.orders\]/);
+});
+
+test("L1C-3: simulator and fake card never persist or notify real services", () => {
   const fixture = readFileSync(new URL("../src/components/PreviewFakeOrders.tsx", import.meta.url), "utf8");
-  assert.match(fixture, /VITE_MERCHANT_PREVIEW_READ_ONLY === "true"/);
-  assert.match(fixture, /VITE_MERCHANT_FAKE_ORDERS_ENABLED === "true"/);
-  assert.match(fixture, /location\.hostname/);
+  const guard = readFileSync(new URL("../src/services/merchantPreviewSimulator.ts", import.meta.url), "utf8");
+  assert.match(guard, /VITE_MERCHANT_PREVIEW_READ_ONLY === "true"/);
+  assert.match(guard, /VITE_MERCHANT_FAKE_ORDERS_ENABLED === "true"/);
+  assert.match(guard, /VITE_PICKUP_ORDERING_ENABLED !== "true"/);
+  assert.match(guard, /location\.hostname/);
+  assert.match(guard, /\.vercel/);
+  assert.match(fixture, /FAKE-L1C3-/);
   assert.match(fixture, /TEST ONLY/);
-  assert.match(fixture, /setDemoOrders\(/);
-  assert.match(fixture, /Remove fake orders/);
-  assert.match(fixture, /nextStatus/);
+  assert.match(fixture, /setFakeOrders\(/);
+  assert.match(fixture, /600\)/);
+  assert.match(fixture, /pickupCommand\(order,action,extra\)/);
+  assert.match(fixture, /pickup_status:"ready_for_pickup"/);
+  assert.match(fixture, /onSimulate=\{\(action,extra\)=>onDemoAction/);
   for (const unsafe of [/\bfetch\s*\(/, /\bMerchantApi\b/, /\bsupabase\b/, /\bgetApiAuthHeaders\b/, /\bonUpdateStatus\b/, /\bonDeleteAllOrders\b/, /\blocalStorage\b/, /\bsessionStorage\b/, /\bsendPushNotification\b/]) {
     assert.doesNotMatch(fixture, unsafe);
   }
+});
+
+test("L1C-3: actual pickup buttons are shared; simulated actions cannot invoke MerchantApi", () => {
+  const actions = readFileSync(new URL("../src/components/PickupOrderActions.tsx", import.meta.url), "utf8");
+  assert.match(actions, /const simulated=!!onSimulate && isMerchantPreviewSimulatorEnabled\(\)/);
+  assert.match(actions, /FAKE-L1C3-/);
+  assert.match(actions, /const canAct=simulated \|\| pickupOrderingEnabled\(\)/);
+  assert.match(actions, /const pending=simulated \? false : MerchantApi\.hasPendingPickupCommand\(order\)/);
+  assert.match(actions, /if\(simulated\) \{/);
+  assert.match(actions, /await onSimulate!\(action,extra\)/);
+  assert.match(actions, /\} else \{\s*await MerchantApi\.transitionPickupOrder\(order,action,extra\)/);
+  assert.match(actions, /TEST ONLY: Simulate a cash\/card payment/);
+  assert.match(actions, /TEST ONLY: Simulate food handover/);
 });
