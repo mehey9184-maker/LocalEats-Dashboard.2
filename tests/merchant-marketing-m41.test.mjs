@@ -26,13 +26,14 @@ test("M4.1 hides unsupported campaigns, analytics and direct outreach", () => {
 });
 
 test("M4.1 retains working generators but isolates shop-specific material", () => {
-  for(const marker of ["generatePdfFlyer", "generateRewardsTeaserPdf", "renderSocialGraphic", "handleOpenWhatsApp", "QRCodeLib.toDataURL", "shop_id"]) {
+  for(const marker of ["generatePdfFlyer", "generateRewardsTeaserPdf", "renderSocialGraphic", "handleOpenWhatsApp", "shop_id"]) {
     assert.ok(marketing.includes(marker), marker);
   }
   assert.ok(marketing.includes("isShopOwnedByUser(currentShop, user)"));
   assert.ok(marketing.includes('if (!activeShop) return [];'));
   assert.ok(marketing.includes('if (!activeShop) return "";'));
   assert.ok(marketing.includes("shopOrders.length > 0 ? Math.round(totalRevenue / shopOrders.length)"));
+  assert.ok(marketing.includes("createLocalEatsBrandedQr(storeUrl, qrStyle)"));
 });
 
 test("M4.1 wires shop link copy to an existing handler, preventing runtime ReferenceError", () => {
