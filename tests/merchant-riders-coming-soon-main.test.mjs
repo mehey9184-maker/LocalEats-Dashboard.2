@@ -344,3 +344,51 @@ test("L1C-4: notification shake demo is preview-only, and alerts are truthful",(
   }
   function hookRead(){return readFileSync(new URL("../src/hooks/usePageNotificationAttention.ts",import.meta.url),"utf8");}
 });
+
+test("P3.1 payment page cannot settle money or fabricate financial PDF records",()=>{
+  const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
+  for(const forbidden of [
+    'localeats_settled_cod_orders','toggleCodSettlement','Mark Settled',
+    'Settled & Cleared','PENDING HANDOVER','Courier Handshake',
+    'generateFinancialAndCodReport','Export Financial PDF',
+    'jsPDF','autoTable(','localStorage.setItem(','supabase.from('
+  ])assert.ok(!pay.includes(forbidden),"P3.1 must not contain unsupported settlement or export: "+forbidden);
+  assert.ok(pay.includes("This page cannot mark a transaction paid, received or settled."));
+  assert.ok(pay.includes("not cash receipts, bank statements or proof of settlement"));
+  assert.ok(pay.includes('role="note"'));
+});
+
+test("P3.1 order payment flags are read-only and strictly from fresh verified owned shop API",()=>{
+  const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  assert.ok(pay.includes("ordersVerified=false"));
+  assert.ok(pay.includes("const verified=ordersVerified && !!currentShop"));
+  assert.ok(pay.includes("String(currentShop.id)===String(shopId)"));
+  assert.ok(pay.includes("String(order.shop_id)===String(shopId)"));
+  assert.ok(pay.includes('order.delivery_type==="collection"'));
+  assert.ok(pay.includes("if(!verified)return []"));
+  assert.ok(pay.includes("Order API: marked paid"));
+  assert.ok(pay.includes("Not independent payment proof"));
+  assert.ok(pay.includes("Verified order information unavailable"));
+  assert.ok(pay.includes("No pickup orders in the verified result"));
+  assert.ok(!pay.includes("from \"../lib/supabase\""));
+  assert.ok(!pay.includes('from("payments")'));
+  assert.ok(app.includes('ordersVerified={merchantShopGate.status==="ready"'));
+  assert.ok(app.includes('orderReadStatus.state==="fresh"'));
+  assert.ok(app.includes('orderReadScope==='));
+});
+
+test("P3.1 billing copy is honest, pickup-first, and no live payment features are enabled",()=>{
+  const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
+  assert.ok(pay.includes("Pickup-first · Customers pay at the shop."));
+  assert.ok(pay.includes("Online checkout and merchant payouts are not active."));
+  assert.ok(pay.includes("Merchant subscription billing is not active"));
+  assert.ok(pay.includes("No verified subscription billing feed is connected"));
+  assert.ok(pay.includes("Future plans and the introductory free period are being prepared"));
+  assert.ok(pay.includes('role="tablist"'));
+  assert.ok(pay.includes("pickupOrders.slice(0,limit)"));
+  assert.ok(pay.includes("setLimit(n=>n+20)"));
+  assert.ok(!pay.includes("cash-on-delivery"));
+  assert.ok(!pay.includes("voucher redemptions"));
+  assert.ok(!pay.includes("payment handover"));
+});
