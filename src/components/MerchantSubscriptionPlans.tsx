@@ -128,10 +128,10 @@ export function MerchantSubscriptionPlans({shop,verified}:{shop?:Shop;verified:b
               <span className="font-headline text-2xl font-extrabold text-on-surface">R{plan.price}</span>
               <span className="text-xs text-on-surface-variant mb-1">{plan.id==="free"?"/ intro":"/ month"}</span>
             </div>
-            <p className="text-[11px] text-on-surface-variant">
+            <p className="text-xs text-on-surface-variant leading-5">
               {plan.id==="free"?"Three months planned; start date not yet confirmed":"Future tier · benefits still being decided"}
             </p>
-            <p className="text-[10px] font-bold text-on-surface-variant">Not available for purchase yet</p>
+            <p className="text-xs font-semibold text-on-surface-variant">{plan.id==="free"?"Introductory offer · launch date pending":"Not available for purchase yet"}</p>
           </article>;
         })}
       </div>
