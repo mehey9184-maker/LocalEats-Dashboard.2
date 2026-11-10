@@ -9,6 +9,8 @@ interface PaymentHistoryProps {
   orders?: Order[];
   /** Authenticated, fresh merchant API read for this exact shop. */
   ordersVerified?: boolean;
+  /** Server-verified authenticated ownership of the currently selected shop. */
+  shopVerified?: boolean;
 }
 
 const orderValue=(value:unknown)=>
@@ -20,11 +22,11 @@ const dateLabel=(value:string)=>{
 };
 
 export const PaymentHistory:React.FC<PaymentHistoryProps>=({
-  shopId,currentShop,orders=[],ordersVerified=false
+  shopId,currentShop,orders=[],ordersVerified=false,shopVerified=false
 })=>{
   const [tab,setTab]=useState<"pickup"|"billing">("pickup");
   const [limit,setLimit]=useState(20);
-  const verified=ordersVerified && !!currentShop && String(currentShop.id)===String(shopId);
+  const verified=shopVerified && ordersVerified && !!currentShop && String(currentShop.id)===String(shopId);
   // Order records are not a bank statement or independently verified settlement ledger.
   const pickupOrders=useMemo(()=>{
     if(!verified)return [];
@@ -106,7 +108,7 @@ export const PaymentHistory:React.FC<PaymentHistoryProps>=({
         </button>}
       </>}
     </div>:<div aria-label="Subscription and billing plans">
-      <MerchantSubscriptionPlans shop={currentShop} verified={!!currentShop && String(currentShop.id)===String(shopId)}/>
+      <MerchantSubscriptionPlans shop={currentShop} verified={shopVerified && !!currentShop && String(currentShop.id)===String(shopId)}/>
     </div>}
   </section>;
 };
