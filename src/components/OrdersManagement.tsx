@@ -2728,8 +2728,6 @@ Notes: "${order.notes || "None"}"
         onRefresh={onRefresh}
         onExportCSV={exportToCSV}
         onExportJSON={exportToJSON}
-        onDeleteAllOrders={onDeleteAllOrders}
-        readOnly={isReadOnlyPreview}
         soundAlerts={soundAlerts}
         setSoundAlerts={setSoundAlerts}
         kitchenMode={kitchenMode}
