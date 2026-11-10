@@ -282,3 +282,65 @@ test("L1C-3 release: fake-only controls are absent from live owner workspace",()
   assert.ok(simulator.includes('VITE_MERCHANT_FAKE_ORDERS_ENABLED === "true"'));
   assert.ok(simulator.includes('^local-eats-dashboard-2-6m8o-'));
 });
+
+test("L1C-4: each verified alert shakes only its destination navigation icon",()=>{
+  const hook=readFileSync(new URL("../src/hooks/usePageNotificationAttention.ts",import.meta.url),"utf8");
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  assert.ok(hook.includes('new_order:"orders",inventory_low:"menu",rider:"riders"'));
+  assert.ok(hook.includes('marketing:"marketing",payment:"payments",settings:"settings"'));
+  assert.ok(hook.includes('orders.filter(o=>o.status==="pending")'));
+  assert.ok(hook.includes('ordersFresh'));
+  assert.ok(hook.includes('menuFresh'));
+  assert.ok(hook.includes('scopeRef.current!==scope'));
+  assert.ok(hook.includes('previous && [...pending].some(id=>!previous.has(id))'));
+  assert.ok(hook.includes('previous && [...lowStock].some(id=>!previous.has(id))'));
+  assert.ok(hook.includes('orderBaseline.current=null'));
+  assert.ok(hook.includes('stockBaseline.current=null'));
+  assert.ok(app.includes("usePageNotificationAttention({"));
+  assert.ok(app.includes('orderReadStatus.state==="fresh"'));
+  assert.ok(app.includes('menuReadStatus.state==="ready"'));
+  assert.ok(app.includes('lowStockMenuCount>0 ? lowStockMenuCount : null'));
+});
+
+test("L1C-4: accessible nav wiggle is finite and respects reduced motion",()=>{
+  const css=readFileSync(new URL("../src/index.css",import.meta.url),"utf8");
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  const hook=readFileSync(new URL("../src/hooks/usePageNotificationAttention.ts",import.meta.url),"utf8");
+  assert.ok(css.includes("@keyframes localeats-nav-notice-wiggle"));
+  assert.ok(css.includes("560ms ease-in-out 2"));
+  assert.ok(css.includes("(prefers-reduced-motion: no-preference)"));
+  assert.ok(css.includes("(prefers-reduced-motion: reduce)"));
+  assert.ok(hook.includes('window.matchMedia?.("(prefers-reduced-motion: reduce)")'));
+  assert.ok(hook.includes("const ANIMATION_MS=1150"));
+  assert.ok(hook.includes("timers.current.delete(page)"));
+  assert.ok(app.includes('localeats-nav-notice-wiggle'));
+  assert.ok(app.includes("desktop-"));
+  assert.ok(app.includes("mobile-more-"));
+  assert.ok(app.includes("mobile-drawer-"));
+  assert.ok(app.includes("mobile-"));
+  assert.ok(hook.includes("last!==activeTab"));
+  assert.ok(hook.includes("stopPage(activeTab as AttentionPage)"));
+});
+
+test("L1C-4: notification shake demo is preview-only, and alerts are truthful",()=>{
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  const center=readFileSync(new URL("../src/components/NotificationCenterSidePanel.tsx",import.meta.url),"utf8");
+  const preview=readFileSync(new URL("../src/services/merchantPreviewSimulator.ts",import.meta.url),"utf8");
+  assert.ok(app.includes("onPreviewTestNotice={isMerchantPreviewSimulatorEnabled()"));
+  assert.ok(app.includes("pulseNavNotice(topic)"));
+  assert.ok(center.includes("Preview only · Test page icon animation"));
+  assert.ok(center.includes("This only shakes an icon. It does not create a notification or order."));
+  assert.ok(center.includes('["new_order","Orders"]'));
+  assert.ok(center.includes('["inventory_low","Menu"]'));
+  assert.ok(center.includes('["payment","Payments"]'));
+  assert.ok(preview.includes('VITE_MERCHANT_PREVIEW_READ_ONLY === "true"'));
+  assert.ok(preview.includes('VITE_MERCHANT_FAKE_ORDERS_ENABLED === "true"'));
+  assert.ok(!center.includes("Your storefront is fully active and connecting to nearby riders."));
+  assert.ok(!center.includes('time: "5m ago"'));
+  assert.ok(!center.includes('time: "Just now"'));
+  for(const code of [center,hookRead()]) {
+    for(const unsafe of ["fetch(","MerchantApi.","supabase.","sendPushNotification("])
+      assert.ok(!code.includes(unsafe),"Nav animation must not send data: "+unsafe);
+  }
+  function hookRead(){return readFileSync(new URL("../src/hooks/usePageNotificationAttention.ts",import.meta.url),"utf8");}
+});
