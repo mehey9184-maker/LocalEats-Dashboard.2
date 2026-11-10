@@ -99,6 +99,7 @@ import { Marketing } from "./components/Marketing";
 import { Insights } from "./components/Insights";
 import { PaymentHistory } from "./components/PaymentHistory";
 import {MerchantSubscriptionPlans,parsePlanExpiry} from "./components/MerchantSubscriptionPlans";
+import {SimpleOpeningHours} from "./components/SimpleOpeningHours";
 import {purgeLegacyBillingDraft} from "./services/legacyBillingSafety";
 import { LegalDocsModal } from "./components/LegalDocsModal";
 import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
@@ -471,7 +472,7 @@ function App() {
     return {daysRemaining,isExpired:expiry<=Date.now()};
   },[currentShop]);
 
-  const [settingsCategory, setSettingsCategory] = useState<string>("account");
+  const [settingsCategory, setSettingsCategory] = useState<string>("storefront");
   const [storeStatus, setStoreStatus] = useState<"open" | "busy" | "closed">("open");
   const [prepTime, setPrepTime] = useState<number>(20);
   const [operatingHours, setOperatingHours] = useState<Array<{ day: string; open: string; close: string; active: boolean }>>([
@@ -2375,22 +2376,20 @@ function App() {
 
                 <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-start px-4 md:px-0">
                   {/* Sidebar */}
-                  <nav className="w-full md:w-56 shrink-0 flex md:flex-col gap-2 overflow-x-auto pb-4 md:pb-0 hide-scrollbar border-b md:border-b-0 border-outline-variant/10 md:pr-4">
+                  <nav aria-label="Merchant settings sections" className="w-full md:w-60 shrink-0 flex md:flex-col gap-2 overflow-x-auto pb-4 md:pb-0 hide-scrollbar border-b md:border-b-0 border-outline-variant/10 md:pr-4">
                      {[
-                       { id: "account", label: "Account & Staff", icon: UserIcon },
-                       { id: "storefront", label: "Storefront", icon: Store },
-                       { id: "operations", label: "Operations", icon: Sliders },
-                       { id: "delivery", label: "Delivery", icon: Truck },
-                       { id: "hardware", label: "Printing & Hardware", icon: Printer },
-                       { id: "billing", label: "Billing & Subscription", icon: Wallet },
-                       { id: "preferences", label: "Preferences", icon: Settings },
-                       { id: "diagnostics", label: "Database Diagnostics", icon: Activity },
+                       { id: "storefront", label: "My Shop", icon: Store },
+                       { id: "operations", label: "Opening Hours", icon: Clock3 },
+                       { id: "preferences", label: "Notifications & Appearance", icon: Bell },
+                       { id: "account", label: "My Account", icon: UserIcon },
                      ].map(category => (
                        <button
                          key={category.id}
+                         type="button"
+                         aria-current={settingsCategory === category.id ? "page" : undefined}
                          onClick={() => setSettingsCategory(category.id)}
                          className={cn(
-                           "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-colors",
+                           "flex items-center gap-3 min-h-11 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                            settingsCategory === category.id 
                              ? "bg-primary text-on-primary shadow-sm" 
                              : "text-on-surface-variant hover:bg-surface-container-high"
@@ -2415,7 +2414,7 @@ function App() {
                     
                     {settingsCategory === "storefront" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h3 className="font-headline font-bold text-lg mb-2">Store Profile & Location Sync</h3>
+                        <h3 className="font-headline font-bold text-lg mb-2">My Shop</h3>
                         
                         {/* Real-time Location Sync Status Indicator */}
                         {currentShop && (
@@ -2450,7 +2449,7 @@ function App() {
                     </div>
                     <div className="flex items-center gap-2 self-end md:self-auto">
                       <span className="text-[10px] items-center font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap">
-                        New Location
+                        Edit profile
                       </span>
                       <ChevronRight
                         size={18}
