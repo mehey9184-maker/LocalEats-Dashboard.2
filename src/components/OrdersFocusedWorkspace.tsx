@@ -5,6 +5,8 @@ import {PickupOrderActions} from "./PickupOrderActions";
 import {isPickupOrder, pickupPaymentLabel} from "../services/merchantPickupPolicy";
 import {PreviewFakeOrderTrigger, type PreviewTestPickupOrder, type PreviewTestPickupAction} from "./PreviewFakeOrders";
 import {OrdersStyleBoard, type OrderBoardStyle, type BoardEntry} from "./OrdersStyleBoard";
+import {isMerchantPreviewSimulatorEnabled} from "../services/merchantPreviewSimulator";
+import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 
 type ViewMode = "active" | "history";
 type Stage = "all" | "pending" | "preparing" | "ready";
@@ -27,8 +29,6 @@ interface OrdersFocusedWorkspaceProps {
   onRefresh: () => void;
   onExportCSV: () => void;
   onExportJSON: () => void;
-  onDeleteAllOrders: () => void;
-  readOnly: boolean;
   soundAlerts: boolean;
   setSoundAlerts: (enabled: boolean) => void;
   kitchenMode: boolean;
@@ -72,7 +72,7 @@ const stageMatches=(stage:Stage,status:string)=>
 export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const {
     realOrders,fakeOrders,onDemoAction,incoming,onSimulate,onSimulateBatch,onClear,styleStorageKey,completedRealOrders,viewMode,onViewModeChange,
-    renderRealOrder,onRefresh,onExportCSV,onExportJSON,onDeleteAllOrders,readOnly,
+    renderRealOrder,onRefresh,onExportCSV,onExportJSON,
     soundAlerts,setSoundAlerts,kitchenMode,setKitchenMode,maxConcurrentOrders,setMaxConcurrentOrders,
     startDate,endDate,setStartDate,setEndDate
   }=props;
@@ -82,6 +82,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const [page,setPage]=useState(1);
   const [expanded,setExpanded]=useState<string|null>(null);
   const [showSearch,setShowSearch]=useState(false);
+  const isTestPreview=isMerchantPreviewSimulatorEnabled();
   const [boardStyle,setBoardStyle]=useState<OrderBoardStyle>(()=>readBoardStyle(styleStorageKey));
   useEffect(()=>setBoardStyle(readBoardStyle(styleStorageKey)),[styleStorageKey]);
   const chooseBoardStyle=(choice:OrderBoardStyle)=>{
@@ -189,7 +190,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
               </summary>
               <div className="absolute z-30 right-0 top-full mt-2 w-64 max-w-[80vw] bg-surface-container-lowest border border-outline-variant/20 rounded-xl shadow-xl p-3 space-y-2">
                 <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Secondary tools</p>
-                <button type="button" onClick={testBatch} className="w-full rounded-lg text-left px-3 py-2 text-xs font-bold bg-amber-50 text-amber-900 hover:bg-amber-100 dark:bg-amber-950/20 dark:text-amber-100">Test busy queue · +24 FAKE orders</button>
+                {isTestPreview&&<button type="button" onClick={testBatch} className="w-full rounded-lg text-left px-3 py-2 text-xs font-bold bg-amber-50 text-amber-900 hover:bg-amber-100 dark:bg-amber-950/20 dark:text-amber-100">Test busy queue · +24 FAKE orders</button>}
                 <button type="button" onClick={onExportCSV} className="w-full rounded-lg text-left px-3 py-2 text-xs font-semibold hover:bg-surface-container-low">Export spreadsheet</button>
                 <button type="button" onClick={onExportJSON} className="w-full rounded-lg text-left px-3 py-2 text-xs font-semibold hover:bg-surface-container-low">Backup order data</button>
                 <label className="flex items-center justify-between gap-3 text-xs font-semibold p-2"><span>Sound alerts</span>
@@ -201,28 +202,32 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
                 <label className="block text-xs font-semibold px-2">Active order limit: {maxConcurrentOrders}
                   <input type="range" min="1" max="50" value={maxConcurrentOrders} onChange={e=>setMaxConcurrentOrders(Number(e.target.value))} className="w-full accent-primary mt-2"/>
                 </label>
-                <button type="button" onClick={onDeleteAllOrders} disabled={readOnly}
-                  className="w-full text-left text-xs rounded-lg px-3 py-2 text-error font-bold hover:bg-error/5 disabled:opacity-35 disabled:cursor-not-allowed"
-                  title={readOnly?"Disabled in read-only Preview":"Remove all real orders"}>Clear all real orders</button>
+
               </div>
             </details>
           </div>
         </div>
       </div>
 
-      <details className="rounded-xl bg-amber-50/75 dark:bg-amber-950/15 border border-amber-200/60 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
-        <summary className="cursor-pointer flex items-center gap-2 font-semibold">
-          <ShieldCheck size={15} aria-hidden="true"/> Pickup actions disabled for real orders in this Preview
-          <ChevronDown size={13} aria-hidden="true" className="ml-auto"/>
-        </summary>
-        <p className="pt-2 text-[11px] leading-relaxed">Only fake test cards can simulate Accept, Ready, payment and collection. Actual changes require separately approved database activation. The real queue, exports and reporting never include fake orders.</p>
-      </details>
+      {isTestPreview ? (
+        <details className="rounded-xl bg-amber-50/75 dark:bg-amber-950/15 border border-amber-200/60 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
+          <summary className="cursor-pointer flex items-center gap-2 font-semibold">
+            <ShieldCheck size={15} aria-hidden="true"/> Preview test only · real pickup actions disabled
+            <ChevronDown size={13} aria-hidden="true" className="ml-auto"/>
+          </summary>
+          <p className="pt-2 text-[11px] leading-relaxed">Fake tickets simulate Accept, Ready, payment and collection only on this page. Actual pickup and payment changes require separately approved database activation.</p>
+        </details>
+      ) : !pickupOrderingEnabled() ? (
+        <p role="status" className="rounded-xl border border-outline-variant/15 bg-surface-container-low px-3 py-2 text-xs text-on-surface-variant">
+          Pickup order, payment and collection changes are currently disabled. Existing orders remain available for viewing.
+        </p>
+      ) : null}
 
       <div className="bg-surface-container-lowest dark:bg-zinc-950 border border-outline-variant/10 rounded-[1.4rem] p-3 sm:p-4 shadow-sm space-y-3 min-w-0">
         <div className="flex items-center justify-between gap-2">
           <div>
             <h2 className="font-headline text-base sm:text-lg font-bold text-on-surface">{viewMode==="active"?"Kitchen queue":"Order history"}</h2>
-            <p className="text-[11px] text-on-surface-variant">{viewMode==="active"?"New orders first, ready orders next":"Only completed and cancelled real orders, plus labelled simulations"}</p>
+            <p className="text-[11px] text-on-surface-variant">{viewMode==="active"?"New orders first, ready orders next":isTestPreview?"Completed and cancelled orders, including labelled simulations":"Completed and cancelled orders"}</p>
           </div>
           <button type="button" onClick={()=>setShowSearch(!showSearch)}
             aria-pressed={showSearch} aria-label={showSearch?"Close order search":"Search orders"}
@@ -278,9 +283,9 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
           stageFilter={stage}
         />
       </div>
-      <p className="text-center text-[11px] text-on-surface-variant px-3">
-        <Bell size={12} aria-hidden="true" className="inline mr-1"/> Fake orders are browser-only training cards. Real payments, notifications and fulfillment remain disabled until separately approved.
-      </p>
+      {isTestPreview&&<p className="text-center text-[11px] text-on-surface-variant px-3">
+        <Bell size={12} aria-hidden="true" className="inline mr-1"/> Fake orders are browser-only training cards. No actual orders, payments or notifications are created.
+      </p>}
     </main>
   );
 }
