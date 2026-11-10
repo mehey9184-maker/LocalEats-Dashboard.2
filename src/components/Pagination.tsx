@@ -62,7 +62,8 @@ export const Pagination: React.FC<PaginationProps> = ({
           type="button"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className="p-2 rounded-xl text-on-surface hover:bg-surface-container-low active:scale-95 transition-all disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100 border border-outline-variant/10 flex items-center justify-center min-w-[36px] h-[36px] cursor-pointer"
+          className="le-press-feedback p-2 rounded-xl text-on-surface hover:bg-surface-container-low disabled:opacity-40 disabled:hover:bg-transparent border border-outline-variant/10 flex items-center justify-center min-w-11 h-11 cursor-pointer"
+          aria-label="Previous page"
           title="Previous Page"
         >
           <ArrowLeft size={16} />
@@ -72,7 +73,7 @@ export const Pagination: React.FC<PaginationProps> = ({
             return (
               <span
                 key={`ellipsis-${idx}`}
-                className="w-9 h-9 flex items-center justify-center text-on-surface-variant/40 font-bold select-none text-xs"
+                className="w-11 h-11 flex items-center justify-center text-on-surface-variant/40 font-bold select-none text-xs"
               >
                 •••
               </span>
@@ -83,9 +84,11 @@ export const Pagination: React.FC<PaginationProps> = ({
             <button
               type="button"
               key={page}
+              aria-label={`Page ${page}`}
+              aria-current={isActive ? "page" : undefined}
               onClick={() => onPageChange(page)}
               className={cn(
-                "w-9 h-9 rounded-xl font-bold text-xs flex items-center justify-center transition-all cursor-pointer active:scale-95",
+                "le-press-feedback w-11 h-11 rounded-xl font-bold text-xs flex items-center justify-center cursor-pointer",
                 isActive
                   ? "bg-primary text-white font-black shadow-md shadow-primary/20 scale-105"
                   : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low border border-outline-variant/5"
@@ -99,7 +102,8 @@ export const Pagination: React.FC<PaginationProps> = ({
           type="button"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className="p-2 rounded-xl text-on-surface hover:bg-surface-container-low active:scale-95 transition-all disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100 border border-outline-variant/10 flex items-center justify-center min-w-[36px] h-[36px] cursor-pointer"
+          className="le-press-feedback p-2 rounded-xl text-on-surface hover:bg-surface-container-low disabled:opacity-40 disabled:hover:bg-transparent border border-outline-variant/10 flex items-center justify-center min-w-11 h-11 cursor-pointer"
+          aria-label="Next page"
           title="Next Page"
         >
           <ArrowRight size={16} />
