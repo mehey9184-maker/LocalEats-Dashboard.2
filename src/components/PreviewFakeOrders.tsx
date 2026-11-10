@@ -109,27 +109,28 @@ export function usePreviewFakeOrders(){
   return {allowed,fakeOrders,incoming,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction};
 }
 
-export function PreviewFakeOrderCard({order,onDemoAction}:{order:PreviewTestPickupOrder;onDemoAction:PreviewTestPickupAction}){
+export function PreviewFakeOrderCard({order,onDemoAction,variant="expediter"}:{order:PreviewTestPickupOrder;onDemoAction:PreviewTestPickupAction;variant?:"expediter"|"compact"}){
   if(!isMerchantPreviewSimulatorEnabled())return null;
+  const roomy=variant==="expediter";
   return (
-    <article data-testid="fake-incoming-order" className="order-card bg-white dark:bg-zinc-900 border-2 border-dashed border-amber-400/75 rounded-2xl p-4 shadow-xs relative overflow-hidden space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+    <article data-testid="fake-incoming-order" data-style={variant} className={`min-w-0 bg-amber-50/40 dark:bg-amber-950/20 border-2 border-dashed border-amber-300 shadow-sm relative overflow-hidden animate-in fade-in duration-200 ${roomy?"rounded-2xl p-4 space-y-3":"rounded-xl p-2.5 space-y-2"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="rounded-full bg-amber-100 text-amber-950 px-2 py-1 text-[10px] font-black inline-flex items-center gap-1">
           <FlaskConical size={12} aria-hidden="true"/> FAKE · TEST ONLY
         </span>
-        <span className="text-[10px] text-on-surface-variant font-mono">{order.id}</span>
+        <span className="text-[10px] text-on-surface-variant font-mono break-all">{order.id}</span>
       </div>
       <div>
-        <h4 className="font-black text-sm text-on-surface">{order.customer_name}</h4>
+        <h4 className={`font-extrabold text-on-surface ${roomy?"text-sm":"text-xs"}`}>{order.customer_name}</h4>
         <p className="flex items-center gap-1.5 text-xs text-on-surface-variant mt-1">
           <ShoppingBag size={13} aria-hidden="true"/> {order.product_name} × 1 · R {order.total_price.toFixed(2)}
         </p>
-        <p className="flex items-center gap-1 text-xs text-on-surface-variant mt-1">
+        {roomy&&<p className="flex items-center gap-1 text-xs text-on-surface-variant mt-1">
           <Clock3 size={12} aria-hidden="true"/> Sample pickup · Pay at shop
-        </p>
+        </p>}
       </div>
-      <PickupOrderActions order={order} onSimulate={(action,extra)=>onDemoAction(order.id,action,extra)}/>
-      <p className="text-[10px] text-amber-800 dark:text-amber-200 font-semibold">Never printed, sent, charged or stored.</p>
+      <PickupOrderActions order={order} compact={!roomy} onSimulate={(action,extra)=>onDemoAction(order.id,action,extra)}/>
+      {roomy&&<p className="text-[10px] text-amber-800 dark:text-amber-200 font-semibold">Never printed, sent, charged or stored.</p>}
     </article>
   );
 }
