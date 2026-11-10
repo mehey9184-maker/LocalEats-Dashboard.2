@@ -201,3 +201,36 @@ test("L1C-3 polish: changed fake orders use memo and lower-priority list updates
   assert.ok(!fake.includes("supabase."));
   assert.ok(!fake.includes("sendPushNotification"));
 });
+
+test("L1C-3 notes: customer instructions are visible before Accept in both order styles",()=>{
+  const board=readFileSync(new URL("../src/components/OrdersStyleBoard.tsx",import.meta.url),"utf8");
+  const fake=readFileSync(new URL("../src/components/PreviewFakeOrders.tsx",import.meta.url),"utf8");
+  const notes=readFileSync(new URL("../src/components/OrderCustomerNote.tsx",import.meta.url),"utf8");
+  const policy=readFileSync(new URL("../src/services/merchantPickupPolicy.ts",import.meta.url),"utf8");
+  assert.ok(board.includes("<OrderCustomerNote order={order} compact={!roomy}/>"));
+  assert.ok(fake.includes("<OrderCustomerNote order={order} compact={!roomy}/>"));
+  assert.ok(fake.includes('notes:number%4===1?"No atchar":undefined'));
+  assert.ok(notes.includes("Special request"));
+  assert.ok(notes.includes('aria-label="Customer preparation instructions"'));
+  assert.ok(notes.includes("whitespace-pre-wrap break-words"));
+  assert.ok(notes.includes("if(orderNote)return [orderNote];"));
+  assert.ok(notes.includes("typeof item.notes"));
+  assert.ok(policy.includes("const itemNotes="));
+  assert.ok(policy.includes("const notes=itemNotes"));
+  assert.ok(board.indexOf("<OrderCustomerNote order={order}")<board.indexOf("<PickupOrderActions order={order}"));
+  assert.ok(fake.indexOf("<OrderCustomerNote order={order}")<fake.indexOf("<PickupOrderActions order={order}"));
+  for (const code of [notes,board,fake]) {
+    assert.ok(!code.includes("dangerouslySetInnerHTML"));
+    assert.ok(!code.includes("innerHTML="));
+  }
+});
+
+test("L1C-3 notes: customer instructions are not stored or sent by the fake-ticket component",()=>{
+  const fake=readFileSync(new URL("../src/components/PreviewFakeOrders.tsx",import.meta.url),"utf8");
+  const notes=readFileSync(new URL("../src/components/OrderCustomerNote.tsx",import.meta.url),"utf8");
+  for (const src of [fake,notes]) {
+    for (const forbidden of ["MerchantApi.transitionPickupOrder","sendPushNotification(","localStorage.setItem(","fetch(","supabase."]) {
+      assert.ok(!src.includes(forbidden),"No note or fake-order network write: "+forbidden);
+    }
+  }
+});
