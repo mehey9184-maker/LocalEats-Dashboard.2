@@ -113,7 +113,6 @@ export interface OrdersManagementProps {
   onRequestRider: (id: string, riderId?: string, riderName?: string, riderPhone?: string) => void;
   onUnassignRider: (id: string) => void;
   onTabChange: (tab: string) => void;
-  sendRiderNudge: (riderId: string, message: string) => Promise<void>;
   currentShop: Shop | undefined;
   printingFormat?: PrintingFormat;
   setPrintingFormat?: (format: PrintingFormat) => void;
@@ -309,7 +308,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   onRequestRider,
   onUnassignRider,
   onTabChange,
-  sendRiderNudge,
   currentShop,
   printingFormat: propPrintingFormat,
   setPrintingFormat: propSetPrintingFormat,
@@ -475,22 +473,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             {isOnline ? "Online" : "Idle"}
           </span>
         </div>
-
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (order.rider_id) {
-              void sendRiderNudge(order.rider_id, "Order update: Please check your active delivery mission!");
-            } else {
-              toast.error("No rider assigned to nudge");
-            }
-          }}
-          className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-[8px] font-black uppercase tracking-wider rounded-lg transition-transform flex items-center gap-0.5 cursor-pointer shrink-0 shadow-xs"
-          title="Trigger silent push notification alert to rider"
-        >
-          <Zap size={10} className="fill-current" />
-          <span>Nudge</span>
-        </button>
       </div>
     );
   };
@@ -1434,7 +1416,6 @@ Notes: "${order.notes || "None"}"
     }
 
     if (!rider.is_online) {
-      // Show "Wake to Tip" button UI or similar
       // Handled in the UI loop
       return;
     }
@@ -2247,21 +2228,7 @@ Notes: "${order.notes || "None"}"
                                                     >
                                                       Repair
                                                     </button>
-                                                  ) : isOffline ? (
-                                                    <button
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        sendRiderNudge(
-                                                          rider.rider_id!,
-                                                          "Urgent order available - Tip boost active!",
-                                                        );
-                                                      }}
-                                                      className="flex items-center gap-1 px-2 py-1 bg-amber-500 text-white text-[9px] font-black rounded-lg uppercase hover:scale-105 transition-transform"
-                                                    >
-                                                      <Zap size={10} />
-                                                      Wake to Tip
-                                                    </button>
-                                                  ) : (
+                                                  ) : isOffline ? null : (
                                                     <button disabled={isPickupOrder(order)}
                                                       onClick={(e) => {
                                                         e.stopPropagation();
@@ -2593,26 +2560,6 @@ Notes: "${order.notes || "None"}"
                             </button>
                           )}
                           <div className="flex gap-2">
-                            {order.rider_id && order.status !== "completed" && (
-                              <button
-                                onClick={() => {
-                                  const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
-                                  sendRiderNudge(
-                                    order.rider_id!,
-                                    nudgeMessage
-                                  );
-                                  toast.success("Rider nudged successfully!");
-                                }}
-                                className={cn(
-                                  "bg-amber-100 text-amber-700 rounded-full hover:bg-amber-200 transition-all font-bold flex flex-1 items-center justify-center gap-2",
-                                  kitchenMode ? "p-5 text-lg" : "p-3 text-sm"
-                                )}
-                                title="Nudge Rider"
-                              >
-                                <Zap size={kitchenMode ? 24 : 18} />
-                                {kitchenMode ? "Nudge Rider" : (order.delivery_status === 'picked_up' ? "Ping Rider" : "Nudge")}
-                              </button>
-                            )}
                             <button
                               onClick={() =>
                                 setChatOrderId(
@@ -3878,7 +3825,6 @@ Notes: "${order.notes || "None"}"
                   <AnimatePresence mode="popLayout">
                   {displayedOrders.filter(o => o.status === "ready").map((order) => {
                     const items = safeGetOrderItems(order.items);
-                    const canNudge = order.rider_id && order.status !== "completed";
                     const isDelivery = isOrderDelivery(order);
                     const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
                     const isDispatched = isDelivery && (order.rider_id || order.delivery_status === "accepted" || order.delivery_status === "picked_up" || order.delivery_status === "dispatched");
@@ -3972,22 +3918,6 @@ Notes: "${order.notes || "None"}"
                             >
                               <Rocket size={12} className="animate-pulse text-amber-200" />
                               <span>Send Rider (Dispatch)</span>
-                            </button>
-                          </div>
-                        )}
-
-                        {canNudge && (
-                          <div className="mt-2">
-                            <button
-                              onClick={() => {
-                                const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
-                                sendRiderNudge(order.rider_id!, nudgeMessage);
-                                toast.success("Rider nudged successfully!");
-                              }}
-                              className="w-full py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                              <Zap size={11} className="text-amber-600" />
-                              <span>Nudge Rider</span>
                             </button>
                           </div>
                         )}
