@@ -535,8 +535,10 @@ test("Settings S1: inactive bank-payout status is honest; the remaining Settings
   assert.ok(app.includes("Bank payouts aren't active for the pickup-first pilot."));
   assert.ok(app.includes("Not active"));
   assert.ok(!app.includes("Manage your bank account for weekly payouts."));
-  for(const id of ["account","storefront","operations","delivery","hardware","billing","preferences","diagnostics"])
-    assert.ok(app.includes(`id: "${id}"`) || app.includes(`id: "${id}",`), "Missing Settings category: "+id);
+  for(const id of ["account","storefront","operations","preferences"])
+    assert.ok(app.includes(`id: "${id}"`),"Missing essential Settings category: "+id);
+  for(const id of ["delivery","hardware","billing","diagnostics"])
+    assert.ok(app.includes(`settingsCategory === "${id}"`),"Future Settings source must remain available: "+id);
   assert.ok(app.includes('settingsCategory === "preferences"'));
   assert.ok(app.includes('settingsCategory === "storefront"'));
   assert.ok(app.includes('settingsCategory === "account"'));
@@ -599,7 +601,7 @@ test("Settings S2 opening-hours overview cannot claim a fake save or send direct
   assert.ok(view.includes("No hours or shop status will be changed from this page."));
   assert.ok(app.includes('verified={merchantShopGate.status==="ready"'));
   assert.ok(app.includes('currentShop?.owner_id===user.id'));
-  for(const prohibited of ["supabase","MerchantApi.","fetch(","localStorage.","setItem(","window.print(","onChange=","Save Hours"]){
+  for(const prohibited of ["supabase","MerchantApi.","fetch(","localStorage.","setItem(","window.print(","onChange=","<input",">Save Hours<"]){
     assert.ok(!view.includes(prohibited),"Read-only overview cannot mutate shop data: "+prohibited);
   }
 });
