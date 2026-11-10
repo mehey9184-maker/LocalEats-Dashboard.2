@@ -3335,12 +3335,12 @@ function App() {
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Payouts & Banking</p>
-                        <p className="text-xs text-on-surface-variant">Manage your bank account for weekly payouts.</p>
+                        <p className="text-xs text-on-surface-variant">Bank payouts aren't active for the pickup-first pilot.</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                       <span className="text-[10px] items-center font-bold uppercase tracking-wider text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full whitespace-nowrap hidden md:inline-flex">
-                         Verified
+                       <span className="text-[10px] items-center font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high px-2 py-0.5 rounded-full whitespace-nowrap hidden md:inline-flex">
+                         Not active
                        </span>
                        <ChevronRight size={18} className="text-on-surface-variant/40" />
                     </div>
