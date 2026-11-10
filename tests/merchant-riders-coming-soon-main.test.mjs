@@ -91,49 +91,73 @@ test("L1C-3: actual pickup buttons are shared; simulated actions cannot invoke M
   assert.match(actions, /TEST ONLY: Simulate food handover/);
 });
 
-test("L1C-3 review: queue-first layout is gated to isolated no-write Preview", () => {
-  const orders = readFileSync(new URL("../src/components/OrdersManagement.tsx",import.meta.url),"utf8");
-  const focused = readFileSync(new URL("../src/components/OrdersFocusedWorkspace.tsx",import.meta.url),"utf8");
-  assert.match(orders,/VITE_MERCHANT_ORDERS_FOCUSED_UI === "true"/);
-  assert.match(orders,/isMerchantPreviewSimulatorEnabled\(\)/);
-  assert.match(orders,/<OrdersFocusedWorkspace/);
-  assert.match(focused,/data-testid="orders-focused-workspace"/);
-  assert.match(focused,/Pickup-first kitchen queue/);
-  assert.match(focused,/Current/);
-  assert.match(focused,/History/);
-  assert.match(focused,/MoreHorizontal/);
-  assert.match(focused,/Real/);
-  assert.match(focused,/PickupOrderActions order=\{order\}/);
+test("L1C-3: two uploaded KDS layouts are selectable and remembered per shop", () => {
+  const orders=readFileSync(new URL("../src/components/OrdersManagement.tsx",import.meta.url),"utf8");
+  const focused=readFileSync(new URL("../src/components/OrdersFocusedWorkspace.tsx",import.meta.url),"utf8");
+  const board=readFileSync(new URL("../src/components/OrdersStyleBoard.tsx",import.meta.url),"utf8");
+  assert.ok(orders.includes("VITE_MERCHANT_ORDERS_FOCUSED_UI"));
+  assert.ok(orders.includes("isMerchantPreviewSimulatorEnabled()"));
+  assert.ok(orders.includes("localeats.merchant.orders.style.v1.shop"));
+  assert.ok(focused.includes("A · Expediter"));
+  assert.ok(focused.includes("B · Compact"));
+  assert.ok(focused.includes('aria-label="Choose your Orders style"'));
+  assert.ok(focused.includes("localStorage.setItem(styleStorageKey,choice)"));
+  assert.ok(focused.includes("localStorage.getItem(key)"));
+  assert.ok(focused.includes("<OrdersStyleBoard"));
+  assert.ok(board.includes('data-style={style}'));
+  assert.ok(board.includes('style==="expediter"'));
+  assert.ok(board.includes('style==="compact"'));
+  assert.ok(board.includes("md:grid-cols-2 2xl:grid-cols-4"));
 });
 
-test("L1C-3 review: high-volume Orders have bounded pagination and no fixed-width Kanban columns", () => {
-  const focused = readFileSync(new URL("../src/components/OrdersFocusedWorkspace.tsx",import.meta.url),"utf8");
-  const fake = readFileSync(new URL("../src/components/PreviewFakeOrders.tsx",import.meta.url),"utf8");
-  assert.match(focused,/const PAGE_SIZE=12/);
-  assert.match(focused,/\.slice\(\(safePage-1\)\*PAGE_SIZE,safePage\*PAGE_SIZE\)/);
-  assert.match(focused,/grid-cols-1 xl:grid-cols-2/);
-  assert.match(focused,/min-w-0 max-w-full/);
-  assert.doesNotMatch(focused,/xl:grid-cols-4|w-\[400px\]|min-h-\[500px\]/);
-  assert.match(focused,/data-testid="focused-order-grid"/);
-  assert.match(focused,/Page \{safePage\} of \{pages\}/);
-  assert.match(focused,/viewMode==="history"&&/);
-  assert.match(fake,/const simulateBatch=\(\)=>/);
-  assert.match(fake,/Array\.from\(\{length:24\}/);
-  assert.match(fake,/\.slice\(0,60\)/);
-  assert.match(focused,/Test busy queue · \+24 FAKE orders/);
+test("L1C-3: large test batches are bounded and mobile lanes do not overflow", () => {
+  const focused=readFileSync(new URL("../src/components/OrdersFocusedWorkspace.tsx",import.meta.url),"utf8");
+  const board=readFileSync(new URL("../src/components/OrdersStyleBoard.tsx",import.meta.url),"utf8");
+  const fake=readFileSync(new URL("../src/components/PreviewFakeOrders.tsx",import.meta.url),"utf8");
+  assert.ok(board.includes("visibleByLane"));
+  assert.ok(board.includes("pending:6,preparing:6,ready:6,fulfilled:6"));
+  assert.ok(board.includes("slice(0,visibleByLane[lane.key])"));
+  assert.ok(board.includes("Show 6 more"));
+  assert.ok(board.includes('role="tablist" aria-label="Mobile kitchen lane"'));
+  assert.ok(board.includes("min-w-0"));
+  assert.ok(!board.includes("w-[400px]"));
+  assert.ok(!board.includes("min-h-[500px]"));
+  assert.ok(fake.includes("const simulateBatch=()=>"));
+  assert.ok(fake.includes("Array.from({length:24}"));
+  assert.ok(fake.includes(".slice(0,60)"));
+  assert.ok(focused.includes("Test busy queue · +24 FAKE orders"));
+  assert.ok(fake.includes('variant?:"expediter"|"compact"'));
 });
 
-test("L1C-3 review: fake orders remain distinct from real order data and operational writes", () => {
-  const focused = readFileSync(new URL("../src/components/OrdersFocusedWorkspace.tsx",import.meta.url),"utf8");
-  assert.match(focused,/\{kind:"real";order:Order\} \| \{kind:"fake";order:PreviewTestPickupOrder\}/);
-  assert.match(focused,/entry.kind==="fake"/);
-  assert.match(focused,/PreviewFakeOrderCard/);
-  assert.match(focused,/onDemoAction=\{onDemoAction\}/);
-  assert.match(focused,/renderRealOrder\(order,index\)/);
-  assert.match(focused,/disabled=\{readOnly\}/);
-  assert.match(focused,/realOrders\.map\(order=>\(\{kind:"real"/);
-  assert.match(focused,/activeFake\.map\(order=>\(\{kind:"fake"/);
-  for (const unsafe of [/\bfetch\s*\(/, /\bsupabase\b/, /\bMerchantApi\b/, /\blocalStorage\b/, /\bsessionStorage\b/, /\bwindow\.dispatchEvent\b/]) {
-    assert.doesNotMatch(focused,unsafe);
+test("L1C-3: fake and real order authority stay separate across both layouts", () => {
+  const orders=readFileSync(new URL("../src/components/OrdersManagement.tsx",import.meta.url),"utf8");
+  const focused=readFileSync(new URL("../src/components/OrdersFocusedWorkspace.tsx",import.meta.url),"utf8");
+  const board=readFileSync(new URL("../src/components/OrdersStyleBoard.tsx",import.meta.url),"utf8");
+  const fake=readFileSync(new URL("../src/components/PreviewFakeOrders.tsx",import.meta.url),"utf8");
+  assert.ok(focused.includes('realOrders.map(order=>({kind:"real"'));
+  assert.ok(focused.includes('activeFake.map(order=>({kind:"fake"'));
+  assert.ok(focused.includes("onDemoAction={onDemoAction}"));
+  assert.ok(orders.includes("renderRealOrder={renderOrderCard}"));
+  assert.ok(board.includes('entry.kind==="fake"'));
+  assert.ok(board.includes("<PreviewFakeOrderCard"));
+  assert.ok(board.includes("renderRealOrder(order,index)"));
+  assert.ok(board.includes("<PickupOrderActions order={order}"));
+  assert.ok(focused.includes("disabled={readOnly}"));
+  assert.ok(fake.includes("onSimulate={(action,extra)=>onDemoAction"));
+  assert.ok(focused.includes("localStorage.setItem(styleStorageKey,choice)"));
+  assert.ok(!fake.includes("localStorage"));
+  assert.ok(!fake.includes("sessionStorage"));
+  for(const file of [board,fake]){
+    for(const bad of ["fetch(","MerchantApi.","supabase.","sendPushNotification(","window.dispatchEvent("])
+      assert.ok(!file.includes(bad),"No order/API/notification write transport in display code: "+bad);
+  }
+});
+
+test("L1C-3: misleading live payment, delivery and POS claims from mockups are excluded", () => {
+  const board=readFileSync(new URL("../src/components/OrdersStyleBoard.tsx",import.meta.url),"utf8");
+  const focused=readFileSync(new URL("../src/components/OrdersFocusedWorkspace.tsx",import.meta.url),"utf8");
+  for(const bad of ["Pickup Checkout Active","Real card/instant EFT payments are live","Direct POS link 0 dropped packets","Accept All New","Webhooks operational","Hand Over to Rider"]){
+    assert.ok(!board.includes(bad));
+    assert.ok(!focused.includes(bad));
   }
 });
