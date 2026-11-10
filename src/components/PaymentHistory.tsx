@@ -1,5 +1,6 @@
 import React, {useMemo, useState} from "react";
-import {Banknote, Info, ReceiptText, ShieldAlert, Store} from "lucide-react";
+import {Info, ReceiptText, ShieldAlert, Store} from "lucide-react";
+import {MerchantSubscriptionPlans} from "./MerchantSubscriptionPlans";
 import type {Order, Shop} from "../types";
 
 interface PaymentHistoryProps {
@@ -104,15 +105,8 @@ export const PaymentHistory:React.FC<PaymentHistoryProps>=({
           Show 20 more · {pickupOrders.length-limit} remaining
         </button>}
       </>}
-    </div>:<div role="tabpanel" className="rounded-2xl bg-surface-container-low border border-outline-variant/10 p-5 sm:p-6 space-y-3">
-      <Banknote size={22} aria-hidden="true" className="text-primary"/>
-      <h3 className="font-headline text-base font-bold text-on-surface">Merchant subscription billing is not active</h3>
-      <p className="text-xs leading-5 text-on-surface-variant">
-        No verified subscription billing feed is connected to this page. We cannot show a confirmed invoice, subscription charge, payout or billing date.
-      </p>
-      <p className="text-xs leading-5 text-on-surface-variant">
-        Future plans and the introductory free period are being prepared, and require separate approval before activation.
-      </p>
+    </div>:<div role="tabpanel">
+      <MerchantSubscriptionPlans shop={currentShop} verified={!!currentShop && String(currentShop.id)===String(shopId)}/>
     </div>}
   </section>;
 };
