@@ -54,10 +54,10 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
      <ShoppingBag size={12} className="inline-block mr-1" aria-hidden="true"/>{order.product_name||"Open full order for items"}
    </p>
    <OrderCustomerNote order={order} compact={!roomy}/>
-   {pickup?<div className={roomy?"rounded-xl bg-surface-container-low/50 p-2":"rounded-lg bg-surface-container-low/50 p-1.5"}>
+   {pickup && !expanded ? <div className={roomy?"rounded-xl bg-surface-container-low/50 p-2":"rounded-lg bg-surface-container-low/50 p-1.5"}>
      {roomy&&<p className="text-[11px] text-on-surface-variant mb-1">{pickupPaymentLabel(order)}</p>}
      <PickupOrderActions order={order} compact={!roomy}/>
-   </div>:<span className="text-[11px] text-on-surface-variant">Historical / existing order · no new rider action</span>}
+   </div>:!pickup && !expanded ? <span className="text-[11px] text-on-surface-variant">Historical / existing order · no new rider action</span> : null}
    {expanded&&<div className="border-t border-outline-variant/15 pt-3 min-w-0" onClick={e=>e.stopPropagation()}>
      {renderRealOrder(order,index)}
    </div>}
@@ -76,7 +76,9 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
 }){
  const [mobileStage,setMobileStage]=useState<Stage>("pending");
  const [visibleByLane,setVisibleByLane]=useState<Record<Stage,number>>({pending:6,preparing:6,ready:6,fulfilled:6});
+ const [visibleHistory,setVisibleHistory]=useState(24);
  useEffect(()=>setVisibleByLane({pending:6,preparing:6,ready:6,fulfilled:6}),[style,viewMode,stageFilter]);
+ useEffect(()=>setVisibleHistory(24),[style,viewMode,stageFilter]);
  const roomy=style==="expediter";
  const compact=style==="compact";
  const allEntries=useMemo(()=>{
@@ -99,13 +101,19 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
    : <RealOrderTicket key={`real:${entry.order.id}`} order={entry.order} style={style} index={index} renderRealOrder={renderRealOrder}/>;
 
  if(viewMode==="history"){
-   const shown=allEntries.slice(0,24);
+   const shown=allEntries.slice(0,visibleHistory);
    return <section data-testid="style-history-list" className="space-y-3">
      <p className="text-xs text-on-surface-variant">History uses the selected ticket style. Fake results remain browser-only.</p>
      <div className={`grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 min-w-0 ${roomy?"gap-4":"gap-2"}`}>
        {shown.map(renderEntry)}
      </div>
-     {allEntries.length>24&&<p className="text-xs text-on-surface-variant">Showing first 24 history records. Use search or date filters to narrow results.</p>}
+     {allEntries.length>shown.length&&<button
+       type="button"
+       onClick={()=>setVisibleHistory(count=>count+24)}
+       className="min-h-11 w-full rounded-xl border border-outline-variant/20 bg-surface-container-lowest text-xs font-bold text-primary"
+     >
+       Show 24 more history orders · {allEntries.length-shown.length} remaining
+     </button>}
    </section>;
  }
 
