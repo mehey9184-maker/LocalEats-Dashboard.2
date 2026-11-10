@@ -34,3 +34,9 @@ test("M4.1 retains working generators but isolates shop-specific material", () =
   assert.ok(marketing.includes('if (!activeShop) return "";'));
   assert.ok(marketing.includes("shopOrders.length > 0 ? Math.round(totalRevenue / shopOrders.length)"));
 });
+
+test("M4.1 wires shop link copy to an existing handler, preventing runtime ReferenceError", () => {
+  assert.match(marketing, /const copyStoreUrl = \(\) => \{/);
+  assert.match(marketing, /onClick=\{copyStoreUrl\}/);
+  assert.doesNotMatch(marketing, /handleCopyLink/);
+});
