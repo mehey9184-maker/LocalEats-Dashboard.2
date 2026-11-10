@@ -4,7 +4,7 @@ import {MerchantSubscriptionPlans} from "./MerchantSubscriptionPlans";
 import type {Order, Shop} from "../types";
 
 interface PaymentHistoryProps {
-  shopId: number;
+  shopId: string | number;
   currentShop?: Shop;
   orders?: Order[];
   /** Authenticated, fresh merchant API read for this exact shop. */
@@ -56,18 +56,18 @@ export const PaymentHistory:React.FC<PaymentHistoryProps>=({
       </p>
     </div>
 
-    <div role="tablist" aria-label="Payment sections" className="flex flex-wrap gap-2">
-      <button type="button" role="tab" aria-selected={tab==="pickup"} onClick={()=>setTab("pickup")}
+    <div role="group" aria-label="Payment sections" className="flex flex-wrap gap-2">
+      <button type="button" aria-pressed={tab==="pickup"} onClick={()=>setTab("pickup")}
         className={`min-h-11 px-4 py-2 rounded-xl text-xs font-bold transition-colors ${tab==="pickup"?"bg-primary text-on-primary":"bg-surface-container text-on-surface-variant"}`}>
         Pickup orders
       </button>
-      <button type="button" role="tab" aria-selected={tab==="billing"} onClick={()=>setTab("billing")}
+      <button type="button" aria-pressed={tab==="billing"} onClick={()=>setTab("billing")}
         className={`min-h-11 px-4 py-2 rounded-xl text-xs font-bold transition-colors ${tab==="billing"?"bg-primary text-on-primary":"bg-surface-container text-on-surface-variant"}`}>
         Subscription & billing
       </button>
     </div>
 
-    {tab==="pickup"?<div role="tabpanel" className="space-y-3">
+    {tab==="pickup"?<div aria-label="Pickup order payment information" className="space-y-3">
       <div className="flex items-center gap-2">
         <ReceiptText size={17} aria-hidden="true" className="text-primary"/>
         <h3 className="font-headline text-sm font-bold text-on-surface">Pickup order payment information</h3>
@@ -105,7 +105,7 @@ export const PaymentHistory:React.FC<PaymentHistoryProps>=({
           Show 20 more · {pickupOrders.length-limit} remaining
         </button>}
       </>}
-    </div>:<div role="tabpanel">
+    </div>:<div aria-label="Subscription and billing plans">
       <MerchantSubscriptionPlans shop={currentShop} verified={!!currentShop && String(currentShop.id)===String(shopId)}/>
     </div>}
   </section>;
