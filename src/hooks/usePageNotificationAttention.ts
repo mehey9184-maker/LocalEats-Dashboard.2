@@ -99,7 +99,7 @@ export function usePageNotificationAttention({
   useEffect(()=>{
     const last=previousTab.current;
     previousTab.current=activeTab;
-    if(last!==activeTab && activeTab in TOPIC_PAGE){
+    if(last!==activeTab && Object.values(TOPIC_PAGE).includes(activeTab as AttentionPage)){
       // A navigation tap stops the attention movement. Underlying order/stock
       // counts remain authoritative and are not marked read merely by visiting.
       stopPage(activeTab as AttentionPage);
