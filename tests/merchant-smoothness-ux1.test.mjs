@@ -66,3 +66,14 @@ test("UX1 confirmation retains both actions and traps keyboard focus with Escape
   assert.match(confirm, /onClick=\{onConfirm\}/);
   assert.match(confirm, /min-h-11 flex-1/g);
 });
+
+
+test("UX1 follow-up protects safe areas, 44px nav arrows and background scroll", () => {
+  assert.match(app, /aria-label="Mobile dashboard navigation"/);
+  assert.match(app, /aria-label="Main dashboard navigation"/);
+  assert.match(app, /w-11 h-11 rounded-full/);
+  assert.match(app, /pb-\[max\(2rem,env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(app, /document\.body\.style\.overflow = "hidden"/);
+  assert.match(app, /document\.body\.style\.overflow = previousOverflow/);
+  assert.match(app, /if \(e\.key === "Escape"\) \{ e\.preventDefault\(\)/);
+});
