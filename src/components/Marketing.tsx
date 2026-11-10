@@ -249,7 +249,7 @@ export const Marketing: React.FC<MarketingProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const featuredSocialItem = useMemo(() => {
-    if (!featuredSocialItemId) return storeMenuItems[0] || null;
+    if (!featuredSocialItemId) return null;
     return storeMenuItems.find((i) => String(i.id) === String(featuredSocialItemId)) || null;
   }, [featuredSocialItemId, storeMenuItems]);
 
