@@ -10,7 +10,7 @@ import React, {
   useCallback,
 } from "react";
 import L from "leaflet";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { toast, Toaster } from "sonner";
@@ -196,6 +196,7 @@ L.Icon.Default.mergeOptions({
 });
 
 function App() {
+  const reduceMotion = useReducedMotion();
   console.log("[App] App component function executing");
   const { subscribeWithAuthGuard } = useAuthGuard();
   const [isSessionChecking, setIsSessionChecking] = useState(true);
@@ -227,6 +228,13 @@ function App() {
 
   const { activeTab, setActiveTab } = useAppNavigation("dashboard");
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
+  const mobileMoreDrawerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isMobileMoreOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    mobileMoreDrawerRef.current?.focus();
+    return () => previousFocus?.focus();
+  }, [isMobileMoreOpen]);
   const [showHelp, setShowHelp] = useState(false);
   const [showLegal, setShowLegal] = useState(false);
   const [dataSaverMode] = useState<boolean>(() => localStorage.getItem("localeats_data_saver") === "true");
@@ -2002,8 +2010,9 @@ function App() {
               {/* Left Arrow Button */}
               <button
                 type="button"
-                onClick={() => topNavScrollRef.current?.scrollBy({ left: -160, behavior: 'smooth' })}
-                className="absolute left-0 z-10 w-7 h-7 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
+                onClick={() => topNavScrollRef.current?.scrollBy({ left: -160, behavior: reduceMotion ? 'auto' : 'smooth' })}
+                aria-label="Scroll navigation left"
+                className="absolute left-0 z-10 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
                 title="Scroll Tabs Left"
               >
                 <ChevronLeft size={14} className="stroke-[2.5px]" />
@@ -2011,7 +2020,7 @@ function App() {
 
               <nav
                 ref={topNavScrollRef}
-                className="flex-1 flex items-center justify-start gap-2 overflow-x-auto hide-scrollbar px-7 whitespace-nowrap scroll-smooth"
+                className="flex-1 flex items-center justify-start gap-2 overflow-x-auto hide-scrollbar px-11 whitespace-nowrap scroll-smooth"
               >
                 {navItems.map((item) => {
                   const isActive = activeTab === item.id;
@@ -2021,10 +2030,10 @@ function App() {
                       onClick={() => setActiveTab(item.id)}
                       aria-label={item.label}
                       aria-current={isActive ? "page" : undefined}
-                      whileHover={{ scale: 1.03 }}
-                      whileTap={{ scale: 0.97 }}
+                      whileHover={reduceMotion ? undefined : { scale: 1.015 }}
+                       whileTap={reduceMotion ? undefined : { scale: 0.98 }}
                       className={cn(
-                        "px-4 py-2.5 rounded-2xl transition-all font-bold text-xs flex items-center gap-2 relative shrink-0 overflow-hidden cursor-pointer",
+                        "min-h-11 px-4 py-2.5 rounded-2xl transition-all font-bold text-xs flex items-center gap-2 relative shrink-0 overflow-hidden cursor-pointer",
                         isActive
                           ? "text-primary font-black shadow-xs"
                           : "text-on-surface/60 hover:text-on-surface hover:bg-surface-container-low/50 dark:hover:bg-surface-container-high/50",
@@ -2034,7 +2043,7 @@ function App() {
                         <motion.div
                           layoutId="activeTabBackgroundMain"
                           className="absolute inset-0 bg-primary/10 dark:bg-primary/20 rounded-2xl -z-10"
-                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                          transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 30 }}
                         />
                       )}
                       <span key={`desktop-${item.id}-${navAttention[item.id as keyof typeof navAttention]??0}`}
@@ -2055,8 +2064,9 @@ function App() {
               {/* Right Arrow Button */}
               <button
                 type="button"
-                onClick={() => topNavScrollRef.current?.scrollBy({ left: 160, behavior: 'smooth' })}
-                className="absolute right-0 z-10 w-7 h-7 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
+                onClick={() => topNavScrollRef.current?.scrollBy({ left: 160, behavior: reduceMotion ? 'auto' : 'smooth' })}
+                aria-label="Scroll navigation right"
+                className="absolute right-0 z-10 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
                 title="Scroll Tabs Right"
               >
                 <ChevronRight size={14} className="stroke-[2.5px]" />
@@ -2132,7 +2142,7 @@ function App() {
                   if (!soundAlerts) playNotificationSound();
                 }}
                 className={cn(
-                  "p-2 transition-colors relative group",
+                  "le-press-feedback min-w-11 min-h-11 p-2 rounded-full flex items-center justify-center transition-colors relative group",
                   soundAlerts ? "text-primary" : "text-on-surface-variant/40",
                 )}
                 title={
@@ -2148,7 +2158,7 @@ function App() {
 
               <button
                 onClick={() => setDarkMode(!darkMode)}
-                className="p-2 text-on-surface-variant hover:text-primary transition-colors"
+                className="le-press-feedback min-w-11 min-h-11 p-2 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors"
                 title={
                   darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"
                 }
@@ -2159,7 +2169,7 @@ function App() {
                   <Moon size={18} className="md:w-5 md:h-5" />
                 )}
               </button>
-              <button onClick={() => setActiveTab("settings")} className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center overflow-hidden border-2 border-primary/10 shadow-sm cursor-pointer hover:border-primary/30 transition-all focus:outline-none focus:ring-2 focus:ring-primary/50" title="Profile Settings">
+              <button onClick={() => setActiveTab("settings")} className="le-press-feedback w-11 h-11 rounded-full flex items-center justify-center overflow-hidden border-2 border-primary/10 shadow-sm cursor-pointer hover:border-primary/30 transition-all focus:outline-none focus:ring-2 focus:ring-primary/50" title="Profile Settings">
                 {user?.user_metadata?.avatar_url ? (
                   <img
                     alt="Profile"
@@ -3939,9 +3949,9 @@ function App() {
                         onClick={() => setActiveTab(item.id)}
                     aria-label={item.label}
                     aria-current={isActive ? "page" : undefined}
-                        whileTap={{ scale: 0.95 }}
+                        whileTap={reduceMotion ? undefined : { scale: 0.98 }}
                         className={cn(
-                          "flex flex-col items-center justify-center min-w-[64px] shrink-0 py-2 rounded-2xl relative group transition-colors duration-300",
+                          "flex flex-col items-center justify-center min-w-[64px] min-h-12 shrink-0 py-2 rounded-2xl relative group transition-colors duration-150",
                           isActive
                             ? "text-white"
                             : "text-on-surface-variant/60 hover:text-primary",
@@ -3951,7 +3961,7 @@ function App() {
                           <motion.div
                             layoutId="mobileActiveTabBackground"
                             className="absolute inset-x-1 inset-y-0.5 bg-primary rounded-2xl shadow-lg shadow-primary/25 -z-10"
-                            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                            transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 30 }}
                           />
                         )}
                         <div className={cn(
@@ -3972,7 +3982,7 @@ function App() {
                           )}
                         </div>
                         <span className={cn(
-                          "text-[8px] uppercase tracking-widest font-black mt-1.5",
+                          "text-[10px] uppercase tracking-wider font-black mt-1.5",
                           isActive ? "text-white" : "text-inherit"
                         )}>
                           {item.label === "Dashboard" ? "Home" : item.label}
@@ -3984,9 +3994,12 @@ function App() {
                   {/* More Button */}
                   <motion.button
                     onClick={() => setIsMobileMoreOpen(true)}
-                    whileTap={{ scale: 0.95 }}
+                     aria-label="More dashboard sections"
+                     aria-expanded={isMobileMoreOpen}
+                     aria-controls="localeats-mobile-more-drawer"
+                    whileTap={reduceMotion ? undefined : { scale: 0.98 }}
                     className={cn(
-                      "flex flex-col items-center justify-center min-w-[64px] shrink-0 py-2 rounded-2xl relative group transition-colors duration-300",
+                      "flex flex-col items-center justify-center min-w-[64px] min-h-12 shrink-0 py-2 rounded-2xl relative group transition-colors duration-150",
                       isMoreActive
                         ? "text-white"
                         : "text-on-surface-variant/60 hover:text-primary",
@@ -3996,7 +4009,7 @@ function App() {
                       <motion.div
                         layoutId="mobileActiveTabBackground"
                         className="absolute inset-x-1 inset-y-0.5 bg-primary rounded-2xl shadow-lg shadow-primary/25 -z-10"
-                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                        transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 30 }}
                       />
                     )}
                     <div className="relative">
@@ -4014,7 +4027,7 @@ function App() {
                       )}
                     </div>
                     <span className={cn(
-                      "text-[8px] uppercase tracking-widest font-black mt-1.5",
+                      "text-[10px] uppercase tracking-wider font-black mt-1.5",
                       isMoreActive ? "text-white" : "text-inherit"
                     )}>
                       More
@@ -4046,12 +4059,32 @@ function App() {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: "100%", opacity: 0 }}
               transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-              className="relative w-full bg-surface-container-lowest rounded-t-[32px] border-t border-outline-variant/10 p-6 pb-12 shadow-2xl max-h-[75vh] overflow-y-auto pointer-events-auto text-on-surface"
+              id="localeats-mobile-more-drawer"
+               role="dialog"
+               aria-modal="true"
+               aria-labelledby="localeats-mobile-more-title"
+               tabIndex={-1}
+               ref={mobileMoreDrawerRef}
+               onKeyDown={(e) => {
+                 if (e.key === "Escape") { e.stopPropagation(); setIsMobileMoreOpen(false); }
+                 if (e.key === "Tab") {
+                   const buttons = mobileMoreDrawerRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+                   if (!buttons?.length) return;
+                   const first = buttons[0];
+                   const last = buttons[buttons.length - 1];
+                   if (e.shiftKey && (document.activeElement === first || document.activeElement === mobileMoreDrawerRef.current)) {
+                     e.preventDefault(); last.focus();
+                   } else if (!e.shiftKey && document.activeElement === last) {
+                     e.preventDefault(); first.focus();
+                   }
+                 }
+               }}
+               className="relative w-full bg-surface-container-lowest rounded-t-[32px] border-t border-outline-variant/10 p-6 pb-12 shadow-2xl max-h-[75vh] overflow-y-auto pointer-events-auto text-on-surface"
             >
               {/* Handle bar for native feeling */}
               <div className="w-12 h-1.5 bg-on-surface-variant/20 rounded-full mx-auto mb-6" />
 
-              <h3 className="font-headline font-black text-xl text-on-surface mb-1.5 flex items-center gap-2">
+              <h3 id="localeats-mobile-more-title" className="font-headline font-black text-xl text-on-surface mb-1.5 flex items-center gap-2">
                 <span>More Features</span>
                 <span className="text-[10px] font-mono py-0.5 px-2 rounded-full bg-primary/10 text-primary uppercase font-bold tracking-widest">LocalEats</span>
               </h3>
@@ -4069,7 +4102,7 @@ function App() {
                         setIsMobileMoreOpen(false);
                       }}
                       className={cn(
-                        "p-5 rounded-3xl border text-left flex flex-col justify-between h-32 relative transition-all duration-300 active:scale-95 cursor-pointer min-h-[44px]",
+                        "le-press-feedback p-5 rounded-3xl border text-left flex flex-col justify-between h-32 relative cursor-pointer min-h-[44px]",
                         isActive
                           ? "border-primary bg-primary/10 text-primary shadow-sm"
                           : "border-outline-variant/10 bg-surface-container-low hover:bg-surface-container text-on-surface"
@@ -4102,7 +4135,7 @@ function App() {
 
               <button
                 onClick={() => setIsMobileMoreOpen(false)}
-                className="w-full mt-6 py-4 bg-surface-container-high text-on-surface font-black rounded-2xl text-xs uppercase tracking-widest hover:bg-surface-container-highest transition-colors min-h-[44px]"
+                className="le-press-feedback w-full mt-6 py-4 bg-surface-container-high text-on-surface font-black rounded-2xl text-xs uppercase tracking-widest hover:bg-surface-container-highest transition-colors min-h-[44px]"
               >
                 Close Panel
               </button>
