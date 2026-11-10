@@ -29,6 +29,7 @@ jobs:
           npm run test:merchant-pickup
           node --test tests/merchant-availability.test.cjs
           node --test tests/merchant-marketing-m41.test.mjs
+          node --experimental-strip-types --test tests/merchant-marketing-m42.test.mjs
       - name: Merchant build
         run: npm run build
       - name: API install
