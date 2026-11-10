@@ -98,7 +98,8 @@ import { Coupons } from "./components/Coupons";
 import { Marketing } from "./components/Marketing";
 import { Insights } from "./components/Insights";
 import { PaymentHistory } from "./components/PaymentHistory";
-import {parsePlanExpiry} from "./components/MerchantSubscriptionPlans";
+import {MerchantSubscriptionPlans,parsePlanExpiry} from "./components/MerchantSubscriptionPlans";
+import {purgeLegacyBillingDraft} from "./services/legacyBillingSafety";
 import { LegalDocsModal } from "./components/LegalDocsModal";
 import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
 import { ShopDiagnosticPanel } from "./components/ShopDiagnosticPanel";
@@ -483,47 +484,12 @@ function App() {
     { day: "Sun", open: "08:00", close: "17:00", active: false },
   ]);
 
-  const [billingDetails, setBillingDetails] = useState<{
-    companyName: string;
-    taxNumber: string;
-    billingEmail: string;
-    cardNumber: string;
-    expiryDate: string;
-    cvv: string;
-    cardholderName: string;
-    isCardSaved: boolean;
-  }>(() => {
-    try {
-      const saved = localStorage.getItem("localeats_billing_details");
-      return saved ? JSON.parse(saved) : {
-        companyName: "",
-        taxNumber: "",
-        billingEmail: "",
-        cardNumber: "",
-        expiryDate: "",
-        cvv: "",
-        cardholderName: "",
-        isCardSaved: false
-      };
-    } catch {
-      return {
-        companyName: "",
-        taxNumber: "",
-        billingEmail: "",
-        cardNumber: "",
-        expiryDate: "",
-        cvv: "",
-        cardholderName: "",
-        isCardSaved: false
-      };
-    }
-  });
-
-  const [selectedInvoice, setSelectedInvoice] = useState<{
-    id: string;
-    date: string;
-    amount: string;
-  } | null>(null);
+  // Legacy Settings once saved raw PAN/CVV in localStorage. Do not ever read
+  // that draft into React; discard the whole legacy key on this device.
+  const [legacyBillingCleanupFailed,setLegacyBillingCleanupFailed]=useState(false);
+  useEffect(()=>{
+    if(!purgeLegacyBillingDraft())setLegacyBillingCleanupFailed(true);
+  },[]);
 
   const [updateDismissed, setUpdateDismissed] = useState<boolean>(false);
 
@@ -3406,337 +3372,56 @@ function App() {
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-outline-variant/10 pb-4">
                           <div className="text-left">
                             <h3 className="font-headline font-bold text-lg text-on-surface">Billing & App Subscription</h3>
-                            <p className="text-xs text-on-surface-variant">Manage your subscription, set up future billing info, and view invoices.</p>
+                            <p className="text-xs text-on-surface-variant">Your current plan and planned merchant subscription options.</p>
                           </div>
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary uppercase tracking-wider self-start sm:self-auto">
-                            <Sparkles size={12} />
-                            Early Partner Benefit
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary self-start sm:self-auto">
+                            <Wallet size={14} aria-hidden="true" /> Billing inactive
                           </span>
                         </div>
 
-                        {/* Top Banner: Current Subscription Plan */}
-                        <div className="p-6 bg-surface-container-low border border-primary/20 rounded-2xl relative overflow-hidden shadow-sm shadow-primary/5 text-left">
-                          {/* Warm coral highlight corner decor */}
-                          <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-xl pointer-events-none" />
+                        <MerchantSubscriptionPlans
+                          shop={currentShop}
+                          verified={merchantShopGate.status==="ready"
+                            && !!user?.id
+                            && currentShop?.owner_id===user.id}
+                        />
 
-                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                            <div className="space-y-2 text-left">
-                              <span className="text-[10px] uppercase font-black tracking-widest text-primary bg-primary/10 px-2.5 py-1 rounded-full">
-                                Current Plan
-                              </span>
-                              <h4 className="text-xl font-headline font-extrabold text-on-surface flex items-center gap-2 mt-1">
-                                Early Partner Plan
-                              </h4>
-                              <p className="text-sm text-on-surface-variant max-w-xl">
-                                Thank you for being a founding member of LocalEats. You have full access to our comprehensive merchant delivery tools <strong>completely free of charge</strong> during our initial beta phase.
-                              </p>
-                              <div className="flex flex-wrap gap-4 pt-2 text-xs font-medium text-on-surface-variant">
-                                <span className="flex items-center gap-1.5 text-emerald-600 bg-emerald-500/5 px-2.5 py-1 rounded-lg border border-emerald-500/10">
-                                  <Circle size={14} /> Active Status
-                                </span>
-                                <span className="flex items-center gap-1.5 text-primary bg-primary/5 px-2.5 py-1 rounded-lg border border-primary/10">
-                                  <Sparkles size={14} /> Unlimited Features Included
-                                </span>
-                              </div>
-                            </div>
-                            <div className="bg-surface-container-high/60 border border-outline-variant/10 rounded-2xl p-5 text-center shrink-0 min-w-[180px]">
-                              <p className="text-xs text-on-surface-variant/80 font-bold uppercase tracking-wider">Subscription Cost</p>
-                              <p className="text-3xl font-headline font-black text-on-surface mt-1">R0 <span className="text-xs font-bold text-on-surface-variant/60">/mo</span></p>
-                              <span className="text-[9px] px-2 py-0.5 bg-primary/10 text-primary font-bold uppercase rounded mt-2 inline-block">
-                                100% Lifetime Discount
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Middle Section: 2 Columns */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                          {/* Column A: Future Pricing / Plans & Billing Details */}
-                          <div className="space-y-6">
-
-                            {/* Card 1: Subscription Roadmap */}
-                            <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
-                              <h4 className="font-headline font-bold text-base text-on-surface flex items-center gap-2 text-left">
-                                <Zap size={18} className="text-primary" /> Future Subscription Tiers
-                              </h4>
-                              <p className="text-xs text-on-surface-variant leading-relaxed text-left">
-                                When LocalEats transitions out of beta, we will offer simple, predictable flat-rate subscriptions. Early partners are guaranteed a <strong>permanent 50% discount</strong> on whichever tier they choose.
-                              </p>
-
-                              <div className="space-y-3 pt-2">
-                                {/* Plan 1 */}
-                                <div className="p-3 bg-surface-container-high/40 rounded-xl border border-outline-variant/5 flex items-center justify-between">
-                                  <div className="text-left">
-                                    <p className="text-xs font-black text-on-surface">LocalEats Lite</p>
-                                    <p className="text-[10px] text-on-surface-variant">For small kitchens & takeaway stalls</p>
-                                    <span className="text-[9px] text-on-surface-variant/60 mt-0.5 block">Max 150 monthly orders • 1 staff manager</span>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-sm font-headline font-bold text-on-surface">R199 <span className="text-[9px] font-normal text-on-surface-variant">/mo</span></p>
-                                    <span className="text-[9px] font-bold text-primary">Your cost: R99/mo</span>
-                                  </div>
-                                </div>
-
-                                {/* Plan 2 */}
-                                <div className="p-3 bg-primary/5 rounded-xl border border-primary/10 flex items-center justify-between relative overflow-hidden">
-                                  <div className="absolute top-0 right-0 text-[8px] bg-primary text-on-primary font-black uppercase tracking-wider px-2 py-0.5 rounded-bl-lg">
-                                    Recommended
-                                  </div>
-                                  <div className="text-left">
-                                    <p className="text-xs font-black text-on-surface flex items-center gap-1">
-                                      LocalEats Growth
-                                    </p>
-                                    <p className="text-[10px] text-on-surface-variant">For full service restaurants & dark kitchens</p>
-                                    <span className="text-[9px] text-on-surface-variant/60 mt-0.5 block">Unlimited orders • Route Optimization • Analytics</span>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-sm font-headline font-bold text-on-surface">R499 <span className="text-[9px] font-normal text-on-surface-variant">/mo</span></p>
-                                    <span className="text-[9px] font-bold text-primary">Your cost: R249/mo</span>
-                                  </div>
-                                </div>
-                              </div>
+                          <section className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
+                            <h4 className="font-headline font-bold text-base text-on-surface flex items-center gap-2">
+                              <Wallet size={18} className="text-primary" aria-hidden="true"/> Payment details
+                            </h4>
+                            <p className="text-sm text-on-surface-variant leading-relaxed">
+                              No card linking or recurring subscription payments are available yet. You do not need to enter a card number, expiry date or security code.
+                            </p>
+                            <div role="note" className="rounded-xl bg-primary/5 border border-primary/15 p-3 text-xs leading-5 text-on-surface">
+                              For your safety, the old browser-only billing form was retired. Any legacy billing draft on this device is removed when the updated app loads, if browser storage permits it.
                             </div>
-
-                            {/* Card 2: Legal/Company Billing Details */}
-                            <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
-                              <h4 className="font-headline font-bold text-base text-on-surface flex items-center gap-2 text-left">
-                                <Info size={18} className="text-on-surface-variant/60" /> Company Billing Details
-                              </h4>
-                              <p className="text-xs text-on-surface-variant leading-relaxed text-left">
-                                Enter your company's official registration details here to automatically populate tax-compliant PDF invoices.
+                            {legacyBillingCleanupFailed&&(
+                              <p role="alert" className="rounded-xl border border-error/30 bg-error/5 p-3 text-xs text-error leading-5">
+                                This browser blocked automatic removal of the old billing draft. Clear this site's stored data using your browser settings; doing so may sign you out.
                               </p>
+                            )}
+                            <button type="button" onClick={()=>setActiveTab("payments")}
+                              className="min-h-11 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary text-on-primary text-sm font-bold hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                              <ReceiptText size={17} aria-hidden="true"/> View Payments
+                            </button>
+                          </section>
 
-                              <div className="space-y-3 text-left">
-                                <div>
-                                  <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Company Registered Name</label>
-                                  <input
-                                    type="text"
-                                    placeholder="e.g. Local Eats SA (Pty) Ltd"
-                                    value={billingDetails.companyName}
-                                    onChange={(e) => {
-                                      const next = { ...billingDetails, companyName: e.target.value };
-                                      setBillingDetails(next);
-                                    }}
-                                    className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                  />
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Tax / VAT Number</label>
-                                    <input
-                                      type="text"
-                                      placeholder="e.g. 4010123456"
-                                      value={billingDetails.taxNumber}
-                                      onChange={(e) => {
-                                        const next = { ...billingDetails, taxNumber: e.target.value };
-                                        setBillingDetails(next);
-                                      }}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Billing Email Address</label>
-                                    <input
-                                      type="email"
-                                      placeholder="e.g. billing@myshop.co.za"
-                                      value={billingDetails.billingEmail}
-                                      onChange={(e) => {
-                                        const next = { ...billingDetails, billingEmail: e.target.value };
-                                        setBillingDetails(next);
-                                      }}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-                                </div>
-
-                                <button
-                                  onClick={() => {
-                                    localStorage.setItem("localeats_billing_details", JSON.stringify(billingDetails));
-
-                                  }}
-                                  className="w-full bg-primary/10 text-primary py-2.5 rounded-xl text-xs font-black uppercase hover:bg-primary/20 transition-colors"
-                                >
-                                  Save Billing Info
-                                </button>
-                              </div>
-                            </div>
-
-                          </div>
-
-                          {/* Column B: Card Vault Setup & Invoice History */}
-                          <div className="space-y-6">
-
-                            {/* Card 1: Secure Card Vault */}
-                            <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
-                              <h4 className="font-headline font-bold text-base text-on-surface flex items-center justify-between text-left">
-                                <span className="flex items-center gap-2">
-                                  <CreditCard size={18} className="text-primary" />
-                                  Secure Credit Card Link
-                                </span>
-                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                                  <ShieldCheck size={10} /> PCI-DSS Secure
-                                </span>
-                              </h4>
-                              <p className="text-xs text-on-surface-variant leading-relaxed text-left">
-                                Link a payment card via our secure Yoco/Peach tokenization vault. You won't be charged anything during the free Beta period.
+                          <section className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-3 text-left">
+                            <h4 className="font-headline font-bold text-base text-on-surface flex items-center gap-2">
+                              <Ticket size={18} className="text-primary" aria-hidden="true"/> Invoices & receipts
+                            </h4>
+                            <div role="status" className="rounded-xl bg-surface-container-high/40 border border-outline-variant/10 p-4 space-y-2">
+                              <p className="font-semibold text-sm text-on-surface">No verified subscription invoices available</p>
+                              <p className="text-xs leading-5 text-on-surface-variant">
+                                Subscription billing and invoice generation are not active. This page does not show mock invoices as paid or produce receipts without an authorized billing service.
                               </p>
-
-                              {billingDetails.isCardSaved ? (
-                                <div className="p-4 bg-surface-container-high/60 rounded-xl border border-emerald-500/20 flex items-center justify-between animate-in fade-in duration-300">
-                                  <div className="flex items-center gap-3 text-left">
-                                    <div className="w-10 h-7 bg-zinc-950 rounded-md flex items-center justify-center text-white text-[10px] font-black uppercase tracking-wider shadow border border-outline-variant/20">
-                                      {billingDetails.cardNumber.startsWith("4") ? "Visa" : "MC"}
-                                    </div>
-                                    <div className="text-left">
-                                      <p className="text-xs font-black text-on-surface">•••• •••• •••• {billingDetails.cardNumber.slice(-4) || "4242"}</p>
-                                      <p className="text-[9px] text-on-surface-variant">Expires: {billingDetails.expiryDate || "12/28"} • {billingDetails.cardholderName || "Store Owner"}</p>
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() => {
-                                      const cleared = {
-                                        ...billingDetails,
-                                        cardholderName: "",
-                                        cardNumber: "",
-                                        expiryDate: "",
-                                        cvv: "",
-                                        isCardSaved: false
-                                      };
-                                      setBillingDetails(cleared);
-                                      localStorage.setItem("localeats_billing_details", JSON.stringify(cleared));
-
-                                    }}
-                                    className="text-[10px] font-bold text-error/80 hover:text-error hover:bg-error/5 px-2.5 py-1.5 rounded-lg transition-all"
-                                  >
-                                    Remove Card
-                                  </button>
-                                </div>
-                              ) : (
-                                <div className="space-y-3 pt-1 text-left">
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Cardholder Name</label>
-                                    <input
-                                      type="text"
-                                      placeholder="e.g. Jane Doe"
-                                      value={billingDetails.cardholderName}
-                                      onChange={(e) => setBillingDetails({ ...billingDetails, cardholderName: e.target.value })}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-
-                                  <div>
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Card Number</label>
-                                    <input
-                                      type="text"
-                                      placeholder="4000 1234 5678 9010"
-                                      maxLength={19}
-                                      value={billingDetails.cardNumber}
-                                      onChange={(e) => {
-                                        const cleanVal = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-                                        const formatted = cleanVal.match(/.{1,4}/g)?.join(' ') || cleanVal;
-                                        setBillingDetails({ ...billingDetails, cardNumber: formatted });
-                                      }}
-                                      className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                    />
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-3 text-left">
-                                    <div>
-                                      <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">Expiry Date (MM/YY)</label>
-                                      <input
-                                        type="text"
-                                        placeholder="12/28"
-                                        maxLength={5}
-                                        value={billingDetails.expiryDate}
-                                        onChange={(e) => {
-                                          let val = e.target.value.replace(/[^0-9/]/g, '');
-                                          if (val.length === 2 && !val.includes('/')) {
-                                            val = val + '/';
-                                          }
-                                          setBillingDetails({ ...billingDetails, expiryDate: val });
-                                        }}
-                                        className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 block mb-1">CVV / CVC</label>
-                                      <input
-                                        type="password"
-                                        placeholder="•••"
-                                        maxLength={4}
-                                        value={billingDetails.cvv}
-                                        onChange={(e) => setBillingDetails({ ...billingDetails, cvv: e.target.value.replace(/[^0-9]/g, '') })}
-                                        className="w-full bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2.5 text-xs font-bold text-on-surface focus:outline-none focus:border-primary/50"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <button
-                                    onClick={() => {
-                                      if (!billingDetails.cardholderName || !billingDetails.cardNumber || !billingDetails.expiryDate || !billingDetails.cvv) {
-                                        toast.error("Please fill in all credit card fields first.");
-                                        return;
-                                      }
-                                      if (billingDetails.cardNumber.replace(/\s/g, '').length < 15) {
-                                        toast.error("Please enter a valid credit card number.");
-                                        return;
-                                      }
-
-                                      const updated = { ...billingDetails, isCardSaved: true };
-                                      setBillingDetails(updated);
-                                      localStorage.setItem("localeats_billing_details", JSON.stringify(updated));
-                                      toast.success("Card linked securely to Yoco vault! Rate plan R0 applied.");
-                                    }}
-                                    className="w-full bg-primary text-on-primary py-2.5 rounded-xl text-xs font-black uppercase hover:bg-opacity-90 shadow-sm transition-all flex items-center justify-center gap-2"
-                                  >
-                                    <ShieldCheck size={14} /> Securely Link Card
-                                  </button>
-                                </div>
-                              )}
                             </div>
-
-                            {/* Card 2: Invoice History */}
-                            <div className="p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10 space-y-4 text-left">
-                              <h4 className="font-headline font-bold text-base text-on-surface flex items-center gap-2 text-left">
-                                <Ticket size={18} className="text-on-surface-variant/60" /> Invoice & Statement History
-                              </h4>
-                              <p className="text-xs text-on-surface-variant leading-relaxed text-left">
-                                Access your generated monthly invoices. Since you are on our Early Partner Plan, your subscription fees are fully discounted.
-                              </p>
-
-                              <div className="divide-y divide-outline-variant/10">
-                                {[
-                                  { id: "INV-2026-003", date: "June 1, 2026", amount: "R 0.00", status: "Paid", detail: "Early Partner Beta Month" },
-                                  { id: "INV-2026-002", date: "May 1, 2026", amount: "R 0.00", status: "Paid", detail: "Early Partner Beta Month" },
-                                  { id: "INV-2026-001", date: "April 1, 2026", amount: "R 0.00", status: "Paid", detail: "Beta Launch Special" }
-                                ].map((inv) => (
-                                  <div
-                                    key={inv.id}
-                                    onClick={() => setSelectedInvoice(inv)}
-                                    className="py-3 flex items-center justify-between group cursor-pointer hover:bg-surface-container-high/40 px-2 rounded-xl transition-colors"
-                                  >
-                                    <div className="text-left">
-                                      <p className="text-xs font-black text-on-surface group-hover:text-primary transition-colors">{inv.id}</p>
-                                      <p className="text-[10px] text-on-surface-variant">{inv.date} • {inv.detail}</p>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                      <div className="text-right">
-                                        <p className="text-xs font-black text-on-surface">{inv.amount}</p>
-                                        <span className="text-[9px] font-bold text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase">
-                                          {inv.status}
-                                        </span>
-                                      </div>
-                                      <ChevronRight size={14} className="text-on-surface-variant/30 group-hover:text-primary transition-colors" />
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                          </div>
-
+                            <p className="text-xs text-on-surface-variant">
+                              LocalEats plans and the proposed three-month introductory period can be reviewed above; the billing start date has not been assigned.
+                            </p>
+                          </section>
                         </div>
                       </div>
                     )}
@@ -3960,100 +3645,6 @@ function App() {
                   </div>
                 </div>
 
-                {selectedInvoice && (
-                  <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/70 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-surface-container rounded-2xl max-w-md w-full overflow-hidden border border-outline-variant/10 shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
-                      {/* Header */}
-                      <div className="p-4 border-b border-outline-variant/10 flex items-center justify-between bg-surface-container-high">
-                        <span className="text-xs font-black uppercase text-primary tracking-wider">Invoice Receipt</span>
-                        <button
-                          onClick={() => setSelectedInvoice(null)}
-                          className="p-1 rounded-full hover:bg-surface-container-highest text-on-surface-variant transition-colors"
-                        >
-                          <AlertTriangle size={16} />
-                        </button>
-                      </div>
-
-                      {/* Invoice body */}
-                      <div className="p-6 space-y-6 overflow-y-auto max-h-[80vh] text-left">
-                        {/* Brand Logo & Invoice Info */}
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h5 className="font-headline font-black text-xl text-primary leading-none">LocalEats</h5>
-                            <p className="text-[10px] text-on-surface-variant/80 mt-1">Founders Partner Network</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xs font-black text-on-surface">{selectedInvoice.id}</p>
-                            <p className="text-[9px] text-on-surface-variant">Date: {selectedInvoice.date}</p>
-                            <p className="text-[9px] text-on-surface-variant">Status: Paid</p>
-                          </div>
-                        </div>
-
-                        <div className="border-t border-dashed border-outline-variant/20 pt-4 grid grid-cols-2 gap-4 text-xs">
-                          <div>
-                            <p className="font-bold text-[10px] uppercase text-on-surface-variant/70">Provider</p>
-                            <p className="font-semibold text-on-surface mt-1">LocalEats Platform SA</p>
-                            <p className="text-[10px] text-on-surface-variant">Cape Town, South Africa</p>
-                          </div>
-                          <div>
-                            <p className="font-bold text-[10px] uppercase text-on-surface-variant/70">Billed To</p>
-                            <p className="font-semibold text-on-surface mt-1">{billingDetails.companyName || currentShop?.name || "Founding Merchant"}</p>
-                            {billingDetails.taxNumber && <p className="text-[10px] text-on-surface-variant">VAT: {billingDetails.taxNumber}</p>}
-                            <p className="text-[10px] text-on-surface-variant truncate">{billingDetails.billingEmail || user?.email || "No email set"}</p>
-                          </div>
-                        </div>
-
-                        {/* Line Items */}
-                        <div className="border-t border-dashed border-outline-variant/20 pt-4 space-y-3">
-                          <p className="font-bold text-[10px] uppercase text-on-surface-variant/70">Invoice Breakdown</p>
-
-                          <div className="space-y-2">
-                            <div className="flex justify-between text-xs">
-                              <span className="text-on-surface-variant">LocalEats Platform Subscription (June 2026)</span>
-                              <span className="font-bold text-on-surface">R 499.00</span>
-                            </div>
-                            <div className="flex justify-between text-xs text-primary font-medium">
-                              <span>Early Partner Loyalty Discount (100% Off)</span>
-                              <span>-R 499.00</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Total */}
-                        <div className="border-t border-dashed border-outline-variant/20 pt-4 flex justify-between items-center bg-primary/5 p-4 rounded-xl border border-primary/10">
-                          <div>
-                            <p className="text-xs font-extrabold text-on-surface">Total Charged</p>
-                            <p className="text-[9px] text-on-surface-variant">Zero subscription due for Early Partner</p>
-                          </div>
-                          <p className="text-2xl font-headline font-black text-on-surface">{selectedInvoice.amount}</p>
-                        </div>
-
-                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-2 text-emerald-600">
-                          <Circle size={16} className="shrink-0" />
-                          <p className="text-[10px] font-bold leading-tight text-left">Paid in full. Your card ending in {billingDetails.cardNumber ? billingDetails.cardNumber.slice(-4) : "4242"} was not charged.</p>
-                        </div>
-                      </div>
-
-                      {/* Action Footer */}
-                      <div className="p-4 bg-surface-container-high border-t border-outline-variant/10 flex gap-2">
-                        <button
-                          onClick={() => {
-                            window.print();
-                          }}
-                          className="flex-1 bg-surface-container-highest border border-outline-variant/20 text-on-surface-variant py-2 rounded-xl text-xs font-black uppercase hover:bg-opacity-95 transition-all flex items-center justify-center gap-2"
-                        >
-                          Print Invoice
-                        </button>
-                        <button
-                          onClick={() => setSelectedInvoice(null)}
-                          className="flex-1 bg-primary text-on-primary py-2 rounded-xl text-xs font-black uppercase hover:bg-opacity-95 transition-all"
-                        >
-                          Close Receipt
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
             {activeTab === "storefront" && (
