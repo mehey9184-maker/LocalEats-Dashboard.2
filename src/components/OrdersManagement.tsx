@@ -1,5 +1,8 @@
 import {receiptText} from "../utils/receiptText";
 import {PickupOrderActions} from "./PickupOrderActions";
+import {PreviewFakeOrderCard,PreviewFakeOrderTrigger,usePreviewFakeOrders} from "./PreviewFakeOrders";
+import {OrdersFocusedWorkspace} from "./OrdersFocusedWorkspace";
+import {isMerchantOrdersFocusedEnabled} from "../services/merchantPreviewSimulator";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
 import React, { useState, useEffect, useMemo, useRef } from "react";
@@ -113,7 +116,6 @@ export interface OrdersManagementProps {
   onRequestRider: (id: string, riderId?: string, riderName?: string, riderPhone?: string) => void;
   onUnassignRider: (id: string) => void;
   onTabChange: (tab: string) => void;
-  sendRiderNudge: (riderId: string, message: string) => Promise<void>;
   currentShop: Shop | undefined;
   printingFormat?: PrintingFormat;
   setPrintingFormat?: (format: PrintingFormat) => void;
@@ -309,7 +311,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   onRequestRider,
   onUnassignRider,
   onTabChange,
-  sendRiderNudge,
   currentShop,
   printingFormat: propPrintingFormat,
   setPrintingFormat: propSetPrintingFormat,
@@ -344,6 +345,9 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [ratingOrderId, setRatingOrderId] = useState<string | null>(null);
   const [ratingValue, setRatingValue] = useState<number>(0);
   const [showMobileActions, setShowMobileActions] = useState(false);
+  const [showDesktopActions, setShowDesktopActions] = useState(false);
+  const isReadOnlyPreview = import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true";
+  const {allowed:canFakeOrders,fakeOrders,incoming,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction}=usePreviewFakeOrders();
   const [unlinkedModalOrder, setUnlinkedModalOrder] = useState<Order | null>(null);
   const [dispatchAlertOrder, setDispatchAlertOrder] = useState<Order | null>(null);
   const [dispatchAlertType, setDispatchAlertType] = useState<"rider_dispatch" | "customer_status" | "rider_pairing">("customer_status");
@@ -475,22 +479,6 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
             {isOnline ? "Online" : "Idle"}
           </span>
         </div>
-
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (order.rider_id) {
-              void sendRiderNudge(order.rider_id, "Order update: Please check your active delivery mission!");
-            } else {
-              toast.error("No rider assigned to nudge");
-            }
-          }}
-          className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-[8px] font-black uppercase tracking-wider rounded-lg transition-transform flex items-center gap-0.5 cursor-pointer shrink-0 shadow-xs"
-          title="Trigger silent push notification alert to rider"
-        >
-          <Zap size={10} className="fill-current" />
-          <span>Nudge</span>
-        </button>
       </div>
     );
   };
@@ -1434,7 +1422,6 @@ Notes: "${order.notes || "None"}"
     }
 
     if (!rider.is_online) {
-      // Show "Wake to Tip" button UI or similar
       // Handled in the UI loop
       return;
     }
@@ -2247,21 +2234,7 @@ Notes: "${order.notes || "None"}"
                                                     >
                                                       Repair
                                                     </button>
-                                                  ) : isOffline ? (
-                                                    <button
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        sendRiderNudge(
-                                                          rider.rider_id!,
-                                                          "Urgent order available - Tip boost active!",
-                                                        );
-                                                      }}
-                                                      className="flex items-center gap-1 px-2 py-1 bg-amber-500 text-white text-[9px] font-black rounded-lg uppercase hover:scale-105 transition-transform"
-                                                    >
-                                                      <Zap size={10} />
-                                                      Wake to Tip
-                                                    </button>
-                                                  ) : (
+                                                  ) : isOffline ? null : (
                                                     <button disabled={isPickupOrder(order)}
                                                       onClick={(e) => {
                                                         e.stopPropagation();
@@ -2593,26 +2566,6 @@ Notes: "${order.notes || "None"}"
                             </button>
                           )}
                           <div className="flex gap-2">
-                            {order.rider_id && order.status !== "completed" && (
-                              <button
-                                onClick={() => {
-                                  const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
-                                  sendRiderNudge(
-                                    order.rider_id!,
-                                    nudgeMessage
-                                  );
-                                  toast.success("Rider nudged successfully!");
-                                }}
-                                className={cn(
-                                  "bg-amber-100 text-amber-700 rounded-full hover:bg-amber-200 transition-all font-bold flex flex-1 items-center justify-center gap-2",
-                                  kitchenMode ? "p-5 text-lg" : "p-3 text-sm"
-                                )}
-                                title="Nudge Rider"
-                              >
-                                <Zap size={kitchenMode ? 24 : 18} />
-                                {kitchenMode ? "Nudge Rider" : (order.delivery_status === 'picked_up' ? "Ping Rider" : "Nudge")}
-                              </button>
-                            )}
                             <button
                               onClick={() =>
                                 setChatOrderId(
@@ -2754,68 +2707,88 @@ Notes: "${order.notes || "None"}"
     );
   }
 
+  // L1C-3: The owner-approved layout is available on the exact live Merchant domain,
+  // while the fake-order simulator remains strictly isolated to no-write Preview.
+  // This only changes presentation; it never activates real pickup or payment writes.
+  if (isMerchantOrdersFocusedEnabled()) {
+    return (
+      <OrdersFocusedWorkspace
+        realOrders={displayedOrders}
+        fakeOrders={fakeOrders}
+        completedRealOrders={fulfilledOrdersToday}
+        styleStorageKey={`localeats.merchant.orders.style.v1.shop.${currentShop?.id ?? "unlinked"}`}
+        onDemoAction={onDemoAction}
+        incoming={incoming}
+        onSimulate={() => simulateIncoming(soundAlerts)}
+        onSimulateBatch={simulateBatch}
+        onClear={clearFakeOrders}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        renderRealOrder={renderOrderCard}
+        onRefresh={onRefresh}
+        onExportCSV={exportToCSV}
+        onExportJSON={exportToJSON}
+        soundAlerts={soundAlerts}
+        setSoundAlerts={setSoundAlerts}
+        kitchenMode={kitchenMode}
+        setKitchenMode={setKitchenMode}
+        maxConcurrentOrders={maxConcurrentOrders}
+        setMaxConcurrentOrders={setMaxConcurrentOrders}
+        startDate={startDate}
+        endDate={endDate}
+        setStartDate={setStartDate}
+        setEndDate={setEndDate}
+      />
+    );
+  }
+
   return (
-    <div className="space-y-8">
-      <p role="status" className="text-xs text-on-surface-variant mb-3">{pickupOrderingEnabled() ? "Pickup actions are API-authorized. Confirm actual payment before food handover and Collected. Historical delivery records remain available." : "Pickup order, payment and collection changes are disabled pending separately approved database activation. Existing management and historical delivery records remain available."}</p>
-      <section className="flex flex-col gap-6">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-          <div className="max-w-2xl space-y-1">
-            <span className="font-label text-[11px] font-bold uppercase tracking-[0.2em] text-primary mb-2 block">
-              Live Operations
-            </span>
-            <h2 className="font-headline text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
+    <div className="space-y-3 md:space-y-4">
+      <p role="status" className="text-xs text-on-surface-variant rounded-lg bg-surface-container-low/50 px-3 py-2">{pickupOrderingEnabled() ? "Pickup actions are API-authorized. Confirm actual payment before food handover and Collected. Historical delivery records remain available." : "Pickup order, payment and collection changes are disabled pending separately approved database activation. Existing management and historical delivery records remain available."}</p>
+      <section className="flex flex-col gap-2 md:gap-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="max-w-2xl space-y-0.5">
+            <h2 className="font-headline text-xl md:text-2xl font-bold text-on-surface tracking-tight">
               Orders Management
             </h2>
-            <p className="text-sm text-on-surface-variant font-medium">
-              Streamline your kitchen workflow and monitor real-time fulfillment
-              across all delivery channels.
-            </p>
+            <p className="text-xs text-on-surface-variant font-medium">Current orders first. Extra tools are tucked away.</p>
           </div>
           
-          <div className="hidden md:flex flex-wrap gap-3 justify-start md:justify-end shrink-0">
-            <button
-              onClick={() => {
-                console.log("Clearing all orders...");
-                onDeleteAllOrders();
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-error/10 text-error rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-error/20 transition-all cursor-pointer relative z-20"
-            >
-              <Trash2 size={16} className="md:w-[18px] md:h-[18px]" />
-              Clear All
+          <div className="hidden md:flex items-center gap-2 shrink-0 relative">
+            <button type="button" onClick={onRefresh}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-full text-xs font-bold shadow-sm">
+              <RefreshCw size={15} aria-hidden="true"/> Refresh
             </button>
-            <button
-              onClick={() => {
-                console.log("Refreshing orders...");
-                onRefresh();
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-on-primary rounded-full text-xs md:text-sm font-bold shadow-sm hover:scale-105 transition-all cursor-pointer relative z-20"
-            >
-              <Clock size={16} className="md:w-[18px] md:h-[18px]" />
-              Refresh
+            <button type="button" onClick={() => setShowDesktopActions(value => !value)}
+              aria-expanded={showDesktopActions} aria-controls="merchant-orders-more-tools"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-surface-container-low text-on-surface rounded-full text-xs font-bold">
+              <SlidersHorizontal size={15} aria-hidden="true"/> More tools
             </button>
-            <button
-              onClick={exportToCSV}
-              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-            >
-              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              Spreadsheet
-            </button>
-            <button
-              onClick={exportToJSON}
-              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-            >
-              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              Backup Data
-            </button>
+            {showDesktopActions && (
+              <div id="merchant-orders-more-tools" role="group" aria-label="Advanced order tools"
+                className="absolute right-0 top-full mt-2 z-30 w-52 rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-2 shadow-xl flex flex-col gap-1">
+                <button type="button" onClick={exportToCSV} className="flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl hover:bg-surface-container-low">
+                  <FileDown size={14} aria-hidden="true"/> Spreadsheet
+                </button>
+                <button type="button" onClick={exportToJSON} className="flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl hover:bg-surface-container-low">
+                  <FileDown size={14} aria-hidden="true"/> Backup data
+                </button>
+                <button type="button" onClick={onDeleteAllOrders} disabled={isReadOnlyPreview}
+                  title={isReadOnlyPreview ? "Unavailable in read-only Preview" : "Delete orders"}
+                  className="flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-error hover:bg-error/10 disabled:opacity-40 disabled:cursor-not-allowed">
+                  <Trash2 size={14} aria-hidden="true"/> Clear all orders
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="hidden md:flex flex-wrap items-center gap-4">
-          <div className="hidden md:flex p-1.5 bg-surface-container-low rounded-full w-fit">
+        <div className="hidden md:flex flex-wrap items-center gap-2">
+          <div className="hidden md:flex p-1 bg-surface-container-low rounded-full w-fit">
             <button
               onClick={() => setViewMode("active")}
               className={cn(
-                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                "px-4 py-1.5 rounded-full text-xs font-bold transition-all",
                 viewMode === "active"
                   ? "bg-surface-container-lowest shadow-sm text-primary"
                   : "text-on-secondary-container hover:bg-surface-container-high",
@@ -2826,7 +2799,7 @@ Notes: "${order.notes || "None"}"
             <button
               onClick={() => setViewMode("history")}
               className={cn(
-                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                "px-4 py-1.5 rounded-full text-xs font-bold transition-all",
                 viewMode === "history"
                   ? "bg-surface-container-lowest shadow-sm text-primary"
                   : "text-on-secondary-container hover:bg-surface-container-high",
@@ -2841,7 +2814,7 @@ Notes: "${order.notes || "None"}"
           <button
             onClick={() => setKitchenMode(!kitchenMode)}
             className={cn(
-              "hidden md:flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all border-2 ml-auto",
+              "hidden md:flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all border-2 ml-auto",
               kitchenMode
                 ? "bg-primary text-on-primary border-primary"
                 : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
@@ -2978,7 +2951,9 @@ Notes: "${order.notes || "None"}"
                       onDeleteAllOrders();
                       setShowMobileActions(false);
                     }}
-                    className="flex items-center justify-center gap-2 py-2.5 bg-error/10 text-error rounded-xl text-xs font-bold"
+                    disabled={isReadOnlyPreview}
+                    title={isReadOnlyPreview ? "Unavailable in read-only Preview" : "Clear all orders"}
+                    className="flex items-center justify-center gap-2 py-2.5 bg-error/10 text-error rounded-xl text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Trash2 size={14} />
                     Clear All Orders (Reset)
@@ -2991,19 +2966,19 @@ Notes: "${order.notes || "None"}"
 
       <div
         className={cn(
-          "grid grid-cols-1 gap-8 items-start",
+          "grid grid-cols-1 gap-4 items-start",
           !kitchenMode && "lg:grid-cols-12",
         )}
       >
         <div
           className={cn(
             kitchenMode ? "col-span-full" : "lg:col-span-8",
-            "space-y-6",
+            "space-y-3",
           )}
         >
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-4 mb-2">
-              <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2 mb-0">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
                   Filter Status:
                 </span>
@@ -3012,7 +2987,7 @@ Notes: "${order.notes || "None"}"
                     key={status}
                     onClick={() => setFilterStatus(status)}
                     className={cn(
-                      "px-4 py-1.5 rounded-full text-xs font-bold transition-all border-2",
+                      "px-3 py-1.5 rounded-full text-xs font-bold transition-all border",
                       filterStatus === status
                         ? "bg-primary/10 text-primary border-primary"
                         : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
@@ -3023,30 +2998,7 @@ Notes: "${order.notes || "None"}"
                 ))}
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
-                  Status Dropdown:
-                </span>
-                <div className="relative">
-                  <select
-                    id="status-filter-select"
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value as OrderStatus | "All")}
-                    className="appearance-none bg-surface-container-low text-on-surface text-xs font-bold pl-4 pr-10 py-2 rounded-xl border border-outline-variant/20 focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer shadow-xs transition-all"
-                  >
-                    <option value="All">All Statuses</option>
-                    <option value="pending">Pending</option>
-                    <option value="preparing">Preparing</option>
-                    <option value="ready">Ready</option>
-                    <option value="completed">Completed</option>
-                  </select>
-                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant">
-                    <Filter size={12} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 mt-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {(filterStatus !== "All" || orderTypeFilter !== "All" || startDate || endDate || searchTerm || customerSearch || phoneSearch) && (
                   <button
                     onClick={() => {
@@ -3133,14 +3085,19 @@ Notes: "${order.notes || "None"}"
               </motion.div>
             )}
 
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-headline text-xl font-bold flex items-center gap-2">
+            <div className="flex items-center justify-between mb-0">
+              <h3 className="font-headline text-lg font-bold flex items-center gap-2">
                 {viewMode === "active" ? "Active Queue" : "Order History"}
                 <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">
-                  {displayedOrders.length} Orders
+                  {displayedOrders.length} Real
                 </span>
+                {canFakeOrders && fakeOrders.length>0 && <span className="rounded-full bg-amber-100 text-amber-900 text-[10px] font-black px-2 py-1">+{fakeOrders.length} FAKE</span>}
               </h3>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {viewMode==="active" && <PreviewFakeOrderTrigger
+                  incoming={incoming} count={fakeOrders.length}
+                  onSimulate={()=>simulateIncoming(soundAlerts)}
+                  onClear={clearFakeOrders}/>}
                 <button
                   onClick={() => setShowSearch(!showSearch)}
                   className={cn(
@@ -3155,7 +3112,7 @@ Notes: "${order.notes || "None"}"
               </div>
             </div>
 
-            <div className="flex items-center gap-4 mb-2 overflow-x-auto pb-2 scrollbar-hide">
+            <div className="flex items-center gap-2 mb-0 overflow-x-auto pb-1 scrollbar-hide">
               <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">
                 Sort by:
               </span>
@@ -3170,7 +3127,7 @@ Notes: "${order.notes || "None"}"
                     handleSort(field.id as "id" | "total_price" | "created_at")
                   }
                   className={cn(
-                    "flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all shrink-0 border-2",
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 border",
                     sortField === field.id
                       ? "bg-primary text-on-primary border-primary shadow-[0_4px_12px_rgba(167,52,0,0.3)] scale-105 ring-2 ring-primary/20"
                       : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
@@ -3255,8 +3212,8 @@ Notes: "${order.notes || "None"}"
             )}
           </AnimatePresence>
 
-          {displayedOrders.length === 0 ? (
-            <div className="bg-surface-container-low rounded-[2rem] p-12 flex flex-col items-center text-center space-y-6 border-2 border-dashed border-outline-variant/20">
+          {displayedOrders.length === 0 && (viewMode !== "active" || fakeOrders.length===0) ? (
+            <div className="bg-surface-container-low rounded-[2rem] p-6 flex flex-col items-center text-center space-y-6 border-2 border-dashed border-outline-variant/20">
               <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center">
                 {viewMode === "active" ? (
                   <Clock className="text-primary" size={40} />
@@ -3266,11 +3223,11 @@ Notes: "${order.notes || "None"}"
               </div>
               <div className="space-y-2">
                 <h4 className="font-headline text-2xl font-bold">
-                  {viewMode === "active" ? "All caught up!" : "No history yet"}
+                  {viewMode === "active" ? (isReadOnlyPreview ? "No verified real orders" : "All caught up!") : "No history yet"}
                 </h4>
                 <p className="text-on-surface-variant max-w-xs mx-auto">
                   {viewMode === "active"
-                    ? "Your kitchen is currently clear. New orders will appear here as they arrive."
+                    ? (isReadOnlyPreview ? "Use Simulate order to test the pickup workflow without creating a real order. Verified real orders will appear separately." : "Your kitchen is currently clear. New orders will appear here as they arrive.")
                     : "Completed orders will appear here once they are fulfilled."}
                 </p>
               </div>
@@ -3328,6 +3285,9 @@ Notes: "${order.notes || "None"}"
                 </div>
 
                 <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
+                  {canFakeOrders && fakeOrders.filter(order=>order.pickup_status==="pending").map(order=>(
+                    <PreviewFakeOrderCard key={order.id} order={order} onDemoAction={onDemoAction}/>
+                  ))}
                   <AnimatePresence mode="popLayout">
                   {prioritizedPendingOrders.map((order, index) => {
                     const items = safeGetOrderItems(order.items);
@@ -3593,7 +3553,7 @@ Notes: "${order.notes || "None"}"
                       </motion.div>
                     );
                   })}
-                  {prioritizedPendingOrders.length === 0 && (
+                  {prioritizedPendingOrders.length === 0 && !fakeOrders.some(order=>order.pickup_status==="pending") && (
                     <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">No new orders</div>
                   )}
                   </AnimatePresence>
@@ -3613,6 +3573,9 @@ Notes: "${order.notes || "None"}"
                 </div>
 
                 <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
+                  {canFakeOrders && fakeOrders.filter(order=>order.pickup_status==="preparing").map(order=>(
+                    <PreviewFakeOrderCard key={order.id} order={order} onDemoAction={onDemoAction}/>
+                  ))}
                   <AnimatePresence mode="popLayout">
                   {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").map((order) => {
                     const items = safeGetOrderItems(order.items);
@@ -3855,7 +3818,7 @@ Notes: "${order.notes || "None"}"
                       </motion.div>
                     );
                   })}
-                  {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").length === 0 && (
+                  {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").length === 0 && !fakeOrders.some(order=>order.pickup_status==="preparing") && (
                     <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None in prep</div>
                   )}
                   </AnimatePresence>
@@ -3875,10 +3838,12 @@ Notes: "${order.notes || "None"}"
                 </div>
 
                 <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
+                  {canFakeOrders && fakeOrders.filter(order=>order.pickup_status==="ready_for_pickup").map(order=>(
+                    <PreviewFakeOrderCard key={order.id} order={order} onDemoAction={onDemoAction}/>
+                  ))}
                   <AnimatePresence mode="popLayout">
                   {displayedOrders.filter(o => o.status === "ready").map((order) => {
                     const items = safeGetOrderItems(order.items);
-                    const canNudge = order.rider_id && order.status !== "completed";
                     const isDelivery = isOrderDelivery(order);
                     const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
                     const isDispatched = isDelivery && (order.rider_id || order.delivery_status === "accepted" || order.delivery_status === "picked_up" || order.delivery_status === "dispatched");
@@ -3976,22 +3941,6 @@ Notes: "${order.notes || "None"}"
                           </div>
                         )}
 
-                        {canNudge && (
-                          <div className="mt-2">
-                            <button
-                              onClick={() => {
-                                const nudgeMessage = order.delivery_status === 'picked_up' ? "Your delivery is almost there!" : "Order ready for pickup!";
-                                sendRiderNudge(order.rider_id!, nudgeMessage);
-                                toast.success("Rider nudged successfully!");
-                              }}
-                              className="w-full py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                              <Zap size={11} className="text-amber-600" />
-                              <span>Nudge Rider</span>
-                            </button>
-                          </div>
-                        )}
-
                         {/* Action buttons */}
                         <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
                           <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
@@ -4038,7 +3987,7 @@ Notes: "${order.notes || "None"}"
                       </motion.div>
                     );
                   })}
-                  {displayedOrders.filter(o => o.status === "ready").length === 0 && (
+                  {displayedOrders.filter(o => o.status === "ready").length === 0 && !fakeOrders.some(order=>order.pickup_status==="ready_for_pickup") && (
                     <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None ready</div>
                   )}
                   </AnimatePresence>
@@ -4058,6 +4007,9 @@ Notes: "${order.notes || "None"}"
                 </div>
 
                 <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
+                  {canFakeOrders && fakeOrders.filter(order=>["collected","cancelled"].includes(order.pickup_status)).map(order=>(
+                    <PreviewFakeOrderCard key={order.id} order={order} onDemoAction={onDemoAction}/>
+                  ))}
                   <AnimatePresence mode="popLayout">
                   {fulfilledOrdersToday.map((order) => {
                     const items = safeGetOrderItems(order.items);
@@ -4161,7 +4113,7 @@ Notes: "${order.notes || "None"}"
                       </motion.div>
                     );
                   })}
-                  {fulfilledOrdersToday.length === 0 && (
+                  {fulfilledOrdersToday.length === 0 && !fakeOrders.some(order=>["collected","cancelled"].includes(order.pickup_status)) && (
                     <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None fulfilled today</div>
                   )}
                   </AnimatePresence>
@@ -4208,12 +4160,12 @@ Notes: "${order.notes || "None"}"
 
         {!kitchenMode && (
           <div className="lg:col-span-4 space-y-8">
-            <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-3xl p-6 shadow-sm">
-              <h4 className="font-headline text-base font-bold text-on-surface mb-6 flex items-center gap-2">
-                <Bell size={18} className="text-primary" />
-                Notification Settings
-              </h4>
-              <div className="space-y-4">
+            <details className="bg-surface-container-lowest border border-outline-variant/10 rounded-3xl px-4 py-3 shadow-sm">
+              <summary className="font-headline text-sm font-bold text-on-surface cursor-pointer flex items-center gap-2">
+                <Bell size={16} className="text-primary" aria-hidden="true" />
+                Notification settings & order limit
+              </summary>
+              <div className="space-y-4 mt-3">
                 <div className="flex flex-col gap-2 p-4 bg-surface-container-low rounded-2xl">
                   <div className="flex items-center justify-between">
                     <div className="flex flex-col">
@@ -4304,7 +4256,7 @@ Notes: "${order.notes || "None"}"
                   </div>
                 </div>
               </div>
-            </div>
+            </details>
 
             <div className="bg-surface-container-high rounded-3xl p-8 relative overflow-hidden">
               <div className="relative z-10">
