@@ -2417,19 +2417,22 @@ function App() {
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">My Shop</h3>
                         
-                        {/* Real-time Location Sync Status Indicator */}
-                        {currentShop && (
-                          <LocationSyncIndicator
-                            locationState={currentShopLocation}
-                            syncAnalysis={currentShopLocationSync}
-                            isLocating={isLocatingShopGPS}
-                            isSaving={isSavingShopLocation}
-                            onDetectGPS={detectShopGPS}
-                            onAutoAlign={autoAlignShopCity}
-                            onSave={() => saveShopLocationSettings()}
-                            onOpenStorefrontMap={() => setActiveTab("storefront")}
-                          />
-                        )}
+                        {/* The full location diagnostic and location editor are retained
+                            on Storefront Profile, not duplicated in owner Settings. */}
+                        <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-low px-4 py-4 space-y-2 text-left">
+                          <p className="text-xs font-semibold text-on-surface-variant">Your shop</p>
+                          {merchantShopGate.status==="ready" && !!user?.id && currentShop?.owner_id===user.id ? (
+                            <>
+                              <p className="text-base font-bold text-on-surface break-words">{currentShop.name}</p>
+                              <p className="flex items-start gap-2 text-xs text-on-surface-variant">
+                                <MapPin size={14} className="shrink-0 mt-0.5" aria-hidden="true"/>
+                                <span className="break-words">{currentShop.address || currentShop.location || currentShop.city || "Shop location not yet provided"}</span>
+                              </p>
+                            </>
+                          ) : (
+                            <p role="status" className="text-xs text-on-surface-variant">Shop information is being verified.</p>
+                          )}
+                        </div>
 
                         <button
                           onClick={() => setActiveTab("storefront")}
@@ -2444,7 +2447,7 @@ function App() {
                           Storefront Profile
                         </p>
                         <p className="text-xs text-on-surface-variant line-clamp-1 md:line-clamp-none">
-                          Update your shop name, logo, and cover photo.
+                          Change your shop name, photos and address in Storefront Profile.
                         </p>
                       </div>
                     </div>
