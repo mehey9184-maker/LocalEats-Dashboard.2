@@ -392,3 +392,61 @@ test("P3.1 billing copy is honest, pickup-first, and no live payment features ar
   assert.ok(!pay.includes("voucher redemptions"));
   assert.ok(!pay.includes("payment handover"));
 });
+
+test("P3.2 planned Free/Plus/Pro/Premium cards show correct prices without collecting money",()=>{
+  const plans=readFileSync(new URL("../src/components/MerchantSubscriptionPlans.tsx",import.meta.url),"utf8");
+  const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
+  for(const tier of ['{id:"free",name:"Free",price:0}','{id:"plus",name:"Plus",price:199}','{id:"pro",name:"Pro",price:399}','{id:"premium",name:"Premium",price:499}']){
+    assert.ok(plans.includes(tier),"Missing approved plan: "+tier);
+  }
+  assert.ok(pay.includes("<MerchantSubscriptionPlans shop={currentShop} verified={"));
+  assert.ok(plans.includes("Your current plan"));
+  assert.ok(plans.includes("Billing is not active"));
+  assert.ok(plans.includes("Tier benefits and launch dates are not finalized"));
+  assert.ok(plans.includes("Not available for purchase yet"));
+  assert.ok(!plans.includes("onCheckout"));
+  assert.ok(!plans.includes("onActivateSubscription"));
+  assert.ok(!plans.includes("Mark as paid"));
+  for(const term of ["fetch(","supabase.","MerchantApi.","localStorage.setItem(","window.dispatchEvent("]){
+    assert.ok(!plans.includes(term),"No write-capable subscriptions in P3.2: "+term);
+  }
+});
+
+test("P3.2 expiry countdown requires explicit timezone-aware API date; no fabricated trial",()=>{
+  const plans=readFileSync(new URL("../src/components/MerchantSubscriptionPlans.tsx",import.meta.url),"utf8");
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  const home=readFileSync(new URL("../src/components/DashboardOverview.tsx",import.meta.url),"utf8");
+  assert.ok(plans.includes("typeof value!==\"string\""));
+  assert.ok(plans.includes("Date.parse(value)"));
+  assert.ok(plans.includes("shop.subscription_status===\"trial\""));
+  assert.ok(plans.includes("shop.trial_end_date"));
+  assert.ok(plans.includes("shop.subscription_expires_at"));
+  assert.ok(plans.includes("Expiry date awaiting confirmation"));
+  assert.ok(plans.includes("Africa/Johannesburg"));
+  assert.ok(plans.includes("setInterval(()=>setNow(Date.now()),1000)"));
+  assert.ok(plans.includes("window.clearInterval(interval)"));
+  assert.ok(plans.includes('aria-label={t.elapsed?'));
+  assert.ok(!plans.includes("shop.created_at"));
+  assert.ok(!plans.includes("shop.next_payment_date"));
+  assert.ok(app.includes("parsePlanExpiry(currentShop.trial_end_date)"));
+  assert.ok(!app.includes("30 * 24 * 60 * 60 * 1000"));
+  assert.ok(!app.includes("Default to a 30-day trial"));
+  assert.ok(home.includes('"Not verified"'));
+  assert.ok(home.includes('"See Payments"'));
+  assert.ok(!home.includes('"Active Plan"'));
+  assert.ok(!home.includes('"Professional"'));
+});
+
+test("P3.2 countdown sample is isolated to the no-write branch Preview",()=>{
+  const plans=readFileSync(new URL("../src/components/MerchantSubscriptionPlans.tsx",import.meta.url),"utf8");
+  assert.ok(plans.includes('VITE_MERCHANT_PREVIEW_READ_ONLY==="true"'));
+  assert.ok(plans.includes('VITE_PICKUP_ORDERING_ENABLED!=="true"'));
+  assert.ok(plans.includes('VITE_PAYMENTS_PLAN_DEMO_ENABLED==="true"'));
+  assert.ok(plans.includes('window.location.hostname'));
+  assert.ok(plans.includes('SAMPLE ONLY · Not this shop\'s subscription'));
+  assert.ok(plans.includes('data-testid="sample-subscription-countdown"'));
+  assert.ok(plans.includes('data-testid="verified-plan-clock"'));
+  assert.ok(plans.includes('data-testid="subscription-expiry-unverified"'));
+  assert.ok(plans.includes("Expiry does not automatically suspend the shop."));
+  assert.ok(plans.includes("future, separately approved backend phase"));
+});
