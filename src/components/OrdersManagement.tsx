@@ -347,7 +347,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [showMobileActions, setShowMobileActions] = useState(false);
   const [showDesktopActions, setShowDesktopActions] = useState(false);
   const isReadOnlyPreview = import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true";
-  const {allowed:canFakeOrders,fakeOrders,incoming,simulateIncoming,clearFakeOrders,onDemoAction}=usePreviewFakeOrders();
+  const {allowed:canFakeOrders,fakeOrders,incoming,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction}=usePreviewFakeOrders();
   const [unlinkedModalOrder, setUnlinkedModalOrder] = useState<Order | null>(null);
   const [dispatchAlertOrder, setDispatchAlertOrder] = useState<Order | null>(null);
   const [dispatchAlertType, setDispatchAlertType] = useState<"rider_dispatch" | "customer_status" | "rider_pairing">("customer_status");
@@ -2718,6 +2718,7 @@ Notes: "${order.notes || "None"}"
         onDemoAction={onDemoAction}
         incoming={incoming}
         onSimulate={() => simulateIncoming(soundAlerts)}
+        onSimulateBatch={simulateBatch}
         onClear={clearFakeOrders}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
