@@ -90,3 +90,50 @@ test("L1C-3: actual pickup buttons are shared; simulated actions cannot invoke M
   assert.match(actions, /TEST ONLY: Simulate a cash\/card payment/);
   assert.match(actions, /TEST ONLY: Simulate food handover/);
 });
+
+test("L1C-3 review: queue-first layout is gated to isolated no-write Preview", () => {
+  const orders = readFileSync(new URL("../src/components/OrdersManagement.tsx",import.meta.url),"utf8");
+  const focused = readFileSync(new URL("../src/components/OrdersFocusedWorkspace.tsx",import.meta.url),"utf8");
+  assert.match(orders,/VITE_MERCHANT_ORDERS_FOCUSED_UI === "true"/);
+  assert.match(orders,/isMerchantPreviewSimulatorEnabled\(\)/);
+  assert.match(orders,/<OrdersFocusedWorkspace/);
+  assert.match(focused,/data-testid="orders-focused-workspace"/);
+  assert.match(focused,/Pickup-first kitchen queue/);
+  assert.match(focused,/Current/);
+  assert.match(focused,/History/);
+  assert.match(focused,/MoreHorizontal/);
+  assert.match(focused,/Real/);
+  assert.match(focused,/PickupOrderActions order=\{order\}/);
+});
+
+test("L1C-3 review: high-volume Orders have bounded pagination and no fixed-width Kanban columns", () => {
+  const focused = readFileSync(new URL("../src/components/OrdersFocusedWorkspace.tsx",import.meta.url),"utf8");
+  const fake = readFileSync(new URL("../src/components/PreviewFakeOrders.tsx",import.meta.url),"utf8");
+  assert.match(focused,/const PAGE_SIZE=12/);
+  assert.match(focused,/\.slice\(\(safePage-1\)\*PAGE_SIZE,safePage\*PAGE_SIZE\)/);
+  assert.match(focused,/grid-cols-1 xl:grid-cols-2/);
+  assert.match(focused,/min-w-0 max-w-full/);
+  assert.doesNotMatch(focused,/xl:grid-cols-4|w-\[400px\]|min-h-\[500px\]/);
+  assert.match(focused,/data-testid="focused-order-grid"/);
+  assert.match(focused,/Page \{safePage\} of \{pages\}/);
+  assert.match(focused,/viewMode==="history"&&/);
+  assert.match(fake,/const simulateBatch=\(\)=>/);
+  assert.match(fake,/Array\.from\(\{length:24\}/);
+  assert.match(fake,/\.slice\(0,60\)/);
+  assert.match(focused,/Test busy queue · \+24 FAKE orders/);
+});
+
+test("L1C-3 review: fake orders remain distinct from real order data and operational writes", () => {
+  const focused = readFileSync(new URL("../src/components/OrdersFocusedWorkspace.tsx",import.meta.url),"utf8");
+  assert.match(focused,/\{kind:"real";order:Order\} \| \{kind:"fake";order:PreviewTestPickupOrder\}/);
+  assert.match(focused,/entry.kind==="fake"/);
+  assert.match(focused,/PreviewFakeOrderCard/);
+  assert.match(focused,/onDemoAction=\{onDemoAction\}/);
+  assert.match(focused,/renderRealOrder\(order,index\)/);
+  assert.match(focused,/disabled=\{readOnly\}/);
+  assert.match(focused,/realOrders\.map\(order=>\(\{kind:"real"/);
+  assert.match(focused,/activeFake\.map\(order=>\(\{kind:"fake"/);
+  for (const unsafe of [/\bfetch\s*\(/, /\bsupabase\b/, /\bMerchantApi\b/, /\blocalStorage\b/, /\bsessionStorage\b/, /\bwindow\.dispatchEvent\b/]) {
+    assert.doesNotMatch(focused,unsafe);
+  }
+});
