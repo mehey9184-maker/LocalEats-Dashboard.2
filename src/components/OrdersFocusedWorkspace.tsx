@@ -3,12 +3,13 @@ import {Bell, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardLis
 import type {Order} from "../types";
 import {PickupOrderActions} from "./PickupOrderActions";
 import {isPickupOrder, pickupPaymentLabel} from "../services/merchantPickupPolicy";
-import {PreviewFakeOrderCard, PreviewFakeOrderTrigger, type PreviewTestPickupOrder, type PreviewTestPickupAction} from "./PreviewFakeOrders";
+import {PreviewFakeOrderTrigger, type PreviewTestPickupOrder, type PreviewTestPickupAction} from "./PreviewFakeOrders";
+import {OrdersStyleBoard, type OrderBoardStyle, type BoardEntry} from "./OrdersStyleBoard";
 
 type ViewMode = "active" | "history";
 type Stage = "all" | "pending" | "preparing" | "ready";
 type SortMode = "priority" | "newest" | "oldest" | "highest";
-type Entry = {kind:"real";order:Order} | {kind:"fake";order:PreviewTestPickupOrder};
+type Entry = BoardEntry;
 
 interface OrdersFocusedWorkspaceProps {
   realOrders: Order[];
@@ -18,6 +19,8 @@ interface OrdersFocusedWorkspaceProps {
   onSimulate: () => void;
   onSimulateBatch: () => void;
   onClear: () => void;
+  styleStorageKey: string;
+  completedRealOrders: Order[];
   viewMode: ViewMode;
   onViewModeChange: (next: ViewMode) => void;
   renderRealOrder: (order: Order, index: number) => React.ReactNode;
@@ -39,6 +42,10 @@ interface OrdersFocusedWorkspaceProps {
 }
 
 const PAGE_SIZE=12;
+function readBoardStyle(key:string):OrderBoardStyle{
+  if(typeof window==="undefined")return "compact";
+  try{return window.localStorage.getItem(key)==="expediter"?"expediter":"compact";}catch{return "compact";}
+}
 const priority: Record<string,number>={pending:0,accepted:1,preparing:1,ready:2,completed:3,cancelled:4};
 const statusText: Record<string,string>={
   pending:"New",accepted:"Preparing",preparing:"Preparing",ready:"Ready",
@@ -64,7 +71,7 @@ const stageMatches=(stage:Stage,status:string)=>
 
 export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const {
-    realOrders,fakeOrders,onDemoAction,incoming,onSimulate,onSimulateBatch,onClear,viewMode,onViewModeChange,
+    realOrders,fakeOrders,onDemoAction,incoming,onSimulate,onSimulateBatch,onClear,styleStorageKey,completedRealOrders,viewMode,onViewModeChange,
     renderRealOrder,onRefresh,onExportCSV,onExportJSON,onDeleteAllOrders,readOnly,
     soundAlerts,setSoundAlerts,kitchenMode,setKitchenMode,maxConcurrentOrders,setMaxConcurrentOrders,
     startDate,endDate,setStartDate,setEndDate
@@ -75,6 +82,14 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const [page,setPage]=useState(1);
   const [expanded,setExpanded]=useState<string|null>(null);
   const [showSearch,setShowSearch]=useState(false);
+  const [boardStyle,setBoardStyle]=useState<OrderBoardStyle>(()=>readBoardStyle(styleStorageKey));
+  useEffect(()=>setBoardStyle(readBoardStyle(styleStorageKey)),[styleStorageKey]);
+  const chooseBoardStyle=(choice:OrderBoardStyle)=>{
+    setBoardStyle(choice);
+    // Only a harmless style enum is stored; no order, customer, payment or login data.
+    if(typeof window!=="undefined")try{window.localStorage.setItem(styleStorageKey,choice);}catch{}
+  };
+
 
   const activeFake=useMemo(()=>fakeOrders.filter(order=>viewMode==="active"
     ? order.status!=="completed"&&order.status!=="cancelled"
@@ -142,6 +157,18 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div role="group" aria-label="Choose your Orders style" className="flex items-center gap-1 rounded-xl bg-surface-container-low p-1">
+            <button type="button" aria-pressed={boardStyle==="expediter"} onClick={()=>chooseBoardStyle("expediter")}
+              className={`min-h-9 px-3 rounded-lg text-xs font-bold ${boardStyle==="expediter"?"bg-surface-container-lowest shadow-sm text-primary":"text-on-surface-variant"}`}>
+              A · Expediter
+            </button>
+            <button type="button" aria-pressed={boardStyle==="compact"} onClick={()=>chooseBoardStyle("compact")}
+              className={`min-h-9 px-3 rounded-lg text-xs font-bold ${boardStyle==="compact"?"bg-surface-container-lowest shadow-sm text-primary":"text-on-surface-variant"}`}>
+              B · Compact
+            </button>
+          </div>
+        </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="inline-flex items-center rounded-xl bg-surface-container-low p-1 gap-1">
             <button type="button" onClick={()=>enterView("active")} aria-pressed={viewMode==="active"}
@@ -234,60 +261,22 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
           <label>To <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} className="rounded-lg border border-outline-variant/20 px-2 py-1.5 bg-surface-container-lowest text-on-surface"/></label>
         </div>}
 
-        <div aria-live="polite" className="sr-only">Showing {visible.length} of {filtered.length} orders on page {safePage}</div>
-        {filtered.length===0?(
-          <div className="min-h-44 rounded-2xl border border-dashed border-outline-variant/25 bg-surface-container-low/40 text-center flex flex-col items-center justify-center gap-2 p-5">
-            <CheckCircle2 size={23} className="text-primary/60" aria-hidden="true"/>
-            <p className="text-sm font-bold text-on-surface">{search?"Nothing matches that search":viewMode==="history"?"No history for this view":"No orders in this view"}</p>
-            <p className="text-xs text-on-surface-variant max-w-sm">{viewMode==="active"?"Use Simulate order to test the real pickup UI without creating any actual orders.":"Completed and cancelled orders will appear here when verified."}</p>
-          </div>
-        ):(
-          <div data-testid="focused-order-grid" className="grid grid-cols-1 xl:grid-cols-2 gap-3 min-w-0 items-start">
-            {visible.map((entry,index)=>{
-              if(entry.kind==="fake")return <PreviewFakeOrderCard key={`fake:${entry.order.id}`} order={entry.order} onDemoAction={onDemoAction}/>;
-              const order=entry.order;
-              const status=String(order.status||"pending");
-              const isExpanded=expanded===order.id;
-              return <article key={`real:${order.id}`} data-testid="focused-real-order"
-                className="rounded-2xl border border-outline-variant/15 bg-surface-container-lowest shadow-xs p-3 sm:p-4 min-w-0 space-y-3">
-                <div className="flex items-start gap-3 justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-extrabold text-on-surface">#{String(order.id).slice(-8).toUpperCase()}</span>
-                      <span className={`text-[10px] font-bold border rounded-full px-2 py-0.5 ${statusClass[status]||statusClass.pending}`}>
-                        {statusText[status]||"In progress"}
-                      </span>
-                    </div>
-                    <p className="font-semibold text-sm text-on-surface mt-1 truncate">{order.customer_name||"Customer"}</p>
-                    <p className="text-xs text-on-surface-variant mt-0.5 break-words">{order.product_name||"Order items"} · {currency(order.total_price)}</p>
-                  </div>
-                  <span className="text-[11px] font-semibold text-on-surface-variant whitespace-nowrap">
-                    {order.created_at&&!Number.isNaN(new Date(order.created_at).getTime()) ? new Date(order.created_at).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit"}) : "Time unavailable"}
-                  </span>
-                </div>
-                {!isExpanded&&isPickupOrder(order)&&<div className="rounded-xl bg-surface-container-low/50 px-3">
-                  <p className="text-[11px] text-on-surface-variant pt-2">{pickupPaymentLabel(order)}</p>
-                  <PickupOrderActions order={order}/>
-                </div>}
-                {isExpanded&&<div className="min-w-0">{renderRealOrder(order,index)}</div>}
-                <button type="button" onClick={()=>setExpanded(isExpanded?null:order.id)}
-                  aria-expanded={isExpanded}
-                  className={`text-xs font-bold text-primary min-h-9 flex items-center gap-1 ${commonFocus}`}>
-                  {isExpanded?"Hide full order":"View full order"}<ChevronDown size={13} aria-hidden="true" className={isExpanded?"rotate-180":""}/>
-                </button>
-              </article>;
-            })}
-          </div>
-        )}
-        {pages>1&&<div className="flex items-center justify-between gap-3 pt-2 border-t border-outline-variant/10">
-          <span className="text-xs text-on-surface-variant">Page {safePage} of {pages} · {filtered.length} orders</span>
-          <div className="flex gap-2">
-            <button type="button" disabled={safePage<=1} onClick={()=>setPage(n=>Math.max(1,n-1))}
-              className="min-h-10 rounded-xl border border-outline-variant/20 px-3 text-xs font-bold disabled:opacity-30"><ChevronLeft size={15}/><span className="sr-only">Previous page</span></button>
-            <button type="button" disabled={safePage>=pages} onClick={()=>setPage(n=>Math.min(pages,n+1))}
-              className="min-h-10 rounded-xl border border-outline-variant/20 px-3 text-xs font-bold disabled:opacity-30"><ChevronRight size={15}/><span className="sr-only">Next page</span></button>
-          </div>
-        </div>}
+        <div aria-live="polite" className="sr-only">{filtered.length} orders match this filter. Display style: {boardStyle}.</div>
+        <OrdersStyleBoard
+          entries={filtered}
+          completedEntries={viewMode==="active"
+            ? [
+              ...completedRealOrders.map(order=>({kind:"real" as const,order})),
+              ...fakeOrders.filter(order=>order.status==="completed"||order.status==="cancelled")
+                .map(order=>({kind:"fake" as const,order}))
+            ]
+            : []}
+          style={boardStyle}
+          viewMode={viewMode}
+          onDemoAction={onDemoAction}
+          renderRealOrder={renderRealOrder}
+          stageFilter={stage}
+        />
       </div>
       <p className="text-center text-[11px] text-on-surface-variant px-3">
         <Bell size={12} aria-hidden="true" className="inline mr-1"/> Fake orders are browser-only training cards. Real payments, notifications and fulfillment remain disabled until separately approved.
