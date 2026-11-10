@@ -71,7 +71,7 @@ export const Marketing: React.FC<MarketingProps> = ({
   const userOwnedShops = useMemo(() => {
     if (shops.length === 0 && currentShop) return [currentShop];
     const owned = shops.filter((s) => isShopOwnedByUser(s, user));
-    return owned.length > 0 ? owned : (currentShop ? [currentShop] : []);
+    return owned.length > 0 ? owned : (currentShop && isShopOwnedByUser(currentShop, user) ? [currentShop] : []);
   }, [shops, user, currentShop]);
 
   const [selectedShopId, setSelectedShopId] = useState<string | number | null>(null);
@@ -81,30 +81,30 @@ export const Marketing: React.FC<MarketingProps> = ({
       const match = userOwnedShops.find((s) => String(s.id) === String(selectedShopId));
       if (match) return match;
     }
-    return currentShop || userOwnedShops[0];
+    return userOwnedShops.find((s) => String(s.id) === String(currentShop?.id)) || userOwnedShops[0];
   }, [userOwnedShops, selectedShopId, currentShop]);
 
   // Filter menu items for selected store
   const storeMenuItems = useMemo(() => {
-    if (!activeShop) return menuItems;
+    if (!activeShop) return [];
     return menuItems.filter((item) => String(item.shop_id) === String(activeShop.id));
   }, [menuItems, activeShop]);
 
   // Main Segment Navigation: Dashboard Summary, Campaign Builder, Tool Library
-  const [mainSegment, setMainSegment] = useState<MainSegment>("dashboard");
+  const [mainSegment, setMainSegment] = useState<MainSegment>("tool_library");
 
   // Sub-Tab within Tool Library
-  const [activeTool, setActiveTool] = useState<ToolSubTab>("direct_reach");
+  const [activeTool, setActiveTool] = useState<ToolSubTab>("whatsapp");
 
   // Store URL
   const storeUrl = useMemo(() => {
-    if (!activeShop) return "https://www.localeatssa.co.za";
+    if (!activeShop) return "";
     return `https://www.localeatssa.co.za/?shopId=${activeShop.id}`;
   }, [activeShop]);
 
   // High-Level Diner Analytics for Dashboard Summary
   const shopOrders = useMemo(() => {
-    if (!activeShop) return orders;
+    if (!activeShop) return [];
     return orders.filter(
       (o) =>
         String(o.shop_id) === String(activeShop.id) ||
@@ -139,7 +139,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     });
 
     const repeatRate = totalUniqueDiners > 0 ? Math.round((repeatCount / totalUniqueDiners) * 100) : 0;
-    const avgSpend = totalUniqueDiners > 0 ? Math.round(totalRevenue / totalUniqueDiners) : 0;
+    const avgSpend = shopOrders.length > 0 ? Math.round(totalRevenue / shopOrders.length) : 0;
 
     return {
       totalUniqueDiners,
@@ -247,6 +247,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // WhatsApp Action Handlers
   const handleOpenWhatsApp = () => {
+    if (!activeShop) return;
     const encoded = encodeURIComponent(activeMessage);
     const waUrl = `https://api.whatsapp.com/send?text=${encoded}`;
     window.open(waUrl, "_blank");
@@ -254,6 +255,7 @@ export const Marketing: React.FC<MarketingProps> = ({
   };
 
   const handleCopyMessage = () => {
+    if (!activeShop) return;
     navigator.clipboard.writeText(activeMessage);
     setCopiedMsg(true);
     toast.success("WhatsApp pitch copied to clipboard!");
@@ -628,10 +630,10 @@ export const Marketing: React.FC<MarketingProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-black text-on-surface flex items-center gap-2">
-                <span>Marketing & Customer Growth Studio</span>
+                <span>Marketing</span>
               </h2>
               <p className="text-xs text-on-surface-variant">
-                Drive sales, reward loyal diners, and promote your LocalEats store with QR stands, WhatsApp promos & flash deals.
+                Help more people discover your shop. Share real menu information; pickup ordering is available only when shown in the customer app.
               </p>
             </div>
           </div>
@@ -664,54 +666,32 @@ export const Marketing: React.FC<MarketingProps> = ({
         )}
       </div>
 
-      {/* 2. PRIMARY 3-SEGMENT NAVIGATION */}
-      <div className="bg-surface-container-lowest p-1.5 rounded-2xl border border-outline-variant/15 grid grid-cols-3 gap-2 shadow-xs">
-        {/* Segment 1: Dashboard Summary */}
-        <button
-          onClick={() => setMainSegment("dashboard")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
-            mainSegment === "dashboard"
-              ? "bg-primary text-on-primary shadow-sm"
-              : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-          }`}
-        >
-          <Sparkles size={16} />
-          <span>Dashboard Summary</span>
-        </button>
-
-        {/* Segment 2: Campaign Builder */}
-        <button
-          onClick={() => setMainSegment("campaign_builder")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
-            mainSegment === "campaign_builder"
-              ? "bg-primary text-on-primary shadow-sm"
-              : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-          }`}
-        >
-          <Ticket size={16} />
-          <span>Campaign Builder</span>
-        </button>
-
-        {/* Segment 3: Tool Library */}
-        <button
-          onClick={() => setMainSegment("tool_library")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
-            mainSegment === "tool_library"
-              ? "bg-primary text-on-primary shadow-sm"
-              : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-          }`}
-        >
-          <Layers size={16} />
-          <span>Tool Library (8)</span>
-        </button>
+{/* M4.1: four owner-facing actions. Legacy campaign/analytics controls remain dormant. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-label="Marketing actions">
+        {([
+          { key: "whatsapp", label: "Share My Shop", description: "Shop link and WhatsApp", icon: MessageSquare },
+          { key: "social_studio", label: "Create Poster", description: "Make a social graphic", icon: Palette },
+          { key: "qr_stands", label: "QR & Flyers", description: "Printable materials", icon: QrCode },
+          { key: "playbook", label: "Marketing Tips", description: "Free local ideas", icon: Sparkles },
+        ] as const).map(({key, label, description, icon: Icon}) => (
+          <button key={key} type="button" disabled={!activeShop}
+            aria-pressed={activeTool === key}
+            onClick={() => { setMainSegment("tool_library"); setActiveTool(key); }}
+            className={`min-h-24 text-left p-4 rounded-2xl border transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${activeTool === key ? "bg-primary text-on-primary border-primary shadow-sm" : "bg-surface-container-lowest text-on-surface border-outline-variant/15 hover:bg-surface-container-high"} disabled:opacity-50`}>
+            <Icon size={22} aria-hidden="true" />
+            <span className="block mt-2 text-sm font-black">{label}</span>
+            <span className="block mt-1 text-xs opacity-80">{description}</span>
+          </button>
+        ))}
       </div>
+      {!activeShop && <p role="status" className="text-sm text-on-surface-variant">Select a shop you own to create shop-specific marketing materials.</p>}
 
-      {/* 3. SEGMENT CONTENT */}
+            {/* 3. SEGMENT CONTENT */}
 
       {/* ========================================================================= */}
       {/* SEGMENT 1: DASHBOARD SUMMARY (EXECUTIVE GROWTH PULSE & QUICK ACTIONS)     */}
       {/* ========================================================================= */}
-      {mainSegment === "dashboard" && (
+      {false && mainSegment === "dashboard" && (
         <div className="space-y-6">
           {/* Executive Metrics Overview */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -950,7 +930,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 </button>
 
                 <button
-                  onClick={() => setMainSegment("campaign_builder")}
+                  onClick={() => setActiveTool("playbook")}
                   className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer"
                 >
                   <Ticket size={15} className="text-primary" />
@@ -999,7 +979,7 @@ export const Marketing: React.FC<MarketingProps> = ({
       {/* ========================================================================= */}
       {/* SEGMENT 2: CAMPAIGN BUILDER (DEDICATED INTERACTIVE CAMPAIGN & VOUCHERS)   */}
       {/* ========================================================================= */}
-      {mainSegment === "campaign_builder" && (
+      {false && mainSegment === "campaign_builder" && (
         <CampaignBuilder
           activeShop={activeShop}
           storeMenuItems={storeMenuItems}
@@ -1012,119 +992,21 @@ export const Marketing: React.FC<MarketingProps> = ({
       {/* ========================================================================= */}
       {mainSegment === "tool_library" && (
         <div className="space-y-6">
-          {/* Sub-Navigation for Tool Library */}
-          <div className="flex items-center gap-1.5 p-1.5 bg-surface-container-lowest rounded-2xl border border-outline-variant/15 overflow-x-auto shadow-xs">
-            <button
-              onClick={() => setActiveTool("direct_reach")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "direct_reach"
-                  ? "bg-primary text-on-primary shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <Users size={15} />
-              <span>Direct Customer Reach</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTool("flash_deals")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "flash_deals"
-                  ? "bg-orange-500 text-white shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <Flame size={15} />
-              <span>Timed Flash Deals</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTool("table_tents")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "table_tents"
-                  ? "bg-emerald-600 text-white shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <Utensils size={15} />
-              <span>Table Tent Generator</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTool("qr_stands")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "qr_stands"
-                  ? "bg-primary text-on-primary shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <QrCode size={15} />
-              <span>Counter Stands & Flyers</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTool("whatsapp")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "whatsapp"
-                  ? "bg-primary text-on-primary shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <MessageSquare size={15} />
-              <span>WhatsApp Promos</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTool("social_studio")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "social_studio"
-                  ? "bg-primary text-on-primary shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <Palette size={15} />
-              <span>Social Graphic Studio</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTool("sms")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "sms"
-                  ? "bg-primary text-on-primary shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <Smartphone size={15} />
-              <span>SMS Broadcast</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTool("playbook")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "playbook"
-                  ? "bg-primary text-on-primary shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <Sparkles size={15} />
-              <span>Growth Playbook</span>
-            </button>
-          </div>
-
-          {/* ACTIVE TOOL RENDERING */}
+          {/* Four-action navigation above replaces the legacy eight-tool submenu. */}
+                    {/* ACTIVE TOOL RENDERING */}
 
           {/* Tool 1: Direct Customer Reach & Diners */}
-          {activeTool === "direct_reach" && (
+          {false && activeTool === "direct_reach" && (
             <CustomerReEngagement
               activeShop={activeShop}
-              orders={orders}
+              orders={shopOrders}
               menuItems={storeMenuItems}
               storeUrl={storeUrl}
             />
           )}
 
           {/* Tool 2: Timed Flash Deals */}
-          {activeTool === "flash_deals" && (
+          {false && activeTool === "flash_deals" && (
             <FlashDealsStudio
               activeShop={activeShop}
               menuItems={storeMenuItems}
@@ -1133,7 +1015,7 @@ export const Marketing: React.FC<MarketingProps> = ({
           )}
 
           {/* Tool 3: Table Tent Card Generator */}
-          {activeTool === "table_tents" && (
+          {false && activeTool === "table_tents" && (
             <TableTentGenerator
               activeShop={activeShop}
               storeUrl={storeUrl}
@@ -1333,7 +1215,7 @@ export const Marketing: React.FC<MarketingProps> = ({
             </div>
           )}
 
-          {/* Tool 5: WhatsApp Promos */}
+          {/* Tool 5: Share My Shop */}
           {activeTool === "whatsapp" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left: Preset Selector & Customizer */}
@@ -1556,7 +1438,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs space-y-4">
                   <h3 className="font-extrabold text-base text-on-surface flex items-center gap-2">
                     <Palette size={18} className="text-primary" />
-                    <span>Flyer Design & Themes</span>
+                    <span>Create Poster</span>
                   </h3>
 
                   {/* Color Theme Selector */}
@@ -1706,7 +1588,7 @@ export const Marketing: React.FC<MarketingProps> = ({
           )}
 
           {/* Tool 7: SMS Broadcast */}
-          {activeTool === "sms" && (
+          {false && activeTool === "sms" && (
             <div className="max-w-2xl mx-auto space-y-5">
               <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs space-y-4">
                 <div className="flex items-center gap-2">
@@ -1778,33 +1660,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 </p>
               </div>
 
-              <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs space-y-3">
-                <div className="w-10 h-10 rounded-2xl bg-purple-500/10 text-purple-500 flex items-center justify-center font-bold">
-                  🎟️
-                </div>
-                <h3 className="font-extrabold text-base text-on-surface">4. First-Order Voucher Codes</h3>
-                <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Create and advertise only offers that are actually approved and active; never promise a voucher that checkout cannot honour.
-                </p>
-                <div className="flex items-center gap-3 pt-1">
-                  <button
-                    onClick={() => setMainSegment("campaign_builder")}
-                    className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>Open Campaign Builder</span>
-                    <ExternalLink size={12} />
-                  </button>
-                  {onNavigateTab && (
-                    <button
-                      onClick={() => onNavigateTab("coupons")}
-                      className="text-xs font-bold text-on-surface-variant hover:text-on-surface flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>(or Merchant Coupons tab)</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+     </div>
           )}
         </div>
       )}
