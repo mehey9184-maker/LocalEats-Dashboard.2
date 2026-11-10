@@ -233,7 +233,13 @@ function App() {
     if (!isMobileMoreOpen) return;
     const previousFocus = document.activeElement as HTMLElement | null;
     mobileMoreDrawerRef.current?.focus();
-    return () => previousFocus?.focus();
+    // Lock background scrolling while the mobile drawer is open; restore the prior style.
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
   }, [isMobileMoreOpen]);
   const [showHelp, setShowHelp] = useState(false);
   const [showLegal, setShowLegal] = useState(false);
@@ -2012,15 +2018,16 @@ function App() {
                 type="button"
                 onClick={() => topNavScrollRef.current?.scrollBy({ left: -160, behavior: reduceMotion ? 'auto' : 'smooth' })}
                 aria-label="Scroll navigation left"
-                className="absolute left-0 z-10 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
+                className="absolute left-0 z-10 w-11 h-11 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
                 title="Scroll Tabs Left"
               >
                 <ChevronLeft size={14} className="stroke-[2.5px]" />
               </button>
 
               <nav
+                aria-label="Main dashboard navigation"
                 ref={topNavScrollRef}
-                className="flex-1 flex items-center justify-start gap-2 overflow-x-auto hide-scrollbar px-11 whitespace-nowrap scroll-smooth"
+                className="flex-1 flex items-center justify-start gap-2 overflow-x-auto hide-scrollbar px-12 whitespace-nowrap scroll-smooth"
               >
                 {navItems.map((item) => {
                   const isActive = activeTab === item.id;
@@ -2066,7 +2073,7 @@ function App() {
                 type="button"
                 onClick={() => topNavScrollRef.current?.scrollBy({ left: 160, behavior: reduceMotion ? 'auto' : 'smooth' })}
                 aria-label="Scroll navigation right"
-                className="absolute right-0 z-10 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
+                className="absolute right-0 z-10 w-11 h-11 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
                 title="Scroll Tabs Right"
               >
                 <ChevronRight size={14} className="stroke-[2.5px]" />
@@ -3931,8 +3938,8 @@ function App() {
 
       {/* BottomNavBar */}
       {!kitchenMode && (
-        <nav className="md:hidden fixed bottom-0 left-0 w-full z-[100] bg-white/80 dark:bg-surface-container-lowest/80 backdrop-blur-2xl rounded-t-3xl border-t border-outline-variant/10 shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
-          <div className="flex items-center justify-between gap-1 px-3 pb-8 pt-4 overflow-x-auto scrollbar-hide">
+        <nav aria-label="Mobile dashboard navigation" className="md:hidden fixed bottom-0 left-0 w-full z-[100] bg-white/80 dark:bg-surface-container-lowest/80 backdrop-blur-2xl rounded-t-3xl border-t border-outline-variant/10 shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
+          <div className="flex items-center justify-between gap-1 px-3 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4 overflow-x-auto scrollbar-hide">
             {(() => {
               const primaryMobileTabIds = ["dashboard", "orders", "menu", "riders"];
               const primaryMobileNavItems = navItems.filter((item) => primaryMobileTabIds.includes(item.id));
@@ -4066,7 +4073,7 @@ function App() {
                tabIndex={-1}
                ref={mobileMoreDrawerRef}
                onKeyDown={(e) => {
-                 if (e.key === "Escape") { e.stopPropagation(); setIsMobileMoreOpen(false); }
+                 if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setIsMobileMoreOpen(false); }
                  if (e.key === "Tab") {
                    const buttons = mobileMoreDrawerRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
                    if (!buttons?.length) return;
