@@ -2585,6 +2585,18 @@ function App() {
                     )}
 
                     {settingsCategory === "operations" && (
+                      <SimpleOpeningHours
+                        shop={currentShop}
+                        verified={merchantShopGate.status==="ready"
+                          && !!user?.id
+                          && currentShop?.owner_id===user.id}
+                        onEditShop={()=>setActiveTab("storefront")}
+                      />
+                    )}
+
+                    {/* Legacy hours editor preserved for future API verification.
+                        Its direct metadata Save Hours is not mounted in S2. */}
+                    {settingsCategory === "future-operations" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">Operations Center</h3>
                   {/* Order Operations Section */}
