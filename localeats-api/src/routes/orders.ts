@@ -15,7 +15,7 @@ import {
   type StoredOrder,
 } from "../orders/orderService.js";
 import { merchantCommandReceipt, commandPickup, createPickup, parsePickupInput, pickupPricing, pickupQuote } from "../orders/pickupService.js";
-import { drainPickupPush } from "../orders/pickupPush.js";
+import { schedulePickupPush } from "../orders/pickupPush.js";
 import { readCompleteMerchantInbox, MERCHANT_UNFINISHED_FILTER, MERCHANT_INBOX_RECENT_LIMIT } from "../orders/merchantInboxRead.js";
 import { deriveDeliveryProof } from "../orders/deliveryProof.js";
 
@@ -285,7 +285,7 @@ const updateMerchantOrder = async (
     assertControlledPickup(order);
     assertPickupWritesDisabled({delivery_type:"collection"});
     const result=await commandPickup(supabaseAdmin,uid,orderId,action,body);
-    if (action === "ready") await drainPickupPush(supabaseAdmin,uid);
+    if (action === "ready") schedulePickupPush(supabaseAdmin,uid);
     return {order:result.order,replayed:result.replayed,command_receipt:merchantCommandReceipt(result)};
   }
   const current = lifecycleStateFromOrder(order);

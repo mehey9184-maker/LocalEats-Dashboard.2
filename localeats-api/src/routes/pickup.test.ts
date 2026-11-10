@@ -4,6 +4,8 @@ import {legacyOrderGuard} from "../legacyOrderGuard.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
+import {initializeApp,deleteApp} from "firebase-admin/app";
+import {getMessaging} from "firebase-admin/messaging";
 import {once} from "node:events";
 import type {AddressInfo} from "node:net";
 import {request as httpRequest} from "node:http";
@@ -119,3 +121,76 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
     server.close();await once(server,"close");
   }
 });
+
+for (const endpoint of ["notification inbox","merchant Ready"] as const) {
+  test(endpoint+" responds while a push attempt is still pending",async()=>{
+    const merchantReady=endpoint==="merchant Ready";
+    const uid=merchantReady ? "merchant" : "customer";
+    const shopId="shop-my-kota-ivory-park";
+    const firebase=initializeApp({projectId:"synthetic-pickup-test",credential:{
+      getAccessToken:async()=>{throw Error("Provider network is forbidden in this test");},
+    }});
+    const originalFrom=supabaseAdmin.from,originalRpc=supabaseAdmin.rpc,originalVerify=authAdmin.verifyIdToken;
+    let sendStarted=false;
+    let release!:()=>void,attempted!:()=>void,finished!:(args:Record<string,unknown>)=>void;
+    const hold=new Promise<void>(resolve=>{release=resolve;});
+    const started=new Promise<void>(resolve=>{attempted=resolve;});
+    const completion=new Promise<Record<string,unknown>>(resolve=>{finished=resolve;});
+    getMessaging(firebase).send=async()=>{sendStarted=true;attempted();await hold;throw Error("Synthetic push failure");};
+    authAdmin.verifyIdToken=async()=>({uid} as any);
+    const event={id,order_id:id,kind:"ready",occurred_at:"2026-11-07T12:00:00Z"};
+    const readyOrder={id,shop_id:shopId,user_id:"customer",delivery_type:"collection",status:"ready_for_pickup",revision:2};
+    const receipt={command_id:id,order_id:id,actor_uid:uid,kind:"ready",revision:2};
+    (supabaseAdmin as any).from=(table:string)=>{
+      if(merchantReady){
+        const data=table==="shops" ? {id:shopId,owner_id:uid} : {...readyOrder,status:"preparing",revision:1};
+        const query={select:()=>query,eq:()=>query,maybeSingle:async()=>({data,error:null})};
+        return query;
+      }
+      const q:any={select:()=>q,eq:()=>q,order:()=>q,limit:async()=>({data:[event],error:null})};
+      return q;
+    };
+    (supabaseAdmin as any).rpc=async(name:string,args:Record<string,unknown>)=>{
+      assert.equal(args.p_uid,uid);
+      if(name==="pickup_order_command"){
+        assert.equal(args.p_action,"ready");
+        return {data:{order:readyOrder,event:receipt,replayed:false},error:null};
+      }
+      if(name==="pickup_claim_push")return {data:{id,attempts:1,lease_until:"2026-11-07T12:00:30Z",event_id:id,order_id:id,token:"synthetic"},error:null};
+      if(name==="pickup_push_sendable")return {data:true,error:null};
+      assert.equal(name,"pickup_finish_push");
+      finished(args);
+      return {data:true,error:null};
+    };
+    const app=express();app.use(express.json());app.use(pickupNotificationRoutes);app.use("/merchant/orders",merchantOrderRoutes);
+    const server=app.listen(0,"127.0.0.1");await once(server,"listening");
+    try {
+      const path=merchantReady ? "/merchant/orders/"+id+"/ready" : "/notifications";
+      const response=await fetch("http://127.0.0.1:"+(server.address() as AddressInfo).port+path,{
+        headers:{Authorization:"Bearer fb-"+uid,"Content-Type":"application/json"},
+        signal:AbortSignal.timeout(2000),
+        ...(merchantReady ? {method:"POST",body:JSON.stringify({command_id:id,expected_revision:1})} : {}),
+      });
+      assert.equal(response.status,200);
+      const body=await response.json();
+      if(merchantReady){
+        assert.equal(body.order.status,"ready_for_pickup");
+        assert.deepEqual(body.command_receipt,receipt);
+      }else{
+        assert.deepEqual(body.notifications,[event]);
+      }
+      await started;
+      release();
+      const result=await completion;
+      assert.equal(result.p_attempt,1);
+      assert.equal(result.p_sent,false);
+      assert.equal(result.p_permanent,false);
+    } finally {
+      release();
+      if(sendStarted)await completion;
+      server.close();await once(server,"close");
+      supabaseAdmin.from=originalFrom;supabaseAdmin.rpc=originalRpc;authAdmin.verifyIdToken=originalVerify;
+      await deleteApp(firebase);
+    }
+  });
+}
