@@ -588,7 +588,7 @@ test("Settings S2 opening-hours overview cannot claim a fake save or send direct
   const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
   assert.ok(view.includes('data-testid="settings-s2-opening-hours"'));
   assert.ok(view.includes('verified && !!shop'));
-  assert.ok(view.includes('typeof shop.is_active==="boolean"'));
+  assert.ok(view.includes('typeof shop?.is_active==="boolean"'));
   assert.ok(view.includes("It does not mean that real customer ordering has been activated."));
   assert.ok(view.includes("The old hours form did not save to the verified shop schedule."));
   assert.ok(view.includes("No hours or shop status will be changed from this page."));
