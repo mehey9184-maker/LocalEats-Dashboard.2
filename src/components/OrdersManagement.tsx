@@ -1,5 +1,6 @@
 import {receiptText} from "../utils/receiptText";
 import {PickupOrderActions} from "./PickupOrderActions";
+import {PreviewFakeOrders} from "./PreviewFakeOrders";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
 import React, { useState, useEffect, useMemo, useRef } from "react";
@@ -342,6 +343,8 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [ratingOrderId, setRatingOrderId] = useState<string | null>(null);
   const [ratingValue, setRatingValue] = useState<number>(0);
   const [showMobileActions, setShowMobileActions] = useState(false);
+  const [showDesktopActions, setShowDesktopActions] = useState(false);
+  const isReadOnlyPreview = import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true";
   const [unlinkedModalOrder, setUnlinkedModalOrder] = useState<Order | null>(null);
   const [dispatchAlertOrder, setDispatchAlertOrder] = useState<Order | null>(null);
   const [dispatchAlertType, setDispatchAlertType] = useState<"rider_dispatch" | "customer_status" | "rider_pairing">("customer_status");
@@ -2702,67 +2705,52 @@ Notes: "${order.notes || "None"}"
   }
 
   return (
-    <div className="space-y-8">
-      <p role="status" className="text-xs text-on-surface-variant mb-3">{pickupOrderingEnabled() ? "Pickup actions are API-authorized. Confirm actual payment before food handover and Collected. Historical delivery records remain available." : "Pickup order, payment and collection changes are disabled pending separately approved database activation. Existing management and historical delivery records remain available."}</p>
-      <section className="flex flex-col gap-6">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-          <div className="max-w-2xl space-y-1">
-            <span className="font-label text-[11px] font-bold uppercase tracking-[0.2em] text-primary mb-2 block">
-              Live Operations
-            </span>
-            <h2 className="font-headline text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
+    <div className="space-y-3 md:space-y-4">
+      <p role="status" className="text-xs text-on-surface-variant rounded-lg bg-surface-container-low/50 px-3 py-2">{pickupOrderingEnabled() ? "Pickup actions are API-authorized. Confirm actual payment before food handover and Collected. Historical delivery records remain available." : "Pickup order, payment and collection changes are disabled pending separately approved database activation. Existing management and historical delivery records remain available."}</p>
+      <section className="flex flex-col gap-2 md:gap-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="max-w-2xl space-y-0.5">
+            <h2 className="font-headline text-xl md:text-2xl font-bold text-on-surface tracking-tight">
               Orders Management
             </h2>
-            <p className="text-sm text-on-surface-variant font-medium">
-              Streamline your kitchen workflow and monitor real-time fulfillment
-              across all delivery channels.
-            </p>
+            <p className="text-xs text-on-surface-variant font-medium">Current orders first. Extra tools are tucked away.</p>
           </div>
           
-          <div className="hidden md:flex flex-wrap gap-3 justify-start md:justify-end shrink-0">
-            <button
-              onClick={() => {
-                console.log("Clearing all orders...");
-                onDeleteAllOrders();
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-error/10 text-error rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-error/20 transition-all cursor-pointer relative z-20"
-            >
-              <Trash2 size={16} className="md:w-[18px] md:h-[18px]" />
-              Clear All
+          <div className="hidden md:flex items-center gap-2 shrink-0 relative">
+            <button type="button" onClick={onRefresh}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-full text-xs font-bold shadow-sm">
+              <RefreshCw size={15} aria-hidden="true"/> Refresh
             </button>
-            <button
-              onClick={() => {
-                console.log("Refreshing orders...");
-                onRefresh();
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-on-primary rounded-full text-xs md:text-sm font-bold shadow-sm hover:scale-105 transition-all cursor-pointer relative z-20"
-            >
-              <Clock size={16} className="md:w-[18px] md:h-[18px]" />
-              Refresh
+            <button type="button" onClick={() => setShowDesktopActions(value => !value)}
+              aria-expanded={showDesktopActions} aria-controls="merchant-orders-more-tools"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-surface-container-low text-on-surface rounded-full text-xs font-bold">
+              <SlidersHorizontal size={15} aria-hidden="true"/> More tools
             </button>
-            <button
-              onClick={exportToCSV}
-              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-            >
-              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              Spreadsheet
-            </button>
-            <button
-              onClick={exportToJSON}
-              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface rounded-full text-xs md:text-sm font-bold shadow-sm hover:bg-surface-container-highest transition-all cursor-pointer relative z-20"
-            >
-              <FileDown size={16} className="md:w-[18px] md:h-[18px]" />
-              Backup Data
-            </button>
+            {showDesktopActions && (
+              <div id="merchant-orders-more-tools" role="group" aria-label="Advanced order tools"
+                className="absolute right-0 top-full mt-2 z-30 w-52 rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-2 shadow-xl flex flex-col gap-1">
+                <button type="button" onClick={exportToCSV} className="flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl hover:bg-surface-container-low">
+                  <FileDown size={14} aria-hidden="true"/> Spreadsheet
+                </button>
+                <button type="button" onClick={exportToJSON} className="flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl hover:bg-surface-container-low">
+                  <FileDown size={14} aria-hidden="true"/> Backup data
+                </button>
+                <button type="button" onClick={onDeleteAllOrders} disabled={isReadOnlyPreview}
+                  title={isReadOnlyPreview ? "Unavailable in read-only Preview" : "Delete orders"}
+                  className="flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-error hover:bg-error/10 disabled:opacity-40 disabled:cursor-not-allowed">
+                  <Trash2 size={14} aria-hidden="true"/> Clear all orders
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="hidden md:flex flex-wrap items-center gap-4">
-          <div className="hidden md:flex p-1.5 bg-surface-container-low rounded-full w-fit">
+        <div className="hidden md:flex flex-wrap items-center gap-2">
+          <div className="hidden md:flex p-1 bg-surface-container-low rounded-full w-fit">
             <button
               onClick={() => setViewMode("active")}
               className={cn(
-                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                "px-4 py-1.5 rounded-full text-xs font-bold transition-all",
                 viewMode === "active"
                   ? "bg-surface-container-lowest shadow-sm text-primary"
                   : "text-on-secondary-container hover:bg-surface-container-high",
@@ -2773,7 +2761,7 @@ Notes: "${order.notes || "None"}"
             <button
               onClick={() => setViewMode("history")}
               className={cn(
-                "px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                "px-4 py-1.5 rounded-full text-xs font-bold transition-all",
                 viewMode === "history"
                   ? "bg-surface-container-lowest shadow-sm text-primary"
                   : "text-on-secondary-container hover:bg-surface-container-high",
@@ -2788,7 +2776,7 @@ Notes: "${order.notes || "None"}"
           <button
             onClick={() => setKitchenMode(!kitchenMode)}
             className={cn(
-              "hidden md:flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all border-2 ml-auto",
+              "hidden md:flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all border-2 ml-auto",
               kitchenMode
                 ? "bg-primary text-on-primary border-primary"
                 : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
@@ -2925,7 +2913,9 @@ Notes: "${order.notes || "None"}"
                       onDeleteAllOrders();
                       setShowMobileActions(false);
                     }}
-                    className="flex items-center justify-center gap-2 py-2.5 bg-error/10 text-error rounded-xl text-xs font-bold"
+                    disabled={isReadOnlyPreview}
+                    title={isReadOnlyPreview ? "Unavailable in read-only Preview" : "Clear all orders"}
+                    className="flex items-center justify-center gap-2 py-2.5 bg-error/10 text-error rounded-xl text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Trash2 size={14} />
                     Clear All Orders (Reset)
@@ -2938,19 +2928,19 @@ Notes: "${order.notes || "None"}"
 
       <div
         className={cn(
-          "grid grid-cols-1 gap-8 items-start",
+          "grid grid-cols-1 gap-4 items-start",
           !kitchenMode && "lg:grid-cols-12",
         )}
       >
         <div
           className={cn(
             kitchenMode ? "col-span-full" : "lg:col-span-8",
-            "space-y-6",
+            "space-y-3",
           )}
         >
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-4 mb-2">
-              <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2 mb-0">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
                   Filter Status:
                 </span>
@@ -2959,7 +2949,7 @@ Notes: "${order.notes || "None"}"
                     key={status}
                     onClick={() => setFilterStatus(status)}
                     className={cn(
-                      "px-4 py-1.5 rounded-full text-xs font-bold transition-all border-2",
+                      "px-3 py-1.5 rounded-full text-xs font-bold transition-all border",
                       filterStatus === status
                         ? "bg-primary/10 text-primary border-primary"
                         : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
@@ -2970,30 +2960,7 @@ Notes: "${order.notes || "None"}"
                 ))}
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mr-2">
-                  Status Dropdown:
-                </span>
-                <div className="relative">
-                  <select
-                    id="status-filter-select"
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value as OrderStatus | "All")}
-                    className="appearance-none bg-surface-container-low text-on-surface text-xs font-bold pl-4 pr-10 py-2 rounded-xl border border-outline-variant/20 focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer shadow-xs transition-all"
-                  >
-                    <option value="All">All Statuses</option>
-                    <option value="pending">Pending</option>
-                    <option value="preparing">Preparing</option>
-                    <option value="ready">Ready</option>
-                    <option value="completed">Completed</option>
-                  </select>
-                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant">
-                    <Filter size={12} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 mt-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {(filterStatus !== "All" || orderTypeFilter !== "All" || startDate || endDate || searchTerm || customerSearch || phoneSearch) && (
                   <button
                     onClick={() => {
@@ -3080,8 +3047,8 @@ Notes: "${order.notes || "None"}"
               </motion.div>
             )}
 
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-headline text-xl font-bold flex items-center gap-2">
+            <div className="flex items-center justify-between mb-0">
+              <h3 className="font-headline text-lg font-bold flex items-center gap-2">
                 {viewMode === "active" ? "Active Queue" : "Order History"}
                 <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">
                   {displayedOrders.length} Orders
@@ -3102,7 +3069,7 @@ Notes: "${order.notes || "None"}"
               </div>
             </div>
 
-            <div className="flex items-center gap-4 mb-2 overflow-x-auto pb-2 scrollbar-hide">
+            <div className="flex items-center gap-2 mb-0 overflow-x-auto pb-1 scrollbar-hide">
               <span className="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">
                 Sort by:
               </span>
@@ -3117,7 +3084,7 @@ Notes: "${order.notes || "None"}"
                     handleSort(field.id as "id" | "total_price" | "created_at")
                   }
                   className={cn(
-                    "flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all shrink-0 border-2",
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 border",
                     sortField === field.id
                       ? "bg-primary text-on-primary border-primary shadow-[0_4px_12px_rgba(167,52,0,0.3)] scale-105 ring-2 ring-primary/20"
                       : "bg-surface-container-low text-on-surface-variant border-transparent hover:border-primary/20",
@@ -3202,8 +3169,10 @@ Notes: "${order.notes || "None"}"
             )}
           </AnimatePresence>
 
+          {viewMode === "active" && <PreviewFakeOrders />}
+
           {displayedOrders.length === 0 ? (
-            <div className="bg-surface-container-low rounded-[2rem] p-12 flex flex-col items-center text-center space-y-6 border-2 border-dashed border-outline-variant/20">
+            <div className="bg-surface-container-low rounded-[2rem] p-6 flex flex-col items-center text-center space-y-6 border-2 border-dashed border-outline-variant/20">
               <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center">
                 {viewMode === "active" ? (
                   <Clock className="text-primary" size={40} />
@@ -3213,11 +3182,11 @@ Notes: "${order.notes || "None"}"
               </div>
               <div className="space-y-2">
                 <h4 className="font-headline text-2xl font-bold">
-                  {viewMode === "active" ? "All caught up!" : "No history yet"}
+                  {viewMode === "active" ? (isReadOnlyPreview ? "No verified real orders" : "All caught up!") : "No history yet"}
                 </h4>
                 <p className="text-on-surface-variant max-w-xs mx-auto">
                   {viewMode === "active"
-                    ? "Your kitchen is currently clear. New orders will appear here as they arrive."
+                    ? (isReadOnlyPreview ? "Fake test orders above are local demonstrations only. Verified real orders will appear separately." : "Your kitchen is currently clear. New orders will appear here as they arrive.")
                     : "Completed orders will appear here once they are fulfilled."}
                 </p>
               </div>
@@ -4138,12 +4107,12 @@ Notes: "${order.notes || "None"}"
 
         {!kitchenMode && (
           <div className="lg:col-span-4 space-y-8">
-            <div className="bg-surface-container-lowest border border-outline-variant/10 rounded-3xl p-6 shadow-sm">
-              <h4 className="font-headline text-base font-bold text-on-surface mb-6 flex items-center gap-2">
-                <Bell size={18} className="text-primary" />
-                Notification Settings
-              </h4>
-              <div className="space-y-4">
+            <details className="bg-surface-container-lowest border border-outline-variant/10 rounded-3xl px-4 py-3 shadow-sm">
+              <summary className="font-headline text-sm font-bold text-on-surface cursor-pointer flex items-center gap-2">
+                <Bell size={16} className="text-primary" aria-hidden="true" />
+                Notification settings & order limit
+              </summary>
+              <div className="space-y-4 mt-3">
                 <div className="flex flex-col gap-2 p-4 bg-surface-container-low rounded-2xl">
                   <div className="flex items-center justify-between">
                     <div className="flex flex-col">
@@ -4234,7 +4203,7 @@ Notes: "${order.notes || "None"}"
                   </div>
                 </div>
               </div>
-            </div>
+            </details>
 
             <div className="bg-surface-container-high rounded-3xl p-8 relative overflow-hidden">
               <div className="relative z-10">
