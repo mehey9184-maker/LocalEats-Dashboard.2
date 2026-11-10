@@ -2423,10 +2423,10 @@ function App() {
                           <p className="text-xs font-semibold text-on-surface-variant">Your shop</p>
                           {merchantShopGate.status==="ready" && !!user?.id && currentShop?.owner_id===user.id ? (
                             <>
-                              <p className="text-base font-bold text-on-surface break-words">{currentShop.name}</p>
+                              <p className="text-base font-bold text-on-surface break-words">{currentShop?.name || "Shop"}</p>
                               <p className="flex items-start gap-2 text-xs text-on-surface-variant">
                                 <MapPin size={14} className="shrink-0 mt-0.5" aria-hidden="true"/>
-                                <span className="break-words">{currentShop.address || currentShop.location || currentShop.city || "Shop location not yet provided"}</span>
+                                <span className="break-words">{currentShop?.address || currentShop?.location || currentShop?.city || "Shop location not yet provided"}</span>
                               </p>
                             </>
                           ) : (
