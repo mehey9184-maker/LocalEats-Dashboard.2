@@ -47,7 +47,47 @@ jobs:
           test "$(psql -X -At -c 'select current_database()')" = "signup_synthetic_qa"
       - name: Reproduce unsafe signup role from synthetic user metadata
         run: psql -X -v ON_ERROR_STOP=1 -f tests/security/signup_role_fixture.sql
+      - name: Reject disabled signup trigger and unexpected grants
+        run: |
+          set -euo pipefail
+          draft=security/drafts/signup_role_customer_only_REVIEW_ONLY.sql
+          reject_drift() {
+            if psql -X -v ON_ERROR_STOP=1 -f "$draft" > /tmp/signup-drift.log 2>&1; then
+              echo 'Unexpectedly accepted signup drift' >&2
+              exit 1
+            fi
+            grep -q 'SIGNUP_ROLE_REVIEW_SCHEMA_DRIFT' /tmp/signup-drift.log
+          }
+          psql -X -v ON_ERROR_STOP=1 -c 'alter table auth.users disable trigger on_auth_user_created'
+          reject_drift
+          psql -X -v ON_ERROR_STOP=1 -c 'alter table auth.users enable trigger on_auth_user_created'
+          psql -X -v ON_ERROR_STOP=1 -c 'revoke execute on function public.handle_new_user() from service_role'
+          reject_drift
+          psql -X -v ON_ERROR_STOP=1 -c 'grant execute on function public.handle_new_user() to service_role'
+      - name: Capture original signup definition, grants and trigger
+        run: |
+          set -euo pipefail
+          psql -X -At -v ON_ERROR_STOP=1 -c "select pg_get_functiondef('public.handle_new_user()'::regprocedure) || ';'" | tr -d '\r' > /tmp/signup-before.sql
+          psql -X -At -v ON_ERROR_STOP=1 -c "select proowner, (select array_agg(a order by a::text) from unnest(proacl) a), proconfig, prosecdef from pg_proc where oid='public.handle_new_user()'::regprocedure" > /tmp/signup-before-attributes
+          psql -X -At -v ON_ERROR_STOP=1 -c "select oid, tgenabled, pg_get_triggerdef(oid) from pg_trigger where tgrelid='auth.users'::regclass and tgname='on_auth_user_created'" > /tmp/signup-before-trigger
       - name: Apply reviewed SQL only inside synthetic PostgreSQL
         run: psql -X -v ON_ERROR_STOP=1 -f security/drafts/signup_role_customer_only_REVIEW_ONLY.sql
       - name: Assert role cannot be supplied by signed-up user
         run: psql -X -v ON_ERROR_STOP=1 -f tests/security/signup_role_assertions.sql
+
+      - name: Rehearse signup rollback without changing account or profile rows
+        run: |
+          set -euo pipefail
+          rows="select
+            (select encode(sha256(convert_to(coalesce(jsonb_agg(to_jsonb(u) order by id)::text, '[]'), 'UTF8')), 'hex') from auth.users u),
+            (select encode(sha256(convert_to(coalesce(jsonb_agg(to_jsonb(p) order by user_id)::text, '[]'), 'UTF8')), 'hex') from public.profiles p)"
+          before="$(psql -X -At -v ON_ERROR_STOP=1 -c "$rows")"
+          psql -X --single-transaction -v ON_ERROR_STOP=1 -f /tmp/signup-before.sql \
+            -c 'grant execute on function public.handle_new_user() to public, anon, authenticated'
+          psql -X -At -v ON_ERROR_STOP=1 -c "select pg_get_functiondef('public.handle_new_user()'::regprocedure) || ';'" | tr -d '\r' > /tmp/signup-after.sql
+          diff -u /tmp/signup-before.sql /tmp/signup-after.sql
+          psql -X -At -v ON_ERROR_STOP=1 -c "select proowner, (select array_agg(a order by a::text) from unnest(proacl) a), proconfig, prosecdef from pg_proc where oid='public.handle_new_user()'::regprocedure" > /tmp/signup-after-attributes
+          diff -u /tmp/signup-before-attributes /tmp/signup-after-attributes
+          psql -X -At -v ON_ERROR_STOP=1 -c "select oid, tgenabled, pg_get_triggerdef(oid) from pg_trigger where tgrelid='auth.users'::regclass and tgname='on_auth_user_created'" > /tmp/signup-after-trigger
+          diff -u /tmp/signup-before-trigger /tmp/signup-after-trigger
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "$rows")" = "$before"

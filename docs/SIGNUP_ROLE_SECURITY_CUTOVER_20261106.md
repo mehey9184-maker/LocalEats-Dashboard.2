@@ -11,3 +11,9 @@ CI starts isolated PostgreSQL 17, reproduces a synthetic attacker-supplied admin
 Before any live cutover: capture encrypted real data backup and verify independent restore; confirm actual Production function body, trigger and role-dependent merchant approval logic have not changed; separately approve a live security migration; run a genuine sign-up test using **authorized test accounts** without real orders; inspect authorization roles/claims and verify merchant access remains grant-by-approval only. Revoking public EXECUTE may also need checking any unsupported clients relying on direct calls.
 
 The separate `rider_notifications` GRANT/RLS exposure still requires the reviewed PR #57 cutover. There is no delivery or rider product activation planned for at least six months of genuine pickup usage.
+
+## Rollback rehearsal
+
+The isolated PostgreSQL 17 workflow captures the pre-cutover function and its grants, configuration, owner, security mode and attached trigger. It restores the captured function and the three revoked EXECUTE grants in one transaction, then checks the original definition and trigger, the effective ACL entries, and hashes of every synthetic Auth user and profile row.
+
+A live rollback would restore the known signup privilege escalation. It requires separate approval and containment of public signup before restoring the old function. Recheck the live function and grants against the approved release state before any rollback. The CI commands use a disposable database.
