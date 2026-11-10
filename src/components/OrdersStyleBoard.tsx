@@ -76,6 +76,7 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
  const [visibleByLane,setVisibleByLane]=useState<Record<Stage,number>>({pending:6,preparing:6,ready:6,fulfilled:6});
  useEffect(()=>setVisibleByLane({pending:6,preparing:6,ready:6,fulfilled:6}),[style,viewMode,stageFilter]);
  const roomy=style==="expediter";
+ const compact=style==="compact";
  const allEntries=useMemo(()=>{
    // Only view-layer data: these are discriminated objects, never fed to API calls,
    // real counts, notifications or exports.
@@ -119,7 +120,7 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
        {lane.short} {counts[lane.key].real+counts[lane.key].fake}
      </button>)}
    </div>}
-   <div className={`grid min-w-0 items-start grid-cols-1 ${shownLanes.length===1?"":"md:grid-cols-2 2xl:grid-cols-4"} ${roomy?"gap-3 lg:gap-4":"gap-2 lg:gap-3"}`}>
+   <div className={`grid min-w-0 items-start grid-cols-1 ${shownLanes.length===1?"":"md:grid-cols-2 2xl:grid-cols-4"} ${compact?"gap-2 lg:gap-3":"gap-3 lg:gap-4"}`}>
      {shownLanes.map(lane=>{
        const stageEntries=allEntries.filter(e=>stageFor(e)===lane.key);
        const limited=stageEntries.slice(0,visibleByLane[lane.key]);
