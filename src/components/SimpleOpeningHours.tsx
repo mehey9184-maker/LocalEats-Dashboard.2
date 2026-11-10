@@ -1,5 +1,5 @@
 import React from "react";
-import {Clock3,Info,MapPin,Store} from "lucide-react";
+import {CalendarClock,Info,MapPin,Store} from "lucide-react";
 import type {Shop} from "../types";
 
 /**
@@ -24,7 +24,7 @@ export function SimpleOpeningHours({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center justify-center w-10 h-10 bg-primary/10 text-primary rounded-xl">
-            <Store size={20} aria-hidden="true"/>
+            <Store size={21} strokeWidth={2.2} aria-hidden="true"/>
           </span>
           <div>
             <h4 className="font-bold text-sm text-on-surface">Shop availability</h4>
@@ -42,7 +42,7 @@ export function SimpleOpeningHours({
     <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-low p-4 sm:p-5 space-y-3">
       <div className="flex items-center gap-3">
         <span className="inline-flex items-center justify-center w-10 h-10 bg-primary/10 text-primary rounded-xl">
-          <Clock3 size={20} aria-hidden="true"/>
+          <CalendarClock size={21} strokeWidth={2.2} aria-hidden="true"/>
         </span>
         <div>
           <h4 className="font-bold text-sm text-on-surface">Weekly opening hours</h4>
