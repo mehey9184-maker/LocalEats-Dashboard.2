@@ -2715,6 +2715,8 @@ Notes: "${order.notes || "None"}"
       <OrdersFocusedWorkspace
         realOrders={displayedOrders}
         fakeOrders={fakeOrders}
+        completedRealOrders={fulfilledOrdersToday}
+        styleStorageKey={`localeats.merchant.orders.style.v1.shop.${currentShop?.id ?? "unlinked"}`}
         onDemoAction={onDemoAction}
         incoming={incoming}
         onSimulate={() => simulateIncoming(soundAlerts)}
