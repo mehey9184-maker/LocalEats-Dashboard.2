@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
-import QRCodeLib from "qrcode";
+import { createLocalEatsBrandedQr, drawRecommendedLocalEatsPoster, LOCALEATS_POSTER_HEADLINE, LOCALEATS_DOMAIN, postableBrandCopy } from "./marketing/localEatsBrandedPoster";
 import { Shop, MenuItem, Order } from "../types";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
 import type { User } from "@supabase/supabase-js";
@@ -71,7 +71,7 @@ export const Marketing: React.FC<MarketingProps> = ({
   const userOwnedShops = useMemo(() => {
     if (shops.length === 0 && currentShop) return [currentShop];
     const owned = shops.filter((s) => isShopOwnedByUser(s, user));
-    return owned.length > 0 ? owned : (currentShop ? [currentShop] : []);
+    return owned.length > 0 ? owned : (currentShop && isShopOwnedByUser(currentShop, user) ? [currentShop] : []);
   }, [shops, user, currentShop]);
 
   const [selectedShopId, setSelectedShopId] = useState<string | number | null>(null);
@@ -81,30 +81,30 @@ export const Marketing: React.FC<MarketingProps> = ({
       const match = userOwnedShops.find((s) => String(s.id) === String(selectedShopId));
       if (match) return match;
     }
-    return currentShop || userOwnedShops[0];
+    return userOwnedShops.find((s) => String(s.id) === String(currentShop?.id)) || userOwnedShops[0];
   }, [userOwnedShops, selectedShopId, currentShop]);
 
   // Filter menu items for selected store
   const storeMenuItems = useMemo(() => {
-    if (!activeShop) return menuItems;
+    if (!activeShop) return [];
     return menuItems.filter((item) => String(item.shop_id) === String(activeShop.id));
   }, [menuItems, activeShop]);
 
   // Main Segment Navigation: Dashboard Summary, Campaign Builder, Tool Library
-  const [mainSegment, setMainSegment] = useState<MainSegment>("dashboard");
+  const [mainSegment, setMainSegment] = useState<MainSegment>("tool_library");
 
   // Sub-Tab within Tool Library
-  const [activeTool, setActiveTool] = useState<ToolSubTab>("direct_reach");
+  const [activeTool, setActiveTool] = useState<ToolSubTab>("whatsapp");
 
   // Store URL
   const storeUrl = useMemo(() => {
-    if (!activeShop) return "https://www.localeatssa.co.za";
+    if (!activeShop) return "";
     return `https://www.localeatssa.co.za/?shopId=${activeShop.id}`;
   }, [activeShop]);
 
   // High-Level Diner Analytics for Dashboard Summary
   const shopOrders = useMemo(() => {
-    if (!activeShop) return orders;
+    if (!activeShop) return [];
     return orders.filter(
       (o) =>
         String(o.shop_id) === String(activeShop.id) ||
@@ -139,7 +139,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     });
 
     const repeatRate = totalUniqueDiners > 0 ? Math.round((repeatCount / totalUniqueDiners) * 100) : 0;
-    const avgSpend = totalUniqueDiners > 0 ? Math.round(totalRevenue / totalUniqueDiners) : 0;
+    const avgSpend = shopOrders.length > 0 ? Math.round(totalRevenue / shopOrders.length) : 0;
 
     return {
       totalUniqueDiners,
@@ -158,7 +158,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // 2. QR Code State & Generator
   const [qrStyle, setQrStyle] = useState<QrStyle>("coral");
-  const [qrFrameText, setQrFrameText] = useState<string>("SCAN TO VIEW MENU");
+  const [qrFrameText, setQrFrameText] = useState<string>("SCAN TO EXPLORE");
   const [qrState, setQrState] = useState<{ sourceUrl: string; image: string } | null>(null);
   const qrDataUrl = qrState?.sourceUrl === storeUrl ? qrState.image : "";
   const [copiedLink, setCopiedLink] = useState(false);
@@ -166,49 +166,26 @@ export const Marketing: React.FC<MarketingProps> = ({
   const [copiedSms, setCopiedSms] = useState(false);
   const [copiedCaption, setCopiedCaption] = useState(false);
 
-  // Generate QR Code
+  // Brand QR is shared by the poster, printable flyer, and on-screen QR preview.
+  // Switching shops invalidates the previous image immediately.
   useEffect(() => {
-    let isMounted = true;
-    const generateQR = async () => {
-      try {
-        let darkColor = "#0F172A";
-        const lightColor = "#FFFFFF";
-
-        if (qrStyle === "coral") {
-          darkColor = "#EA580C"; // Brand Coral / Orange
-        } else if (qrStyle === "dark") {
-          darkColor = "#020617";
-        }
-
-        const url = await QRCodeLib.toDataURL(storeUrl, {
-          width: 500,
-          margin: 1,
-          color: {
-            dark: darkColor,
-            light: lightColor,
-          },
-          errorCorrectionLevel: "H",
-        });
-
-        if (isMounted) {
-          setQrState({ sourceUrl: storeUrl, image: url });
-        }
-      } catch (e) {
-        console.error("QR Code Generation Error:", e);
-      }
-    };
-
-    generateQR();
-    return () => {
-      isMounted = false;
-    };
+    let cancelled = false;
+    setQrState(null);
+    if (!storeUrl) return;
+    void createLocalEatsBrandedQr(storeUrl, qrStyle).then((url) => {
+      if (!cancelled) setQrState({ sourceUrl: storeUrl, image: url });
+    }).catch((error) => {
+      console.warn("Branded QR generation failed", error);
+      if (!cancelled) setQrState(null);
+    });
+    return () => { cancelled = true; };
   }, [storeUrl, qrStyle]);
 
   // Copy Store Link Handler
   const copyStoreUrl = () => {
     navigator.clipboard.writeText(storeUrl);
     setCopiedLink(true);
-    toast.success("Store online link copied to clipboard!");
+    toast.success("Shop menu link copied!");
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
@@ -247,6 +224,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // WhatsApp Action Handlers
   const handleOpenWhatsApp = () => {
+    if (!activeShop) return;
     const encoded = encodeURIComponent(activeMessage);
     const waUrl = `https://api.whatsapp.com/send?text=${encoded}`;
     window.open(waUrl, "_blank");
@@ -254,6 +232,7 @@ export const Marketing: React.FC<MarketingProps> = ({
   };
 
   const handleCopyMessage = () => {
+    if (!activeShop) return;
     navigator.clipboard.writeText(activeMessage);
     setCopiedMsg(true);
     toast.success("WhatsApp pitch copied to clipboard!");
@@ -262,194 +241,75 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // 4. Social Graphic Studio State
   const [socialTheme, setSocialTheme] = useState<SocialTheme>("coral");
-  const [socialTagline, setSocialTagline] = useState<string>("Best Kota & Township Meals");
+  const [socialTagline, setSocialTagline] = useState<string>(LOCALEATS_POSTER_HEADLINE);
+  const [posterEditorOpen, setPosterEditorOpen] = useState(false);
+  const [posterRevision, setPosterRevision] = useState(0);
+  const [posterReady, setPosterReady] = useState(false);
   const [featuredSocialItemId, setFeaturedSocialItemId] = useState<string | number>("");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const featuredSocialItem = useMemo(() => {
-    if (!featuredSocialItemId) return storeMenuItems[0] || null;
+    if (!featuredSocialItemId) return null;
     return storeMenuItems.find((i) => String(i.id) === String(featuredSocialItemId)) || null;
   }, [featuredSocialItemId, storeMenuItems]);
 
-  // Social Media Caption
+  // The caption promotes discovery without claiming a live discount or enabled checkout.
   const socialCaption = useMemo(() => {
-    const shopName = activeShop?.name || "Our Shop";
-    const shopLocation = activeShop?.address || activeShop?.location || "Township";
-    return `🔥 Discover ${shopName} on LocalEats SA! Explore the menu in ${shopLocation}. Pickup only and pay at the shop when ordering opens. 📲 Explore: ${storeUrl} #LocalEats #SupportLocal #${shopName.replace(/\s+/g, "")} #TownshipFood #KotaSA`;
+    const shopName = activeShop?.name || "our local shop";
+    return "Discover " + shopName + " on LocalEats! " + postableBrandCopy
+      + " Browse: " + storeUrl + " | Can't scan? " + LOCALEATS_DOMAIN
+      + " #LocalEats #SupportLocal";
   }, [activeShop, storeUrl]);
 
-  // Draw Social Graphic Canvas
-  const renderSocialGraphic = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    // Set canvas dimensions (1080x1080 High Res Square Post)
-    canvas.width = 1080;
-    canvas.height = 1080;
-
-    // Background theme
-    let bgGradient;
-    const textColor = "#FFFFFF";
-    let accentColor = "#FF5A36";
-
-    if (socialTheme === "coral") {
-      bgGradient = ctx.createLinearGradient(0, 0, 1080, 1080);
-      bgGradient.addColorStop(0, "#EA580C");
-      bgGradient.addColorStop(0.5, "#C2410C");
-      bgGradient.addColorStop(1, "#9A3412");
-      accentColor = "#FEF08A"; // Yellow accent
-    } else if (socialTheme === "dark") {
-      bgGradient = ctx.createLinearGradient(0, 0, 1080, 1080);
-      bgGradient.addColorStop(0, "#0F172A");
-      bgGradient.addColorStop(1, "#020617");
-      accentColor = "#FF5A36";
-    } else if (socialTheme === "golden") {
-      bgGradient = ctx.createLinearGradient(0, 0, 1080, 1080);
-      bgGradient.addColorStop(0, "#D97706");
-      bgGradient.addColorStop(1, "#78350F");
-      accentColor = "#FEF3C7";
-    } else {
-      // Emerald
-      bgGradient = ctx.createLinearGradient(0, 0, 1080, 1080);
-      bgGradient.addColorStop(0, "#059669");
-      bgGradient.addColorStop(1, "#064E3B");
-      accentColor = "#A7F3D0";
+  // Render the complete QR before allowing a poster to download.
+  // This avoids the old race where canvas.toDataURL captured a blank QR box.
+  const posterRenderRequest = useRef(0);
+  const renderSocialGraphic = useCallback(async () => {
+    const request = ++posterRenderRequest.current;
+    setPosterReady(false);
+    if (!activeShop || !qrDataUrl || !canvasRef.current) return;
+    try {
+      const qrImage = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("The branded QR preview could not load."));
+        img.src = qrDataUrl;
+      });
+      if (request !== posterRenderRequest.current || !canvasRef.current) return;
+      drawRecommendedLocalEatsPoster(canvasRef.current, {
+        shopName: activeShop.name || "LocalEats shop",
+        shopLocation: activeShop.address || activeShop.location || "",
+        headline: socialTagline,
+        featuredItem: featuredSocialItem
+          ? { name: featuredSocialItem.name, price: featuredSocialItem.price } : null,
+        theme: socialTheme,
+        qrImage,
+      });
+      setPosterReady(true);
+    } catch (error) {
+      console.error("LocalEats poster generation failed:", error);
+      if (request === posterRenderRequest.current) setPosterReady(false);
     }
-
-    ctx.fillStyle = bgGradient;
-    ctx.fillRect(0, 0, 1080, 1080);
-
-    // Subtle background circle patterns
-    ctx.fillStyle = "rgba(255, 255, 255, 0.04)";
-    ctx.beginPath();
-    ctx.arc(900, 150, 300, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(150, 950, 250, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Top Platform Badge
-    ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
-    ctx.roundRect(80, 80, 260, 56, 28);
-    ctx.fill();
-
-    ctx.font = "bold 24px system-ui, sans-serif";
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillText("LOCALEATS SA", 115, 117);
-
-    // Verified Store Badge
-    ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
-    ctx.roundRect(740, 80, 260, 56, 28);
-    ctx.fill();
-    ctx.fillStyle = accentColor;
-    ctx.font = "bold 22px system-ui, sans-serif";
-    ctx.fillText("⚡ OFFICIAL STORE", 765, 116);
-
-    // Shop Name
-    ctx.font = "900 68px system-ui, sans-serif";
-    ctx.fillStyle = textColor;
-    const shopName = activeShop?.name || "Local Eatery";
-    ctx.fillText(shopName.slice(0, 22), 80, 240);
-
-    // Tagline / Category
-    ctx.font = "bold 32px system-ui, sans-serif";
-    ctx.fillStyle = accentColor;
-    ctx.fillText(socialTagline || "Fresh Local Food", 80, 300);
-
-    // Central Card (Featured item or order callout)
-    ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
-    ctx.roundRect(80, 360, 520, 480, 32);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    if (featuredSocialItem) {
-      ctx.fillStyle = "#FFFFFF";
-      ctx.font = "bold 26px system-ui, sans-serif";
-      ctx.fillText("🔥 FEATURED TODAY", 120, 420);
-
-      ctx.font = "900 44px system-ui, sans-serif";
-      ctx.fillStyle = textColor;
-      ctx.fillText(featuredSocialItem.name.slice(0, 20), 120, 490);
-
-      ctx.font = "bold 34px system-ui, sans-serif";
-      ctx.fillStyle = accentColor;
-      ctx.fillText(`R${featuredSocialItem.price}`, 120, 550);
-
-      ctx.font = "24px system-ui, sans-serif";
-      ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
-      ctx.fillText("• Prepared fresh to order", 120, 620);
-      ctx.fillText("• Pickup only when available", 120, 665);
-      ctx.fillText("• Pay at shop on pickup", 120, 710);
-    } else {
-      ctx.fillStyle = "#FFFFFF";
-      ctx.font = "900 44px system-ui, sans-serif";
-      ctx.fillText("EXPLORE MENUS", 120, 470);
-      ctx.fillText("IN 3 STEPS", 120, 530);
-
-      ctx.font = "26px system-ui, sans-serif";
-      ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-      ctx.fillText("1. Scan QR or click store link", 120, 610);
-      ctx.fillText("2. Pick your favorite meal", 120, 665);
-      ctx.fillText("3. Pay at shop on pickup", 120, 720);
-    }
-
-    // QR Code Container Box
-    ctx.fillStyle = "#FFFFFF";
-    ctx.roundRect(650, 360, 350, 480, 32);
-    ctx.fill();
-
-    // Draw QR code image onto canvas if ready
-    if (qrDataUrl) {
-      const qrImg = new window.Image();
-      qrImg.crossOrigin = "anonymous";
-      qrImg.onload = () => {
-        ctx.drawImage(qrImg, 685, 395, 280, 280);
-        ctx.fillStyle = "#0F172A";
-        ctx.font = "900 24px system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("SCAN WITH PHONE", 825, 720);
-        ctx.font = "bold 20px system-ui, sans-serif";
-        ctx.fillStyle = "#EA580C";
-        ctx.fillText("TO ORDER NOW", 825, 755);
-        ctx.textAlign = "left";
-      };
-      qrImg.src = qrDataUrl;
-    }
-
-    // Bottom Bar (Location & Contact)
-    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
-    ctx.roundRect(80, 890, 920, 110, 28);
-    ctx.fill();
-
-    ctx.font = "bold 24px system-ui, sans-serif";
-    ctx.fillStyle = "#FFFFFF";
-    const loc = activeShop?.address || activeShop?.location || activeShop?.city || "Township Store";
-    const phone = activeShop?.phone || activeShop?.whatsapp || "WhatsApp Available";
-    ctx.fillText(`📍 ${loc.slice(0, 32)}`, 120, 955);
-    ctx.fillText(`📞 ${phone}`, 680, 955);
-  }, [socialTheme, socialTagline, featuredSocialItem, activeShop, qrDataUrl]);
+  }, [activeShop, qrDataUrl, socialTheme, socialTagline, featuredSocialItem]);
 
   useEffect(() => {
     if (mainSegment === "tool_library" && activeTool === "social_studio") {
-      const timer = setTimeout(() => {
-        renderSocialGraphic();
-      }, 100);
-      return () => clearTimeout(timer);
+      void renderSocialGraphic();
     }
-  }, [mainSegment, activeTool, renderSocialGraphic]);
+    return () => { posterRenderRequest.current++; };
+  }, [mainSegment, activeTool, renderSocialGraphic, posterRevision]);
 
   // Download Social Graphic Image
   const handleDownloadSocialGraphic = () => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !posterReady || !activeShop || !qrDataUrl) {
+      toast.error("Your branded poster is still loading. Please try again.");
+      return;
+    }
     try {
       const dataUrl = canvas.toDataURL("image/png");
       const link = document.createElement("a");
-      link.download = `Promo_${activeShop?.name || "LocalEats"}.png`;
+      link.download = `LocalEats_Poster_${activeShop?.name || "Shop"}.png`;
       link.href = dataUrl;
       link.click();
       toast.success("Social graphic downloaded successfully!");
@@ -628,10 +488,10 @@ export const Marketing: React.FC<MarketingProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-black text-on-surface flex items-center gap-2">
-                <span>Marketing & Customer Growth Studio</span>
+                <span>Marketing</span>
               </h2>
               <p className="text-xs text-on-surface-variant">
-                Drive sales, reward loyal diners, and promote your LocalEats store with QR stands, WhatsApp promos & flash deals.
+                Help more people discover your shop. Share real menu information; pickup ordering is available only when shown in the customer app.
               </p>
             </div>
           </div>
@@ -664,54 +524,32 @@ export const Marketing: React.FC<MarketingProps> = ({
         )}
       </div>
 
-      {/* 2. PRIMARY 3-SEGMENT NAVIGATION */}
-      <div className="bg-surface-container-lowest p-1.5 rounded-2xl border border-outline-variant/15 grid grid-cols-3 gap-2 shadow-xs">
-        {/* Segment 1: Dashboard Summary */}
-        <button
-          onClick={() => setMainSegment("dashboard")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
-            mainSegment === "dashboard"
-              ? "bg-primary text-on-primary shadow-sm"
-              : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-          }`}
-        >
-          <Sparkles size={16} />
-          <span>Dashboard Summary</span>
-        </button>
-
-        {/* Segment 2: Campaign Builder */}
-        <button
-          onClick={() => setMainSegment("campaign_builder")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
-            mainSegment === "campaign_builder"
-              ? "bg-primary text-on-primary shadow-sm"
-              : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-          }`}
-        >
-          <Ticket size={16} />
-          <span>Campaign Builder</span>
-        </button>
-
-        {/* Segment 3: Tool Library */}
-        <button
-          onClick={() => setMainSegment("tool_library")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
-            mainSegment === "tool_library"
-              ? "bg-primary text-on-primary shadow-sm"
-              : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-          }`}
-        >
-          <Layers size={16} />
-          <span>Tool Library (8)</span>
-        </button>
+{/* M4.1: four owner-facing actions. Legacy campaign/analytics controls remain dormant. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-label="Marketing actions">
+        {([
+          { key: "whatsapp", label: "Share My Shop", description: "Shop link and WhatsApp", icon: MessageSquare },
+          { key: "social_studio", label: "Create Poster", description: "Make a social graphic", icon: Palette },
+          { key: "qr_stands", label: "QR & Flyers", description: "Printable materials", icon: QrCode },
+          { key: "playbook", label: "Marketing Tips", description: "Free local ideas", icon: Sparkles },
+        ] as const).map(({key, label, description, icon: Icon}) => (
+          <button key={key} type="button" disabled={!activeShop}
+            aria-pressed={activeTool === key}
+            onClick={() => { setMainSegment("tool_library"); setActiveTool(key); }}
+            className={`min-h-24 text-left p-4 rounded-2xl border transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${activeTool === key ? "bg-primary text-on-primary border-primary shadow-sm" : "bg-surface-container-lowest text-on-surface border-outline-variant/15 hover:bg-surface-container-high"} disabled:opacity-50`}>
+            <Icon size={22} aria-hidden="true" />
+            <span className="block mt-2 text-sm font-black">{label}</span>
+            <span className="block mt-1 text-xs opacity-80">{description}</span>
+          </button>
+        ))}
       </div>
+      {!activeShop && <p role="status" className="text-sm text-on-surface-variant">Select a shop you own to create shop-specific marketing materials.</p>}
 
-      {/* 3. SEGMENT CONTENT */}
+            {/* 3. SEGMENT CONTENT */}
 
       {/* ========================================================================= */}
       {/* SEGMENT 1: DASHBOARD SUMMARY (EXECUTIVE GROWTH PULSE & QUICK ACTIONS)     */}
       {/* ========================================================================= */}
-      {mainSegment === "dashboard" && (
+      {false && mainSegment === "dashboard" && (
         <div className="space-y-6">
           {/* Executive Metrics Overview */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -950,7 +788,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 </button>
 
                 <button
-                  onClick={() => setMainSegment("campaign_builder")}
+                  onClick={() => setActiveTool("playbook")}
                   className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer"
                 >
                   <Ticket size={15} className="text-primary" />
@@ -999,7 +837,7 @@ export const Marketing: React.FC<MarketingProps> = ({
       {/* ========================================================================= */}
       {/* SEGMENT 2: CAMPAIGN BUILDER (DEDICATED INTERACTIVE CAMPAIGN & VOUCHERS)   */}
       {/* ========================================================================= */}
-      {mainSegment === "campaign_builder" && (
+      {false && mainSegment === "campaign_builder" && (
         <CampaignBuilder
           activeShop={activeShop}
           storeMenuItems={storeMenuItems}
@@ -1012,119 +850,34 @@ export const Marketing: React.FC<MarketingProps> = ({
       {/* ========================================================================= */}
       {mainSegment === "tool_library" && (
         <div className="space-y-6">
-          {/* Sub-Navigation for Tool Library */}
-          <div className="flex items-center gap-1.5 p-1.5 bg-surface-container-lowest rounded-2xl border border-outline-variant/15 overflow-x-auto shadow-xs">
-            <button
-              onClick={() => setActiveTool("direct_reach")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "direct_reach"
-                  ? "bg-primary text-on-primary shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <Users size={15} />
-              <span>Direct Customer Reach</span>
-            </button>
+          {/* Four-action navigation above replaces the legacy eight-tool submenu. */}
+                    {/* ACTIVE TOOL RENDERING */}
 
-            <button
-              onClick={() => setActiveTool("flash_deals")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "flash_deals"
-                  ? "bg-orange-500 text-white shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <Flame size={15} />
-              <span>Timed Flash Deals</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTool("table_tents")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "table_tents"
-                  ? "bg-emerald-600 text-white shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <Utensils size={15} />
-              <span>Table Tent Generator</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTool("qr_stands")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "qr_stands"
-                  ? "bg-primary text-on-primary shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <QrCode size={15} />
-              <span>Counter Stands & Flyers</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTool("whatsapp")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "whatsapp"
-                  ? "bg-primary text-on-primary shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <MessageSquare size={15} />
-              <span>WhatsApp Promos</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTool("social_studio")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "social_studio"
-                  ? "bg-primary text-on-primary shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <Palette size={15} />
-              <span>Social Graphic Studio</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTool("sms")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "sms"
-                  ? "bg-primary text-on-primary shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <Smartphone size={15} />
-              <span>SMS Broadcast</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTool("playbook")}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                activeTool === "playbook"
-                  ? "bg-primary text-on-primary shadow-xs"
-                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              }`}
-            >
-              <Sparkles size={15} />
-              <span>Growth Playbook</span>
-            </button>
-          </div>
-
-          {/* ACTIVE TOOL RENDERING */}
-
+          {activeTool === "whatsapp" && activeShop && (
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 p-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-bold text-sm text-on-surface">Your shop link</p>
+                <p className="text-xs break-all text-on-surface-variant">{storeUrl}</p>
+              </div>
+              <button type="button" onClick={copyStoreUrl}
+                className="rounded-xl bg-primary text-on-primary px-4 py-2.5 text-xs font-bold flex items-center gap-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                {copiedLink ? <Check size={16} /> : <Copy size={16} />}
+                {copiedLink ? "Copied" : "Copy Shop Link"}
+              </button>
+            </div>
+          )}
           {/* Tool 1: Direct Customer Reach & Diners */}
-          {activeTool === "direct_reach" && (
+          {false && activeTool === "direct_reach" && (
             <CustomerReEngagement
               activeShop={activeShop}
-              orders={orders}
+              orders={shopOrders}
               menuItems={storeMenuItems}
               storeUrl={storeUrl}
             />
           )}
 
           {/* Tool 2: Timed Flash Deals */}
-          {activeTool === "flash_deals" && (
+          {false && activeTool === "flash_deals" && (
             <FlashDealsStudio
               activeShop={activeShop}
               menuItems={storeMenuItems}
@@ -1133,7 +886,7 @@ export const Marketing: React.FC<MarketingProps> = ({
           )}
 
           {/* Tool 3: Table Tent Card Generator */}
-          {activeTool === "table_tents" && (
+          {false && activeTool === "table_tents" && (
             <TableTentGenerator
               activeShop={activeShop}
               storeUrl={storeUrl}
@@ -1333,7 +1086,7 @@ export const Marketing: React.FC<MarketingProps> = ({
             </div>
           )}
 
-          {/* Tool 5: WhatsApp Promos */}
+          {/* Tool 5: Share My Shop */}
           {activeTool === "whatsapp" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left: Preset Selector & Customizer */}
@@ -1341,7 +1094,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs space-y-4">
                   <h3 className="font-extrabold text-base text-on-surface flex items-center gap-2">
                     <MessageSquare size={18} className="text-emerald-500" />
-                    <span>Select Campaign Preset</span>
+                    <span>Choose a Share Message</span>
                   </h3>
 
                   <div className="grid grid-cols-2 gap-2.5">
@@ -1359,7 +1112,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
                         <Flame size={14} className="text-orange-500" /> Grand Opening
                       </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Announce you're taking orders</p>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Invite customers to browse your menu</p>
                     </button>
 
                     <button
@@ -1413,22 +1166,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       <p className="text-[11px] text-on-surface-variant mt-0.5">Promote menu browsing and pickup</p>
                     </button>
 
-                    <button
-                      onClick={() => {
-                        setSelectedPreset("discount");
-                        setUserEditedMessage(null);
-                      }}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                        selectedPreset === "discount"
-                          ? "border-emerald-500 bg-emerald-500/10 text-on-surface font-bold"
-                          : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-                      }`}
-                    >
-                      <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                        <Percent size={14} className="text-purple-500" /> Check Offers
-                      </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Share only offers verified in-app</p>
-                    </button>
+
 
                     <button
                       onClick={() => {
@@ -1498,7 +1236,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       className="flex-1 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
                     >
                       <MessageSquare size={16} />
-                      <span>Send on WhatsApp</span>
+                      <span>Share on WhatsApp</span>
                     </button>
 
                     <button
@@ -1548,157 +1286,109 @@ export const Marketing: React.FC<MarketingProps> = ({
             </div>
           )}
 
-          {/* Tool 6: Social Media Graphic Studio */}
+          {/* Tool 6: Recommended LocalEats poster with optional editing */}
           {activeTool === "social_studio" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left: Customizer */}
-              <div className="lg:col-span-5 space-y-5">
-                <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs space-y-4">
-                  <h3 className="font-extrabold text-base text-on-surface flex items-center gap-2">
-                    <Palette size={18} className="text-primary" />
-                    <span>Flyer Design & Themes</span>
-                  </h3>
-
-                  {/* Color Theme Selector */}
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface mb-2">Color Palette</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => setSocialTheme("coral")}
-                        className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
-                          socialTheme === "coral"
-                            ? "border-primary bg-primary/10 text-primary font-bold shadow-xs"
-                            : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-                        }`}
-                      >
-                        <div className="w-4 h-4 rounded-full bg-[#EA580C]" />
-                        <span className="text-xs">Township Coral</span>
-                      </button>
-
-                      <button
-                        onClick={() => setSocialTheme("dark")}
-                        className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
-                          socialTheme === "dark"
-                            ? "border-primary bg-primary/10 text-primary font-bold shadow-xs"
-                            : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-                        }`}
-                      >
-                        <div className="w-4 h-4 rounded-full bg-[#0F172A]" />
-                        <span className="text-xs">Midnight Charcoal</span>
-                      </button>
-
-                      <button
-                        onClick={() => setSocialTheme("golden")}
-                        className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
-                          socialTheme === "golden"
-                            ? "border-primary bg-primary/10 text-primary font-bold shadow-xs"
-                            : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-                        }`}
-                      >
-                        <div className="w-4 h-4 rounded-full bg-[#D97706]" />
-                        <span className="text-xs">Golden Amber</span>
-                      </button>
-
-                      <button
-                        onClick={() => setSocialTheme("emerald")}
-                        className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
-                          socialTheme === "emerald"
-                            ? "border-primary bg-primary/10 text-primary font-bold shadow-xs"
-                            : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-                        }`}
-                      >
-                        <div className="w-4 h-4 rounded-full bg-[#059669]" />
-                        <span className="text-xs">Emerald Fresh</span>
-                      </button>
-                    </div>
+              <div className="lg:col-span-5">
+                <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs space-y-5">
+                  <div className="flex items-center gap-2">
+                    <Palette size={20} className="text-primary" />
+                    <h3 className="font-extrabold text-base text-on-surface">Ready-to-share poster</h3>
                   </div>
-
-                  {/* Tagline */}
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface mb-1.5">Tagline / Highlight Phrase</label>
-                    <input
-                      type="text"
-                      value={socialTagline}
-                      onChange={(e) => setSocialTagline(e.target.value)}
-                      className="w-full bg-surface-container-high border-none rounded-xl px-3.5 py-2.5 text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary outline-none"
-                      placeholder="e.g. Best Kota in Town, Fresh Daily"
-                    />
+                  <p className="text-xs leading-relaxed text-on-surface-variant">
+                    We created a LocalEats poster for your shop. Download it now or make small edits.
+                    Offers are shown only when available in the app.
+                  </p>
+                  <div className="rounded-xl bg-surface-container-low p-3 text-xs text-on-surface-variant">
+                    <p className="font-bold text-on-surface">{activeShop?.name || "Your shop"}</p>
+                    <p className="mt-1">{LOCALEATS_DOMAIN} · LocalEats since 2023</p>
                   </div>
-
-                  {/* Highlight Specific Menu Item */}
-                  {storeMenuItems.length > 0 && (
-                    <div>
-                      <label className="block text-xs font-bold text-on-surface mb-1.5">Featured Item on Card</label>
-                      <select
-                        value={featuredSocialItemId}
-                        onChange={(e) => setFeaturedSocialItemId(e.target.value)}
-                        className="w-full bg-surface-container-high border-none rounded-xl px-3.5 py-2.5 text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary outline-none"
-                      >
-                        <option value="">Browse LocalEats Menus</option>
-                        {storeMenuItems.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name} (R{item.price})
-                          </option>
-                        ))}
-                      </select>
+                  <button type="button" onClick={handleDownloadSocialGraphic} disabled={!posterReady || !activeShop}
+                    className="w-full min-h-12 py-3 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                    <Download size={17} />
+                    <span>{posterReady ? "Download Poster (PNG)" : "Preparing your poster..."}</span>
+                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => {
+                      setSocialTheme("coral");
+                      setSocialTagline(LOCALEATS_POSTER_HEADLINE);
+                      setFeaturedSocialItemId("");
+                      setPosterRevision((v) => v + 1);
+                    }} className="min-h-11 rounded-xl border border-outline-variant/30 px-3 text-xs font-bold text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                      Regenerate
+                    </button>
+                    <button type="button" aria-expanded={posterEditorOpen}
+                      onClick={() => setPosterEditorOpen((v) => !v)}
+                      className="min-h-11 rounded-xl border border-outline-variant/30 px-3 text-xs font-bold text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                      {posterEditorOpen ? "Close Editor" : "Edit Text"}
+                    </button>
+                  </div>
+                  {posterEditorOpen && (
+                    <div className="space-y-4 border-t border-outline-variant/20 pt-4">
+                      <div>
+                        <label htmlFor="localeats-poster-headline" className="block text-xs font-bold text-on-surface mb-1.5">Headline</label>
+                        <input id="localeats-poster-headline" type="text" maxLength={70}
+                          value={socialTagline} onChange={(e) => setSocialTagline(e.target.value)}
+                          className="w-full bg-surface-container-high rounded-xl px-3 py-2.5 text-xs text-on-surface focus:ring-2 focus:ring-primary outline-none" />
+                      </div>
+                      {storeMenuItems.length > 0 && (
+                        <div>
+                          <label htmlFor="localeats-poster-item" className="block text-xs font-bold text-on-surface mb-1.5">Featured item (optional)</label>
+                          <select id="localeats-poster-item" value={featuredSocialItemId}
+                            onChange={(e) => setFeaturedSocialItemId(e.target.value)}
+                            className="w-full bg-surface-container-high rounded-xl px-3 py-2.5 text-xs text-on-surface focus:ring-2 focus:ring-primary outline-none">
+                            <option value="">Browse LocalEats menus</option>
+                            {storeMenuItems.map((item) => <option key={item.id} value={item.id}>{item.name} (R{item.price})</option>)}
+                          </select>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-xs font-bold text-on-surface mb-2">Poster colour (optional)</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {([
+                            ["coral", "LocalEats Orange"], ["dark", "Midnight"], ["golden", "Golden"], ["emerald", "Fresh Green"]
+                          ] as const).map(([theme, label]) => (
+                            <button key={theme} type="button" aria-pressed={socialTheme === theme}
+                              onClick={() => setSocialTheme(theme)}
+                              className={`rounded-xl border px-3 py-2.5 text-xs font-bold ${socialTheme === theme ? "bg-primary/10 border-primary text-primary" : "bg-surface-container-low border-outline-variant/20 text-on-surface"}`}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
-
-                  {/* Download Action */}
-                  <button
-                    onClick={handleDownloadSocialGraphic}
-                    className="w-full py-3 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer"
-                  >
-                    <Download size={16} />
-                    <span>Download High-Res Graphic (PNG)</span>
-                  </button>
-
-                  {/* Auto Caption Generator */}
-                  <div className="pt-3 border-t border-outline-variant/10 space-y-2">
-                    <label className="block text-xs font-bold text-on-surface flex items-center justify-between">
-                      <span>Instagram & Facebook Caption</span>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(socialCaption);
+                  <div className="border-t border-outline-variant/10 pt-3">
+                    <div className="flex justify-between items-center gap-3">
+                      <span className="text-xs font-bold text-on-surface">Social caption</span>
+                      <button type="button" onClick={() => {
+                        void navigator.clipboard.writeText(socialCaption).then(() => {
                           setCopiedCaption(true);
                           toast.success("Caption copied!");
                           setTimeout(() => setCopiedCaption(false), 2000);
-                        }}
-                        className="text-primary hover:underline text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                      >
-                        {copiedCaption ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-                        <span>{copiedCaption ? "Copied" : "Copy Caption"}</span>
+                        }).catch(() => toast.error("Unable to copy caption."));
+                      }} className="text-xs font-bold text-primary">
+                        {copiedCaption ? "Copied" : "Copy Caption"}
                       </button>
-                    </label>
-                    <div className="p-3 bg-surface-container-low rounded-2xl border border-outline-variant/15 text-[11px] font-mono text-on-surface leading-relaxed">
-                      {socialCaption}
                     </div>
+                    <p className="mt-2 rounded-xl bg-surface-container-low p-3 text-[11px] text-on-surface-variant leading-relaxed break-all">{socialCaption}</p>
                   </div>
                 </div>
               </div>
-
-              {/* Right: Live Graphic Canvas Render */}
-              <div className="lg:col-span-7 flex flex-col items-center justify-center">
-                <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xl text-center space-y-4 w-full max-w-lg">
+              <div className="lg:col-span-7">
+                <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xl text-center space-y-4 w-full max-w-lg mx-auto">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-black text-on-surface flex items-center gap-1.5">
-                      <Eye size={14} className="text-primary" /> Live Social Card Preview (1080 × 1080)
+                      <Eye size={14} className="text-primary" /> Poster Preview
                     </span>
-                    <span className="text-[10px] font-bold text-on-surface-variant bg-surface-container-high px-2 py-0.5 rounded-full">
-                      Square Post
-                    </span>
+                    <span className="text-[10px] text-on-surface-variant">1080 × 1080 PNG</span>
                   </div>
-
-                  {/* Rendered HTML5 Canvas */}
-                  <div className="w-full aspect-square bg-slate-900 rounded-2xl overflow-hidden shadow-md flex items-center justify-center border border-outline-variant/20">
-                    <canvas
-                      ref={canvasRef}
-                      className="w-full h-full object-contain"
-                    />
+                  <div className="relative w-full aspect-square bg-surface-container-low rounded-2xl overflow-hidden shadow-md flex items-center justify-center border border-outline-variant/20">
+                    <canvas ref={canvasRef} className="w-full h-full object-contain" aria-label="LocalEats branded shop poster preview" role="img" />
+                    {!posterReady && <span role="status" className="absolute inset-0 flex items-center justify-center bg-surface-container-lowest/90 p-4 text-xs text-on-surface-variant">Preparing your branded QR poster...</span>}
                   </div>
-
                   <p className="text-[11px] text-on-surface-variant">
-                    Ready to post on Facebook, Instagram, WhatsApp Status, or TikTok!
+                    The QR opens your shop. The short website address helps customers who cannot scan.
                   </p>
                 </div>
               </div>
@@ -1706,7 +1396,7 @@ export const Marketing: React.FC<MarketingProps> = ({
           )}
 
           {/* Tool 7: SMS Broadcast */}
-          {activeTool === "sms" && (
+          {false && activeTool === "sms" && (
             <div className="max-w-2xl mx-auto space-y-5">
               <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs space-y-4">
                 <div className="flex items-center gap-2">
@@ -1778,33 +1468,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 </p>
               </div>
 
-              <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs space-y-3">
-                <div className="w-10 h-10 rounded-2xl bg-purple-500/10 text-purple-500 flex items-center justify-center font-bold">
-                  🎟️
-                </div>
-                <h3 className="font-extrabold text-base text-on-surface">4. First-Order Voucher Codes</h3>
-                <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Create and advertise only offers that are actually approved and active; never promise a voucher that checkout cannot honour.
-                </p>
-                <div className="flex items-center gap-3 pt-1">
-                  <button
-                    onClick={() => setMainSegment("campaign_builder")}
-                    className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>Open Campaign Builder</span>
-                    <ExternalLink size={12} />
-                  </button>
-                  {onNavigateTab && (
-                    <button
-                      onClick={() => onNavigateTab("coupons")}
-                      className="text-xs font-bold text-on-surface-variant hover:text-on-surface flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>(or Merchant Coupons tab)</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+     </div>
           )}
         </div>
       )}
