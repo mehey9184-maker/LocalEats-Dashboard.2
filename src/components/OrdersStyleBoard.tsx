@@ -3,6 +3,7 @@ import {ChevronDown, ChevronUp, Clock3, ClipboardList, ShoppingBag} from "lucide
 import type {Order} from "../types";
 import {isPickupOrder,pickupPaymentLabel} from "../services/merchantPickupPolicy";
 import {PickupOrderActions} from "./PickupOrderActions";
+import {OrderCustomerNote} from "./OrderCustomerNote";
 import {PreviewFakeOrderCard,type PreviewTestPickupOrder,type PreviewTestPickupAction} from "./PreviewFakeOrders";
 
 export type OrderBoardStyle="expediter"|"compact";
@@ -52,6 +53,7 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
    <p className={`text-on-surface-variant break-words ${roomy?"text-xs":"text-[11px]"}`}>
      <ShoppingBag size={12} className="inline-block mr-1" aria-hidden="true"/>{order.product_name||"Open full order for items"}
    </p>
+   <OrderCustomerNote order={order} compact={!roomy}/>
    {pickup?<div className={roomy?"rounded-xl bg-surface-container-low/50 p-2":"rounded-lg bg-surface-container-low/50 p-1.5"}>
      {roomy&&<p className="text-[11px] text-on-surface-variant mb-1">{pickupPaymentLabel(order)}</p>}
      <PickupOrderActions order={order} compact={!roomy}/>
