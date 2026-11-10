@@ -578,6 +578,11 @@ test("Settings S2 keeps future modules dormant rather than deleting source or al
   assert.ok(app.includes('settingsCategory === "account" && ('));
   assert.ok(app.includes("App Walkthrough Tour"));
   assert.ok(app.includes("Payments & Plans"));
+  assert.ok(app.includes('currentShop?.owner_id===user.id'));
+  assert.ok(app.includes("Shop information is being verified."));
+  assert.ok(app.includes("Change your shop name, photos and address in Storefront Profile."));
+  const storefront=app.slice(app.indexOf('settingsCategory === "storefront" && ('),app.indexOf('settingsCategory === "account" && (',app.indexOf('settingsCategory === "storefront" && (')));
+  assert.ok(!storefront.includes("<LocationSyncIndicator"),"Technical GPS sync controls should not clutter owner Settings");
   assert.ok(app.includes('onClick={()=>setActiveTab("payments")}'));
   assert.ok(app.includes("Sound Alerts") && app.includes("Push Notifications") && app.includes("Dark Mode"));
   assert.ok(app.includes("Sign Out"));
