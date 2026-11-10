@@ -599,6 +599,8 @@ test("Settings S2 opening-hours overview cannot claim a fake save or send direct
   assert.ok(view.includes("It does not mean that real customer ordering has been activated."));
   assert.ok(view.includes("The old hours form did not save to the verified shop schedule."));
   assert.ok(view.includes("No hours or shop status will be changed from this page."));
+  assert.ok(view.includes("Shop status cannot be confirmed until your authenticated shop profile is verified."));
+  assert.ok(app.includes('currentShop?.owner_id===user.id'));
   assert.ok(app.includes('verified={merchantShopGate.status==="ready"'));
   assert.ok(app.includes('currentShop?.owner_id===user.id'));
   for(const prohibited of ["supabase","MerchantApi.","fetch(","localStorage.","setItem(","window.print(","onChange=","<input",">Save Hours<"]){
