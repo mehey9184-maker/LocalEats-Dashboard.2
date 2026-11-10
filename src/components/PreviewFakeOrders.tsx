@@ -1,5 +1,5 @@
-import {useEffect,useRef,useState} from "react";
-import {FlaskConical,ShoppingBag,Clock3,X} from "lucide-react";
+import {memo,startTransition,useCallback,useEffect,useRef,useState} from "react";
+import {FlaskConical,X} from "lucide-react";
 import {toast} from "sonner";
 import {PickupOrderActions} from "./PickupOrderActions";
 import {pickupCommand,type PickupAction} from "../services/merchantPickupPolicy";
@@ -97,43 +97,51 @@ export function usePreviewFakeOrders(){
     if(timerRef.current!==null){window.clearTimeout(timerRef.current);timerRef.current=null;}
     itemsRef.current=[];setFakeOrders([]);setIncoming(false);
   };
-  const onDemoAction:PreviewTestPickupAction=(id,action,extra)=>{
+  const onDemoAction:PreviewTestPickupAction=useCallback((id,action,extra)=>{
     if(!isMerchantPreviewSimulatorEnabled())throw new Error("Fake order simulation is unavailable.");
     const current=itemsRef.current.find(order=>order.id===id);
     if(!current)throw new Error("The sample order is unavailable.");
     const updated=advanceLocal(current,action,extra);
     const next=itemsRef.current.map(order=>order.id===id?updated:order);
-    itemsRef.current=next;setFakeOrders(next);
-    toast.info(`TEST ONLY: ${action.replace("_"," ")} simulated; nothing was saved.`,{duration:2400});
-  };
+    itemsRef.current=next;
+    // Keep the button response immediate; the heavy ticket-list update is lower priority.
+    // This alone does not prove a specific INP value: validate in an actual browser.
+    startTransition(()=>setFakeOrders(next));
+  },[]);
   return {allowed,fakeOrders,incoming,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction};
 }
 
-export function PreviewFakeOrderCard({order,onDemoAction,variant="expediter"}:{order:PreviewTestPickupOrder;onDemoAction:PreviewTestPickupAction;variant?:"expediter"|"compact"}){
+export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDemoAction,variant="expediter"}:{
+  order:PreviewTestPickupOrder;
+  onDemoAction:PreviewTestPickupAction;
+  variant?:"expediter"|"compact";
+}){
+  // One memoized, lightweight ticket. Local demo state never reaches an API.
   if(!isMerchantPreviewSimulatorEnabled())return null;
   const roomy=variant==="expediter";
-  return (
-    <article data-testid="fake-incoming-order" data-style={variant} className={`min-w-0 bg-amber-50/40 dark:bg-amber-950/20 border-2 border-dashed border-amber-300 shadow-sm relative overflow-hidden animate-in fade-in duration-200 ${roomy?"rounded-2xl p-4 space-y-3":"rounded-xl p-2.5 space-y-2"}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="rounded-full bg-amber-100 text-amber-950 px-2 py-1 text-[10px] font-black inline-flex items-center gap-1">
-          <FlaskConical size={12} aria-hidden="true"/> FAKE · TEST ONLY
-        </span>
-        <span className="text-[10px] text-on-surface-variant font-mono break-all">{order.id}</span>
-      </div>
-      <div>
-        <h4 className={`font-extrabold text-on-surface ${roomy?"text-sm":"text-xs"}`}>{order.customer_name}</h4>
-        <p className="flex items-center gap-1.5 text-xs text-on-surface-variant mt-1">
-          <ShoppingBag size={13} aria-hidden="true"/> {order.product_name} × 1 · R {order.total_price.toFixed(2)}
-        </p>
-        {roomy&&<p className="flex items-center gap-1 text-xs text-on-surface-variant mt-1">
-          <Clock3 size={12} aria-hidden="true"/> Sample pickup · Pay at shop
-        </p>}
-      </div>
-      <PickupOrderActions order={order} compact={!roomy} onSimulate={(action,extra)=>onDemoAction(order.id,action,extra)}/>
-      {roomy&&<p className="text-[10px] text-amber-800 dark:text-amber-200 font-semibold">Never printed, sent, charged or stored.</p>}
-    </article>
-  );
-}
+  const shortId=order.id.replace("FAKE-L1C3-","T-");
+  const payment=order.payment_status==="paid" ? "Payment simulated" : "Pay at shop";
+  return <article
+    data-testid="fake-incoming-order"
+    data-style={variant}
+    className={`min-w-0 overflow-hidden bg-white dark:bg-zinc-950 border-2 border-dashed border-amber-300 dark:border-amber-600/70 shadow-sm ${roomy?"rounded-2xl px-3.5 py-3 space-y-2":"rounded-xl px-3 py-2.5 space-y-1.5"}`}
+  >
+    <div className="min-w-0 flex items-center justify-between gap-2">
+      <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 dark:bg-amber-900/50 text-amber-900 dark:text-amber-100 px-1.5 py-0.5 text-[9px] leading-3 font-extrabold tracking-wide uppercase">
+        <FlaskConical size={11} aria-hidden="true"/> Fake · Test only
+      </span>
+      <span className="shrink-0 font-mono text-[10px] font-bold text-slate-500 dark:text-zinc-400" title={order.id}>#{shortId}</span>
+    </div>
+    <div className="flex min-w-0 items-start justify-between gap-2">
+      <h4 className={`min-w-0 font-headline font-extrabold text-slate-900 dark:text-zinc-100 break-words leading-5 ${roomy?"text-[15px]":"text-sm"}`}>{order.customer_name}</h4>
+      <span className="shrink-0 font-extrabold text-[13px] text-slate-900 dark:text-zinc-100">R {order.total_price.toFixed(2)}</span>
+    </div>
+    <p className="text-xs font-semibold text-slate-700 dark:text-zinc-300 leading-4 truncate" title={order.product_name}>
+      1× {order.product_name} <span className="font-normal text-slate-500 dark:text-zinc-400">· {payment}</span>
+    </p>
+    <PickupOrderActions order={order} compact onSimulate={(action,extra)=>onDemoAction(order.id,action,extra)}/>
+  </article>;
+});
 
 export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear}:{
   incoming:boolean;count:number;onSimulate:()=>void;onClear:()=>void;
