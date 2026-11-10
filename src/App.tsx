@@ -78,6 +78,8 @@ import { useAuthGuard } from "./hooks/useAuthGuard";
 import { useOrderWorkflow } from "./hooks/useOrderWorkflow";
 import { useShopLocation } from "./hooks/useShopLocation";
 import { useAppNavigation } from "./hooks/useAppNavigation";
+import { usePageNotificationAttention } from "./hooks/usePageNotificationAttention";
+import { isMerchantPreviewSimulatorEnabled } from "./services/merchantPreviewSimulator";
 import { useAppInitializer } from "./hooks/useAppInitializer";
 import { usePushNotifications } from "./hooks/usePushNotifications";
 import {
@@ -1176,6 +1178,17 @@ function App() {
     return ()=>{clearInterval(timer);window.removeEventListener("focus",refresh);};
   },[user,fetchShops]);
 
+  // Animate only the icon for the page to which a verified new alert belongs.
+  // The cue is visual only; it never acknowledges messages or changes data.
+  const {pulses:navAttention,pulseForTopic:pulseNavNotice}=usePageNotificationAttention({
+    scope:orderReadScope && menuReadScope===orderReadScope && merchantShopGate.status==="ready" ? orderReadScope : null,
+    ordersFresh:orderReadStatus.state==="fresh",
+    orders,
+    menuFresh:menuReadStatus.scope===menuReadScope && menuReadStatus.state==="ready",
+    menuItems,
+    activeTab,
+  });
+
   const { serviceLoading } = useAppInitializer({
     user,
     role: "merchant",
@@ -1705,10 +1718,12 @@ function App() {
   const pendingOrdersCount = orders.filter(
     (o) => o.status === "pending",
   ).length;
+  const lowStockMenuCount = menuReadScope && menuReadStatus.scope===menuReadScope && menuReadStatus.state==="ready"
+    ? menuItems.filter(item=>typeof item.stock_quantity==="number" && item.stock_quantity<5).length : 0;
 
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "menu", label: "Menu", icon: UtensilsCrossed },
+    { id: "menu", label: "Menu", icon: UtensilsCrossed, badge: lowStockMenuCount>0 ? lowStockMenuCount : null },
     {
       id: "orders",
       label: "Orders",
@@ -1861,7 +1876,12 @@ function App() {
         <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
 
 
-        <NotificationCenterSidePanel isOpen={isNotificationCenterOpen} onClose={() => setIsNotificationCenterOpen(false)} orders={orders} menuItems={menuItems} />        <OnboardingTour
+        <NotificationCenterSidePanel isOpen={isNotificationCenterOpen} onClose={() => setIsNotificationCenterOpen(false)}
+          orders={orders} menuItems={menuItems}
+          onPreviewTestNotice={isMerchantPreviewSimulatorEnabled()
+            ? (topic)=>{setIsNotificationCenterOpen(false);pulseNavNotice(topic);}
+            : undefined}
+        />        <OnboardingTour
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           isOpen={onboardingOpen}
@@ -2057,7 +2077,10 @@ function App() {
                           transition={{ type: "spring", stiffness: 380, damping: 30 }}
                         />
                       )}
-                      <item.icon size={15} className={cn(isActive ? "stroke-[2.5px]" : "stroke-[1.8px]")} />
+                      <span key={`desktop-${item.id}-${navAttention[item.id as keyof typeof navAttention]??0}`}
+                        className={cn("inline-flex shrink-0",navAttention[item.id as keyof typeof navAttention]&&"localeats-nav-notice-wiggle")}>
+                        <item.icon size={15} className={cn(isActive ? "stroke-[2.5px]" : "stroke-[1.8px]")} />
+                      </span>
                       {item.label}
                       {item.badge && (
                         <span className="relative flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white animate-pulse shrink-0 ml-0.5 font-bold">
@@ -4312,12 +4335,10 @@ function App() {
                           "relative",
                           isActive ? "scale-110" : "group-active:scale-95 transition-transform"
                         )}>
-                          <item.icon
-                            size={20}
-                            className={cn(
-                              isActive ? "stroke-[2.5px]" : "stroke-[1.5px]",
-                            )}
-                          />
+                          <span key={`mobile-${item.id}-${navAttention[item.id as keyof typeof navAttention]??0}`}
+                            className={cn("inline-flex",navAttention[item.id as keyof typeof navAttention]&&"localeats-nav-notice-wiggle")}>
+                            <item.icon size={20} className={cn(isActive ? "stroke-[2.5px]" : "stroke-[1.5px]")} />
+                          </span>
                           {item.badge && (
                             <span className={cn(
                               "absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-black border-2 border-white dark:border-zinc-950",
@@ -4356,12 +4377,10 @@ function App() {
                       />
                     )}
                     <div className="relative">
-                      <MoreHorizontal
-                        size={20}
-                        className={cn(
-                          isMoreActive ? "stroke-[2.5px]" : "stroke-[1.5px]"
-                        )}
-                      />
+                      <span key={`mobile-more-${secondaryMobileNavItems.map(item=>navAttention[item.id as keyof typeof navAttention]??0).join("-")}`}
+                        className={cn("inline-flex",secondaryMobileNavItems.some(item=>navAttention[item.id as keyof typeof navAttention])&&"localeats-nav-notice-wiggle")}>
+                        <MoreHorizontal size={20} className={cn(isMoreActive ? "stroke-[2.5px]" : "stroke-[1.5px]")}/>
+                      </span>
                       {secondaryMobileNavItems.some(item => item.badge) && (
                         <span className={cn(
                           "absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-black border-2 border-white animate-pulse",
@@ -4438,7 +4457,10 @@ function App() {
                           "p-3 rounded-2xl transition-colors",
                           isActive ? "bg-primary text-white" : "bg-on-surface/5 text-on-surface-variant"
                         )}>
-                          <item.icon size={22} />
+                          <span key={`mobile-drawer-${item.id}-${navAttention[item.id as keyof typeof navAttention]??0}`}
+                            className={cn("inline-flex",navAttention[item.id as keyof typeof navAttention]&&"localeats-nav-notice-wiggle")}>
+                            <item.icon size={22} />
+                          </span>
                         </div>
                         {item.badge && (
                           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] text-white font-black animate-pulse shadow-sm shadow-primary/30">
