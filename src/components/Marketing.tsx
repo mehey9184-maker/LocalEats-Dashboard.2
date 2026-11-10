@@ -208,7 +208,7 @@ export const Marketing: React.FC<MarketingProps> = ({
   const copyStoreUrl = () => {
     navigator.clipboard.writeText(storeUrl);
     setCopiedLink(true);
-    toast.success("Store online link copied to clipboard!");
+    toast.success("Shop menu link copied!");
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
@@ -995,6 +995,19 @@ export const Marketing: React.FC<MarketingProps> = ({
           {/* Four-action navigation above replaces the legacy eight-tool submenu. */}
                     {/* ACTIVE TOOL RENDERING */}
 
+          {activeTool === "whatsapp" && activeShop && (
+            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 p-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-bold text-sm text-on-surface">Your shop link</p>
+                <p className="text-xs break-all text-on-surface-variant">{storeUrl}</p>
+              </div>
+              <button type="button" onClick={handleCopyLink}
+                className="rounded-xl bg-primary text-on-primary px-4 py-2.5 text-xs font-bold flex items-center gap-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                {copiedLink ? <Check size={16} /> : <Copy size={16} />}
+                {copiedLink ? "Copied" : "Copy Shop Link"}
+              </button>
+            </div>
+          )}
           {/* Tool 1: Direct Customer Reach & Diners */}
           {false && activeTool === "direct_reach" && (
             <CustomerReEngagement
@@ -1223,7 +1236,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs space-y-4">
                   <h3 className="font-extrabold text-base text-on-surface flex items-center gap-2">
                     <MessageSquare size={18} className="text-emerald-500" />
-                    <span>Select Campaign Preset</span>
+                    <span>Choose a Share Message</span>
                   </h3>
 
                   <div className="grid grid-cols-2 gap-2.5">
@@ -1241,7 +1254,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
                         <Flame size={14} className="text-orange-500" /> Grand Opening
                       </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Announce you're taking orders</p>
+                      <p className="text-[11px] text-on-surface-variant mt-0.5">Invite customers to browse your menu</p>
                     </button>
 
                     <button
@@ -1295,22 +1308,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       <p className="text-[11px] text-on-surface-variant mt-0.5">Promote menu browsing and pickup</p>
                     </button>
 
-                    <button
-                      onClick={() => {
-                        setSelectedPreset("discount");
-                        setUserEditedMessage(null);
-                      }}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                        selectedPreset === "discount"
-                          ? "border-emerald-500 bg-emerald-500/10 text-on-surface font-bold"
-                          : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-                      }`}
-                    >
-                      <p className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                        <Percent size={14} className="text-purple-500" /> Check Offers
-                      </p>
-                      <p className="text-[11px] text-on-surface-variant mt-0.5">Share only offers verified in-app</p>
-                    </button>
+
 
                     <button
                       onClick={() => {
@@ -1380,7 +1378,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       className="flex-1 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
                     >
                       <MessageSquare size={16} />
-                      <span>Send on WhatsApp</span>
+                      <span>Share on WhatsApp</span>
                     </button>
 
                     <button
