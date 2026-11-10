@@ -490,3 +490,54 @@ test("P3 final UI: Free is an introductory mode, not something a merchant needs 
   assert.ok(plans.includes('min-h-10 rounded-lg'));
   assert.ok(plans.includes('grid-cols-1 sm:grid-cols-2 xl:grid-cols-4'));
 });
+
+test("Settings S1: eliminate client-side PAN/CVV capture, fake vault confirmation and storage",()=>{
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  const helper=readFileSync(new URL("../src/services/legacyBillingSafety.ts",import.meta.url),"utf8");
+  for(const unsafe of [
+    "billingDetails","setBillingDetails","selectedInvoice","setSelectedInvoice",
+    'localStorage.getItem("localeats_billing_details")',
+    'localStorage.setItem("localeats_billing_details"',
+    "cardholderName: string","cardNumber: string","cvv: string",
+    "Securely Link Card","Card linked securely to Yoco vault",
+    "PCI-DSS Secure","Yoco/Peach tokenization vault"
+  ])assert.ok(!app.includes(unsafe),"Unsafe legacy billing code still mounted: "+unsafe);
+  assert.ok(app.includes("purgeLegacyBillingDraft()"));
+  assert.ok(helper.includes('window.localStorage.removeItem("localeats_billing_details")'));
+  for(const unsafe of ["getItem(","setItem(","JSON.parse(","console.","fetch(","supabase.","MerchantApi."])
+    assert.ok(!helper.includes(unsafe),"Never read, forward or log legacy card data: "+unsafe);
+  assert.ok(helper.includes("return false;"));
+  assert.ok(app.includes("legacyBillingCleanupFailed&&("));
+  assert.ok(app.includes("This browser blocked automatic removal"));
+});
+
+test("Settings S1: subscription UI follows approved plans and fails closed without owned shop",()=>{
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  assert.ok(app.includes('settingsCategory === "billing"'));
+  assert.ok(app.includes("<MerchantSubscriptionPlans"));
+  assert.ok(app.includes('verified={merchantShopGate.status==="ready"'));
+  assert.ok(app.includes("currentShop?.owner_id===user.id"));
+  assert.ok(app.includes("&& !!user?.id"));
+  assert.ok(app.includes('setActiveTab("payments")'));
+  assert.ok(app.includes("No verified subscription invoices available"));
+  assert.ok(app.includes("No card linking or recurring subscription payments are available yet"));
+  for(const fabricated of [
+    "100% Lifetime Discount","permanent 50% discount",
+    "LocalEats Lite","LocalEats Growth",
+    "Early Partner Plan","INV-2026-003",
+    "INV-2026-002","INV-2026-001",
+    "Paid in full. Your card ending in","Invoice Receipt"
+  ])assert.ok(!app.includes(fabricated),"No invented billing/discount claims: "+fabricated);
+});
+
+test("Settings S1: inactive bank-payout status is honest; the remaining Settings tabs stay intact",()=>{
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  assert.ok(app.includes("Bank payouts aren't active for the pickup-first pilot."));
+  assert.ok(app.includes("Not active"));
+  assert.ok(!app.includes("Manage your bank account for weekly payouts."));
+  for(const id of ["account","storefront","operations","delivery","hardware","billing","preferences","diagnostics"])
+    assert.ok(app.includes(`id: "${id}"`) || app.includes(`id: "${id}",`), "Missing Settings category: "+id);
+  assert.ok(app.includes('settingsCategory === "preferences"'));
+  assert.ok(app.includes('settingsCategory === "storefront"'));
+  assert.ok(app.includes('settingsCategory === "account"'));
+});
