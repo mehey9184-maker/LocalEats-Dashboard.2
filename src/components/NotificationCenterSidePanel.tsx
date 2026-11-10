@@ -1,6 +1,7 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Inbox, ShieldCheck, AlertTriangle, Megaphone, ArrowRight } from "lucide-react";
+import { Inbox, AlertTriangle, ArrowRight } from "lucide-react";
+import type { MerchantNoticeTopic } from "../hooks/usePageNotificationAttention";
 import { Order, MenuItem } from "../types";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -14,6 +15,7 @@ export interface NotificationCenterSidePanelProps {
   onClose: () => void;
   orders: Order[];
   menuItems: MenuItem[];
+  onPreviewTestNotice?: (topic: MerchantNoticeTopic) => void;
 }
 
 export const NotificationCenterSidePanel: React.FC<NotificationCenterSidePanelProps> = ({
@@ -21,6 +23,7 @@ export const NotificationCenterSidePanel: React.FC<NotificationCenterSidePanelPr
   onClose,
   orders,
   menuItems,
+  onPreviewTestNotice,
 }) => {
   const pendingOrdersCount = Array.isArray(orders)
     ? orders.filter((o) => o && (o.status === "pending" || o.status === "accepted")).length
@@ -38,16 +41,7 @@ export const NotificationCenterSidePanel: React.FC<NotificationCenterSidePanelPr
       icon: <Inbox size={16} />,
       title: "Active Orders",
       message: `You have ${pendingOrdersCount} active orders needing attention.`,
-      time: "Just now",
-    });
-  } else {
-    alerts.push({
-      id: "orders_empty",
-      type: "success",
-      icon: <ShieldCheck size={16} />,
-      title: "All Caught Up",
-      message: "No new orders to fulfill at the moment.",
-      time: "1m ago",
+      time: "Current",
     });
   }
 
@@ -58,18 +52,9 @@ export const NotificationCenterSidePanel: React.FC<NotificationCenterSidePanelPr
       icon: <AlertTriangle size={16} />,
       title: "Low Inventory",
       message: `${lowStockItems.length} items are running low on stock. Please restock soon.`,
-      time: "5m ago",
+      time: "Current",
     });
   }
-
-  alerts.push({
-    id: "sys",
-    type: "info",
-    icon: <Megaphone size={16} />,
-    title: "System Notification",
-    message: "Your storefront is fully active and connecting to nearby riders.",
-    time: "1h ago",
-  });
 
   return (
     <AnimatePresence>
@@ -106,6 +91,30 @@ export const NotificationCenterSidePanel: React.FC<NotificationCenterSidePanelPr
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {onPreviewTestNotice && (
+                <section aria-label="Preview navigation attention tester"
+                  className="rounded-2xl border border-dashed border-amber-400/60 bg-amber-50/70 dark:bg-amber-950/25 p-3 space-y-2">
+                  <p className="text-[11px] font-black text-amber-900 dark:text-amber-200">
+                    Preview only · Test page icon animation
+                  </p>
+                  <p className="text-[11px] text-on-surface-variant">
+                    This only shakes an icon. It does not create a notification or order.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {([
+                      ["new_order","Orders"],["inventory_low","Menu"],
+                      ["rider","Riders"],["marketing","Marketing"],
+                      ["payment","Payments"],["settings","Settings"]
+                    ] as const).map(([topic,label])=>(
+                      <button key={topic} type="button"
+                        onClick={()=>onPreviewTestNotice(topic)}
+                        className="min-h-9 rounded-lg bg-white dark:bg-zinc-900 border border-amber-300/70 px-3 text-xs font-semibold text-on-surface">
+                        Shake {label}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
               {alerts.length === 0 ? (
                 <div className="text-center p-8 mt-10">
                   <div className="w-16 h-16 bg-surface-container-highest rounded-full flex items-center justify-center mx-auto mb-4 text-on-surface-variant/40">
