@@ -387,7 +387,11 @@ test("P3.1 billing copy is honest, pickup-first, and no live payment features ar
   assert.ok(plans.includes("Billing is not active"));
   assert.ok(plans.includes("Planned three-month free introductory period"));
   assert.ok(plans.includes("Not available for purchase yet"));
-  assert.ok(pay.includes('role="tablist"'));
+  assert.ok(pay.includes('role="group" aria-label="Payment sections"'));
+  assert.ok(pay.includes('aria-pressed={tab==="pickup"}'));
+  assert.ok(pay.includes('aria-pressed={tab==="billing"}'));
+  assert.ok(pay.includes("shopId: string | number;"));
+  assert.ok(!pay.includes('role="tabpanel"'));
   assert.ok(pay.includes("pickupOrders.slice(0,limit)"));
   assert.ok(pay.includes("setLimit(n=>n+20)"));
   assert.ok(!pay.includes("cash-on-delivery"));
@@ -451,4 +455,16 @@ test("P3.2 countdown sample is isolated to the no-write branch Preview",()=>{
   assert.ok(plans.includes('data-testid="subscription-expiry-unverified"'));
   assert.ok(plans.includes("Expiry does not automatically suspend the shop."));
   assert.ok(plans.includes("later, separately approved backend phase"));
+});
+
+test("P3 final: shop-scoped pickup read does not coerce unknown settlement facts",()=>{
+  const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
+  assert.ok(pay.includes("shopId: string | number;"));
+  assert.ok(pay.includes("String(currentShop.id)===String(shopId)"));
+  assert.ok(pay.includes("String(order.shop_id)===String(shopId)"));
+  assert.ok(pay.includes('order.delivery_type==="collection"'));
+  assert.ok(pay.includes('aria-label="Payment sections"'));
+  assert.ok(!pay.includes('role="tab"'));
+  assert.ok(!pay.includes('role="tabpanel"'));
+  assert.ok(!pay.includes("Mark Settled"));
 });
