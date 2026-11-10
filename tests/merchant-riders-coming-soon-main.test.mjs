@@ -32,3 +32,29 @@ test("Merchant Orders cannot send a rider nudge or show a nudge success message"
   assert.doesNotMatch(orders, /sendRiderNudge|Wake to Tip|Rider nudged successfully/);
   assert.match(orders, /<PickupOrderActions\s+order=/);
 });
+
+test("L1C-3: Orders queue comes first and secondary settings are collapsed", () => {
+  const orders = readFileSync(new URL("../src/components/OrdersManagement.tsx", import.meta.url), "utf8");
+  assert.match(orders, /More tools/);
+  assert.match(orders, /showDesktopActions &&/);
+  assert.match(orders, /<details className="bg-surface-container-lowest/);
+  assert.match(orders, /Notification settings & order limit/);
+  assert.doesNotMatch(orders, /Status Dropdown:/);
+  assert.doesNotMatch(orders, /across all delivery channels/);
+  assert.match(orders, /<PreviewFakeOrders \/>/);
+  assert.match(orders, /disabled=\{isReadOnlyPreview\}/);
+});
+
+test("L1C-3: fake test orders are isolated from real Orders, payment and notifications", () => {
+  const fixture = readFileSync(new URL("../src/components/PreviewFakeOrders.tsx", import.meta.url), "utf8");
+  assert.match(fixture, /VITE_MERCHANT_PREVIEW_READ_ONLY === "true"/);
+  assert.match(fixture, /VITE_MERCHANT_FAKE_ORDERS_ENABLED === "true"/);
+  assert.match(fixture, /location\.hostname/);
+  assert.match(fixture, /TEST ONLY/);
+  assert.match(fixture, /setDemoOrders\(/);
+  assert.match(fixture, /Remove fake orders/);
+  assert.match(fixture, /nextStatus/);
+  for (const unsafe of [/\bfetch\s*\(/, /\bMerchantApi\b/, /\bsupabase\b/, /\bgetApiAuthHeaders\b/, /\bonUpdateStatus\b/, /\bonDeleteAllOrders\b/, /\blocalStorage\b/, /\bsessionStorage\b/, /\bsendPushNotification\b/]) {
+    assert.doesNotMatch(fixture, unsafe);
+  }
+});
