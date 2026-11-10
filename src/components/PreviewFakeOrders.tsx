@@ -1,102 +1,138 @@
-import {useState} from "react";
-import {FlaskConical, RefreshCw, X, ShoppingBag} from "lucide-react";
+import {useEffect,useRef,useState} from "react";
+import {FlaskConical,ShoppingBag,Clock3,X} from "lucide-react";
+import {toast} from "sonner";
+import {PickupOrderActions} from "./PickupOrderActions";
+import {pickupCommand,type PickupAction} from "../services/merchantPickupPolicy";
+import {isMerchantPreviewSimulatorEnabled} from "../services/merchantPreviewSimulator";
 
-// L1C-3 review fixture. This component has NO order/API callbacks or persistence.
-// Even an accidental production build flag cannot display it on a live domain.
-const allowPreviewFakeOrders =
-  import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true" &&
-  import.meta.env.VITE_MERCHANT_FAKE_ORDERS_ENABLED === "true" &&
-  typeof window !== "undefined" &&
-  /^local-eats-dashboard-2-6m8o-[a-z0-9]+-mehey9184-makers-projects\.vercel\.app$/.test(window.location.hostname);
-
-type DemoStatus = "pending" | "preparing" | "ready" | "completed";
-type DemoOrder = {id: string; name: string; item: string; total: number; status: DemoStatus};
-
-const DEMO_FIXTURES: readonly DemoOrder[] = [
-  {id: "FAKE-001", name: "Test Customer A", item: "Kota", total: 25, status: "pending"},
-  {id: "FAKE-002", name: "Test Customer B", item: "Kota + Chips", total: 40, status: "preparing"},
-  {id: "FAKE-003", name: "Test Customer C", item: "Kota", total: 25, status: "ready"},
-];
-
-const nextStatus: Record<DemoStatus, DemoStatus> = {
-  pending: "preparing",
-  preparing: "ready",
-  ready: "completed",
-  completed: "completed",
+// The fake queue NEVER merges into actual orders, status counts, exports or storage.
+// Only small view-only cards are inserted into the four existing Kanban columns.
+export type PreviewTestPickupOrder = {
+  id: string; customer_name: string; created_at: string;
+  shop_id: string; delivery_type: "collection"; order_type: "collection";
+  product_name: string; items: {name:string;quantity:number;unit_price:number;line_total:number}[];
+  total_price: number; service_fee: number; payment_status: "paid" | "unpaid";
+  pickup_status: "pending" | "preparing" | "ready_for_pickup" | "collected" | "cancelled";
+  status: "pending" | "preparing" | "ready" | "completed" | "cancelled";
+  revision: number; payment_method?: "cash" | "card_machine";
 };
 
-const labels: Record<DemoStatus, string> = {
-  pending: "New",
-  preparing: "Preparing",
-  ready: "Ready",
-  completed: "Completed",
+export type PreviewTestPickupAction=(id:string,action:PickupAction,extra:Record<string,unknown>)=>void;
+
+const makeFakeOrder=(number:number):PreviewTestPickupOrder=>({
+  id:`FAKE-L1C3-${number}`,
+  customer_name:`Test Customer ${number}`,
+  created_at:new Date().toISOString(),
+  shop_id:"FAKE-NO-SHOP",
+  delivery_type:"collection",order_type:"collection",
+  product_name:"Kota",items:[{name:"Kota",quantity:1,unit_price:25,line_total:25}],
+  total_price:25,service_fee:0,
+  payment_status:"unpaid",pickup_status:"pending",status:"pending",revision:0,
+});
+
+const advanceLocal=(order:PreviewTestPickupOrder,action:PickupAction,extra:Record<string,unknown>):PreviewTestPickupOrder=>{
+  // Validate the SAME pickup state machine as the real action component.
+  // Discard its returned command UUID; never call the transport.
+  pickupCommand(order,action,extra);
+  const next={...order,revision:order.revision+1};
+  if(action==="accept")return {...next,pickup_status:"preparing",status:"preparing"};
+  if(action==="ready")return {...next,pickup_status:"ready_for_pickup",status:"ready"};
+  if(action==="confirm_payment")return {...next,payment_status:"paid",payment_method:extra.payment_method as "cash" | "card_machine"};
+  if(action==="collect")return {...next,pickup_status:"collected",status:"completed"};
+  return {...next,pickup_status:"cancelled",status:"cancelled"};
 };
 
-export function PreviewFakeOrders() {
-  const [demoOrders, setDemoOrders] = useState<DemoOrder[]>([]);
-  if (!allowPreviewFakeOrders) return null;
+function playBrowserTestChime(){
+  try {
+    const AudioContextClass=window.AudioContext;
+    if(!AudioContextClass)return;
+    const ctx=new AudioContextClass();
+    const oscillator=ctx.createOscillator(),gain=ctx.createGain();
+    oscillator.type="sine";oscillator.frequency.value=740;
+    gain.gain.setValueAtTime(0.04,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.2);
+    oscillator.connect(gain);gain.connect(ctx.destination);
+    oscillator.start();oscillator.stop(ctx.currentTime+0.2);
+    oscillator.onended=()=>{void ctx.close();};
+  } catch { /* Audio is optional; no permission is requested. */ }
+}
 
-  const loadDemo = () => setDemoOrders(DEMO_FIXTURES.map(order => ({...order})));
-  const clearDemo = () => setDemoOrders([]);
-  const advance = (id: string) =>
-    setDemoOrders(prev => prev.map(order => order.id === id
-      ? {...order, status: nextStatus[order.status]}
-      : order));
+export function usePreviewFakeOrders(){
+  const [fakeOrders,setFakeOrders]=useState<PreviewTestPickupOrder[]>([]);
+  const [incoming,setIncoming]=useState(false);
+  const itemsRef=useRef<PreviewTestPickupOrder[]>([]);
+  const countRef=useRef(0);
+  const timerRef=useRef<number|null>(null);
+  const allowed=isMerchantPreviewSimulatorEnabled();
+  useEffect(()=>()=>{if(timerRef.current!==null)window.clearTimeout(timerRef.current);},[]);
 
+  const simulateIncoming=(soundEnabled:boolean)=>{
+    if(!isMerchantPreviewSimulatorEnabled()||timerRef.current!==null)return;
+    setIncoming(true);
+    if(soundEnabled)playBrowserTestChime();
+    // Delay intentionally mimics a new incoming order without calling any API.
+    timerRef.current=window.setTimeout(()=>{
+      timerRef.current=null;
+      if(!isMerchantPreviewSimulatorEnabled())return;
+      countRef.current+=1;
+      const next=[makeFakeOrder(countRef.current),...itemsRef.current].slice(0,3);
+      itemsRef.current=next;setFakeOrders(next);setIncoming(false);
+      toast.info("FAKE pickup order arrived — TEST ONLY. No real order was created.",{duration:3500});
+    },600);
+  };
+  const clearFakeOrders=()=>{
+    if(timerRef.current!==null){window.clearTimeout(timerRef.current);timerRef.current=null;}
+    itemsRef.current=[];setFakeOrders([]);setIncoming(false);
+  };
+  const onDemoAction:PreviewTestPickupAction=(id,action,extra)=>{
+    if(!isMerchantPreviewSimulatorEnabled())throw new Error("Fake order simulation is unavailable.");
+    const current=itemsRef.current.find(order=>order.id===id);
+    if(!current)throw new Error("The sample order is unavailable.");
+    const updated=advanceLocal(current,action,extra);
+    const next=itemsRef.current.map(order=>order.id===id?updated:order);
+    itemsRef.current=next;setFakeOrders(next);
+    toast.info(`TEST ONLY: ${action.replace("_"," ")} simulated; nothing was saved.`,{duration:2400});
+  };
+  return {allowed,fakeOrders,incoming,simulateIncoming,clearFakeOrders,onDemoAction};
+}
+
+export function PreviewFakeOrderCard({order,onDemoAction}:{order:PreviewTestPickupOrder;onDemoAction:PreviewTestPickupAction}){
+  if(!isMerchantPreviewSimulatorEnabled())return null;
   return (
-    <section data-testid="preview-fake-orders" aria-label="Fake test orders" className="rounded-2xl border border-dashed border-amber-400/70 bg-amber-50/60 dark:bg-amber-950/20 p-3 space-y-3">
-      <div className="flex flex-wrap gap-2 items-center justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <FlaskConical size={16} className="text-amber-700 dark:text-amber-300" aria-hidden="true"/>
-          <strong className="text-xs text-on-surface">Fake orders</strong>
-          <span className="rounded-full bg-amber-200 text-amber-950 px-2 py-0.5 text-[10px] font-black">TEST ONLY</span>
-          <span className="text-[11px] text-on-surface-variant">Browser only · not sent to a shop</span>
-        </div>
-        {demoOrders.length === 0 ? (
-          <button type="button" onClick={loadDemo} className="inline-flex items-center gap-2 rounded-xl bg-primary text-on-primary px-3 py-2 text-xs font-bold">
-            <FlaskConical size={14} aria-hidden="true"/> Load 3 fake orders
-          </button>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={loadDemo} className="inline-flex items-center gap-1 rounded-xl border border-outline-variant/25 px-3 py-2 text-xs font-bold">
-              <RefreshCw size={13} aria-hidden="true"/> Reset test
-            </button>
-            <button type="button" onClick={clearDemo} className="inline-flex items-center gap-1 rounded-xl border border-outline-variant/25 px-3 py-2 text-xs font-bold">
-              <X size={13} aria-hidden="true"/> Remove fake orders
-            </button>
-          </div>
-        )}
+    <article data-testid="fake-incoming-order" className="order-card bg-white dark:bg-zinc-900 border-2 border-dashed border-amber-400/75 rounded-2xl p-4 shadow-xs relative overflow-hidden space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="rounded-full bg-amber-100 text-amber-950 px-2 py-1 text-[10px] font-black inline-flex items-center gap-1">
+          <FlaskConical size={12} aria-hidden="true"/> FAKE · TEST ONLY
+        </span>
+        <span className="text-[10px] text-on-surface-variant font-mono">{order.id}</span>
       </div>
-      {demoOrders.length > 0 && (
-        <>
-          <p role="status" className="text-xs font-medium text-amber-900 dark:text-amber-200">
-            These {demoOrders.length} fictional orders are not in your real queue, reports, alerts, or database. Status buttons only change this local demo.
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {demoOrders.map(order => (
-              <article key={order.id} className="rounded-xl bg-surface-container-lowest border border-amber-300/65 p-3 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-black text-amber-800 dark:text-amber-200">{order.id} · FAKE</span>
-                  <span className="rounded-full bg-amber-100 text-amber-950 px-2 py-0.5 text-[10px] font-bold">{labels[order.status]}</span>
-                </div>
-                <p className="text-sm font-bold text-on-surface">{order.name}</p>
-                <p className="flex items-center gap-1.5 text-xs text-on-surface-variant">
-                  <ShoppingBag size={13} aria-hidden="true"/> {order.item} · R {order.total.toFixed(2)}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => advance(order.id)}
-                  disabled={order.status === "completed"}
-                  className="w-full rounded-lg bg-primary/10 text-primary px-3 py-2 text-xs font-bold disabled:opacity-50"
-                  aria-label={`Demo only: advance ${order.id} from ${labels[order.status]}`}
-                >
-                  {order.status === "completed" ? "Test completed" : `Simulate → ${labels[nextStatus[order.status]]}`}
-                </button>
-              </article>
-            ))}
-          </div>
-        </>
-      )}
-    </section>
+      <div>
+        <h4 className="font-black text-sm text-on-surface">{order.customer_name}</h4>
+        <p className="flex items-center gap-1.5 text-xs text-on-surface-variant mt-1">
+          <ShoppingBag size={13} aria-hidden="true"/> {order.product_name} × 1 · R {order.total_price.toFixed(2)}
+        </p>
+        <p className="flex items-center gap-1 text-xs text-on-surface-variant mt-1">
+          <Clock3 size={12} aria-hidden="true"/> Sample pickup · Pay at shop
+        </p>
+      </div>
+      <PickupOrderActions order={order} onSimulate={(action,extra)=>onDemoAction(order.id,action,extra)}/>
+      <p className="text-[10px] text-amber-800 dark:text-amber-200 font-semibold">Never printed, sent, charged or stored.</p>
+    </article>
   );
+}
+
+export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear}:{
+  incoming:boolean;count:number;onSimulate:()=>void;onClear:()=>void;
+}){
+  if(!isMerchantPreviewSimulatorEnabled())return null;
+  return <div data-testid="fake-incoming-controls" className="flex items-center gap-2">
+    <button type="button" onClick={onSimulate} disabled={incoming}
+      aria-label="Simulate a fake incoming pickup order"
+      className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold disabled:opacity-60">
+      <FlaskConical size={14} aria-hidden="true"/> {incoming?"Incoming…":"Simulate order"}
+    </button>
+    {count>0&&<button type="button" onClick={onClear} className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300" aria-label="Clear all fake orders">
+      <X size={13} aria-hidden="true"/> Clear tests ({count})
+    </button>}
+  </div>;
 }
