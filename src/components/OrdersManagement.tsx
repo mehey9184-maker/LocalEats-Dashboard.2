@@ -1,6 +1,6 @@
 import {receiptText} from "../utils/receiptText";
 import {PickupOrderActions} from "./PickupOrderActions";
-import {PreviewFakeOrders} from "./PreviewFakeOrders";
+import {PreviewFakeOrderCard,PreviewFakeOrderTrigger,usePreviewFakeOrders} from "./PreviewFakeOrders";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
 import React, { useState, useEffect, useMemo, useRef } from "react";
@@ -345,6 +345,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [showMobileActions, setShowMobileActions] = useState(false);
   const [showDesktopActions, setShowDesktopActions] = useState(false);
   const isReadOnlyPreview = import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true";
+  const {allowed:canFakeOrders,fakeOrders,incoming,simulateIncoming,clearFakeOrders,onDemoAction}=usePreviewFakeOrders();
   const [unlinkedModalOrder, setUnlinkedModalOrder] = useState<Order | null>(null);
   const [dispatchAlertOrder, setDispatchAlertOrder] = useState<Order | null>(null);
   const [dispatchAlertType, setDispatchAlertType] = useState<"rider_dispatch" | "customer_status" | "rider_pairing">("customer_status");
@@ -3051,10 +3052,15 @@ Notes: "${order.notes || "None"}"
               <h3 className="font-headline text-lg font-bold flex items-center gap-2">
                 {viewMode === "active" ? "Active Queue" : "Order History"}
                 <span className="bg-primary-fixed text-on-primary-fixed text-xs px-2.5 py-1 rounded-full">
-                  {displayedOrders.length} Orders
+                  {displayedOrders.length} Real
                 </span>
+                {canFakeOrders && fakeOrders.length>0 && <span className="rounded-full bg-amber-100 text-amber-900 text-[10px] font-black px-2 py-1">+{fakeOrders.length} FAKE</span>}
               </h3>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {viewMode==="active" && <PreviewFakeOrderTrigger
+                  incoming={incoming} count={fakeOrders.length}
+                  onSimulate={()=>simulateIncoming(soundAlerts)}
+                  onClear={clearFakeOrders}/>}
                 <button
                   onClick={() => setShowSearch(!showSearch)}
                   className={cn(
@@ -3169,9 +3175,7 @@ Notes: "${order.notes || "None"}"
             )}
           </AnimatePresence>
 
-          {viewMode === "active" && <PreviewFakeOrders />}
-
-          {displayedOrders.length === 0 ? (
+          {displayedOrders.length === 0 && (viewMode !== "active" || fakeOrders.length===0) ? (
             <div className="bg-surface-container-low rounded-[2rem] p-6 flex flex-col items-center text-center space-y-6 border-2 border-dashed border-outline-variant/20">
               <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center">
                 {viewMode === "active" ? (
@@ -3186,7 +3190,7 @@ Notes: "${order.notes || "None"}"
                 </h4>
                 <p className="text-on-surface-variant max-w-xs mx-auto">
                   {viewMode === "active"
-                    ? (isReadOnlyPreview ? "Fake test orders above are local demonstrations only. Verified real orders will appear separately." : "Your kitchen is currently clear. New orders will appear here as they arrive.")
+                    ? (isReadOnlyPreview ? "Use Simulate order to test the pickup workflow without creating a real order. Verified real orders will appear separately." : "Your kitchen is currently clear. New orders will appear here as they arrive.")
                     : "Completed orders will appear here once they are fulfilled."}
                 </p>
               </div>
@@ -3244,6 +3248,9 @@ Notes: "${order.notes || "None"}"
                 </div>
 
                 <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
+                  {canFakeOrders && fakeOrders.filter(order=>order.pickup_status==="pending").map(order=>(
+                    <PreviewFakeOrderCard key={order.id} order={order} onDemoAction={onDemoAction}/>
+                  ))}
                   <AnimatePresence mode="popLayout">
                   {prioritizedPendingOrders.map((order, index) => {
                     const items = safeGetOrderItems(order.items);
@@ -3509,7 +3516,7 @@ Notes: "${order.notes || "None"}"
                       </motion.div>
                     );
                   })}
-                  {prioritizedPendingOrders.length === 0 && (
+                  {prioritizedPendingOrders.length === 0 && !fakeOrders.some(order=>order.pickup_status==="pending") && (
                     <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">No new orders</div>
                   )}
                   </AnimatePresence>
@@ -3529,6 +3536,9 @@ Notes: "${order.notes || "None"}"
                 </div>
 
                 <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
+                  {canFakeOrders && fakeOrders.filter(order=>order.pickup_status==="preparing").map(order=>(
+                    <PreviewFakeOrderCard key={order.id} order={order} onDemoAction={onDemoAction}/>
+                  ))}
                   <AnimatePresence mode="popLayout">
                   {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").map((order) => {
                     const items = safeGetOrderItems(order.items);
@@ -3771,7 +3781,7 @@ Notes: "${order.notes || "None"}"
                       </motion.div>
                     );
                   })}
-                  {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").length === 0 && (
+                  {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").length === 0 && !fakeOrders.some(order=>order.pickup_status==="preparing") && (
                     <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None in prep</div>
                   )}
                   </AnimatePresence>
@@ -3791,6 +3801,9 @@ Notes: "${order.notes || "None"}"
                 </div>
 
                 <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
+                  {canFakeOrders && fakeOrders.filter(order=>order.pickup_status==="ready_for_pickup").map(order=>(
+                    <PreviewFakeOrderCard key={order.id} order={order} onDemoAction={onDemoAction}/>
+                  ))}
                   <AnimatePresence mode="popLayout">
                   {displayedOrders.filter(o => o.status === "ready").map((order) => {
                     const items = safeGetOrderItems(order.items);
@@ -3937,7 +3950,7 @@ Notes: "${order.notes || "None"}"
                       </motion.div>
                     );
                   })}
-                  {displayedOrders.filter(o => o.status === "ready").length === 0 && (
+                  {displayedOrders.filter(o => o.status === "ready").length === 0 && !fakeOrders.some(order=>order.pickup_status==="ready_for_pickup") && (
                     <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None ready</div>
                   )}
                   </AnimatePresence>
@@ -3957,6 +3970,9 @@ Notes: "${order.notes || "None"}"
                 </div>
 
                 <div className="flex flex-col gap-3 overflow-y-auto max-h-[45vh] xl:max-h-[65vh] pr-1 scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-on-surface/15 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-on-surface/30">
+                  {canFakeOrders && fakeOrders.filter(order=>["collected","cancelled"].includes(order.pickup_status)).map(order=>(
+                    <PreviewFakeOrderCard key={order.id} order={order} onDemoAction={onDemoAction}/>
+                  ))}
                   <AnimatePresence mode="popLayout">
                   {fulfilledOrdersToday.map((order) => {
                     const items = safeGetOrderItems(order.items);
@@ -4060,7 +4076,7 @@ Notes: "${order.notes || "None"}"
                       </motion.div>
                     );
                   })}
-                  {fulfilledOrdersToday.length === 0 && (
+                  {fulfilledOrdersToday.length === 0 && !fakeOrders.some(order=>["collected","cancelled"].includes(order.pickup_status)) && (
                     <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None fulfilled today</div>
                   )}
                   </AnimatePresence>
