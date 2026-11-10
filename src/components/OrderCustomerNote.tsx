@@ -10,7 +10,7 @@ export function getCustomerPreparationNotes(order:NoteOrder):string[] {
   const orderNote=typeof order.notes==="string"?order.notes.trim():"";
   // The pickup API may already combine item notes into order.notes.
   // Prefer that authoritative display value to avoid repeating instructions.
-  if(orderNote)return [orderNote.slice(0,2000)];
+  if(orderNote)return [orderNote];
   if(!Array.isArray(order.items))return [];
   return (order.items as NoteLine[])
     .filter(item=>item && typeof item==="object" && typeof item.notes==="string")
