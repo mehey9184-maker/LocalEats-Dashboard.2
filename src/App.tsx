@@ -48,6 +48,9 @@ import {
   Info,
   Rocket,
   Bell,
+  BellRing,
+  CalendarClock,
+  UserRound,
   Clock3,
   BellOff,
   UtensilsCrossed,
@@ -2379,29 +2382,35 @@ function App() {
                   {/* Sidebar */}
                   <nav aria-label="Merchant settings sections" className="w-full md:w-60 shrink-0 flex md:flex-col gap-2 overflow-x-auto pb-4 md:pb-0 hide-scrollbar border-b md:border-b-0 border-outline-variant/10 md:pr-4">
                      {[
-                       { id: "storefront", label: "My Shop", icon: Store },
-                       { id: "operations", label: "Opening Hours", icon: Clock3 },
-                       { id: "preferences", label: "Notifications & Appearance", icon: Bell },
-                       { id: "account", label: "My Account", icon: UserIcon },
-                     ].map(category => (
+                       { id: "storefront", label: "My Shop", icon: Store, iconTone: "bg-primary/10 text-primary" },
+                       { id: "operations", label: "Opening Hours", icon: CalendarClock, iconTone: "bg-sky-500/10 text-sky-700 dark:text-sky-300" },
+                       { id: "preferences", label: "Notifications & Appearance", icon: BellRing, iconTone: "bg-amber-500/10 text-amber-700 dark:text-amber-300" },
+                       { id: "account", label: "My Account", icon: UserRound, iconTone: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300" },
+                     ].map(category => {
+                       const selected = settingsCategory === category.id;
+                       return (
                        <button
                          key={category.id}
                          type="button"
-                         aria-current={settingsCategory === category.id ? "page" : undefined}
+                         aria-current={selected ? "page" : undefined}
                          onClick={() => setSettingsCategory(category.id)}
                          className={cn(
-                           "flex items-center gap-3 min-h-11 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                           settingsCategory === category.id 
-                             ? "bg-primary text-on-primary shadow-sm" 
+                           "group flex items-center gap-3 min-h-14 px-3 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                           selected
+                             ? "bg-primary text-on-primary shadow-sm"
                              : "text-on-surface-variant hover:bg-surface-container-high"
                          )}
                        >
-                         <category.icon size={18} className={cn(
-                           settingsCategory === category.id ? "text-on-primary/80" : "text-on-surface-variant/60"
-                         )} />
-                         {category.label}
+                         <span aria-hidden="true" className={cn(
+                           "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors",
+                           selected ? "bg-white/20 text-on-primary" : category.iconTone
+                         )}>
+                           <category.icon size={21} strokeWidth={2.2} aria-hidden="true"/>
+                         </span>
+                         <span className={cn("flex-1", selected ? "text-on-primary" : "text-on-surface")}>{category.label}</span>
                        </button>
-                     ))}
+                       );
+                     })}
                   </nav>
 
                   {/* Settings Content Panels */}
@@ -3447,8 +3456,8 @@ function App() {
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-primary/10 flex items-center justify-center text-primary">
-                          <ArrowRight size={20} />
+                        <div aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <Volume2 size={21} strokeWidth={2.2} aria-hidden="true"/>
                         </div>
                         <div className="text-left">
                           <p className="font-bold text-on-surface">
@@ -3570,8 +3579,8 @@ function App() {
 
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-600">
-                        <ArrowRight size={20} />
+                      <div aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-700 dark:text-sky-300">
+                        <BellRing size={21} strokeWidth={2.2} aria-hidden="true"/>
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">
@@ -3608,8 +3617,8 @@ function App() {
 
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-surface-container-highest flex items-center justify-center text-on-surface-variant">
-                        {darkMode ? <Moon size={20} /> : <Sun size={20} />}
+                      <div aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-container-high text-on-surface">
+                        {darkMode ? <Moon size={21} strokeWidth={2.2} aria-hidden="true"/> : <Sun size={21} strokeWidth={2.2} aria-hidden="true"/>}
                       </div>
                       <div className="text-left">
                         <p className="font-bold text-on-surface">Dark Mode</p>

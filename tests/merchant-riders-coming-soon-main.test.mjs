@@ -547,7 +547,7 @@ test("Settings S1: inactive bank-payout status is honest; the remaining Settings
 test("Settings S2 shows four owner-friendly categories only, with safe accessible navigation",()=>{
   const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
   const start=app.indexOf('<nav aria-label="Merchant settings sections"');
-  const end=app.indexOf('].map(category => (',start);
+  const end=app.indexOf('].map(category => {',start);
   assert.ok(start>=0 && end>start,"Settings section navigation is present");
   const nav=app.slice(start,end);
   const ids=[...nav.matchAll(/\{ id: "([^"]+)", label: "([^"]+)"/g)]
@@ -559,8 +559,8 @@ test("Settings S2 shows four owner-friendly categories only, with safe accessibl
     ["account","My Account"],
   ]);
   assert.ok(app.includes('useState<string>("storefront")'));
-  assert.ok(app.includes('aria-current={settingsCategory === category.id ? "page" : undefined}'));
-  assert.ok(app.includes('min-h-11 px-4 py-3'));
+  assert.ok(app.includes('aria-current={selected ? "page" : undefined}'));
+  assert.ok(app.includes('min-h-14 px-3 py-2.5'));
   for(const hidden of ["Delivery","Printing & Hardware","Database Diagnostics","Billing & Subscription","Account & Staff"]){
     assert.ok(!nav.includes('label: "'+hidden+'"'),"Hidden feature appears in navigation: "+hidden);
   }
@@ -606,4 +606,51 @@ test("Settings S2 opening-hours overview cannot claim a fake save or send direct
   for(const prohibited of ["supabase","MerchantApi.","fetch(","localStorage.","setItem(","window.print(","onChange=","<input",">Save Hours<"]){
     assert.ok(!view.includes(prohibited),"Read-only overview cannot mutate shop data: "+prohibited);
   }
+});
+
+test("Settings icon polish: four recognisable icons, consistent tiles, visible selected state",()=>{
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  const begin=app.indexOf('<nav aria-label="Merchant settings sections"');
+  const end=app.indexOf('});',begin);
+  const nav=app.slice(begin,end>begin?end:begin+3500);
+  for(const [section,icon] of [
+    ["storefront","Store"],["operations","CalendarClock"],
+    ["preferences","BellRing"],["account","UserRound"]
+  ]){
+    assert.ok(nav.includes(`id: "${section}"`) && nav.includes(`icon: ${icon}`),
+      "Section icon mismatch: "+section+" => "+icon);
+  }
+  assert.ok(nav.includes('"flex h-10 w-10 shrink-0 items-center justify-center rounded-xl'));
+  assert.ok(nav.includes('size={21} strokeWidth={2.2}'));
+  assert.ok(nav.includes('selected ? "bg-white/20 text-on-primary" : category.iconTone'));
+  assert.ok(nav.includes('aria-current={selected ? "page" : undefined}'));
+  assert.ok(nav.includes('focus-visible:outline'));
+  assert.ok(nav.includes('min-h-14'));
+  assert.ok(!nav.includes("animate-spin"),"Do not endlessly animate nav icons");
+});
+
+test("Settings icon polish: sound and push have distinct descriptive icons",()=>{
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  const prefs=app.slice(app.indexOf('settingsCategory === "preferences" && ('),app.indexOf('settingsCategory === "account" && (',app.indexOf('settingsCategory === "preferences" && (')));
+  const sound=prefs.slice(prefs.indexOf('Sound Alerts')-370,prefs.indexOf('Sound Alerts')+60);
+  const push=prefs.slice(prefs.indexOf('Push Notifications')-370,prefs.indexOf('Push Notifications')+60);
+  assert.ok(sound.includes('<Volume2 size={21} strokeWidth={2.2}'));
+  assert.ok(push.includes('<BellRing size={21} strokeWidth={2.2}'));
+  assert.ok(!sound.includes('<ArrowRight size={20}'));
+  assert.ok(!push.includes('<ArrowRight size={20}'));
+  assert.ok(prefs.includes("darkMode ? <Moon size={21}"));
+  assert.ok(prefs.includes("<Sun size={21}"));
+  assert.ok(prefs.includes("setSoundAlerts(nextState)"));
+  assert.ok(prefs.includes("requestPushPermissions("));
+  assert.ok(prefs.includes("setDarkMode(!darkMode)"));
+});
+
+test("Settings icon polish: opening-hours symbols match navigation, no behavior changes",()=>{
+  const view=readFileSync(new URL("../src/components/SimpleOpeningHours.tsx",import.meta.url),"utf8");
+  assert.ok(view.includes('<CalendarClock size={21} strokeWidth={2.2}'));
+  assert.ok(view.includes('<Store size={21} strokeWidth={2.2}'));
+  assert.ok(view.includes('verified && !!shop'));
+  assert.ok(!view.includes("supabase."));
+  assert.ok(!view.includes("fetch("));
+  assert.ok(!view.includes("onChange="));
 });
