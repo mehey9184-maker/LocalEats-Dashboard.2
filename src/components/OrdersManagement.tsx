@@ -2,7 +2,7 @@ import {receiptText} from "../utils/receiptText";
 import {PickupOrderActions} from "./PickupOrderActions";
 import {PreviewFakeOrderCard,PreviewFakeOrderTrigger,usePreviewFakeOrders} from "./PreviewFakeOrders";
 import {OrdersFocusedWorkspace} from "./OrdersFocusedWorkspace";
-import {isMerchantPreviewSimulatorEnabled} from "../services/merchantPreviewSimulator";
+import {isMerchantOrdersFocusedEnabled} from "../services/merchantPreviewSimulator";
 import {isPickupOrder,pickupPaymentLabel,pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 import { OrderService } from '../services/OrderService';
 import React, { useState, useEffect, useMemo, useRef } from "react";
@@ -2707,10 +2707,10 @@ Notes: "${order.notes || "None"}"
     );
   }
 
-  // L1C-3 redesigned kitchen workspace is exclusive to the guarded, read-only Preview.
-  // Production and any unverified host continue to use the original Orders UI.
-  if (import.meta.env.VITE_MERCHANT_ORDERS_FOCUSED_UI === "true" &&
-      isMerchantPreviewSimulatorEnabled()) {
+  // L1C-3: The owner-approved layout is available on the exact live Merchant domain,
+  // while the fake-order simulator remains strictly isolated to no-write Preview.
+  // This only changes presentation; it never activates real pickup or payment writes.
+  if (isMerchantOrdersFocusedEnabled()) {
     return (
       <OrdersFocusedWorkspace
         realOrders={displayedOrders}
