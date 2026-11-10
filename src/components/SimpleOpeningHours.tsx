@@ -16,8 +16,8 @@ export function SimpleOpeningHours({
   onEditShop:()=>void;
 }){
   const hasVerifiedShop=verified && !!shop;
-  const available=hasVerifiedShop&&typeof shop.is_active==="boolean";
-  const status=available?(shop.is_active?"Open":"Closed"):"Not verified";
+  const available=hasVerifiedShop&&typeof shop?.is_active==="boolean";
+  const status=available?(shop?.is_active?"Open":"Closed"):"Not verified";
   return <section data-testid="settings-s2-opening-hours" className="space-y-4">
     <h3 className="font-headline font-bold text-lg text-on-surface">Opening Hours</h3>
     <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-low p-4 sm:p-5 space-y-3">
