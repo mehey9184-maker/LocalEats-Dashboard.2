@@ -103,7 +103,7 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
  if(viewMode==="history"){
    const shown=allEntries.slice(0,visibleHistory);
    return <section data-testid="style-history-list" className="space-y-3">
-     <p className="text-xs text-on-surface-variant">History uses the selected ticket style. Fake results remain browser-only.</p>
+     <p className="text-xs text-on-surface-variant">History uses your selected ticket style.{allEntries.some(e=>e.kind==="fake")?" Fake results are browser-only.":""}</p>
      <div className={`grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 min-w-0 ${roomy?"gap-4":"gap-2"}`}>
        {shown.map(renderEntry)}
      </div>
@@ -158,6 +158,6 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
        </section>;
      })}
    </div>
-   <p className="text-[11px] text-on-surface-variant px-1">TEST ONLY tickets have dashed amber borders. Style changes do not change an order, payment or notification.</p>
+   {allEntries.some(e=>e.kind==="fake")&&<p className="text-[11px] text-on-surface-variant px-1">TEST ONLY tickets have dashed amber borders. Style changes do not change an order, payment or notification.</p>}
  </section>;
 }
