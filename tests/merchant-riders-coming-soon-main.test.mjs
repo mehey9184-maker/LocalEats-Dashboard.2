@@ -535,9 +535,75 @@ test("Settings S1: inactive bank-payout status is honest; the remaining Settings
   assert.ok(app.includes("Bank payouts aren't active for the pickup-first pilot."));
   assert.ok(app.includes("Not active"));
   assert.ok(!app.includes("Manage your bank account for weekly payouts."));
-  for(const id of ["account","storefront","operations","delivery","hardware","billing","preferences","diagnostics"])
-    assert.ok(app.includes(`id: "${id}"`) || app.includes(`id: "${id}",`), "Missing Settings category: "+id);
+  for(const id of ["account","storefront","operations","preferences"])
+    assert.ok(app.includes(`id: "${id}"`),"Missing essential Settings category: "+id);
+  for(const id of ["delivery","hardware","billing","diagnostics"])
+    assert.ok(app.includes(`settingsCategory === "${id}"`),"Future Settings source must remain available: "+id);
   assert.ok(app.includes('settingsCategory === "preferences"'));
   assert.ok(app.includes('settingsCategory === "storefront"'));
   assert.ok(app.includes('settingsCategory === "account"'));
+});
+
+test("Settings S2 shows four owner-friendly categories only, with safe accessible navigation",()=>{
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  const start=app.indexOf('<nav aria-label="Merchant settings sections"');
+  const end=app.indexOf('].map(category => (',start);
+  assert.ok(start>=0 && end>start,"Settings section navigation is present");
+  const nav=app.slice(start,end);
+  const ids=[...nav.matchAll(/\{ id: "([^"]+)", label: "([^"]+)"/g)]
+    .map(m=>[m[1],m[2]]);
+  assert.deepEqual(ids,[
+    ["storefront","My Shop"],
+    ["operations","Opening Hours"],
+    ["preferences","Notifications & Appearance"],
+    ["account","My Account"],
+  ]);
+  assert.ok(app.includes('useState<string>("storefront")'));
+  assert.ok(app.includes('aria-current={settingsCategory === category.id ? "page" : undefined}'));
+  assert.ok(app.includes('min-h-11 px-4 py-3'));
+  for(const hidden of ["Delivery","Printing & Hardware","Database Diagnostics","Billing & Subscription","Account & Staff"]){
+    assert.ok(!nav.includes('label: "'+hidden+'"'),"Hidden feature appears in navigation: "+hidden);
+  }
+});
+
+test("Settings S2 keeps future modules dormant rather than deleting source or allowing access via nav",()=>{
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  assert.ok(app.includes('settingsCategory === "future-operations"'));
+  assert.ok(app.includes('settingsCategory === "future-staff"'));
+  assert.ok(app.includes('settingsCategory === "future-riders"'));
+  assert.ok(app.includes('settingsCategory === "future-banking"'));
+  assert.ok(app.includes('settingsCategory === "delivery"'));
+  assert.ok(app.includes('settingsCategory === "hardware"'));
+  assert.ok(app.includes('settingsCategory === "diagnostics"'));
+  assert.ok(app.includes('settingsCategory === "billing"'));
+  assert.ok(app.includes('settingsCategory === "operations" && (\n                      <SimpleOpeningHours'));
+  assert.ok(app.includes('settingsCategory === "account" && ('));
+  assert.ok(app.includes("App Walkthrough Tour"));
+  assert.ok(app.includes("Payments & Plans"));
+  assert.ok(app.includes('currentShop?.owner_id===user.id'));
+  assert.ok(app.includes("Shop information is being verified."));
+  assert.ok(app.includes("Change your shop name, photos and address in Storefront Profile."));
+  const storefront=app.slice(app.indexOf('settingsCategory === "storefront" && ('),app.indexOf('settingsCategory === "account" && (',app.indexOf('settingsCategory === "storefront" && (')));
+  assert.ok(!storefront.includes("<LocationSyncIndicator"),"Technical GPS sync controls should not clutter owner Settings");
+  assert.ok(app.includes('onClick={()=>setActiveTab("payments")}'));
+  assert.ok(app.includes("Sound Alerts") && app.includes("Push Notifications") && app.includes("Dark Mode"));
+  assert.ok(app.includes("Sign Out"));
+});
+
+test("Settings S2 opening-hours overview cannot claim a fake save or send direct database writes",()=>{
+  const view=readFileSync(new URL("../src/components/SimpleOpeningHours.tsx",import.meta.url),"utf8");
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  assert.ok(view.includes('data-testid="settings-s2-opening-hours"'));
+  assert.ok(view.includes('verified && !!shop'));
+  assert.ok(view.includes('typeof shop?.is_active==="boolean"'));
+  assert.ok(view.includes("It does not mean that real customer ordering has been activated."));
+  assert.ok(view.includes("The old hours form did not save to the verified shop schedule."));
+  assert.ok(view.includes("No hours or shop status will be changed from this page."));
+  assert.ok(view.includes("Shop status cannot be confirmed until your authenticated shop profile is verified."));
+  assert.ok(app.includes('currentShop?.owner_id===user.id'));
+  assert.ok(app.includes('verified={merchantShopGate.status==="ready"'));
+  assert.ok(app.includes('currentShop?.owner_id===user.id'));
+  for(const prohibited of ["supabase","MerchantApi.","fetch(","localStorage.","setItem(","window.print(","onChange=","<input",">Save Hours<"]){
+    assert.ok(!view.includes(prohibited),"Read-only overview cannot mutate shop data: "+prohibited);
+  }
 });

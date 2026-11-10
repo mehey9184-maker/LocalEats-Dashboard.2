@@ -48,6 +48,7 @@ import {
   Info,
   Rocket,
   Bell,
+  Clock3,
   BellOff,
   UtensilsCrossed,
   ReceiptText,
@@ -99,6 +100,7 @@ import { Marketing } from "./components/Marketing";
 import { Insights } from "./components/Insights";
 import { PaymentHistory } from "./components/PaymentHistory";
 import {MerchantSubscriptionPlans,parsePlanExpiry} from "./components/MerchantSubscriptionPlans";
+import {SimpleOpeningHours} from "./components/SimpleOpeningHours";
 import {purgeLegacyBillingDraft} from "./services/legacyBillingSafety";
 import { LegalDocsModal } from "./components/LegalDocsModal";
 import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
@@ -471,7 +473,7 @@ function App() {
     return {daysRemaining,isExpired:expiry<=Date.now()};
   },[currentShop]);
 
-  const [settingsCategory, setSettingsCategory] = useState<string>("account");
+  const [settingsCategory, setSettingsCategory] = useState<string>("storefront");
   const [storeStatus, setStoreStatus] = useState<"open" | "busy" | "closed">("open");
   const [prepTime, setPrepTime] = useState<number>(20);
   const [operatingHours, setOperatingHours] = useState<Array<{ day: string; open: string; close: string; active: boolean }>>([
@@ -2375,22 +2377,20 @@ function App() {
 
                 <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-start px-4 md:px-0">
                   {/* Sidebar */}
-                  <nav className="w-full md:w-56 shrink-0 flex md:flex-col gap-2 overflow-x-auto pb-4 md:pb-0 hide-scrollbar border-b md:border-b-0 border-outline-variant/10 md:pr-4">
+                  <nav aria-label="Merchant settings sections" className="w-full md:w-60 shrink-0 flex md:flex-col gap-2 overflow-x-auto pb-4 md:pb-0 hide-scrollbar border-b md:border-b-0 border-outline-variant/10 md:pr-4">
                      {[
-                       { id: "account", label: "Account & Staff", icon: UserIcon },
-                       { id: "storefront", label: "Storefront", icon: Store },
-                       { id: "operations", label: "Operations", icon: Sliders },
-                       { id: "delivery", label: "Delivery", icon: Truck },
-                       { id: "hardware", label: "Printing & Hardware", icon: Printer },
-                       { id: "billing", label: "Billing & Subscription", icon: Wallet },
-                       { id: "preferences", label: "Preferences", icon: Settings },
-                       { id: "diagnostics", label: "Database Diagnostics", icon: Activity },
+                       { id: "storefront", label: "My Shop", icon: Store },
+                       { id: "operations", label: "Opening Hours", icon: Clock3 },
+                       { id: "preferences", label: "Notifications & Appearance", icon: Bell },
+                       { id: "account", label: "My Account", icon: UserIcon },
                      ].map(category => (
                        <button
                          key={category.id}
+                         type="button"
+                         aria-current={settingsCategory === category.id ? "page" : undefined}
                          onClick={() => setSettingsCategory(category.id)}
                          className={cn(
-                           "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-colors",
+                           "flex items-center gap-3 min-h-11 px-4 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                            settingsCategory === category.id 
                              ? "bg-primary text-on-primary shadow-sm" 
                              : "text-on-surface-variant hover:bg-surface-container-high"
@@ -2415,21 +2415,24 @@ function App() {
                     
                     {settingsCategory === "storefront" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <h3 className="font-headline font-bold text-lg mb-2">Store Profile & Location Sync</h3>
+                        <h3 className="font-headline font-bold text-lg mb-2">My Shop</h3>
                         
-                        {/* Real-time Location Sync Status Indicator */}
-                        {currentShop && (
-                          <LocationSyncIndicator
-                            locationState={currentShopLocation}
-                            syncAnalysis={currentShopLocationSync}
-                            isLocating={isLocatingShopGPS}
-                            isSaving={isSavingShopLocation}
-                            onDetectGPS={detectShopGPS}
-                            onAutoAlign={autoAlignShopCity}
-                            onSave={() => saveShopLocationSettings()}
-                            onOpenStorefrontMap={() => setActiveTab("storefront")}
-                          />
-                        )}
+                        {/* The full location diagnostic and location editor are retained
+                            on Storefront Profile, not duplicated in owner Settings. */}
+                        <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-low px-4 py-4 space-y-2 text-left">
+                          <p className="text-xs font-semibold text-on-surface-variant">Your shop</p>
+                          {merchantShopGate.status==="ready" && !!user?.id && currentShop?.owner_id===user.id ? (
+                            <>
+                              <p className="text-base font-bold text-on-surface break-words">{currentShop?.name || "Shop"}</p>
+                              <p className="flex items-start gap-2 text-xs text-on-surface-variant">
+                                <MapPin size={14} className="shrink-0 mt-0.5" aria-hidden="true"/>
+                                <span className="break-words">{currentShop?.address || currentShop?.location || currentShop?.city || "Shop location not yet provided"}</span>
+                              </p>
+                            </>
+                          ) : (
+                            <p role="status" className="text-xs text-on-surface-variant">Shop information is being verified.</p>
+                          )}
+                        </div>
 
                         <button
                           onClick={() => setActiveTab("storefront")}
@@ -2444,13 +2447,13 @@ function App() {
                           Storefront Profile
                         </p>
                         <p className="text-xs text-on-surface-variant line-clamp-1 md:line-clamp-none">
-                          Update your shop name, logo, and cover photo.
+                          Change your shop name, photos and address in Storefront Profile.
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 self-end md:self-auto">
                       <span className="text-[10px] items-center font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap">
-                        New Location
+                        Edit profile
                       </span>
                       <ChevronRight
                         size={18}
@@ -2489,7 +2492,7 @@ function App() {
                       </div>
                     )}
 
-                    {settingsCategory === "preferences" && (
+                    {settingsCategory === "account" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">App Preferences</h3>
                   <button
@@ -2521,7 +2524,7 @@ function App() {
                       </div>
                     )}
 
-                    {settingsCategory === "account" && (
+                    {settingsCategory === "future-staff" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <button
                     onClick={() =>
@@ -2553,7 +2556,7 @@ function App() {
                       </div>
                     )}
 
-                    {settingsCategory === "storefront" && (
+                    {settingsCategory === "future-riders" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <a
                     href="https://rider.localeatssa.co.za/"
@@ -2586,6 +2589,18 @@ function App() {
                     )}
 
                     {settingsCategory === "operations" && (
+                      <SimpleOpeningHours
+                        shop={currentShop}
+                        verified={merchantShopGate.status==="ready"
+                          && !!user?.id
+                          && currentShop?.owner_id===user.id}
+                        onEditShop={()=>setActiveTab("storefront")}
+                      />
+                    )}
+
+                    {/* Legacy hours editor preserved for future API verification.
+                        Its direct metadata Save Hours is not mounted in S2. */}
+                    {settingsCategory === "future-operations" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h3 className="font-headline font-bold text-lg mb-2">Operations Center</h3>
                   {/* Order Operations Section */}
@@ -3325,7 +3340,7 @@ function App() {
                       </div>
                     )}
 
-                    {settingsCategory === "account" && (
+                    {settingsCategory === "future-banking" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   {/* Financial & Payout Settings */}
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group">
@@ -3428,6 +3443,7 @@ function App() {
 
                     {settingsCategory === "preferences" && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <h3 className="font-headline font-bold text-lg text-on-surface">Notifications & Appearance</h3>
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-4">
@@ -3618,6 +3634,20 @@ function App() {
                     </button>
                   </div>
                       </div>
+                    )}
+
+                    {settingsCategory === "account" && (
+                      <button type="button" onClick={()=>setActiveTab("payments")}
+                        className="w-full min-h-11 flex items-center justify-between gap-3 p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl border border-outline-variant/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                        <span className="flex items-center gap-3">
+                          <span className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center"><Wallet size={20} aria-hidden="true"/></span>
+                          <span className="text-left">
+                            <span className="block font-bold text-on-surface">Payments & Plans</span>
+                            <span className="block text-xs text-on-surface-variant">View your plan and future subscription options</span>
+                          </span>
+                        </span>
+                        <ChevronRight size={18} className="text-on-surface-variant/60" aria-hidden="true"/>
+                      </button>
                     )}
 
                     {settingsCategory === "account" && (
