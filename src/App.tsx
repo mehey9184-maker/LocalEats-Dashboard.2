@@ -48,6 +48,7 @@ import {
   Info,
   Rocket,
   Bell,
+  Clock3,
   BellOff,
   UtensilsCrossed,
   ReceiptText,
@@ -3630,6 +3631,20 @@ function App() {
                     </button>
                   </div>
                       </div>
+                    )}
+
+                    {settingsCategory === "account" && (
+                      <button type="button" onClick={()=>setActiveTab("payments")}
+                        className="w-full min-h-11 flex items-center justify-between gap-3 p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl border border-outline-variant/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                        <span className="flex items-center gap-3">
+                          <span className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center"><Wallet size={20} aria-hidden="true"/></span>
+                          <span className="text-left">
+                            <span className="block font-bold text-on-surface">Payments & Plans</span>
+                            <span className="block text-xs text-on-surface-variant">View your plan and future subscription options</span>
+                          </span>
+                        </span>
+                        <ChevronRight size={18} className="text-on-surface-variant/60" aria-hidden="true"/>
+                      </button>
                     )}
 
                     {settingsCategory === "account" && (
