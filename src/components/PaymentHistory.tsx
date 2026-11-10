@@ -11,7 +11,7 @@ interface PaymentHistoryProps {
 }
 
 const orderValue=(value:unknown)=>
-  typeof value==="number" && Number.isFinite(value) && value>=0
+  typeof value==="number" && Number.isFinite(value) && value>0
     ? `R ${value.toFixed(2)}` : "Order value unavailable";
 const dateLabel=(value:string)=>{
   const timestamp=new Date(value);
