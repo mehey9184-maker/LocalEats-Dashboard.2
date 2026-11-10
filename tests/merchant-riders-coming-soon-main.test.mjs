@@ -362,7 +362,7 @@ test("P3.1 order payment flags are read-only and strictly from fresh verified ow
   const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
   const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
   assert.ok(pay.includes("ordersVerified=false"));
-  assert.ok(pay.includes("const verified=ordersVerified && !!currentShop"));
+  assert.ok(pay.includes("const verified=shopVerified && ordersVerified && !!currentShop"));
   assert.ok(pay.includes("String(currentShop.id)===String(shopId)"));
   assert.ok(pay.includes("String(order.shop_id)===String(shopId)"));
   assert.ok(pay.includes('order.delivery_type==="collection"'));
@@ -467,4 +467,26 @@ test("P3 final: shop-scoped pickup read does not coerce unknown settlement facts
   assert.ok(!pay.includes('role="tab"'));
   assert.ok(!pay.includes('role="tabpanel"'));
   assert.ok(!pay.includes("Mark Settled"));
+});
+
+test("P3 final release: no plan or pickup payment label without authenticated current-shop ownership",()=>{
+  const app=readFileSync(new URL("../src/App.tsx",import.meta.url),"utf8");
+  const pay=readFileSync(new URL("../src/components/PaymentHistory.tsx",import.meta.url),"utf8");
+  const plans=readFileSync(new URL("../src/components/MerchantSubscriptionPlans.tsx",import.meta.url),"utf8");
+  assert.ok(app.includes('shopVerified={merchantShopGate.status==="ready"'));
+  assert.ok(app.includes('currentShop.owner_id===user.id'));
+  assert.ok(app.includes('&& !!user?.id'));
+  assert.ok(pay.includes("shopVerified=false"));
+  assert.ok(pay.includes("const verified=shopVerified && ordersVerified"));
+  assert.ok(pay.includes('verified={shopVerified && !!currentShop'));
+  assert.ok(plans.includes('planFromVerifiedShop(verified?shop:undefined)'));
+  assert.ok(plans.includes('Owned shop not yet verified'));
+});
+
+test("P3 final UI: Free is an introductory mode, not something a merchant needs to purchase",()=>{
+  const plans=readFileSync(new URL("../src/components/MerchantSubscriptionPlans.tsx",import.meta.url),"utf8");
+  assert.ok(plans.includes('plan.id==="free"?"Introductory offer · launch date pending":"Not available for purchase yet"'));
+  assert.ok(plans.includes('text-xs text-on-surface-variant leading-5'));
+  assert.ok(plans.includes('min-h-10 rounded-lg'));
+  assert.ok(plans.includes('grid-cols-1 sm:grid-cols-2 xl:grid-cols-4'));
 });
