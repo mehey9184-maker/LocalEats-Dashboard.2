@@ -2385,12 +2385,13 @@ function App() {
               )}
               {activeTab === "payments" && (
                 currentShop ? (
-                  <PaymentHistory 
-                    shopId={currentShop.id} 
+                  <PaymentHistory
+                    shopId={currentShop.id}
                     currentShop={currentShop}
-                    setShops={setShops}
                     orders={orders}
-                    setOrders={setOrders}
+                    ordersVerified={merchantShopGate.status==="ready"
+                      && orderReadStatus.state==="fresh"
+                      && orderReadScope===`${user?.id}:${currentShop.id}`}
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
