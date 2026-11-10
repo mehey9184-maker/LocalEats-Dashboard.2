@@ -36,25 +36,25 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
  const pickup=isPickupOrder(order);
  const fullStatus=String(order.status||"pending");
  return <article data-testid="styled-real-order" className={
-   `min-w-0 overflow-hidden bg-surface-container-lowest dark:bg-zinc-950 border border-outline-variant/20 shadow-sm ${roomy?"p-4 rounded-2xl space-y-3":"p-3 rounded-xl space-y-2"}`
+   `min-w-0 overflow-hidden bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 shadow-sm ${roomy?"p-3.5 rounded-2xl space-y-2.5":"p-2.5 rounded-xl space-y-1.5"}`
  }>
    <div className="flex items-start justify-between gap-2 min-w-0">
      <div className="min-w-0">
-       <p className="font-mono text-[11px] font-extrabold text-on-surface break-all">#{String(order.id).slice(-9).toUpperCase()}</p>
+       <p className="font-mono text-[11px] font-extrabold text-slate-900 dark:text-zinc-100 break-all">#{String(order.id).slice(-9).toUpperCase()}</p>
        {roomy&&<p className="text-[10px] text-on-surface-variant mt-1">{pickup?"Counter pickup":"Existing order"}</p>}
      </div>
      <span className="text-[10px] whitespace-nowrap font-semibold text-on-surface-variant">{orderTime(order.created_at)}</span>
    </div>
    <div className="flex justify-between items-start gap-2 min-w-0">
-     <p className={`min-w-0 break-words text-on-surface font-extrabold ${roomy?"text-sm":"text-xs"}`}>{order.customer_name||"Customer"}</p>
-     <p className="font-bold text-on-surface text-xs whitespace-nowrap">{money(order.total_price)}</p>
+     <p className={`min-w-0 break-words text-slate-900 dark:text-zinc-100 font-headline font-extrabold ${roomy?"text-[15px]":"text-sm"}`}>{order.customer_name||"Customer"}</p>
+     <p className="font-extrabold text-slate-900 dark:text-zinc-100 text-[13px] whitespace-nowrap">{money(order.total_price)}</p>
    </div>
    <p className={`text-on-surface-variant break-words ${roomy?"text-xs":"text-[11px]"}`}>
      <ShoppingBag size={12} className="inline-block mr-1" aria-hidden="true"/>{order.product_name||"Open full order for items"}
    </p>
    {pickup?<div className={roomy?"rounded-xl bg-surface-container-low/50 p-2":"rounded-lg bg-surface-container-low/50 p-1.5"}>
      {roomy&&<p className="text-[11px] text-on-surface-variant mb-1">{pickupPaymentLabel(order)}</p>}
-     <PickupOrderActions order={order}/>
+     <PickupOrderActions order={order} compact={!roomy}/>
    </div>:<span className="text-[11px] text-on-surface-variant">Historical / existing order · no new rider action</span>}
    {expanded&&<div className="border-t border-outline-variant/15 pt-3 min-w-0" onClick={e=>e.stopPropagation()}>
      {renderRealOrder(order,index)}
