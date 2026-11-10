@@ -75,10 +75,23 @@ export function usePreviewFakeOrders(){
       timerRef.current=null;
       if(!isMerchantPreviewSimulatorEnabled())return;
       countRef.current+=1;
-      const next=[makeFakeOrder(countRef.current),...itemsRef.current].slice(0,3);
+      const next=[makeFakeOrder(countRef.current),...itemsRef.current].slice(0,60);
       itemsRef.current=next;setFakeOrders(next);setIncoming(false);
       toast.info("FAKE pickup order arrived — TEST ONLY. No real order was created.",{duration:3500});
     },600);
+  };
+  const simulateBatch=()=>{
+    if(!isMerchantPreviewSimulatorEnabled())return;
+    // Deliberately create a bounded, local-only volume of sample orders.
+    // No API endpoint, notifications or database is used.
+    const batch=Array.from({length:24},()=>{
+      countRef.current+=1;
+      return makeFakeOrder(countRef.current);
+    });
+    const next=[...batch,...itemsRef.current].slice(0,60);
+    itemsRef.current=next;
+    setFakeOrders(next);
+    toast.info("TEST ONLY: 24 fictional orders added for layout testing.",{duration:3500});
   };
   const clearFakeOrders=()=>{
     if(timerRef.current!==null){window.clearTimeout(timerRef.current);timerRef.current=null;}
@@ -93,7 +106,7 @@ export function usePreviewFakeOrders(){
     itemsRef.current=next;setFakeOrders(next);
     toast.info(`TEST ONLY: ${action.replace("_"," ")} simulated; nothing was saved.`,{duration:2400});
   };
-  return {allowed,fakeOrders,incoming,simulateIncoming,clearFakeOrders,onDemoAction};
+  return {allowed,fakeOrders,incoming,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction};
 }
 
 export function PreviewFakeOrderCard({order,onDemoAction}:{order:PreviewTestPickupOrder;onDemoAction:PreviewTestPickupAction}){
