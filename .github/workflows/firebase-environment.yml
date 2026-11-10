@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'src/lib/firebase.ts'
+      - 'src/lib/merchantSessionMetadata.ts'
+      - 'src/lib/supabase.ts'
       - 'src/services/merchantPickupPolicy.ts'
       - 'src/services/MerchantApi.ts'
       - 'src/services/merchantPickupRecovery.ts'
@@ -13,6 +15,7 @@ on:
       - 'tests/merchant-activation.test.mjs'
       - 'tests/merchant-command-recovery.test.mjs'
       - 'tests/firebase-environment.test.mjs'
+      - 'tests/merchant-firebase-session-metadata.test.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/firebase-environment.yml'
@@ -32,5 +35,5 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: node --experimental-strip-types --test tests/firebase-environment.test.mjs tests/merchant-pickup.test.mjs tests/merchant-riders-coming-soon-main.test.mjs tests/merchant-activation.test.mjs tests/merchant-command-recovery.test.mjs
+      - run: node --experimental-strip-types --test tests/firebase-environment.test.mjs tests/merchant-firebase-session-metadata.test.mjs tests/merchant-pickup.test.mjs tests/merchant-riders-coming-soon-main.test.mjs tests/merchant-activation.test.mjs tests/merchant-command-recovery.test.mjs
       - run: npm run build

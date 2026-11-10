@@ -1,3 +1,4 @@
+import {projectMerchantSessionMetadata} from "./merchantSessionMetadata";
 import {legacyOrderWriteError} from "./legacyOrderWrite";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
@@ -192,7 +193,7 @@ export async function formatFirebaseUserSession(fbUser: FirebaseUser): Promise<U
       full_name: name,
       name: name,
       phone: fbUser.phoneNumber || (userMeta.phone as string) || "",
-      ...userMeta,
+      ...projectMerchantSessionMetadata(userMeta),
     },
   };
 }
@@ -234,7 +235,6 @@ export async function firebaseSignUp(
     email: email.trim(),
     full_name: userData.full_name || "",
     phone: userData.phone || "",
-    role: "merchant",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };

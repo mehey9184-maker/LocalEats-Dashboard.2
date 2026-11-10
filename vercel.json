@@ -13,6 +13,7 @@
       "activation/pickup-workflow": false,
       "fix/pickup-zero-fee": false,
       "fix/merchant-authoritative-availability": false,
+      "fix/merchant-firestore-session-metadata": false,
       "fix/pickup-quote-eligibility": false
     }
   }
