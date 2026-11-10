@@ -2,6 +2,7 @@ import {memo,startTransition,useCallback,useEffect,useRef,useState} from "react"
 import {FlaskConical,X} from "lucide-react";
 import {toast} from "sonner";
 import {PickupOrderActions} from "./PickupOrderActions";
+import {OrderCustomerNote} from "./OrderCustomerNote";
 import {pickupCommand,type PickupAction} from "../services/merchantPickupPolicy";
 import {isMerchantPreviewSimulatorEnabled} from "../services/merchantPreviewSimulator";
 
@@ -15,6 +16,7 @@ export type PreviewTestPickupOrder = {
   pickup_status: "pending" | "preparing" | "ready_for_pickup" | "collected" | "cancelled";
   status: "pending" | "preparing" | "ready" | "completed" | "cancelled";
   revision: number; payment_method?: "cash" | "card_machine";
+  notes?: string;
 };
 
 export type PreviewTestPickupAction=(id:string,action:PickupAction,extra:Record<string,unknown>)=>void;
@@ -28,6 +30,7 @@ const makeFakeOrder=(number:number):PreviewTestPickupOrder=>({
   product_name:"Kota",items:[{name:"Kota",quantity:1,unit_price:25,line_total:25}],
   total_price:25,service_fee:0,
   payment_status:"unpaid",pickup_status:"pending",status:"pending",revision:0,
+  notes:number%4===1?"No atchar":undefined,
 });
 
 const advanceLocal=(order:PreviewTestPickupOrder,action:PickupAction,extra:Record<string,unknown>):PreviewTestPickupOrder=>{
@@ -139,6 +142,7 @@ export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDe
     <p className="text-xs font-semibold text-slate-700 dark:text-zinc-300 leading-4 truncate" title={order.product_name}>
       1× {order.product_name} <span className="font-normal text-slate-500 dark:text-zinc-400">· {payment}</span>
     </p>
+    <OrderCustomerNote order={order} compact={!roomy}/>
     <PickupOrderActions order={order} compact onSimulate={(action,extra)=>onDemoAction(order.id,action,extra)}/>
   </article>;
 });
