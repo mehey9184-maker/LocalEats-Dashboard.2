@@ -1001,7 +1001,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <p className="font-bold text-sm text-on-surface">Your shop link</p>
                 <p className="text-xs break-all text-on-surface-variant">{storeUrl}</p>
               </div>
-              <button type="button" onClick={handleCopyLink}
+              <button type="button" onClick={copyStoreUrl}
                 className="rounded-xl bg-primary text-on-primary px-4 py-2.5 text-xs font-bold flex items-center gap-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
                 {copiedLink ? <Check size={16} /> : <Copy size={16} />}
                 {copiedLink ? "Copied" : "Copy Shop Link"}
