@@ -98,6 +98,7 @@ import { Coupons } from "./components/Coupons";
 import { Marketing } from "./components/Marketing";
 import { Insights } from "./components/Insights";
 import { PaymentHistory } from "./components/PaymentHistory";
+import {parsePlanExpiry} from "./components/MerchantSubscriptionPlans";
 import { LegalDocsModal } from "./components/LegalDocsModal";
 import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
 import { ShopDiagnosticPanel } from "./components/ShopDiagnosticPanel";
@@ -458,28 +459,16 @@ function App() {
     deliveryRadiusEnabled,
   ]);
 
-  const trialInfo = useMemo(() => {
-    if (!currentShop) return null;
-
-    const status = currentShop.subscription_status || "trial";
-
-    // Default to a 30-day trial based on creation date or trial_start_date
-    const startDate = currentShop.trial_start_date || currentShop.created_at || new Date().toISOString();
-    const startMs = new Date(startDate).getTime();
-    const trialDurationMs = 30 * 24 * 60 * 60 * 1000; // 30 days
-    const endMs = startMs + trialDurationMs;
-    const nowMs = Date.now();
-
-    const daysRemaining = Math.max(0, Math.ceil((endMs - nowMs) / (1000 * 60 * 60 * 24)));
-    const isExpired = status === "expired" || status === "past_due" || (status === "trial" && daysRemaining <= 0);
-
-    return {
-      status,
-      daysRemaining,
-      isExpired,
-      nextPaymentDate: currentShop.next_payment_date || new Date(endMs).toISOString()
-    };
-  }, [currentShop]);
+  // Never synthesize 30-day trials or billing deadlines from shop creation.
+  // The approved three-month offer only gets a countdown once the merchant API
+  // returns an explicit timezone-aware trial_end_date for the verified shop.
+  const trialInfo=useMemo(()=>{
+    if(!currentShop||currentShop.subscription_status!=="trial")return null;
+    const expiry=parsePlanExpiry(currentShop.trial_end_date);
+    if(expiry===null)return null;
+    const daysRemaining=Math.max(0,Math.ceil((expiry-Date.now())/86400000));
+    return {daysRemaining,isExpired:expiry<=Date.now()};
+  },[currentShop]);
 
   const [settingsCategory, setSettingsCategory] = useState<string>("account");
   const [storeStatus, setStoreStatus] = useState<"open" | "busy" | "closed">("open");
