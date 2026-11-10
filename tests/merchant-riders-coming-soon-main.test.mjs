@@ -161,3 +161,43 @@ test("L1C-3: misleading live payment, delivery and POS claims from mockups are e
     assert.ok(!focused.includes(bad));
   }
 });
+
+test("L1C-3 polish: compact tickets have high-contrast text and a single-line item summary",()=>{
+  const fake=readFileSync(new URL("../src/components/PreviewFakeOrders.tsx",import.meta.url),"utf8");
+  const board=readFileSync(new URL("../src/components/OrdersStyleBoard.tsx",import.meta.url),"utf8");
+  assert.ok(fake.includes("font-headline font-extrabold text-slate-900"));
+  assert.ok(fake.includes("1× {order.product_name}"));
+  assert.ok(fake.includes('data-style={variant}'));
+  assert.ok(fake.includes("rounded-xl px-3 py-2.5 space-y-1.5"));
+  assert.ok(fake.includes("<PickupOrderActions order={order} compact"));
+  assert.ok(!fake.includes("Never printed, sent, charged or stored."));
+  assert.ok(board.includes("font-headline font-extrabold"));
+  assert.ok(board.includes("compact={!roomy}"));
+});
+
+test("L1C-3 polish: Accept and Reject share one safe action row",()=>{
+  const actions=readFileSync(new URL("../src/components/PickupOrderActions.tsx",import.meta.url),"utf8");
+  assert.ok(actions.includes('className="flex w-full items-center gap-2 min-w-0"'));
+  assert.ok(actions.includes('"Accept & Prep"'));
+  assert.ok(actions.includes("label===\"Reject\""));
+  assert.ok(actions.includes("Reject fake order (reason required)"));
+  assert.ok(actions.includes("w-11 shrink-0 border border-slate-200"));
+  assert.ok(actions.includes("bg-orange-500 hover:bg-orange-600 text-white"));
+  assert.ok(actions.includes("bg-emerald-600 hover:bg-emerald-700 text-white"));
+  assert.ok(actions.includes("aria-label={reject ?"));
+  assert.ok(actions.includes("const reason=window.prompt"));
+  assert.ok(actions.includes("await onSimulate!(action,extra)"));
+  assert.ok(actions.includes("await MerchantApi.transitionPickupOrder(order,action,extra)"));
+  assert.ok(actions.includes("!canAct"));
+});
+
+test("L1C-3 polish: changed fake orders use memo and lower-priority list updates",()=>{
+  const fake=readFileSync(new URL("../src/components/PreviewFakeOrders.tsx",import.meta.url),"utf8");
+  assert.ok(fake.includes("memo(function PreviewFakeOrderCard"));
+  assert.ok(fake.includes("const onDemoAction:PreviewTestPickupAction=useCallback("));
+  assert.ok(fake.includes("startTransition(()=>setFakeOrders(next))"));
+  assert.ok(fake.includes("itemsRef.current=next"));
+  assert.ok(!fake.includes("MerchantApi.transitionPickupOrder"));
+  assert.ok(!fake.includes("supabase."));
+  assert.ok(!fake.includes("sendPushNotification"));
+});
