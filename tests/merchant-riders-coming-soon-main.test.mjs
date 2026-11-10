@@ -95,8 +95,8 @@ test("L1C-3: two uploaded KDS layouts are selectable and remembered per shop", (
   const orders=readFileSync(new URL("../src/components/OrdersManagement.tsx",import.meta.url),"utf8");
   const focused=readFileSync(new URL("../src/components/OrdersFocusedWorkspace.tsx",import.meta.url),"utf8");
   const board=readFileSync(new URL("../src/components/OrdersStyleBoard.tsx",import.meta.url),"utf8");
-  assert.ok(orders.includes("VITE_MERCHANT_ORDERS_FOCUSED_UI"));
-  assert.ok(orders.includes("isMerchantPreviewSimulatorEnabled()"));
+  assert.ok(orders.includes("isMerchantOrdersFocusedEnabled()"));
+  assert.ok(!orders.includes("if (import.meta.env.VITE_MERCHANT_ORDERS_FOCUSED_UI"));
   assert.ok(orders.includes("localeats.merchant.orders.style.v1.shop"));
   assert.ok(focused.includes("A · Expediter"));
   assert.ok(focused.includes("B · Compact"));
@@ -142,7 +142,8 @@ test("L1C-3: fake and real order authority stay separate across both layouts", (
   assert.ok(board.includes("<PreviewFakeOrderCard"));
   assert.ok(board.includes("renderRealOrder(order,index)"));
   assert.ok(board.includes("<PickupOrderActions order={order}"));
-  assert.ok(focused.includes("disabled={readOnly}"));
+  assert.ok(!focused.includes("onDeleteAllOrders"));
+  assert.ok(!focused.includes("Clear all real orders"));
   assert.ok(fake.includes("onSimulate={(action,extra)=>onDemoAction"));
   assert.ok(focused.includes("localStorage.setItem(styleStorageKey,choice)"));
   assert.ok(!fake.includes("localStorage"));
@@ -254,12 +255,30 @@ test("L1C-3 release: expanding real pickup details does not duplicate action con
   assert.equal((board.match(/<PickupOrderActions order=\{order\}/g)??[]).length,1);
 });
 
-test("L1C-3 release: no Production Orders style activation without a separate gate",()=>{
+test("L1C-3 release: live presentation is separate from fake Preview",()=>{
   const orders=readFileSync(new URL("../src/components/OrdersManagement.tsx",import.meta.url),"utf8");
   const guard=readFileSync(new URL("../src/services/merchantPreviewSimulator.ts",import.meta.url),"utf8");
-  assert.ok(orders.includes('VITE_MERCHANT_ORDERS_FOCUSED_UI === "true"'));
-  assert.ok(orders.includes("isMerchantPreviewSimulatorEnabled()"));
+  assert.ok(orders.includes("isMerchantOrdersFocusedEnabled()"));
+  assert.ok(guard.includes('VITE_MERCHANT_ORDERS_FOCUSED_UI === "true"'));
+  assert.ok(guard.includes('window.location.hostname === "dashboard.localeatssa.co.za"'));
+  assert.ok(guard.includes('VITE_PICKUP_ORDERING_ENABLED !== "true"'));
+  assert.ok(guard.includes("inReviewPreview || onApprovedMerchantProduction"));
   assert.ok(guard.includes('VITE_MERCHANT_PREVIEW_READ_ONLY === "true"'));
   assert.ok(guard.includes('VITE_MERCHANT_FAKE_ORDERS_ENABLED === "true"'));
   assert.ok(guard.includes("window.location.hostname"));
+});
+
+test("L1C-3 release: fake-only controls are absent from live owner workspace",()=>{
+  const focused=readFileSync(new URL("../src/components/OrdersFocusedWorkspace.tsx",import.meta.url),"utf8");
+  const board=readFileSync(new URL("../src/components/OrdersStyleBoard.tsx",import.meta.url),"utf8");
+  const simulator=readFileSync(new URL("../src/services/merchantPreviewSimulator.ts",import.meta.url),"utf8");
+  assert.ok(focused.includes("const isTestPreview=isMerchantPreviewSimulatorEnabled()"));
+  assert.ok(focused.includes("isTestPreview&&<button"));
+  assert.ok(focused.includes("isTestPreview&&<p"));
+  assert.ok(focused.includes("!pickupOrderingEnabled()"));
+  assert.ok(!focused.includes("onDeleteAllOrders"));
+  assert.ok(!focused.includes("Clear all real orders"));
+  assert.ok(board.includes('allEntries.some(e=>e.kind==="fake")'));
+  assert.ok(simulator.includes('VITE_MERCHANT_FAKE_ORDERS_ENABLED === "true"'));
+  assert.ok(simulator.includes('^local-eats-dashboard-2-6m8o-'));
 });
