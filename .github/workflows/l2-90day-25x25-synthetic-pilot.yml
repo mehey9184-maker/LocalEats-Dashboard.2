@@ -1,0 +1,53 @@
+name: L2 synthetic 90-day 25-merchant 25-customer pilot
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/tests/pickup/synthetic-90day-25x25.test.mjs'
+      - 'localeats-api/src/orders/pickupService.ts'
+      - 'localeats-api/src/orders/orderContract.ts'
+      - 'localeats-api/src/contracts/pickupDraft.ts'
+      - '.github/workflows/l2-90day-25x25-synthetic-pilot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  no-network-synthetic-pilot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      SUPABASE_URL: ''
+      SUPABASE_SERVICE_ROLE_KEY: ''
+      DATABASE_URL: ''
+      FIREBASE_ADMIN_CREDENTIALS: ''
+      FIREBASE_PROJECT_ID: ''
+      VERCEL_TOKEN: ''
+    steps:
+      - name: Checkout only test source, no checkout credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Prevent live destinations and credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f localeats-api/tests/pickup/synthetic-90day-25x25.test.mjs
+          test "$PICKUP_WRITES_ENABLED" = "false"
+          test -z "$DATABASE_URL" && test -z "$SUPABASE_URL" && test -z "$SUPABASE_SERVICE_ROLE_KEY"
+          test -z "$FIREBASE_ADMIN_CREDENTIALS" && test -z "$VERCEL_TOKEN"
+          ! grep -En 'supabase\.co|https?://|admin\.auth\.createUser|admin\.auth\.deleteUser|deleteUser\(' localeats-api/tests/pickup/synthetic-90day-25x25.test.mjs
+      - name: Install locked dependencies
+        run: npm ci --prefix localeats-api --no-audit --no-fund
+      - name: Compile actual production pickup service, no deployment
+        run: npm run build --prefix localeats-api
+      - name: Run accelerated synthetic scenario, assert all fakes deleted
+        run: node --test localeats-api/tests/pickup/synthetic-90day-25x25.test.mjs
