@@ -40,6 +40,10 @@ test("PWA: optional invitation only after verified sign-in, with real user choic
   assert.match(ui,/document.visibilityState !== "visible"/);
   assert.match(ui,/allowAutoShow && ready/);
   assert.match(ui,/!hasDeferredInstall\(storageKey\) && canPrompt/);
+  // iPhones and browsers without a native prompt never receive the automatic pop-up.
+  assert.doesNotMatch(ui,/showAutomatic[^;]*onAppleDevice \|\| canPrompt/);
+  assert.match(ui,/const showAutomatic = Boolean\(eligible && allowAutoShow && ready/);
+  assert.match(bridge,/saveInstalledMarker\(\)/);
   assert.match(app,/allowAutoShow=\{/);
   assert.doesNotMatch(ui,/window\.location\.href/);
 });
