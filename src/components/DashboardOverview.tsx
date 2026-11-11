@@ -78,6 +78,7 @@ export interface DashboardOverviewProps {
   onRefresh: () => void | Promise<void>;
   onNavigate: (tab: string) => void;
   onEditProfile: () => void;
+  onInstallApp?: () => void;
   menuItems: MenuItem[];
   menuReadState?: "loading"|"ready"|"failed";
   orderReadState?: "unverified"|"fresh"|"failed";
@@ -888,6 +889,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   onRefresh,
   onNavigate,
   onEditProfile,
+  onInstallApp,
   menuItems,
   menuReadState="loading",
   orderReadState="unverified",
@@ -902,6 +904,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   onRefresh: () => void | Promise<void>;
   onNavigate: (tab: string) => void;
   onEditProfile: () => void;
+  onInstallApp?: () => void;
   menuItems: MenuItem[];
   menuReadState?: "loading"|"ready"|"failed";
   orderReadState?: "unverified"|"fresh"|"failed";
@@ -1341,6 +1344,19 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
   return (
     <div className="space-y-8 md:space-y-12">
+      {onInstallApp && (
+        <div className="sm:hidden">
+          <button
+            type="button"
+            onClick={onInstallApp}
+            aria-label="Install LocalEats Merchant app"
+            className="min-h-11 inline-flex items-center justify-center gap-2 rounded-2xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-xs font-bold text-on-surface hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <Download size={18} aria-hidden="true" />
+            Install App
+          </button>
+        </div>
+      )}
       {orderReadState!=="fresh" && <div role={orderReadState==="failed" ? "alert" : "status"} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
         <p>{orderReadState==="failed" ? "Pickup statuses could not be refreshed. Open Orders to review the last confirmed statuses and retry." : "Loading verified pickup statuses…"}</p>
         <button type="button" onClick={()=>onNavigate("orders")} className="min-h-11 mt-2 px-3 font-bold underline">Open Orders</button>
