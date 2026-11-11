@@ -4,6 +4,7 @@ import {MerchantApi} from "../services/MerchantApi";
 import {pickupOrderingEnabled,type PickupAction} from "../services/merchantPickupPolicy";
 import {pickupState,pickupPaymentLabel,pickupAmountLabel} from "../services/merchantPickupPolicy";
 import {isMerchantPreviewSimulatorEnabled} from "../services/merchantPreviewSimulator";
+import {pickupNeedsUncollectedAttention,pickupUnpaidWaitingMinutes} from "../services/pickupNoShow";
 
 type SimulatedTransition = (action: PickupAction, extra: Record<string,unknown>) => Promise<void> | void;
 
@@ -53,7 +54,10 @@ export function PickupOrderActions({order,onSimulate,compact=false}:{order:any;o
   {!compact && <p className="text-xs">{pickupAmountLabel(order)}</p>}
   {!compact && status==="ready_for_pickup" && order.payment_status==="unpaid" && (
     <p role="status" className="text-xs font-semibold text-amber-700 dark:text-amber-200">
-      Ready · awaiting actual payment at the counter. Do not mark Collected or count this as revenue until payment and food handover are confirmed.
+      {pickupNeedsUncollectedAttention(order)
+        ? "Ready 30+ minutes · still unpaid. Check the order and contact the customer if appropriate. Never mark Paid or Collected before payment and handover."
+        : "Ready · awaiting actual payment at the counter. Do not mark Collected or count this as revenue until payment and food handover are confirmed."}
+      {pickupUnpaidWaitingMinutes(order)!==null && " · "+pickupUnpaidWaitingMinutes(order)+" min since last status update"}
     </p>
   )}
   {!compact && status==="ready_for_pickup" && order.payment_status==="paid" && (
