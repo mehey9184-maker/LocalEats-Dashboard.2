@@ -346,6 +346,7 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [merchantShopGate, setMerchantShopGate] = useState<MerchantShopGateState>({ status: "checking" });
     const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [manualInstallOpen, setManualInstallOpen] = useState(false);
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
   // Kitchen status state available if needed
 
@@ -1895,6 +1896,8 @@ function App() {
           appName="LocalEats Merchant"
           storageKey="localeats_merchant_install_defer_v1"
           variant="merchant"
+          manualOpen={manualInstallOpen}
+          onManualClose={() => setManualInstallOpen(false)}
         />
 
         <NotificationCenterSidePanel isOpen={isNotificationCenterOpen} onClose={() => setIsNotificationCenterOpen(false)}
@@ -2320,6 +2323,7 @@ function App() {
                     await Promise.all([fetchOrders(), fetchAllMenuItems()]);
                   }}
                   onEditProfile={() => setIsEditingProfile(true)}
+                  onInstallApp={() => setManualInstallOpen(true)}
                   menuItems={menuItems}
                   menuReadState={menuReadStatus.scope===menuReadScope ? menuReadStatus.state : "loading"}
                   trialInfo={trialInfo}
