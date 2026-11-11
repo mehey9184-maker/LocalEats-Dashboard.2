@@ -48,10 +48,24 @@ export function countdownParts(deadline:number,now:number){
 export function SubscriptionCountdown({deadline,sample=false}:{deadline:number|null;sample?:boolean}){
   const [now,setNow]=useState(()=>Date.now());
   useEffect(()=>{
-    setNow(Date.now());
-    if(deadline===null)return;
-    const interval=window.setInterval(()=>setNow(Date.now()),1000);
-    return ()=>window.clearInterval(interval);
+    let interval:ReturnType<typeof setInterval>|null=null;
+    const stop=()=>{if(interval!==null){window.clearInterval(interval);interval=null;}};
+    // Keep the seconds countdown accurate when visible without spending work
+    // every second in background tabs or after the deadline has passed.
+    const sync=()=>{
+      const current=Date.now();
+      setNow(current);
+      stop();
+      if(deadline===null || current>=deadline || document.visibilityState!=="visible")return;
+      interval=window.setInterval(()=>{
+        const tick=Date.now();
+        setNow(tick);
+        if(tick>=deadline)stop();
+      },1000);
+    };
+    sync();
+    document.addEventListener("visibilitychange",sync);
+    return ()=>{stop();document.removeEventListener("visibilitychange",sync);};
   },[deadline]);
   if(deadline===null)return <p data-testid="subscription-expiry-unverified" className="font-semibold text-on-surface text-sm">Expiry date awaiting confirmation</p>;
   const t=countdownParts(deadline,now);
@@ -100,7 +114,7 @@ export function MerchantSubscriptionPlans({shop,verified}:{shop?:Shop;verified:b
       </p>
       {canDemo&&<div className="space-y-2 border-t border-primary/20 pt-3">
         <button type="button" onClick={()=>setSampleDeadline(sampleDeadline===null?Date.now()+2*86400000:null)}
-          className="min-h-10 rounded-lg bg-amber-50 text-amber-950 border border-amber-400 px-3 text-xs font-bold">
+          className="le-press-feedback min-h-11 rounded-lg bg-amber-50 text-amber-950 border border-amber-400 px-3 text-xs font-bold">
           {sampleDeadline===null?"Preview: show sample countdown":"Hide sample countdown"}
         </button>
         {sampleDeadline!==null&&<div data-testid="sample-subscription-countdown" className="space-y-2 rounded-xl border-2 border-dashed border-amber-400 bg-amber-50/70 p-3">
