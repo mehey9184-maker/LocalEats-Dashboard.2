@@ -181,13 +181,13 @@ async function command(box,actor,order,action,extra={}){
   });
   return result.order;
 }
-async function run(){
+async function run(days=DAYS){
   const box=makeSandbox();
   const start=new Date("2026-11-11T00:00:00Z");
   const daysCovered=new Set(),merchantsUsed=new Set(),customersUsed=new Set();
   const allOrderIds=new Set();
   let completed=0,cancelled=0,rejected=0,noShows=0;
-  for(let day=0;day<DAYS;day++){
+  for(let day=0;day<days;day++){
     const virtualDate=new Date(start.getTime()+day*86400000).toISOString().slice(0,10);
     daysCovered.add(virtualDate);
     for(let slot=0;slot<ORDERS_PER_DAY;slot++){
@@ -262,18 +262,18 @@ async function run(){
       completed++;
     }
   }
-  const intended=DAYS*ORDERS_PER_DAY;
-  assert.equal(daysCovered.size,DAYS);
+  const intended=days*ORDERS_PER_DAY;
+  assert.equal(daysCovered.size,days);
   assert.equal(merchantsUsed.size,MERCHANTS);
   assert.equal(customersUsed.size,CUSTOMERS);
   assert.equal(allOrderIds.size,intended);
   assert.equal(box.ordersById.size,intended);
   assert.equal(box.ordersByKey.size,intended);
   assert.equal([...box.merchantInbox.values()].reduce((a,b)=>a+b.length,0),intended);
-  assert.equal(completed,630);
-  assert.equal(cancelled,90);
-  assert.equal(rejected,90);
-  assert.equal(noShows,90);
+  assert.equal(completed,days*7);
+  assert.equal(cancelled,days);
+  assert.equal(rejected,days);
+  assert.equal(noShows,days);
   assert.equal(box.stats.collected,completed);
   assert.equal(box.stats.paid,completed);
   assert.equal(box.stats.cancelled,cancelled);
@@ -286,7 +286,7 @@ async function run(){
   const summary={
     mode:"OFFLINE_SYNTHETIC_MODEL_NOT_LIVE_PRODUCTION_TEST",
     timelineStart:[...daysCovered][0],timelineEnd:[...daysCovered].at(-1),
-    virtualDays:DAYS,syntheticMerchants:MERCHANTS,syntheticCustomers:CUSTOMERS,
+    virtualDays:days,syntheticMerchants:MERCHANTS,syntheticCustomers:CUSTOMERS,
     fictionalOrders:intended,collectedModel:completed,cancelledModel:cancelled,
     rejectedModel:rejected,readyButUnpaidModel:noShows,
     fictionalCashCollectedZAR:completed*25,
@@ -307,7 +307,7 @@ async function run(){
   summary.syntheticCustomersAfterCleanup=box.customers.length;
   summary.syntheticMerchantsAfterCleanup=box.merchants.length;
   assert.equal(summary.syntheticRecordsAfterCleanup,0);
-  console.log("L2_90_DAY_25X25_SYNTHETIC_RESULT "+JSON.stringify(summary));
+  console.log("L2_"+days+"_DAY_25X25_SYNTHETIC_RESULT "+JSON.stringify(summary));
   return summary;
 }
 
@@ -319,4 +319,21 @@ test("90 virtual days x 25 fictional merchants x 25 fictional customers: order l
   assert.equal(result.realAccountsCreated,0);
   assert.equal(result.syntheticRecordsAfterCleanup,0);
   assert.equal(result.uniqueOrderIDs,900);
+});
+
+
+test("180 virtual days (six months) x 25 merchants x 25 customers: no duplicate or missing synthetic orders, full cleanup",{
+  timeout:120000
+},async()=>{
+  const result=await run(180);
+  assert.equal(result.virtualDays,180);
+  assert.equal(result.uniqueOrderIDs,1800);
+  assert.equal(result.collectedModel,1260);
+  assert.equal(result.cancelledModel,180);
+  assert.equal(result.rejectedModel,180);
+  assert.equal(result.readyButUnpaidModel,180);
+  assert.equal(result.syntheticRecordsAfterCleanup,0);
+  assert.equal(result.syntheticCustomersAfterCleanup,0);
+  assert.equal(result.syntheticMerchantsAfterCleanup,0);
+  assert.equal(result.actualCashCollectedZAR,0);
 });
