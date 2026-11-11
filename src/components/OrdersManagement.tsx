@@ -331,6 +331,10 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [phoneSearch, setPhoneSearch] = useState("");
+  // Keep search fields responsive when filtering a populated order board.
+  const deferredSearchTerm = React.useDeferredValue(searchTerm);
+  const deferredCustomerSearch = React.useDeferredValue(customerSearch);
+  const deferredPhoneSearch = React.useDeferredValue(phoneSearch);
   const [showSearch, setShowSearch] = useState(false);
   const [acceptingOrderId, setAcceptingOrderId] = useState<string | null>(null);
   const [orderNotes, setOrderNotes] = useState(""); // Added for Order Notes
@@ -1213,12 +1217,12 @@ Notes: "${order.notes || "None"}"
 
     const filtered = baseOrders.filter((o) => {
       const matchesSearch =
-        o.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        o.id.toString().includes(searchTerm);
+        o.product_name.toLowerCase().includes(deferredSearchTerm.toLowerCase()) ||
+        o.id.toString().includes(deferredSearchTerm);
       const matchesCustomer =
-        !customerSearch ||
-        o.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
-      const matchesPhone = !phoneSearch || o.phone?.includes(phoneSearch);
+        !deferredCustomerSearch ||
+        o.customer_name?.toLowerCase().includes(deferredCustomerSearch.toLowerCase());
+      const matchesPhone = !deferredPhoneSearch || o.phone?.includes(deferredPhoneSearch);
       const matchesFilter = filterStatus === "All" || o.status === filterStatus;
       const matchesOrderType = orderTypeFilter === "All" || o.order_type === orderTypeFilter;
 
@@ -1266,9 +1270,9 @@ Notes: "${order.notes || "None"}"
   }, [
     orders,
     viewMode,
-    searchTerm,
-    customerSearch,
-    phoneSearch,
+    deferredSearchTerm,
+    deferredCustomerSearch,
+    deferredPhoneSearch,
     filterStatus,
     orderTypeFilter,
     startDate,
@@ -1276,6 +1280,17 @@ Notes: "${order.notes || "None"}"
     sortField,
     sortDirection,
   ]);
+
+  // One memoized view of each operational queue; count, cards and empty state
+  // use the exact same verified rows rather than filtering on every render.
+  const preparingDisplayedOrders = useMemo(
+    () => displayedOrders.filter((o) => o.status === "accepted" || o.status === "preparing"),
+    [displayedOrders]
+  );
+  const readyDisplayedOrders = useMemo(
+    () => displayedOrders.filter((o) => o.status === "ready"),
+    [displayedOrders]
+  );
 
   const prioritizedPendingOrders = useMemo(() => {
     const pending = displayedOrders.filter((o) => o.status === "pending");
@@ -1313,16 +1328,16 @@ Notes: "${order.notes || "None"}"
       }
 
       const matchesSearch =
-        o.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        o.id.toString().includes(searchTerm);
+        o.product_name.toLowerCase().includes(deferredSearchTerm.toLowerCase()) ||
+        o.id.toString().includes(deferredSearchTerm);
       const matchesCustomer =
-        !customerSearch ||
-        o.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
-      const matchesPhone = !phoneSearch || o.phone?.includes(phoneSearch);
+        !deferredCustomerSearch ||
+        o.customer_name?.toLowerCase().includes(deferredCustomerSearch.toLowerCase());
+      const matchesPhone = !deferredPhoneSearch || o.phone?.includes(deferredPhoneSearch);
 
       return isFulfilled && isToday && matchesSearch && matchesCustomer && matchesPhone;
     });
-  }, [orders, searchTerm, customerSearch, phoneSearch]);
+  }, [orders, deferredSearchTerm, deferredCustomerSearch, deferredPhoneSearch]);
 
   const startOrderIdx = (ordersPage - 1) * ordersPerPage;
   const paginatedOrders = useMemo(() => {
@@ -3568,7 +3583,7 @@ Notes: "${order.notes || "None"}"
                     <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">Preparing</h3>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 font-bold text-[10px]">
-                    {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").length}
+                    {preparingDisplayedOrders.length}
                   </span>
                 </div>
 
@@ -3577,7 +3592,7 @@ Notes: "${order.notes || "None"}"
                     <PreviewFakeOrderCard key={order.id} order={order} onDemoAction={onDemoAction}/>
                   ))}
                   <AnimatePresence mode="popLayout">
-                  {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").map((order) => {
+                  {preparingDisplayedOrders.map((order) => {
                     const items = safeGetOrderItems(order.items);
                     const isDelivery = isOrderDelivery(order);
                     const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
@@ -3818,7 +3833,7 @@ Notes: "${order.notes || "None"}"
                       </motion.div>
                     );
                   })}
-                  {displayedOrders.filter(o => o.status === "accepted" || o.status === "preparing").length === 0 && !fakeOrders.some(order=>order.pickup_status==="preparing") && (
+                  {preparingDisplayedOrders.length === 0 && !fakeOrders.some(order=>order.pickup_status==="preparing") && (
                     <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None in prep</div>
                   )}
                   </AnimatePresence>
@@ -3833,7 +3848,7 @@ Notes: "${order.notes || "None"}"
                     <h3 className="font-headline font-black text-xs uppercase tracking-wider text-on-surface">Ready</h3>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-bold text-[10px]">
-                    {displayedOrders.filter(o => o.status === "ready").length}
+                    {readyDisplayedOrders.length}
                   </span>
                 </div>
 
@@ -3842,7 +3857,7 @@ Notes: "${order.notes || "None"}"
                     <PreviewFakeOrderCard key={order.id} order={order} onDemoAction={onDemoAction}/>
                   ))}
                   <AnimatePresence mode="popLayout">
-                  {displayedOrders.filter(o => o.status === "ready").map((order) => {
+                  {readyDisplayedOrders.map((order) => {
                     const items = safeGetOrderItems(order.items);
                     const isDelivery = isOrderDelivery(order);
                     const isFindingRider = isDelivery && (!order.rider_id || order.delivery_status === "finding_rider");
@@ -3987,7 +4002,7 @@ Notes: "${order.notes || "None"}"
                       </motion.div>
                     );
                   })}
-                  {displayedOrders.filter(o => o.status === "ready").length === 0 && !fakeOrders.some(order=>order.pickup_status==="ready_for_pickup") && (
+                  {readyDisplayedOrders.length === 0 && !fakeOrders.some(order=>order.pickup_status==="ready_for_pickup") && (
                     <div className="text-center py-8 text-xs text-on-surface-variant/50 font-bold">None ready</div>
                   )}
                   </AnimatePresence>
