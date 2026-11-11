@@ -204,12 +204,26 @@ export const Marketing: React.FC<MarketingProps> = ({
     };
   }, [storeUrl, qrStyle]);
 
+  // A copy action is successful only when the browser confirms the write.
+  // Keep the original control labels and share URLs unchanged.
+  const copyMarketingText = async (
+    value: string,
+    setCopied: React.Dispatch<React.SetStateAction<boolean>>,
+    successMessage: string
+  ) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      toast.success(successMessage);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Unable to copy. Please select and copy the text manually.");
+    }
+  };
   // Copy Store Link Handler
   const copyStoreUrl = () => {
-    navigator.clipboard.writeText(storeUrl);
-    setCopiedLink(true);
-    toast.success("Store online link copied to clipboard!");
-    setTimeout(() => setCopiedLink(false), 2000);
+    void copyMarketingText(storeUrl, setCopiedLink, "Store link copied!");
   };
 
   // 3. WhatsApp Promo Studio State
@@ -249,15 +263,12 @@ export const Marketing: React.FC<MarketingProps> = ({
   const handleOpenWhatsApp = () => {
     const encoded = encodeURIComponent(activeMessage);
     const waUrl = `https://api.whatsapp.com/send?text=${encoded}`;
-    window.open(waUrl, "_blank");
-    toast.success("Opening WhatsApp share window...");
+    // Opening WhatsApp is the feedback; avoid claiming a share was completed.
+    window.open(waUrl, "_blank", "noopener,noreferrer");
   };
 
   const handleCopyMessage = () => {
-    navigator.clipboard.writeText(activeMessage);
-    setCopiedMsg(true);
-    toast.success("WhatsApp pitch copied to clipboard!");
-    setTimeout(() => setCopiedMsg(false), 2000);
+    void copyMarketingText(activeMessage, setCopiedMsg, "WhatsApp message copied!");
   };
 
   // 4. Social Graphic Studio State
@@ -669,7 +680,8 @@ export const Marketing: React.FC<MarketingProps> = ({
         {/* Segment 1: Dashboard Summary */}
         <button
           onClick={() => setMainSegment("dashboard")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
+          aria-pressed={mainSegment === "dashboard"}
+          className={`le-press-feedback min-h-11 flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
             mainSegment === "dashboard"
               ? "bg-primary text-on-primary shadow-sm"
               : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -682,7 +694,8 @@ export const Marketing: React.FC<MarketingProps> = ({
         {/* Segment 2: Campaign Builder */}
         <button
           onClick={() => setMainSegment("campaign_builder")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
+          aria-pressed={mainSegment === "campaign_builder"}
+          className={`le-press-feedback min-h-11 flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
             mainSegment === "campaign_builder"
               ? "bg-primary text-on-primary shadow-sm"
               : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -695,7 +708,8 @@ export const Marketing: React.FC<MarketingProps> = ({
         {/* Segment 3: Tool Library */}
         <button
           onClick={() => setMainSegment("tool_library")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
+          aria-pressed={mainSegment === "tool_library"}
+          className={`le-press-feedback min-h-11 flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
             mainSegment === "tool_library"
               ? "bg-primary text-on-primary shadow-sm"
               : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -925,7 +939,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 />
                 <button
                   onClick={copyStoreUrl}
-                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-on-primary text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                  className="le-press-feedback min-h-11 px-4 py-2 bg-primary hover:bg-primary/90 text-on-primary text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
                 >
                   {copiedLink ? <Check size={14} className="text-white" /> : <Copy size={14} />}
                   <span>{copiedLink ? "Copied!" : "Copy Link"}</span>
@@ -935,7 +949,7 @@ export const Marketing: React.FC<MarketingProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
                 <button
                   onClick={() => handleLaunchQuickAction("whatsapp")}
-                  className="p-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
+                  className="le-press-feedback min-h-11 p-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
                 >
                   <MessageSquare size={15} />
                   <span>Share on WhatsApp</span>
@@ -943,7 +957,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
                 <button
                   onClick={() => handleLaunchQuickAction("social_studio")}
-                  className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer"
+                  className="le-press-feedback min-h-11 p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer"
                 >
                   <Palette size={15} className="text-primary" />
                   <span>Create Social Post</span>
@@ -951,7 +965,7 @@ export const Marketing: React.FC<MarketingProps> = ({
 
                 <button
                   onClick={() => setMainSegment("campaign_builder")}
-                  className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer"
+                  className="le-press-feedback min-h-11 p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer"
                 >
                   <Ticket size={15} className="text-primary" />
                   <span>Create Voucher</span>
@@ -1220,7 +1234,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                       />
                       <button
                         onClick={copyStoreUrl}
-                        className="px-3 py-1.5 bg-surface-container-highest hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                        className="le-press-feedback min-h-11 px-3 py-1.5 bg-surface-container-highest hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
                       >
                         {copiedLink ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
                         <span>{copiedLink ? "Copied" : "Copy"}</span>
@@ -1232,7 +1246,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                   <div className="space-y-2.5 pt-2 border-t border-outline-variant/10">
                     <button
                       onClick={generatePdfFlyer}
-                      className="w-full py-3 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer"
+                      className="le-press-feedback min-h-11 w-full py-3 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer"
                     >
                       <FileText size={16} />
                       <span>Download A4 Printable Flyer (PDF)</span>
@@ -1647,7 +1661,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                   {/* Download Action */}
                   <button
                     onClick={handleDownloadSocialGraphic}
-                    className="w-full py-3 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer"
+                    className="le-press-feedback min-h-11 w-full py-3 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer"
                   >
                     <Download size={16} />
                     <span>Download High-Res Graphic (PNG)</span>
@@ -1658,13 +1672,8 @@ export const Marketing: React.FC<MarketingProps> = ({
                     <label className="block text-xs font-bold text-on-surface flex items-center justify-between">
                       <span>Instagram & Facebook Caption</span>
                       <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(socialCaption);
-                          setCopiedCaption(true);
-                          toast.success("Caption copied!");
-                          setTimeout(() => setCopiedCaption(false), 2000);
-                        }}
-                        className="text-primary hover:underline text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                        onClick={() => void copyMarketingText(socialCaption, setCopiedCaption, "Caption copied!")}
+                        className="le-press-feedback min-h-11 px-2 text-primary hover:underline text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                       >
                         {copiedCaption ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                         <span>{copiedCaption ? "Copied" : "Copy Caption"}</span>
@@ -1730,13 +1739,8 @@ export const Marketing: React.FC<MarketingProps> = ({
                 </div>
 
                 <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(smsText);
-                    setCopiedSms(true);
-                    toast.success("SMS broadcast copied to clipboard!");
-                    setTimeout(() => setCopiedSms(false), 2000);
-                  }}
-                  className="w-full py-3 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer"
+                  onClick={() => void copyMarketingText(smsText, setCopiedSms, "SMS text copied!")}
+                  className="le-press-feedback min-h-11 w-full py-3 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer"
                 >
                   {copiedSms ? <Check size={16} className="text-emerald-500" /> : <Copy size={16} />}
                   <span>{copiedSms ? "Copied SMS Text!" : "Copy SMS to Clipboard"}</span>
