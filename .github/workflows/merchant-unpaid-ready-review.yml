@@ -1,0 +1,30 @@
+name: Merchant unpaid-ready pickup warning review
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/services/pickupNoShow.ts'
+      - 'src/components/PickupOrderActions.tsx'
+      - 'tests/merchant-unpaid-ready-aging.test.mjs'
+      - '.github/workflows/merchant-unpaid-ready-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unpaid-ready:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Check advisory timing and actual payment trust
+        run: node --experimental-strip-types --test tests/merchant-unpaid-ready-aging.test.mjs
+      - name: Install project dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build Merchant
+        run: npm run build
