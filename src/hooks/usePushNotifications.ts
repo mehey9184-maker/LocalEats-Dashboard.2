@@ -53,7 +53,8 @@ export const usePushNotifications=(initialState=false):PushNotificationHook=>{
     inFlight.current=true;
     try {
       const token=await requestNotificationPermissionAndGetToken();
-      if(!token || auth.currentUser?.uid!==uid || sequence.current!==epoch)return;
+      if(auth.currentUser?.uid!==uid || sequence.current!==epoch)return;
+      if(!token){setPushEnabled(false);return;}
       const confirmed=await MerchantApi.registerPushDevice(existing,token);
       if(sequence.current===epoch && auth.currentUser?.uid===uid) setPushEnabled(confirmed);
     }catch{
