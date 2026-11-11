@@ -61,3 +61,11 @@ test("UX2 Orders: responsive text filtering and memoized board columns preserve 
   assert.doesNotMatch(orders,/displayedOrders\.filter\(o => o\.status === "ready"\)/);
   assert.doesNotMatch(orders,/displayedOrders\.filter\(o => o\.status === "accepted" \|\| o\.status === "preparing"\)/);
 });
+
+test("UX2 still denies unapproved menu writes and simulated ordering",()=>{
+  assert.match(menu,/if \(menuWritesUnavailable\(\)\)/);
+  assert.match(menu,/No change was saved/);
+  assert.match(orders,/usePreviewFakeOrders\(\)/);
+  assert.match(orders,/const isReadOnlyPreview = import\.meta\.env\.VITE_MERCHANT_PREVIEW_READ_ONLY === "true"/);
+  assert.match(app,/merchantShopGate\.status === "ready"/);
+});
