@@ -39,7 +39,15 @@ test("Merchant Home offers a persistent manual install entry without nagging aft
   assert.match(home,/onClick=\{onInstallApp\}/);
   assert.match(home,/isAppInstalled \? "App Installed" : "Install App"/);
   assert.match(home,/disabled=\{isAppInstalled\}/);
-  assert.match(home,/sm:flex-wrap/); // avoid header overflow on tablet and desktop
+  assert.match(home,/className="sm:hidden"/); // mobile CTA is at the very top of Home
+  assert.ok(home.indexOf('className="sm:hidden"') < home.indexOf("Storefront Ownership Sync & Repair Card"));
+  assert.match(app,/hidden sm:inline-flex min-h-11 min-w-11/); // fixed tablet/desktop toolbar
+  assert.match(app,/onClick=\{\(\) => setManualInstallOpen\(true\)\}/);
+  assert.match(app,/isPwaInstalled \? "App Installed" : "Install App"/);
+  assert.match(app,/subscribeToInstallability\(\(\) => setIsPwaInstalled\(appAlreadyInstalled\(\)\)\)/);
+  assert.ok(app.indexOf('Always visible in the fixed desktop/tablet header') <
+    app.indexOf('setSoundAlerts(!soundAlerts)'), "Install entry precedes the bell in the visible top bar");
+  assert.match(app,/manualInstallOpen \|\| \(isAudioEnabled/); // manual click bypasses first-run only restrictions
   assert.match(home,/Install LocalEats Merchant app/); // accessible button name
   assert.match(ui,/deferInstallOffer\(storageKey\)/); // snooze is preserved for automatic offers
   assert.match(home,/min-h-11/);
