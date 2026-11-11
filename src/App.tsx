@@ -109,6 +109,7 @@ import { LegalDocsModal } from "./components/LegalDocsModal";
 import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
 import { ShopDiagnosticPanel } from "./components/ShopDiagnosticPanel";
 import { OnboardingTour } from "./components/OnboardingTour";
+import { InstallAppInvite } from "./components/InstallAppInvite";
 import { CreateShopOnboarding } from "./components/CreateShopOnboarding";
 import { PendingShopApproval } from "./components/PendingShopApproval";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -1887,7 +1888,14 @@ function App() {
           expand={true}
         />
         <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
-
+        <InstallAppInvite
+          eligible={Boolean(user?.id && currentShop?.id && merchantShopGate.status === "ready" &&
+            !isSessionChecking && isAuthReady && isAudioEnabled &&
+            !onboardingOpen && !isNotificationCenterOpen && !isSaving)}
+          appName="LocalEats Merchant"
+          storageKey="localeats_merchant_install_defer_v1"
+          variant="merchant"
+        />
 
         <NotificationCenterSidePanel isOpen={isNotificationCenterOpen} onClose={() => setIsNotificationCenterOpen(false)}
           orders={orders} menuItems={menuItems}
