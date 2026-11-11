@@ -1500,6 +1500,19 @@ function App() {
 
 
   const handleSignOut = async () => {
+    // Protect shared devices: revoke this merchant's FCM device while the
+    // authenticated token is still available. Never block signout on outage.
+    const uid=auth.currentUser?.uid;
+    if(uid && typeof navigator!=="undefined" && navigator.onLine){
+      let installation:string|null=null;
+      try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch{}
+      if(installation){
+        await Promise.race([
+          MerchantApi.revokePushDevice(installation).catch(()=>false),
+          new Promise(resolve=>setTimeout(resolve,1200)),
+        ]);
+      }
+    }
     setOrders([]);
     await supabase.auth.signOut();
   };
