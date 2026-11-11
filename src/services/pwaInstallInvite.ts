@@ -33,6 +33,10 @@ if (typeof window !== "undefined") {
     // A browser-provided install prompt is positive evidence this site is
     // installable here. An old local marker may be stale after an uninstall.
     pendingInstall = candidate;
+    // A fresh native offer may indicate an app was uninstalled since the marker
+    // was stored. Never allow that old marker to suppress the new offer.
+    installedThisSession = false;
+    try { window.localStorage.removeItem(installedMarker); } catch {}
     publish();
   });
   window.addEventListener("appinstalled", () => {
@@ -56,6 +60,21 @@ export function consumeInstallEvent(): BrowserInstallEvent | null {
   publish();
   return event;
 }
+/** Trigger the real browser UI synchronously from a user click. No instructions
+ * or fabricated shortcuts are presented when the browser hasn't offered it. */
+export async function requestNativeInstall(): Promise<"accepted" | "dismissed" | "unavailable" | "error"> {
+  const event = consumeInstallEvent();
+  if (!event) return "unavailable";
+  try {
+    const response = await event.prompt();
+    const responseOutcome = response && typeof response === "object" ? response.outcome : undefined;
+    const outcome = responseOutcome ?? (await event.userChoice)?.outcome;
+    return outcome === "accepted" || outcome === "dismissed" ? outcome : "unavailable";
+  } catch {
+    return "error";
+  }
+}
+
 export function appAlreadyInstalled(): boolean {
   if (installedThisSession) return true;
   if (typeof window === "undefined" || typeof navigator === "undefined") return false;
