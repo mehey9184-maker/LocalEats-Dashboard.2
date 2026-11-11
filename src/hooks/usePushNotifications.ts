@@ -1,149 +1,74 @@
-import { useState, useCallback } from 'react';
-import { toast } from 'sonner';
-import { SupabaseClient } from '@supabase/supabase-js';
+import {useState,useCallback,useEffect} from "react";
+import {toast} from "sonner";
+import {onAuthStateChanged} from "firebase/auth";
+import type {SupabaseClient} from "@supabase/supabase-js";
+import {auth,requestNotificationPermissionAndGetToken} from "../lib/firebase";
+import {MerchantApi} from "../services/MerchantApi";
 
-// --- Type Definitions ---
-export type RoleType = 'rider' | 'client' | 'merchant';
-
+export type RoleType="rider"|"client"|"merchant";
 interface PushNotificationHook {
-  pushEnabled: boolean;
-  requestPushPermissions: (userId: string | undefined, role: RoleType, supabaseClient: SupabaseClient) => Promise<void>;
-  urlBase64ToUint8Array: (base64String: string) => Uint8Array;
+  pushEnabled:boolean;
+  requestPushPermissions:(userId:string|undefined,role:RoleType,supabaseClient:SupabaseClient)=>Promise<void>;
+  urlBase64ToUint8Array:(base64String:string)=>Uint8Array;
 }
 
 /**
- * Custom hook to manage Web Push Notifications via VAPID.
- * Implements DRY, SOLID, and defensive validation.
+ * Merchant FCM registration. The server must acknowledge the subscription:
+ * OS permission alone is not evidence that an owner will receive new orders.
+ * No direct Supabase writes or generic WebPush subscription are allowed here.
  */
-export const usePushNotifications = (initialState = false): PushNotificationHook => {
-  const [pushEnabled, setPushEnabled] = useState<boolean>(initialState);
+export const usePushNotifications=(initialState=false):PushNotificationHook=>{
+  const [pushEnabled,setPushEnabled]=useState(initialState);
+  useEffect(()=>onAuthStateChanged(auth,()=>setPushEnabled(false)),[]);
 
-  /**
-   * Converts a base64 string to a Uint8Array.
-   * Required for VAPID key conversion.
-   */
-  const urlBase64ToUint8Array = useCallback((base64String: string): Uint8Array => {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
+  const urlBase64ToUint8Array=useCallback((base64String:string):Uint8Array=>{
+    const padding="=".repeat((4-base64String.length%4)%4);
+    const raw=window.atob((base64String+padding).replace(/-/g,"+").replace(/_/g,"/"));
+    return Uint8Array.from(raw,c=>c.charCodeAt(0));
+  },[]);
 
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-  }, []);
-
-  /**
-   * Requests permission and subscribes the user to push notifications.
-   */
-  const requestPushPermissions = useCallback(async (userId: string | undefined, role: RoleType, supabaseClient: SupabaseClient) => {
-    // 1. Defensively check environment support
-    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
-      toast.error('This browser does not support push notifications.');
+  const requestPushPermissions=useCallback(async(
+    userId:string|undefined,role:RoleType,_supabaseClient:SupabaseClient
+  )=>{
+    setPushEnabled(false);
+    if(role!=="merchant"){
+      toast.info("Background pickup push is only available to verified shop owners in this pilot.");
       return;
     }
-
-    try {
-      // 2. Request native permission
-      const permission = await Notification.requestPermission();
-      
-      if (permission !== 'granted') {
-        setPushEnabled(false);
-        toast.error('Notification permission denied.');
-        return;
-      }
-
-      setPushEnabled(true);
-
-      // 3. Early return if user is not authenticated
-      if (!userId) {
-        toast.success('Push notifications enabled locally!');
-        return;
-      }
-
-      // Wrap setup operations in an idle-callback thread to keep startup completely un-blocked
-      const runRegistrationAndPersistenceCheck = () => {
-        // Run with an inner try/catch block to avoid any hydration error cascade
-        const runAsyncLogic = async () => {
-          try {
-            // 4. Validate and defensively ensure Service Worker registration
-            let registration = await navigator.serviceWorker.getRegistration();
-            if (!registration) {
-              console.log("[PushNotifications] Registering service worker fallback");
-              registration = await navigator.serviceWorker.register('/sw.ts', { scope: '/' });
-            }
-
-            // Check ready state with timeout to prevent infinite hanging
-            const readyPromise = navigator.serviceWorker.ready;
-            const timeoutPromise = new Promise<ServiceWorkerRegistration>((_, reject) => {
-              setTimeout(() => reject(new Error("Service worker activation timed out")), 10000);
-            });
-
-            try {
-              registration = await Promise.race([readyPromise, timeoutPromise]);
-            } catch (e) {
-              console.warn("[PushNotifications] Ready state timeout, continuing with registration:", e);
-            }
-
-            if (!registration) {
-              console.warn('[PushNotifications] Service worker not active yet during idle check.');
-              return;
-            }
-
-            // 5. Subscribe to Push Manager
-            let subscription = await registration.pushManager.getSubscription();
-            if (!subscription) {
-              const vapidPublicKey = 'BD1XkIROdUwh10mz-IoWXYIy3awy5SN37JRExUeG0eIkgcyvSt7HzrXmRhERIDigFylQOP9GgglaWmVStB2Cx1c';
-              const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
-              
-              subscription = await registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: convertedVapidKey as unknown as BufferSource,
-              });
-            }
-
-            // 6. Persist to Database
-            if (subscription) {
-              const subJSON = subscription.toJSON();
-              const { error } = await supabaseClient.from('push_subscriptions').upsert(
-                {
-                  user_id: userId,
-                  role,
-                  endpoint: subJSON.endpoint,
-                  p256dh: subJSON.keys?.p256dh,
-                  auth: subJSON.keys?.auth,
-                  last_used: new Date().toISOString(),
-                },
-                { onConflict: 'endpoint' }
-              );
-
-              if (error) {
-                console.error('Failed to save push subscription to DB:', error);
-                toast.error('Failed to register device with the server.');
-              } else {
-                toast.success('Push notifications enabled!');
-              }
-            }
-          } catch (innerErr) {
-            console.error('Push notification background registration failed silently to protect dashboard:', innerErr);
-          }
-        };
-
-        void runAsyncLogic();
-      };
-
-      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-        window.requestIdleCallback(() => runRegistrationAndPersistenceCheck());
-      } else {
-        // Safe timeout fallback
-        setTimeout(runRegistrationAndPersistenceCheck, 1200);
-      }
-    } catch (error) {
-      console.error('Error requesting notification permission:', error);
-      toast.error('Failed to enable push notifications.');
+    if(!userId || userId!==auth.currentUser?.uid){
+      toast.error("Sign in to your verified merchant account before enabling notifications.");
+      return;
     }
-  }, [urlBase64ToUint8Array]);
-
-  return { pushEnabled, requestPushPermissions, urlBase64ToUint8Array };
+    if(typeof window==="undefined" || !("Notification" in window) ||
+       !("serviceWorker" in navigator) || !window.isSecureContext){
+      toast.error("This browser cannot receive secure background notifications.");
+      return;
+    }
+    if(!import.meta.env.VITE_FIREBASE_VAPID_KEY){
+      toast.error("Web Push certificate is not configured yet. Keep the Orders page open.");
+      return;
+    }
+    try{
+      const token=await requestNotificationPermissionAndGetToken();
+      if(!token){
+        toast.error("Notification permission or device registration failed. Orders still refresh in-app.");
+        return;
+      }
+      const key="localeats-merchant-push-installation:"+userId;
+      const previous=localStorage.getItem(key);
+      const installation=previous && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(previous)
+        ? previous : crypto.randomUUID();
+      if(!previous || previous!==installation)localStorage.setItem(key,installation);
+      const saved=await MerchantApi.registerPushDevice(installation,token);
+      if(!saved || auth.currentUser?.uid!==userId){
+        toast.error("Your device was not registered with LocalEats. Orders still refresh in-app.");
+        return;
+      }
+      setPushEnabled(true);
+      toast.success("This merchant device is registered for pickup notifications.");
+    }catch{
+      toast.error("Could not connect push notifications. Keep Orders open for live updates.");
+    }
+  },[]);
+  return {pushEnabled,requestPushPermissions,urlBase64ToUint8Array};
 };

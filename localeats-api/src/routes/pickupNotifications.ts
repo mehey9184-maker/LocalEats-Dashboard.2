@@ -35,6 +35,13 @@ pickupNotificationRoutes.put("/push-subscriptions/:installationId",authenticateF
     const body=object(req.body); onlyKeys(body,["fcm_token","permission_granted"]);
     if(body.permission_granted!==true || typeof body.fcm_token!=="string" || body.fcm_token.length<20 || body.fcm_token.length>4096 || /\s/.test(body.fcm_token))
       throw new OrderContractError(400,"PUSH_PERMISSION_REQUIRED","A permitted device token is required.");
+    // Exactly one active owner per FCM token. When a shared browser changes
+    // accounts, revoke the old subscription before claiming this same device.
+    // The database also has a unique fcm_token constraint for racing requests.
+    const {error:priorError}=await supabaseAdmin.from("pickup_push_subscriptions")
+      .update({revoked_at:new Date().toISOString(),fcm_token:null})
+      .eq("fcm_token",body.fcm_token).neq("installation_id",installation);
+    if(priorError) throw new OrderContractError(503,"DEVICE_TRANSFER_UNAVAILABLE","Device transfer could not be verified.");
     const {error}=await supabaseAdmin.from("pickup_push_subscriptions").upsert({user_id:uid,installation_id:installation,
       fcm_token:body.fcm_token,revoked_at:null},{onConflict:"user_id,installation_id"});
     if(error) throw new OrderContractError(error.code==="23505" ? 409 : 503,"SUBSCRIPTION_NOT_SAVED","Subscription not saved.");

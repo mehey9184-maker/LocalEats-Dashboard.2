@@ -30,7 +30,7 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
       table==="menu_items" ? [{id:"item",shop_id:"shop-my-kota-ivory-park",name:"Meal",price:25,is_available:true}] :
       table==="pickup_order_events" ? [] : persisted ? {id,shop_id:orderShop,user_id:orderCustomer,delivery_type:"collection",create_intent_hash:"a".repeat(64)} : null,error:null});
     const query:any={select:()=>query,eq:(key:string,value:unknown)=>{filters.push([key,value]);return query;},
-      in:()=>query,order:()=>query,limit:()=>query,is:()=>query,
+      in:()=>query,order:()=>query,limit:()=>query,is:()=>query,neq:()=>query,
       maybeSingle:async()=>result(),then:(resolve:any,reject:any)=>Promise.resolve(result()).then(resolve,reject),
       upsert:(record:Record<string,unknown>)=>{subscription=record;return query;},update:()=>query};
     return query;

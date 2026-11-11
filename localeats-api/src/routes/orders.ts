@@ -16,6 +16,7 @@ import {
 } from "../orders/orderService.js";
 import { merchantCommandReceipt, commandPickup, createPickup, parsePickupInput, pickupPricing, pickupQuote } from "../orders/pickupService.js";
 import { drainPickupPush } from "../orders/pickupPush.js";
+import {tryMerchantPickupPush} from "../orders/merchantPush.js";
 import { readCompleteMerchantInbox, MERCHANT_UNFINISHED_FILTER, MERCHANT_INBOX_RECENT_LIMIT } from "../orders/merchantInboxRead.js";
 import { deriveDeliveryProof } from "../orders/deliveryProof.js";
 
@@ -94,6 +95,22 @@ router.post("/", authenticateFirebase, async (req: AuthenticatedRequest, res: Re
     const request=parsePickupInput(req.body,true);
     assertControlledPickup({shop_id:request.input.shop_id,user_id:userId});
     const result = await createPickup(supabaseAdmin, repository, userId, request);
+    // Creation is already committed. Never notify for an idempotent replay,
+    // and never let provider outages turn a persisted order into checkout fail.
+    if (!result.replayed) {
+      await tryMerchantPickupPush({
+        findOwner: async(shopId)=>{
+          const {data,error}=await supabaseAdmin.from("shops").select("owner_id").eq("id",shopId).maybeSingle();
+          return error ? null : typeof data?.owner_id==="string" ? data.owner_id : null;
+        },
+        findTokens: async(ownerUid)=>{
+          const {data,error}=await supabaseAdmin.from("pickup_push_subscriptions")
+            .select("fcm_token").eq("user_id",ownerUid).is("revoked_at",null).limit(5);
+          return error ? [] : (data??[]).map(s=>s.fcm_token).filter((token):token is string=>typeof token==="string");
+        }
+      },{id:result.order.id,shop_id:String(result.order.shop_id),
+         status:String(result.order.status),delivery_type:String(result.order.delivery_type)},false);
+    }
     res.status(result.replayed ? 200 : 201).json({
       success: true,
       replayed: result.replayed,

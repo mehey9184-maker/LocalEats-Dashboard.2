@@ -927,18 +927,18 @@ export async function requestNotificationPermissionAndGetToken(vapidKey?: string
 
     if (!("Notification" in window)) return null;
 
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") return null;
+    const permission = Notification.permission === "granted"
+      ? "granted" : await Notification.requestPermission();
+    if (permission !== "granted" || !("serviceWorker" in navigator)) return null;
 
-    const messaging = getMessaging(app);
-    
-    let serviceWorkerRegistration: ServiceWorkerRegistration | undefined;
-    if ("serviceWorker" in navigator) {
-      serviceWorkerRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js").catch(() => undefined);
-    }
-
+    // The regular PWA offline worker owns scope "/". A separate scope stops
+    // FCM registration from replacing the installed application's worker.
+    const serviceWorkerRegistration = await navigator.serviceWorker.register(
+      "/firebase-messaging-sw.js", {scope:"/firebase-cloud-messaging-push-scope/"}
+    );
     const activeVapidKey = vapidKey || import.meta.env.VITE_FIREBASE_VAPID_KEY;
-
+    if (!activeVapidKey) return null;
+    const messaging = getMessaging(app);
     const currentToken = await getToken(messaging, {
       vapidKey: activeVapidKey,
       serviceWorkerRegistration

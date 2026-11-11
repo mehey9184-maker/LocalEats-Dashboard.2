@@ -6,7 +6,7 @@ export interface PushJob {id:string;attempts:number;lease_until:string;event_id:
 export type PushSender = (job:PushJob)=>Promise<void>;
 const sendFcm:PushSender=async job=>{
   await getMessaging().send({token:job.token,data:{type:"pickup_ready",event_id:job.event_id,order_id:job.order_id},
-    android:{ttl:60_000},webpush:{headers:{TTL:"60"}}});
+    android:{ttl:600_000,priority:"high"},webpush:{headers:{TTL:"600",Urgency:"high"}}});
 };
 // Exactly one awaited attempt per relevant request, no timer, detached promise, cron or worker.
 export async function drainPickupPush(client:RpcClient,uid:string,sender?:PushSender):Promise<void> {

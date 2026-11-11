@@ -83,6 +83,24 @@ const pickupRecovery=createMerchantPickupRecovery({
 });
 
 export class MerchantApi {
+  /** Register a verified merchant's FCM device with the protected pickup API.
+   * A browser's permission alone does not mean FCM can reach this merchant.
+   */
+  static async registerPushDevice(installationId:string,fcmToken:string):Promise<boolean> {
+    const uid=auth.currentUser?.uid;
+    if(!uid || !/^[0-9a-f-]{36}$/i.test(installationId) ||
+       typeof fcmToken!=="string" || fcmToken.length<20) return false;
+    const shop=await this.getMerchantShop();
+    if(!shop || String(shop.owner_id)!==uid || auth.currentUser?.uid!==uid) return false;
+    try {
+      const response=await fetch(`${getApiUrl()}/api/v1/push-subscriptions/${encodeURIComponent(installationId)}`,{
+        method:"PUT",headers:await getApiAuthHeaders(),
+        body:JSON.stringify({fcm_token:fcmToken,permission_granted:true}),
+      });
+      const data=await readJsonResponse(response);
+      return auth.currentUser?.uid===uid && response.ok && data.success===true;
+    }catch{return false;}
+  }
   static async setAvailability(shopId:string|number,open:boolean,confirmOutsideHours=false,expectedRevision?:number):Promise<VerifiedMerchantShop> {
     const uid=auth.currentUser?.uid;
     const shop=await this.getMerchantShop();
