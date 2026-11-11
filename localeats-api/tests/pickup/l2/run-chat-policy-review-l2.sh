@@ -31,7 +31,7 @@ load(){ docker exec -i "$name" psql -X -v ON_ERROR_STOP=1 -U postgres -d l2_chat
 check(){
   local got
   got="$(pg "$1")"
-  [[ "$got" == "$2" ]] || { echo "L2_EXPECTED=$2 GOT=$got" >&2;exit 1; }
+  [[ "$got" == "$2" ]] || { echo "L2_EXPECTED=$2 GOT=$got QUERY=$1" >&2;exit 1; }
 }
 must_deny(){
   local failure
