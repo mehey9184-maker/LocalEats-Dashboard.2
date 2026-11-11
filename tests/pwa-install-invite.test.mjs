@@ -28,7 +28,7 @@ test("PWA: optional invitation only after verified sign-in, with real user choic
   assert.match(ui,/hasDeferredInstall\(storageKey\)/);
   assert.match(bridge,/window\.addEventListener\("beforeinstallprompt"/);
   assert.match(bridge,/window\.addEventListener\("appinstalled"/);
-  assert.match(bridge,/const days = 14/);
+  assert.match(bridge,/days = 14/);
   assert.doesNotMatch(ui,/window\.location\.href/);
 });
 test("PWA: browser eligibility, cancellation, already-installed state and respectful cooldown",async()=>{
