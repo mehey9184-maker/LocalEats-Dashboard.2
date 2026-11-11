@@ -1,0 +1,37 @@
+name: L2 guarded private-data ACL production release review
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261111060000_l2_private_chat_payment_acl.sql'
+      - 'tests/security/l2_private_data_acl_release*'
+      - '.github/workflows/l2-private-data-acl-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-guarded-acl-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      REWARDS_ACTIVATION_ENABLED: 'false'
+      LOCALPAY_LIVE_WALLET_ENABLED: 'false'
+    steps:
+      - name: Checkout no credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Validate guarded production SQL
+        run: node --test tests/security/l2_private_data_acl_release.test.mjs
+      - name: Disallow hosted databases and published test ports
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -Ein 'supabase\.co|SUPABASE_SERVICE_ROLE_KEY|DATABASE_URL|db push|apply_migration|--remote|--publish| -p [0-9]+:' tests/security/l2_private_data_acl_release.sh
+      - name: Rehearse exact migration in disposable PostgreSQL 17
+        run: bash tests/security/l2_private_data_acl_release.sh
