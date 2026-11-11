@@ -1,0 +1,97 @@
+name: L2 hardened signup and Rider RPC release rehearsal
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261111061500_l2_signup_customer_role_guard.sql'
+      - 'supabase/migrations/20261111061600_l2_rider_notification_acl.sql'
+      - '.github/workflows/l2-signup-rider-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signup-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-only
+          POSTGRES_DB: local_signup_role_qa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d local_signup_role_qa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-only
+      PGDATABASE: local_signup_role_qa
+      PICKUP_WRITES_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Seed artificial vulnerable signup metadata
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/security/signup_metadata_fixture.sql
+      - name: Apply exact guarded signup release SQL on disposable PostgreSQL
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261111061500_l2_signup_customer_role_guard.sql
+      - name: Verify metadata-admin claim denied, owner preserved, trigger retained
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/security/signup_metadata_assertions.sql
+      - name: Refuse reapplying after function already changed
+        run: |
+          if psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261111061500_l2_signup_customer_role_guard.sql >/tmp/signup-reapply.log 2>&1; then
+            echo "L2 second signup cutover unexpectedly succeeded";exit 1
+          fi
+          grep -q 'SIGNUP_REVIEW_DRIFT' /tmp/signup-reapply.log
+
+  rider-notification-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-only
+          POSTGRES_DB: local_rider_notify_qa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d local_rider_notify_qa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-only
+      PGDATABASE: local_rider_notify_qa
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Seed artificial open Rider notification policy/RPC
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/security/rider_notification_fixture.sql
+      - name: Apply exact guarded Rider release SQL on disposable PostgreSQL
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261111061600_l2_rider_notification_acl.sql
+      - name: Verify client denials, trusted server role and Rider RPC
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/security/rider_notification_assertions.sql
+      - name: Refuse reapplying after policy removal
+        run: |
+          if psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261111061600_l2_rider_notification_acl.sql >/tmp/rider-reapply.log 2>&1; then
+            echo "L2 second Rider cutover unexpectedly succeeded";exit 1
+          fi
+          grep -q 'SECURITY_REVIEW_POLICY_DRIFT' /tmp/rider-reapply.log
