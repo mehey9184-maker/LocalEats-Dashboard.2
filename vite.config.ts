@@ -17,21 +17,27 @@ export default defineConfig(({mode}) => {
         filename: 'sw.ts',
         registerType: 'autoUpdate',
         manifest: {
-          short_name: "LocalEats",
-          name: "LocalEats",
+          short_name: "LocalEats Shop",
+          name: "LocalEats Merchant Dashboard",
           icons: [
             {
-              src: "logo.png", // Assuming logo.png is large enough, or icon.svg
-              sizes: "192x192 512x512",
+              src: "/pwa-icon-192.png",
+              sizes: "192x192",
               type: "image/png",
-              purpose: "any maskable"
+              purpose: "any"
+            },
+            {
+              src: "/pwa-icon-512.png",
+              sizes: "512x512",
+              type: "image/png",
+              purpose: "any"
             }
           ],
           start_url: "/",
           background_color: "#faf9f8",
           display: "standalone",
           theme_color: "#FF5A36",
-          description: "LocalEats Platform for ordering and selling."
+          description: "LocalEats Merchant Dashboard for managing your shop, menu and pickup preparation."
         },
         injectManifest: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,woff}'],

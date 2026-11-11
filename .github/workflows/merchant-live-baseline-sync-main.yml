@@ -32,6 +32,7 @@ jobs:
           node --test tests/merchant-smoothness-ux2.test.mjs
           node --test tests/merchant-smoothness-ux3.test.mjs
           node --test tests/merchant-smoothness-ux4.test.mjs
+          node --experimental-strip-types --test tests/pwa-install-invite.test.mjs
       - name: Merchant build
         run: npm run build
       - name: API install
