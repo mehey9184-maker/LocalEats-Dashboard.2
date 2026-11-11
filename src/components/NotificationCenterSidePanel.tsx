@@ -1,5 +1,5 @@
 import React from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Inbox, AlertTriangle, ArrowRight } from "lucide-react";
 import type { MerchantNoticeTopic } from "../hooks/usePageNotificationAttention";
 import { Order, MenuItem } from "../types";
@@ -15,6 +15,8 @@ export interface NotificationCenterSidePanelProps {
   onClose: () => void;
   orders: Order[];
   menuItems: MenuItem[];
+  ordersVerified?: boolean;
+  menuVerified?: boolean;
   onPreviewTestNotice?: (topic: MerchantNoticeTopic) => void;
 }
 
@@ -23,12 +25,28 @@ export const NotificationCenterSidePanel: React.FC<NotificationCenterSidePanelPr
   onClose,
   orders,
   menuItems,
+  ordersVerified = false,
+  menuVerified = false,
   onPreviewTestNotice,
 }) => {
-  const pendingOrdersCount = Array.isArray(orders)
+  const reduceMotion = useReducedMotion();
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const closeRef = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, [isOpen]);
+  const pendingOrdersCount = ordersVerified && Array.isArray(orders)
     ? orders.filter((o) => o && (o.status === "pending" || o.status === "accepted")).length
     : 0;
-  const lowStockItems = Array.isArray(menuItems)
+  const lowStockItems = menuVerified && Array.isArray(menuItems)
     ? menuItems.filter((m) => m && typeof m.stock_quantity === "number" && m.stock_quantity < 5)
     : [];
 
@@ -61,17 +79,35 @@ export const NotificationCenterSidePanel: React.FC<NotificationCenterSidePanelPr
       {isOpen && (
         <motion.div
           key="notification-center-overlay"
-          initial={{ opacity: 0 }}
+          initial={reduceMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          exit={reduceMotion ? { opacity: 1 } : { opacity: 0 }}
           className="fixed inset-0 z-[120] flex justify-end bg-black/20 backdrop-blur-sm"
           onClick={onClose}
         >
           <motion.div
-            initial={{ x: "100%" }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="merchant-notification-center-title"
+            tabIndex={-1}
+            ref={dialogRef}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault(); e.stopPropagation(); onClose();
+              } else if (e.key === "Tab") {
+                const items = dialogRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+                if (!items?.length) return;
+                if (e.shiftKey && document.activeElement === items[0]) {
+                  e.preventDefault(); items[items.length - 1].focus();
+                } else if (!e.shiftKey && document.activeElement === items[items.length - 1]) {
+                  e.preventDefault(); items[0].focus();
+                }
+              }
+            }}
+            initial={reduceMotion ? false : { x: "100%" }}
             animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            exit={reduceMotion ? { x: 0 } : { x: "100%" }}
+            transition={reduceMotion ? { duration: 0 } : { type: "spring", damping: 25, stiffness: 200 }}
             className="w-full max-w-sm h-full bg-surface-container-lowest border-l border-outline-variant/20 shadow-[-8px_0_32px_-12px_rgba(0,0,0,0.1)] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
@@ -80,11 +116,14 @@ export const NotificationCenterSidePanel: React.FC<NotificationCenterSidePanelPr
                 <div className="p-2 bg-primary/10 rounded-xl text-primary">
                   <Inbox size={20} />
                 </div>
-                <h3 className="font-bold text-on-surface">Notification Center</h3>
+                <h3 id="merchant-notification-center-title" className="font-bold text-on-surface">Notification Center</h3>
               </div>
               <button
+                type="button"
+                ref={closeRef}
+                aria-label="Close notification center"
                 onClick={onClose}
-                className="p-2 hover:bg-surface-container-low rounded-full transition-colors text-on-surface-variant hover:text-on-surface"
+                className="le-press-feedback min-w-11 min-h-11 flex items-center justify-center p-2 hover:bg-surface-container-low rounded-full transition-colors text-on-surface-variant hover:text-on-surface"
               >
                 <ArrowRight size={20} />
               </button>
@@ -108,14 +147,22 @@ export const NotificationCenterSidePanel: React.FC<NotificationCenterSidePanelPr
                     ] as const).map(([topic,label])=>(
                       <button key={topic} type="button"
                         onClick={()=>onPreviewTestNotice(topic)}
-                        className="min-h-9 rounded-lg bg-white dark:bg-zinc-900 border border-amber-300/70 px-3 text-xs font-semibold text-on-surface">
+                        className="le-press-feedback min-h-11 rounded-lg bg-white dark:bg-zinc-900 border border-amber-300/70 px-3 text-xs font-semibold text-on-surface">
                         Shake {label}
                       </button>
                     ))}
                   </div>
                 </section>
               )}
-              {alerts.length === 0 ? (
+              {!ordersVerified || !menuVerified ? (
+                <div role="status" className="text-center p-8 mt-10">
+                  <div className="w-16 h-16 bg-surface-container-highest rounded-full flex items-center justify-center mx-auto mb-4 text-on-surface-variant/60">
+                    <AlertTriangle size={30} aria-hidden="true"/>
+                  </div>
+                  <h4 className="font-bold text-on-surface">Updates not fully verified</h4>
+                  <p className="text-xs text-on-surface-variant mt-2">Some shop information is still loading or could not be refreshed. A quiet list does not mean there are no alerts.</p>
+                </div>
+              ) : alerts.length === 0 ? (
                 <div className="text-center p-8 mt-10">
                   <div className="w-16 h-16 bg-surface-container-highest rounded-full flex items-center justify-center mx-auto mb-4 text-on-surface-variant/40">
                     <Inbox size={32} />
