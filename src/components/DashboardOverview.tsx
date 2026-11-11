@@ -65,6 +65,7 @@ import { supabase } from "../lib/supabase";
 import { Order, Shop, User, MenuItem } from "../types";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { useAuthGuard } from "../hooks/useAuthGuard";
+import { appAlreadyInstalled, subscribeToInstallability } from "../services/pwaInstallInvite";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -78,6 +79,7 @@ export interface DashboardOverviewProps {
   onRefresh: () => void | Promise<void>;
   onNavigate: (tab: string) => void;
   onEditProfile: () => void;
+  onInstallApp?: () => void;
   menuItems: MenuItem[];
   menuReadState?: "loading"|"ready"|"failed";
   orderReadState?: "unverified"|"fresh"|"failed";
@@ -888,6 +890,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   onRefresh,
   onNavigate,
   onEditProfile,
+  onInstallApp,
   menuItems,
   menuReadState="loading",
   orderReadState="unverified",
@@ -902,6 +905,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   onRefresh: () => void | Promise<void>;
   onNavigate: (tab: string) => void;
   onEditProfile: () => void;
+  onInstallApp?: () => void;
   menuItems: MenuItem[];
   menuReadState?: "loading"|"ready"|"failed";
   orderReadState?: "unverified"|"fresh"|"failed";
@@ -920,6 +924,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   const [isStatusToggling, setIsStatusToggling] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isMenuRetrying,setIsMenuRetrying]=useState(false);
+  const [isAppInstalled, setIsAppInstalled] = useState(() => appAlreadyInstalled());
+  useEffect(() => subscribeToInstallability(() => setIsAppInstalled(appAlreadyInstalled())), []);
   const [layoutMode, setLayoutMode] = useState<"compact" | "advanced">(() => {
     return (localStorage.getItem("localeats_dashboard_layout") as "compact" | "advanced") || "compact";
   });
@@ -1595,7 +1601,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 w-full lg:w-auto">
             {/* View layout mode switcher to adjust visual complexity & cognitive load */}
             
             <button
@@ -1604,6 +1610,19 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
             >
               VIEW PICKUP ORDERS
             </button>
+            {onInstallApp && (
+              <button
+                type="button"
+                onClick={onInstallApp}
+                disabled={isAppInstalled}
+                aria-label={isAppInstalled ? "LocalEats Merchant is installed" : "Install LocalEats Merchant app"}
+                title={isAppInstalled ? "Already running as an installed app" : "Install LocalEats Merchant or view browser instructions"}
+                className="le-press-feedback min-h-11 inline-flex items-center justify-center gap-2 rounded-2xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-xs font-bold text-on-surface hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:opacity-60"
+              >
+                {isAppInstalled ? <CheckCircle2 size={18} aria-hidden="true" /> : <Download size={18} aria-hidden="true" />}
+                {isAppInstalled ? "App Installed" : "Install App"}
+              </button>
+            )}
             <div className="flex bg-surface-container-low p-1 rounded-xl border border-outline-variant/10 shadow-xs justify-center sm:justify-start">
               <button
                 type="button"
