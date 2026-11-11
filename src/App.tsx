@@ -111,7 +111,7 @@ import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
 import { ShopDiagnosticPanel } from "./components/ShopDiagnosticPanel";
 import { OnboardingTour } from "./components/OnboardingTour";
 import { InstallAppInvite } from "./components/InstallAppInvite";
-import { appAlreadyInstalled, subscribeToInstallability } from "./services/pwaInstallInvite";
+import { appAlreadyInstalled, availableInstallEvent, requestNativeInstall, subscribeToInstallability } from "./services/pwaInstallInvite";
 import { CreateShopOnboarding } from "./components/CreateShopOnboarding";
 import { PendingShopApproval } from "./components/PendingShopApproval";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -348,9 +348,19 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [merchantShopGate, setMerchantShopGate] = useState<MerchantShopGateState>({ status: "checking" });
     const [onboardingOpen, setOnboardingOpen] = useState(false);
-  const [manualInstallOpen, setManualInstallOpen] = useState(false);
   const [isPwaInstalled, setIsPwaInstalled] = useState(() => appAlreadyInstalled());
-  useEffect(() => subscribeToInstallability(() => setIsPwaInstalled(appAlreadyInstalled())), []);
+  const [isPwaInstallAvailable, setIsPwaInstallAvailable] = useState(() => Boolean(availableInstallEvent()));
+  useEffect(() => subscribeToInstallability(() => {
+    setIsPwaInstalled(appAlreadyInstalled());
+    setIsPwaInstallAvailable(Boolean(availableInstallEvent()));
+  }), []);
+  const onInstallPwa = () => {
+    // The real browser prompt must be triggered directly by this click.
+    // No intermediate "how to install" card or fabricated install success.
+    void requestNativeInstall().then(result => {
+      if (result === "error") toast.error("Browser installation was not available. You can try again later.");
+    });
+  };
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
   // Kitchen status state available if needed
 
@@ -1901,8 +1911,6 @@ function App() {
           appName="LocalEats Merchant"
           storageKey="localeats_merchant_install_defer_v2"
           variant="merchant"
-          manualOpen={manualInstallOpen}
-          onManualClose={() => setManualInstallOpen(false)}
         />
 
         <NotificationCenterSidePanel isOpen={isNotificationCenterOpen} onClose={() => setIsNotificationCenterOpen(false)}
@@ -2204,18 +2212,20 @@ function App() {
                 </button>
               )}
 
-              {/* Always visible in the fixed desktop/tablet header, not below Home cards. */}
-              <button
-                type="button"
-                onClick={() => setManualInstallOpen(true)}
-                disabled={isPwaInstalled || !user?.id || merchantShopGate.status !== "ready"}
-                aria-label={isPwaInstalled ? "LocalEats Merchant is installed" : "Install LocalEats Merchant app"}
-                title={isPwaInstalled ? "Already running as an installed app" : "Install LocalEats Merchant or view installation instructions"}
-                className="le-press-feedback hidden sm:inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-2 xl:px-3 text-xs font-bold text-primary hover:bg-primary/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:opacity-60"
-              >
-                {isPwaInstalled ? <Check size={18} aria-hidden="true" /> : <Download size={18} aria-hidden="true" />}
-                <span className="hidden xl:inline">{isPwaInstalled ? "App Installed" : "Install App"}</span>
-              </button>
+              {/* Only show the genuine browser install action. Installed or unsupported
+                  browsers must not see a button that merely opens instructions. */}
+              {isPwaInstallAvailable && !isPwaInstalled && user?.id && merchantShopGate.status === "ready" && (
+                <button
+                  type="button"
+                  onClick={onInstallPwa}
+                  aria-label="Install LocalEats Merchant app"
+                  title="Open the browser's native LocalEats installation prompt"
+                  className="le-press-feedback hidden sm:inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-2 xl:px-3 text-xs font-bold text-primary hover:bg-primary/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  <Download size={18} aria-hidden="true" />
+                  <span className="hidden xl:inline">Install App</span>
+                </button>
+              )}
               <button
                 onClick={() => {
                   setSoundAlerts(!soundAlerts);
@@ -2340,7 +2350,7 @@ function App() {
                     await Promise.all([fetchOrders(), fetchAllMenuItems()]);
                   }}
                   onEditProfile={() => setIsEditingProfile(true)}
-                  onInstallApp={() => setManualInstallOpen(true)}
+                  onInstallApp={isPwaInstallAvailable && !isPwaInstalled ? onInstallPwa : undefined}
                   menuItems={menuItems}
                   menuReadState={menuReadStatus.scope===menuReadScope ? menuReadStatus.state : "loading"}
                   trialInfo={trialInfo}
