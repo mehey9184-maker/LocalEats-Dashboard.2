@@ -33,6 +33,24 @@ test("PWA: optional invitation only after verified sign-in, with real user choic
   assert.match(bridge,/days = 14/);
   assert.doesNotMatch(ui,/window\.location\.href/);
 });
+test("Merchant Home offers a persistent manual install entry without nagging after deferral",()=>{
+  const home=source("src/components/DashboardOverview.tsx");
+  assert.match(home,/onInstallApp\?: \(\) => void/);
+  assert.match(home,/onClick=\{onInstallApp\}/);
+  assert.match(home,/>Install App</);
+  assert.match(home,/isAppInstalled \? "App Installed" : "Install App"/);
+  assert.match(home,/disabled=\{isAppInstalled\}/);
+  assert.match(home,/min-h-11/);
+  assert.match(app,/onInstallApp=\{\(\) => setManualInstallOpen\(true\)\}/);
+  assert.match(app,/manualOpen=\{manualInstallOpen\}/);
+  assert.match(app,/onManualClose=\{\(\) => setManualInstallOpen\(false\)\}/);
+  assert.match(ui,/const showManual = Boolean\(manualOpen && eligible && !installed\)/);
+  assert.match(ui,/if \(!showManual && !showAutomatic\) return null/);
+  assert.match(ui,/hasDeferredInstall\(storageKey\)/);
+  assert.match(ui,/onAppleDevice \|\| !canPrompt/);
+  assert.match(ui,/Not every browser supports website installation/);
+});
+
 test("PWA: browser eligibility, cancellation, already-installed state and respectful cooldown",async()=>{
   const handlers=new Map();
   const data=new Map();
