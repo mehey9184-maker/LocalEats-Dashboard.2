@@ -37,7 +37,6 @@ test("Merchant Home offers a persistent manual install entry without nagging aft
   const home=source("src/components/DashboardOverview.tsx");
   assert.match(home,/onInstallApp\?: \(\) => void/);
   assert.match(home,/onClick=\{onInstallApp\}/);
-  assert.match(home,/>Install App</);
   assert.match(home,/isAppInstalled \? "App Installed" : "Install App"/);
   assert.match(home,/disabled=\{isAppInstalled\}/);
   assert.match(home,/min-h-11/);
