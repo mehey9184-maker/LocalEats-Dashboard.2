@@ -19,7 +19,6 @@ export default defineConfig(({mode}) => {
         manifest: {
           short_name: "LocalEats Shop",
           name: "LocalEats Merchant Dashboard",
-          id: "/merchant-dashboard",
           icons: [
             {
               src: "logo.png", // Assuming logo.png is large enough, or icon.svg
