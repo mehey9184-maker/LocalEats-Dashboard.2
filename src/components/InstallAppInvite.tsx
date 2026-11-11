@@ -57,7 +57,7 @@ export function InstallAppInvite({ eligible, appName, storageKey, variant }: Pro
     setBusy(true);
     try {
       const response = await event.prompt();
-      const outcome = response?.outcome ?? (await event.userChoice)?.outcome;
+      const outcome = (response && typeof response === "object" ? response.outcome : undefined) ?? (await event.userChoice)?.outcome;
       if (outcome === "accepted" || outcome === "dismissed") {
         // The browser still owns success/failure; appinstalled/standalone confirms an actual install.
         later();
@@ -102,12 +102,12 @@ export function InstallAppInvite({ eligible, appName, storageKey, variant }: Pro
       )}
       {help && <p role="status" className="mt-3 text-xs leading-5">{help}</p>}
       <div className="mt-4 flex gap-2">
-        <button type="button" onClick={() => void install()} disabled={busy}
+        <button type="button" onClick={() => { if (onAppleDevice && showSteps) { later(); return; } void install(); }} disabled={busy}
           className={`min-h-11 flex-1 rounded-xl px-4 py-2.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 ${isMerchant
             ? "bg-primary text-on-primary hover:opacity-90"
             : "bg-orange-600 text-white hover:bg-orange-700"}`}>
           {onAppleDevice && showSteps ? <Share2 size={17} aria-hidden="true" /> : <Download size={17} aria-hidden="true" />}
-          {busy ? "Opening…" : onAppleDevice && showSteps ? "Show steps again" : "Install now"}
+          {busy ? "Opening…" : onAppleDevice && showSteps ? "Got it" : "Install now"}
         </button>
         <button type="button" onClick={later} disabled={busy}
           className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 ${isMerchant
