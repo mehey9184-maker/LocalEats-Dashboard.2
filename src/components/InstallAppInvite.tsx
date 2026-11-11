@@ -15,6 +15,9 @@ type Props = {
   appName: string;
   storageKey: string;
   variant: "customer" | "merchant";
+  /** Manual Dashboard launch bypasses the 14-day automatic-offer cooldown. */
+  manualOpen?: boolean;
+  onManualClose?: () => void;
 };
 
 /**
@@ -22,7 +25,7 @@ type Props = {
  * Requires a verified login and a settled home view (provided by the parent).
  * Chromium prompts only from a real click. iOS has a manual home-screen flow.
  */
-export function InstallAppInvite({ eligible, appName, storageKey, variant }: Props) {
+export function InstallAppInvite({ eligible, appName, storageKey, variant, manualOpen = false, onManualClose }: Props) {
   const [, rerender] = useState(0);
   const [ready, setReady] = useState(false);
   const [dismissedHere, setDismissedHere] = useState(false);
@@ -38,19 +41,24 @@ export function InstallAppInvite({ eligible, appName, storageKey, variant }: Pro
     return () => window.clearTimeout(timer);
   }, [eligible]);
 
-  if (!eligible || !ready || dismissedHere || appAlreadyInstalled() || hasDeferredInstall(storageKey)) return null;
+  const installed = appAlreadyInstalled();
   const onAppleDevice = appleMobileBrowser();
-  if (!onAppleDevice && !availableInstallEvent() && !help && !busy) return null;
+  const canPrompt = Boolean(availableInstallEvent());
+  const showManual = Boolean(manualOpen && eligible && !installed);
+  const showAutomatic = Boolean(eligible && ready && !dismissedHere && !installed &&
+    !hasDeferredInstall(storageKey) && (onAppleDevice || canPrompt || help || busy));
+  if (!showManual && !showAutomatic) return null;
 
   const later = () => {
     deferInstallOffer(storageKey);
     setDismissedHere(true);
+    onManualClose?.();
   };
   const install = async () => {
     if (onAppleDevice) { setShowSteps(true); return; }
     const event = consumeInstallEvent();
     if (!event) {
-      setHelp("Your browser has not offered installation. Try your browser menu, or choose Maybe later.");
+      setHelp("Open your browser menu and look for Install app or Add to Home screen. Not every browser supports website installation.");
       return;
     }
     // Must be called directly during the user's click, without awaiting first.
@@ -100,6 +108,11 @@ export function InstallAppInvite({ eligible, appName, storageKey, variant }: Pro
           <p className="mt-1">Tap the browser’s <strong>Share</strong> menu, choose <strong>Add to Home Screen</strong>, then tap <strong>Add</strong>. The browser controls installation.</p>
         </div>
       )}
+      {showManual && !onAppleDevice && !canPrompt && (
+        <p role="status" className="mt-3 rounded-xl bg-surface-container-low px-3 py-3 text-xs leading-5">
+          Your browser has not offered a one-tap install. Look in its menu for <strong>Install app</strong> or <strong>Add to Home screen</strong>. Some browsers do not support either option.
+        </p>
+      )}
       {help && <p role="status" className="mt-3 text-xs leading-5">{help}</p>}
       <div className="mt-4 flex gap-2">
         <button type="button" onClick={() => { if (onAppleDevice && showSteps) { later(); return; } void install(); }} disabled={busy}
@@ -107,7 +120,7 @@ export function InstallAppInvite({ eligible, appName, storageKey, variant }: Pro
             ? "bg-primary text-on-primary hover:opacity-90"
             : "bg-orange-600 text-white hover:bg-orange-700"}`}>
           {onAppleDevice && showSteps ? <Share2 size={17} aria-hidden="true" /> : <Download size={17} aria-hidden="true" />}
-          {busy ? "Opening…" : onAppleDevice && showSteps ? "Got it" : "Install now"}
+          {busy ? "Opening…" : onAppleDevice && showSteps ? "Got it" : (onAppleDevice || !canPrompt) ? "How to install" : "Install now"}
         </button>
         <button type="button" onClick={later} disabled={busy}
           className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 ${isMerchant
