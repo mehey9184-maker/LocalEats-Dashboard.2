@@ -1,0 +1,76 @@
+-- LocalEats L2A — REVIEW ONLY. NEVER EXECUTE ON CONNECTED SUPABASE.
+-- Unexpanded placeholders intentionally prevent this template from being a migration.
+-- Only isolated disposable PostgreSQL 17 CI may substitute scratch role/schema names.
+-- This protects private chat at Supabase Data API without assuming a safe
+-- Firebase-authenticated, order-participant chat API exists yet.
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '20s';
+DO $preflight$
+DECLARE policy_count integer;
+BEGIN
+  IF to_regclass('__SCHEMA__.chat_messages') IS NULL THEN
+    RAISE EXCEPTION 'L2_CHAT_TABLE_MISSING';
+  END IF;
+  IF (SELECT relrowsecurity FROM pg_catalog.pg_class
+      WHERE oid='__SCHEMA__.chat_messages'::regclass) IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'L2_CHAT_RLS_NOT_ENABLED';
+  END IF;
+  SELECT count(*) INTO policy_count FROM pg_catalog.pg_policies
+    WHERE schemaname='__SCHEMA__' AND tablename='chat_messages';
+  IF policy_count <> 2 THEN
+    RAISE EXCEPTION 'L2_CHAT_UNEXPECTED_POLICY_COUNT';
+  END IF;
+  IF NOT EXISTS (
+      SELECT 1 FROM pg_catalog.pg_policies
+      WHERE schemaname='__SCHEMA__' AND tablename='chat_messages'
+        AND policyname='Allow all on chat_messages' AND cmd='ALL'
+        AND roles=ARRAY['public']::name[] AND qual='true' AND with_check='true'
+  ) OR NOT EXISTS (
+      SELECT 1 FROM pg_catalog.pg_policies
+      WHERE schemaname='__SCHEMA__' AND tablename='chat_messages'
+        AND policyname='Chat message access' AND cmd='ALL'
+        AND roles=ARRAY['public']::name[] AND qual='true' AND with_check='true'
+  ) THEN
+    RAISE EXCEPTION 'L2_CHAT_LEGACY_POLICIES_NOT_AS_REVIEWED';
+  END IF;
+  IF NOT has_table_privilege('__BACKEND_ROLE__','__SCHEMA__.chat_messages','SELECT')
+    OR NOT has_table_privilege('__BACKEND_ROLE__','__SCHEMA__.chat_messages','INSERT')
+    OR NOT has_table_privilege('__BACKEND_ROLE__','__SCHEMA__.chat_messages','UPDATE')
+    OR NOT has_table_privilege('__BACKEND_ROLE__','__SCHEMA__.chat_messages','DELETE') THEN
+    RAISE EXCEPTION 'L2_CHAT_BACKEND_PERMISSIONS_MISSING';
+  END IF;
+END
+$preflight$;
+
+-- Browser roles lose ALL direct privileges; backend role remains explicitly granted.
+-- No message content, user identifiers, orders or payment rows are modified.
+REVOKE ALL PRIVILEGES ON TABLE __SCHEMA__.chat_messages
+  FROM PUBLIC, __ANON_ROLE__, __CLIENT_ROLE__;
+DROP POLICY "Allow all on chat_messages" ON __SCHEMA__.chat_messages;
+DROP POLICY "Chat message access" ON __SCHEMA__.chat_messages;
+
+DO $verification$
+DECLARE role_name text;
+BEGIN
+  FOREACH role_name IN ARRAY ARRAY['__ANON_ROLE__','__CLIENT_ROLE__']::text[] LOOP
+    IF has_table_privilege(role_name,'__SCHEMA__.chat_messages','SELECT')
+      OR has_table_privilege(role_name,'__SCHEMA__.chat_messages','INSERT')
+      OR has_table_privilege(role_name,'__SCHEMA__.chat_messages','UPDATE')
+      OR has_table_privilege(role_name,'__SCHEMA__.chat_messages','DELETE') THEN
+      RAISE EXCEPTION 'L2_CHAT_CLIENT_GRANT_STILL_PRESENT_%',role_name;
+    END IF;
+  END LOOP;
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_policies
+             WHERE schemaname='__SCHEMA__' AND tablename='chat_messages') THEN
+    RAISE EXCEPTION 'L2_CHAT_PUBLIC_POLICY_STILL_PRESENT';
+  END IF;
+  IF NOT has_table_privilege('__BACKEND_ROLE__','__SCHEMA__.chat_messages','SELECT')
+     OR NOT has_table_privilege('__BACKEND_ROLE__','__SCHEMA__.chat_messages','INSERT')
+     OR NOT has_table_privilege('__BACKEND_ROLE__','__SCHEMA__.chat_messages','UPDATE')
+     OR NOT has_table_privilege('__BACKEND_ROLE__','__SCHEMA__.chat_messages','DELETE') THEN
+    RAISE EXCEPTION 'L2_CHAT_BACKEND_PERMISSIONS_LOST';
+  END IF;
+END
+$verification$;
+COMMIT;

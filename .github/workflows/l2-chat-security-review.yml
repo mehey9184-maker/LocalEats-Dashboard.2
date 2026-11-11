@@ -1,0 +1,37 @@
+name: L2 chat authorization review — disposable PostgreSQL 17
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/tests/pickup/l2/**'
+      - '.github/workflows/l2-chat-security-review.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-chat-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      REWARDS_ACTIVATION_ENABLED: 'false'
+      LOCALPAY_LIVE_WALLET_ENABLED: 'false'
+    steps:
+      - name: Checkout reviewed source without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check review-only contract and no active migration
+        run: node --test localeats-api/tests/pickup/l2/chat-review-contract.test.mjs
+      - name: Block hosted-DB usage and published ports in the offline runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -Ein 'supabase\.co|SUPABASE_SERVICE_ROLE_KEY|DATABASE_URL|db push|apply_migration|--remote|--publish| -p [0-9]+:' \
+            localeats-api/tests/pickup/l2/*.sh
+      - name: Run drift, role denial, replay and schema-only restore checks in disposable PG17
+        run: bash localeats-api/tests/pickup/l2/run-chat-policy-review-l2.sh
