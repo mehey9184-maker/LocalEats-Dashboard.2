@@ -39,6 +39,9 @@ test("Merchant Home offers a persistent manual install entry without nagging aft
   assert.match(home,/onClick=\{onInstallApp\}/);
   assert.match(home,/isAppInstalled \? "App Installed" : "Install App"/);
   assert.match(home,/disabled=\{isAppInstalled\}/);
+  assert.match(home,/sm:flex-wrap/); // avoid header overflow on tablet and desktop
+  assert.match(home,/Install LocalEats Merchant app/); // accessible button name
+  assert.match(ui,/deferInstallOffer\(storageKey\)/); // snooze is preserved for automatic offers
   assert.match(home,/min-h-11/);
   assert.match(app,/onInstallApp=\{\(\) => setManualInstallOpen\(true\)\}/);
   assert.match(app,/manualOpen=\{manualInstallOpen\}/);
