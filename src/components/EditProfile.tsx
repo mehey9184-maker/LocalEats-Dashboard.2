@@ -73,6 +73,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({
     avatarUrl: initialData?.avatarUrl || "",
   });
 
+  const isReadOnlyPreview = import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true";
   const [uploading, setUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,6 +84,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({
   });
 
   const uploadAvatarPhoto = async (file: File) => {
+    if (isReadOnlyPreview) { toast.info("Read-only Preview: avatar uploads are disabled."); return; }
     const validation = validateImageFile(file);
     if (!validation.isValid) {
       toast.error(validation.error || "Invalid image file");
@@ -125,6 +127,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({
   };
 
   const handleSave = () => {
+    if (isReadOnlyPreview) { toast.info("Read-only Preview: account changes were not saved."); return; }
     if (formData.phone) {
       const phoneCleaned = formData.phone.replace(/[\s-]/g, "");
       const saRegex = /^(?:\+27|0)[0-9]{9}$/;
@@ -158,6 +161,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({
       </header>
 
       <main className="pt-24 px-6 max-w-2xl mx-auto space-y-10">
+        {isReadOnlyPreview && <p role="status" className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-xs font-semibold text-on-surface">Read-only Preview: you can review your account, but uploading a photo or saving changes is disabled.</p>}
         <section className="flex flex-col items-center">
           <div
             className={cn(
@@ -215,11 +219,13 @@ export const EditProfile: React.FC<EditProfileProps> = ({
               className="hidden"
               accept="image/*"
               onChange={handleFileChange}
+              disabled={isReadOnlyPreview}
             />
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
+              disabled={uploading || isReadOnlyPreview}
+              aria-label="Change profile photo"
               className="absolute bottom-1 right-1 bg-gradient-to-br from-primary to-primary-container p-2.5 rounded-full text-on-primary shadow-lg active:scale-95 transition-transform disabled:opacity-50 cursor-pointer"
             >
               <Edit2 size={16} />
@@ -363,7 +369,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({
         <div className="pt-6 pb-12">
           <button
             onClick={handleSave}
-            disabled={isSaving || isSuccess}
+            disabled={isReadOnlyPreview || isSaving || isSuccess}
             className={cn(
               "w-full text-on-primary font-headline font-extrabold text-lg py-5 rounded-full shadow-lg transition-all flex items-center justify-center gap-3 cursor-pointer",
               isSuccess ? "bg-emerald-500 shadow-emerald-500/20 active:scale-[0.98]"
@@ -372,7 +378,9 @@ export const EditProfile: React.FC<EditProfileProps> = ({
                   : "bg-gradient-to-br from-primary to-primary-container shadow-primary/20 active:scale-[0.98]"
             )}
           >
-            {isSuccess ? (
+            {isReadOnlyPreview ? (
+              <span>Preview — saving disabled</span>
+            ) : isSuccess ? (
               <>
                 <span>Saved Successfully!</span>
                 <Check size={24} strokeWidth={3} />
