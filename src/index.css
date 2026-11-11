@@ -214,3 +214,17 @@ body {
     animation: le-ux3-panel-enter 150ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 }
+
+/* UX4 — expand the touch area of Settings switches without enlarging their
+   48×24px visible track; the pseudo element belongs to the button hit region. */
+.le-settings-switch::before {
+  content: "";
+  position: absolute;
+  inset: -10px 0;
+  background: transparent;
+}
+/* Keep focus rings legible when navigating with a keyboard. */
+.le-settings-switch:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 4px;
+}

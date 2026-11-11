@@ -135,7 +135,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const testBatch=()=>{setStage("all");onViewModeChange("active");setPage(1);onSimulateBatch();};
   const realActive=realOrders.length;
   const fakeActive=activeFake.length;
-  const commonFocus="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  const commonFocus="le-press-feedback focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
   return (
     <main data-testid="orders-focused-workspace" className="space-y-3 md:space-y-4 pb-28 md:pb-10 min-w-0 max-w-full">
       <div className="rounded-[1.4rem] border border-outline-variant/10 bg-surface-container-lowest dark:bg-zinc-950 px-3 py-3 sm:px-5 sm:py-4 shadow-sm space-y-3">
@@ -151,7 +151,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
           </div>
           <div className="flex items-center gap-2 min-w-0">
             <button type="button" onClick={onRefresh} aria-label="Refresh real orders"
-              className={`inline-flex min-h-10 items-center gap-1.5 px-3 rounded-xl border border-outline-variant/20 bg-surface-container-low text-xs font-semibold text-on-surface ${commonFocus}`}>
+              className={`inline-flex min-h-11 items-center gap-1.5 px-3 rounded-xl border border-outline-variant/20 bg-surface-container-low text-xs font-semibold text-on-surface ${commonFocus}`}>
               <RefreshCw size={15} aria-hidden="true"/><span className="hidden sm:inline">Refresh</span>
             </button>
             <PreviewFakeOrderTrigger incoming={incoming} count={fakeOrders.length} onSimulate={testArrival} onClear={onClear}/>
@@ -161,11 +161,11 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div role="group" aria-label="Choose your Orders style" className="flex items-center gap-1 rounded-xl bg-surface-container-low p-1">
             <button type="button" aria-pressed={boardStyle==="expediter"} onClick={()=>chooseBoardStyle("expediter")}
-              className={`min-h-9 px-3 rounded-lg text-xs font-bold ${boardStyle==="expediter"?"bg-surface-container-lowest shadow-sm text-primary":"text-on-surface-variant"}`}>
+              className={`le-press-feedback min-h-11 px-3 rounded-lg text-xs font-bold ${boardStyle==="expediter"?"bg-surface-container-lowest shadow-sm text-primary":"text-on-surface-variant"}`}>
               A · Expediter
             </button>
             <button type="button" aria-pressed={boardStyle==="compact"} onClick={()=>chooseBoardStyle("compact")}
-              className={`min-h-9 px-3 rounded-lg text-xs font-bold ${boardStyle==="compact"?"bg-surface-container-lowest shadow-sm text-primary":"text-on-surface-variant"}`}>
+              className={`le-press-feedback min-h-11 px-3 rounded-lg text-xs font-bold ${boardStyle==="compact"?"bg-surface-container-lowest shadow-sm text-primary":"text-on-surface-variant"}`}>
               B · Compact
             </button>
           </div>
@@ -173,11 +173,11 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="inline-flex items-center rounded-xl bg-surface-container-low p-1 gap-1">
             <button type="button" onClick={()=>enterView("active")} aria-pressed={viewMode==="active"}
-              className={`min-h-9 rounded-lg px-3 text-xs font-bold transition-colors ${viewMode==="active"?"bg-surface-container-lowest text-primary shadow-sm":"text-on-surface-variant"} ${commonFocus}`}>
+              className={`le-press-feedback min-h-11 rounded-lg px-3 text-xs font-bold transition-colors ${viewMode==="active"?"bg-surface-container-lowest text-primary shadow-sm":"text-on-surface-variant"} ${commonFocus}`}>
               Current <span className="opacity-75">{viewMode==="active"?realActive:""}</span>
             </button>
             <button type="button" onClick={()=>enterView("history")} aria-pressed={viewMode==="history"}
-              className={`min-h-9 rounded-lg px-3 text-xs font-bold transition-colors ${viewMode==="history"?"bg-surface-container-lowest text-primary shadow-sm":"text-on-surface-variant"} ${commonFocus}`}>
+              className={`le-press-feedback min-h-11 rounded-lg px-3 text-xs font-bold transition-colors ${viewMode==="history"?"bg-surface-container-lowest text-primary shadow-sm":"text-on-surface-variant"} ${commonFocus}`}>
               History
             </button>
           </div>
@@ -185,18 +185,18 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
             <span className="px-2.5 py-1 rounded-full bg-surface-container-low text-on-surface-variant font-bold">{realActive} real</span>
             {fakeActive>0&&<span className="px-2.5 py-1 rounded-full border border-amber-300 bg-amber-100 text-amber-900 font-bold">{fakeActive} test</span>}
             <details className="relative group">
-              <summary className={`list-none cursor-pointer min-h-9 inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/20 px-2.5 text-xs font-bold text-on-surface select-none ${commonFocus}`}>
+              <summary className={`list-none cursor-pointer min-h-11 inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/20 px-2.5 text-xs font-bold text-on-surface select-none ${commonFocus}`}>
                 <MoreHorizontal size={16} aria-hidden="true"/> Tools <ChevronDown size={12} aria-hidden="true"/>
               </summary>
               <div className="absolute z-30 right-0 top-full mt-2 w-64 max-w-[80vw] bg-surface-container-lowest border border-outline-variant/20 rounded-xl shadow-xl p-3 space-y-2">
                 <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Secondary tools</p>
-                {isTestPreview&&<button type="button" onClick={testBatch} className="w-full rounded-lg text-left px-3 py-2 text-xs font-bold bg-amber-50 text-amber-900 hover:bg-amber-100 dark:bg-amber-950/20 dark:text-amber-100">Test busy queue · +24 FAKE orders</button>}
-                <button type="button" onClick={onExportCSV} className="w-full rounded-lg text-left px-3 py-2 text-xs font-semibold hover:bg-surface-container-low">Export spreadsheet</button>
-                <button type="button" onClick={onExportJSON} className="w-full rounded-lg text-left px-3 py-2 text-xs font-semibold hover:bg-surface-container-low">Backup order data</button>
-                <label className="flex items-center justify-between gap-3 text-xs font-semibold p-2"><span>Sound alerts</span>
+                {isTestPreview&&<button type="button" onClick={testBatch} className="le-press-feedback min-h-11 w-full rounded-lg text-left px-3 py-2 text-xs font-bold bg-amber-50 text-amber-900 hover:bg-amber-100 dark:bg-amber-950/20 dark:text-amber-100">Test busy queue · +24 FAKE orders</button>}
+                <button type="button" onClick={onExportCSV} className="le-press-feedback min-h-11 w-full rounded-lg text-left px-3 py-2 text-xs font-semibold hover:bg-surface-container-low">Export spreadsheet</button>
+                <button type="button" onClick={onExportJSON} className="le-press-feedback min-h-11 w-full rounded-lg text-left px-3 py-2 text-xs font-semibold hover:bg-surface-container-low">Backup order data</button>
+                <label className="min-h-11 flex items-center justify-between gap-3 text-xs font-semibold p-2"><span>Sound alerts</span>
                   <input type="checkbox" checked={soundAlerts} onChange={e=>setSoundAlerts(e.target.checked)} className="accent-primary w-4 h-4"/>
                 </label>
-                <label className="flex items-center justify-between gap-3 text-xs font-semibold p-2"><span>Kitchen mode</span>
+                <label className="min-h-11 flex items-center justify-between gap-3 text-xs font-semibold p-2"><span>Kitchen mode</span>
                   <input type="checkbox" checked={kitchenMode} onChange={e=>setKitchenMode(e.target.checked)} className="accent-primary w-4 h-4"/>
                 </label>
                 <label className="block text-xs font-semibold px-2">Active order limit: {maxConcurrentOrders}
@@ -231,7 +231,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
           </div>
           <button type="button" onClick={()=>setShowSearch(!showSearch)}
             aria-pressed={showSearch} aria-label={showSearch?"Close order search":"Search orders"}
-            className={`h-10 w-10 flex items-center justify-center rounded-xl bg-surface-container-low ${commonFocus}`}>
+            className={`h-11 w-11 flex items-center justify-center rounded-xl bg-surface-container-low ${commonFocus}`}>
             {showSearch?<X size={17}/>:<Search size={17}/>}
           </button>
         </div>
@@ -246,7 +246,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
             {([{key:"all",label:"All"},{key:"pending",label:"New"},{key:"preparing",label:"Preparing"},{key:"ready",label:"Ready"}] as const).map(item=>(
               <button key={item.key} type="button" aria-pressed={stage===item.key}
                 onClick={()=>{setStage(item.key);setPage(1);}}
-                className={`shrink-0 min-h-9 rounded-full px-3 text-xs font-bold border transition-colors ${stage===item.key?"bg-primary text-on-primary border-primary":"bg-surface-container-low text-on-surface-variant border-transparent"} ${commonFocus}`}>
+                className={`shrink-0 min-h-11 rounded-full px-3 text-xs font-bold border transition-colors ${stage===item.key?"bg-primary text-on-primary border-primary":"bg-surface-container-low text-on-surface-variant border-transparent"} ${commonFocus}`}>
                 {item.label} <span className={`ml-1 ${stage===item.key?"opacity-80":"opacity-60"}`}>{stageCounts[item.key]}</span>
               </button>
             ))}
@@ -254,7 +254,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
             <Clock3 size={14} aria-hidden="true"/> Archived orders
           </div>}
           <select value={sort} onChange={e=>setSort(e.target.value as SortMode)}
-            aria-label="Sort orders" className="shrink-0 max-w-[110px] sm:max-w-none rounded-lg bg-surface-container-low text-on-surface text-xs font-semibold px-2 py-2 border border-outline-variant/10">
+            aria-label="Sort orders" className="min-h-11 shrink-0 max-w-[110px] sm:max-w-none rounded-lg bg-surface-container-low text-on-surface text-xs font-semibold px-2 py-2 border border-outline-variant/10">
             <option value="priority">Priority</option>
             <option value="newest">Newest</option>
             <option value="oldest">Oldest</option>

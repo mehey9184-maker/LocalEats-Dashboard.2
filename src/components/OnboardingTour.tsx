@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
   UtensilsCrossed,
@@ -37,68 +37,68 @@ const TOUR_STEPS: TourStep[] = [
     tab: "dashboard",
     title: "Welcome to LocalEats Merchant!",
     badge: "ONBOARDING TOUR",
-    description: "Welcome back! This is your ultimate control bureau for managing your culinary business, adjusting orders, and coordinating deliveries. Let's run through a quick 1-minute visual guide to get you setup for success.",
-    highlightText: "Press Start to witness the storefront capabilities.",
+    description: "Welcome back! Explore your shop, menu, pickup orders and settings. This short tour shows what's available and what's planned. Ordering and delivery stay off until approved.",
+    highlightText: "Choose Next to explore one screen at a time.",
     icon: Sparkles,
     color: "from-orange-500 to-amber-500"
   },
   {
     id: 1,
     tab: "dashboard",
-    title: "1. The Live Dashboard Command",
+    title: "1. Your Shop Overview",
     badge: "COMMAND HUB",
-    description: "Keep a pulse on your storefront performance. This is where you toggle your live merchant status, track hourly revenue charts, view quick alerts, and observe ongoing trends.",
-    highlightText: "Toggle 'Online' in the header to receive live customer requests.",
+    description: "View verified shop information and activity. Some features are read-only while the pickup pilot is being prepared.",
+    highlightText: "Shop availability does not mean real customer ordering is enabled.",
     icon: LayoutDashboard,
     color: "from-amber-500 to-yellow-500"
   },
   {
     id: 2,
     tab: "menu",
-    title: "2. Culinary Delicacies (Menu)",
+    title: "2. Your Menu",
     badge: "MENU EDITOR",
-    description: "Your digital catalog. Create, catalog, and refine your dishes. Adjust stock levels with instant inventory decrementers, toggle item availability, and set pricing on the fly.",
-    highlightText: "Keeping menu items fresh directly increases customer orders.",
+    description: "Explore your menu and check prices. Editing requires an approved shop API and access permissions.",
+    highlightText: "Keep your menu names, prices and availability accurate.",
     icon: UtensilsCrossed,
     color: "from-emerald-500 to-teal-500"
   },
   {
     id: 3,
     tab: "orders",
-    title: "3. Real-Time Incoming Orders",
+    title: "3. Pickup Orders",
     badge: "ORDER STREAM",
-    description: "Incoming customer orders wait for your action here. Moving a receipt to 'Preparing' prompts our intelligent rider pool immediately to prepare for pickup.",
-    highlightText: "Fulfill orders rapidly to secure standard high merchant ratings.",
+    description: "Review verified pickup order information. Real acceptance, payment and collection changes remain disabled until the pickup launch is approved.",
+    highlightText: "Understand the pickup order flow before launch.",
     icon: ReceiptText,
     color: "from-blue-500 to-sky-500"
   },
   {
     id: 4,
     tab: "riders",
-    title: "4. Rider Logistics Track",
+    title: "4. Riders — Coming Later",
     badge: "DELIVERY CONTROL",
-    description: "Coordinate your dispatchers instantly. Observe assigned courier status, calibrate live coordinates, track dispatch connections, and send urgent alerts to nearby riders.",
-    highlightText: "See couriers live on the active operations map.",
+    description: "Rider dispatch and tracking are not part of the pickup-first pilot. These capabilities are planned for a later phase.",
+    highlightText: "Live rider actions and tracking are not enabled.",
     icon: Bike,
     color: "from-violet-500 to-purple-500"
   },
   {
     id: 5,
     tab: "settings",
-    title: "5. High-Fidelity Notification Alerts",
+    title: "5. Notifications and Appearance",
     badge: "ENVIRONMENT SETTINGS",
-    description: "Custom notification signals. Toggle sound alerts, select from 3 soothing audio melodies (Calm, Cozy, or Sparkle), and slider-control buzzer volume for custom store comfort.",
-    highlightText: "Fine-tune alert decibels so your kitchen never misses an order.",
+    description: "Choose sound alerts and appearance. Push notifications require browser permission and an active configuration.",
+    highlightText: "Choose settings that make your dashboard easy to use.",
     icon: Bell,
     color: "from-pink-500 to-rose-500"
   },
   {
     id: 6,
     tab: "dashboard",
-    title: "All Systems Set!",
+    title: "You're Ready to Explore",
     badge: "TOUR COMPLETED",
-    description: "Awesome job. You are now ready to stream delivery dispatches, serve your community, and scale your brand with the LocalEats network.",
-    highlightText: "You can restart this walkthrough anytime under Settings.",
+    description: "You've seen the main Merchant Dashboard pages. Live ordering and delivery remain off until separately approved.",
+    highlightText: "Restart this walkthrough anytime in Settings.",
     icon: PartyPopper,
     color: "from-amber-500 to-orange-600"
   }
@@ -111,6 +111,19 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
   isOpen
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const skipRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    skipRef.current?.focus();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, [isOpen]);
 
   // Sync the tour step with manual tab selection from sidebar clicks
   useEffect(() => {
@@ -177,15 +190,36 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
 
       <div
         id="onboarding-tour-card"
-        className="relative w-full max-w-lg bg-surface dark:bg-surface-container-high rounded-3xl shadow-2xl border border-outline-variant/20 overflow-hidden flex flex-col transform scale-100 opacity-100 transition-all duration-300"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="merchant-tour-title"
+        tabIndex={-1}
+        ref={dialogRef}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            handleSkip();
+          } else if (e.key === "Tab") {
+            const buttons = dialogRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+            if (!buttons?.length) return;
+            if (e.shiftKey && document.activeElement === buttons[0]) {
+              e.preventDefault(); buttons[buttons.length - 1].focus();
+            } else if (!e.shiftKey && document.activeElement === buttons[buttons.length - 1]) {
+              e.preventDefault(); buttons[0].focus();
+            }
+          }
+        }}
+        className="relative w-full max-w-lg max-h-[min(85dvh,680px)] overflow-y-auto bg-surface dark:bg-surface-container-high rounded-3xl shadow-2xl border border-outline-variant/20 overflow-hidden flex flex-col transform scale-100 opacity-100 transition-all duration-300"
       >
         {/* Top colored aesthetic bar styled dynamically */}
         <div className={`h-2 bg-gradient-to-r ${step.color} w-full`} />
 
         {/* Close button */}
         <button
+          type="button"
+          ref={skipRef}
           onClick={handleSkip}
-          className="absolute top-4 right-4 p-2 rounded-full text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface dark:hover:bg-surface-container-highest transition-all z-10"
+          className="le-press-feedback absolute top-4 right-4 min-h-11 min-w-11 flex items-center justify-center p-2 rounded-full text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface dark:hover:bg-surface-container-highest transition-all z-10"
           aria-label="Skip tour"
         >
           <X size={16} />
@@ -201,7 +235,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
               <span className="text-[10px] font-bold tracking-widest text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-full">
                 {step.badge}
               </span>
-              <h3 className="text-xl font-bold font-headline text-on-surface select-none">
+              <h3 id="merchant-tour-title" aria-live="polite" className="text-xl font-bold font-headline text-on-surface select-none">
                 {step.title}
               </h3>
             </div>
@@ -236,8 +270,9 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
         {/* Action button bar */}
         <div className="bg-surface-container-low dark:bg-surface-container-highest/50 px-6 py-4 flex items-center justify-between border-t border-outline-variant/10">
           <button
+            type="button"
             onClick={handleSkip}
-            className="text-xs text-on-surface-variant/70 hover:text-primary font-bold transition-colors select-none"
+            className="le-press-feedback min-h-11 px-2 text-xs text-on-surface-variant/70 hover:text-primary font-bold transition-colors select-none"
           >
             Skip Walkthrough
           </button>
@@ -245,16 +280,18 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
           <div className="flex items-center gap-3">
             {!isFirst && (
               <button
+                type="button"
                 onClick={handlePrev}
-                className="px-4 py-2 text-xs font-bold font-headline text-on-surface border border-outline-variant/30 rounded-xl hover:bg-surface-container-high transition-all flex items-center gap-1.5 select-none"
+                className="le-press-feedback min-h-11 px-4 py-2 text-xs font-bold font-headline text-on-surface border border-outline-variant/30 rounded-xl hover:bg-surface-container-high transition-all flex items-center gap-1.5 select-none"
               >
                 <ChevronLeft size={14} /> Back
               </button>
             )}
 
             <button
+              type="button"
               onClick={handleNext}
-              className={`px-5 py-2.5 text-xs font-bold font-headline rounded-xl shadow-lg transition-all active:scale-95 flex items-center gap-1.5 select-none ${
+              className={`le-press-feedback min-h-11 px-5 py-2.5 text-xs font-bold font-headline rounded-xl shadow-lg transition-all active:scale-95 flex items-center gap-1.5 select-none ${
                 isLast
                   ? "bg-primary text-white shadow-primary/20 hover:bg-primary-dark"
                   : "bg-on-surface text-surface dark:bg-white dark:text-black hover:opacity-90"
