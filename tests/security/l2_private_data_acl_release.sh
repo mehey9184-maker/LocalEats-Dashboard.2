@@ -12,7 +12,7 @@ base="$root/localeats-api/tests/pickup/r38/payments-source.SYNTHETIC_ONLY.sql"
 migration="$root/supabase/migrations/20261111060000_l2_private_chat_payment_acl.sql"
 [[ -f "$base" && -f "$migration" ]] || { echo 'L2_MISSING_MIGRATION_OR_SYNTHETIC_FIXTURE' >&2;exit 1; }
 # The entire release SQL is used: only schema and role names become scratch names.
-sed -e 's/public\./r38_lab./g' -e "s/'public'/'r38_lab'/g" \
+sed -e 's/public\./r38_lab./g' -e "s/schemaname='public'/schemaname='r38_lab'/g" \
     -e 's/\bservice_role\b/r38_backend/g' \
     -e 's/\bauthenticated\b/r38_authenticated/g' \
     -e 's/\banon\b/r38_anon/g' "$migration" >"$tmp/migration.sql"
