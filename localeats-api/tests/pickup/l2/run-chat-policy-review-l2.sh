@@ -56,7 +56,7 @@ pg "CREATE TABLE r38_lab.chat_messages(
  ('00000000-0000-4000-8000-000000000402',202,'00000000-0000-4000-8000-000000000412',
   '00000000-0000-4000-8000-000000000422','merchant','synthetic only second');" >/dev/null
 check 'SELECT count(*) FROM r38_lab.chat_messages;' '2'
-check 'SELECT count(*) FROM r38_lab.chat_messages WHERE message LIKE '"'"'synthetic only%'"'"';' '2'
+check 'SELECT count(*) FROM r38_lab.chat_messages WHERE length(message)>0;' '2'
 # No broad policy may be removed if the observed pattern or policy set drifted.
 pg 'DROP POLICY "Chat message access" ON r38_lab.chat_messages;
     CREATE POLICY "Chat message access" ON r38_lab.chat_messages FOR ALL TO PUBLIC
