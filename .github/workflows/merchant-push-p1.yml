@@ -1,0 +1,46 @@
+name: Merchant P1 push reliability review
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/src/orders/merchantPush.ts'
+      - 'localeats-api/src/orders/merchantPush.test.ts'
+      - 'localeats-api/src/orders/pickupPush.ts'
+      - 'localeats-api/src/routes/pickupNotifications.ts'
+      - 'localeats-api/src/routes/orders.ts'
+      - 'localeats-api/package.json'
+      - 'src/hooks/usePushNotifications.ts'
+      - 'src/services/MerchantApi.ts'
+      - 'src/lib/firebase.ts'
+      - 'src/App.tsx'
+      - 'public/firebase-messaging-sw.js'
+      - 'tests/merchant-push-p1.test.mjs'
+      - '.github/workflows/merchant-push-p1.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  no-production-push-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      SUPABASE_URL: ''
+      SUPABASE_SERVICE_ROLE_KEY: ''
+      DATABASE_URL: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Test merchant PWA and verified alert contracts
+        run: node --test tests/merchant-push-p1.test.mjs
+      - name: Test compiled API push and pickup routes with no cloud credentials
+        run: |
+          npm ci --prefix localeats-api --no-audit --no-fund
+          npm test --prefix localeats-api
