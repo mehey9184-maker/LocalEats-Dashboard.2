@@ -6,6 +6,7 @@ on:
       - 'src/App.tsx'
       - 'src/services/MerchantApi.ts'
       - 'src/components/PickupOrderActions.tsx'
+      - 'src/components/OrdersManagement.tsx'
       - 'tests/merchant-push-logout-unpaid-p1.test.mjs'
       - '.github/workflows/merchant-push-logout-p1.yml'
   workflow_dispatch:
