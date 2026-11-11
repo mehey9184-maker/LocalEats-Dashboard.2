@@ -68,6 +68,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
   isSuccess?: boolean;
   onFinished?: () => void;
 }) => {
+  const isReadOnlyPreview = import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true";
   const [uploadingType, setUploadingType] = useState<"logo" | null>(null);
   const [showMapPinConfirm, setShowMapPinConfirm] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -200,6 +201,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
   }, [formData.lat, formData.lng, formData.city, shop?.delivery_radius_km, shop?.delivery_radius_enabled]);
 
   const handleUpdateLocation = () => {
+    if (isReadOnlyPreview) { toast.info("Read-only Preview. No location change was saved."); return; }
     setIsLocating(true);
     if (!navigator.geolocation) {
       toast.error("Geolocation is not supported by your browser");
@@ -274,6 +276,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isReadOnlyPreview) { toast.info("Read-only Preview. Shop changes were not saved."); return; }
 
     const phoneCleaned = formData.phone.replace(/[\s-]/g, "");
     const whatsappCleaned = (formData.whatsapp || "").replace(/[\s-]/g, "");
@@ -468,6 +471,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
     e: React.ChangeEvent<HTMLInputElement>,
     type: "logo",
   ) => {
+    if (isReadOnlyPreview) { toast.info("Read-only Preview. Logo uploads are disabled."); e.target.value = ""; return; }
     if (!user) {
       toast.error("Not authenticated");
       return;
@@ -507,6 +511,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
 
   return (
     <div className="space-y-6 md:space-y-8 pb-24 md:pb-20">
+      {isReadOnlyPreview && <p role="status" className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs font-semibold text-on-surface">Read-only Preview: saving, logo uploads and test follows are disabled. No live shop changes are saved here.</p>}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
           <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
@@ -913,9 +918,10 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                 <button
                   type="button"
                   onClick={async () => {
-                    try {
-                      const { error } = await supabase
-                        .from("shop_followers")
+                     if (isReadOnlyPreview) { toast.info("Read-only Preview. No follow was saved."); return; }
+                     try {
+                       const { error } = await supabase
+                         .from("shop_followers")
                         .insert({ shop_id: shop.id, user_id: user?.id });
                       if (error) throw error;
                       toast.success("You are now following this shop! (Test)");
@@ -924,7 +930,8 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                       toast.error("Failed to follow shop. (Test)");
                     }
                   }}
-                  className="px-3 py-1 bg-primary text-white text-[10px] font-bold rounded-full shadow-lg hover:bg-primary/90 transition-colors"
+                  disabled={isReadOnlyPreview}
+                   className="le-press-feedback min-h-11 px-3 py-1 bg-primary text-white text-[10px] font-bold rounded-full shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
                 >
                   Follow
                 </button>
@@ -983,7 +990,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                       className="hidden"
                       accept="image/*"
                       onChange={(e) => handleImageUpload(e, "logo")}
-                      disabled={!!uploadingType}
+                      disabled={!!uploadingType || isReadOnlyPreview}
                     />
                   </label>
                 </div>
@@ -993,7 +1000,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
 
           <button
             type="submit"
-            disabled={isSaving || isSuccess}
+            disabled={isReadOnlyPreview || isSaving || isSuccess}
             className={cn(
               "w-full py-3 md:py-4 text-on-primary font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2",
               isSuccess
@@ -1003,7 +1010,12 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                   : "bg-primary shadow-primary/20 hover:scale-[0.98] active:scale-95"
             )}
           >
-            {isSuccess ? (
+            {isReadOnlyPreview ? (
+              <>
+                <AlertCircle size={18} />
+                Preview — saving disabled
+              </>
+            ) : isSuccess ? (
               <>
                 <Check size={18} strokeWidth={3} />
                 Saved Successfully!
