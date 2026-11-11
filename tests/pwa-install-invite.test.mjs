@@ -41,7 +41,10 @@ test("native one-click install only; no false how-to fallback or already-install
   assert.match(app,/onClick=\{onInstallPwa\}/);
   assert.match(app,/requestNativeInstall\(\).then/);
   assert.match(app,/isPwaInstallAvailable && !isPwaInstalled/);
-  assert.match(app,/onInstallApp=\{isPwaInstallAvailable && !isPwaInstalled \? onInstallPwa : undefined\}/);
+  assert.match(app,/onInstallApp=\{canOfferPwaInstall && isPwaInstallAvailable && !isPwaInstalled \? onInstallPwa : undefined\}/);
+  assert.match(app,/currentShop.owner_id === user.id/);
+  assert.match(app,/merchantShopGate.status === "ready"/);
+  assert.match(app,/!kitchenMode/);
   assert.doesNotMatch(app,/manualOpen=|setManualInstallOpen/);
   
 });
