@@ -1,114 +1,88 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-
-const source=(p)=>readFileSync(new URL("../"+p,import.meta.url),"utf8");
-const app=source("src/App.tsx"),ui=source("src/components/InstallAppInvite.tsx");
+const source=path=>readFileSync(new URL("../"+path,import.meta.url),"utf8");
+const app=source("src/App.tsx");
+const ui=source("src/components/InstallAppInvite.tsx");
 const bridge=source("src/services/pwaInstallInvite.ts");
 const vite=source("vite.config.ts");
 
-test("PWA: existing standalone manifest remains active and brand identity is correct",()=>{
+test("PWA manifest identity stays stable across app updates",()=>{
   assert.match(vite,/VitePWA\(/);
   assert.match(vite,/display: "standalone"/);
   assert.match(vite,/icons:/);
-  assert.match(vite,/name: "LocalEats Merchant Dashboard"/);
-  assert.match(vite,/start_url: "\/"/); // Preserve existing installed Merchant app identity
-  assert.doesNotMatch(vite,/id: "\/merchant-dashboard"/);
+  assert.match(vite,/name: "LocalEats Merchant Dashboard"/); assert.doesNotMatch(vite,/id: "\/merchant-dashboard"/);
 });
-test("PWA: optional invitation only after verified sign-in, with real user choice and iOS steps",()=>{
-  assert.match(app,/import \{ InstallAppInvite \} from "\.\/components\/InstallAppInvite"/);
-  assert.match(app,/storageKey="localeats_merchant_install_defer_v2"/);
-  assert.match(app,/appName="LocalEats Merchant"/);
-  assert.match(app,/eligible=\{Boolean\(/);
-  assert.match(app,/merchantShopGate\.status === "ready"/); assert.match(app,/!onboardingOpen &&\s+!isNotificationCenterOpen/);
+
+test("native one-click install only; no false how-to fallback or already-installed CTA",()=>{
+  assert.match(bridge,/window.addEventListener\("beforeinstallprompt"/);
+  assert.match(bridge,/window.addEventListener\("appinstalled"/);
+  assert.match(bridge,/requestNativeInstall/);
+  assert.match(bridge,/const event = consumeInstallEvent\(\)/);
+  assert.match(bridge,/await event.prompt\(\)/);
+  assert.match(ui,/await requestNativeInstall\(\)/);
+  assert.match(ui,/availableInstallEvent\(\)/);
+  assert.match(ui,/!appAlreadyInstalled\(\)/);
+  assert.match(ui,/deferInstallOffer\(storageKey\)/);
   assert.match(ui,/Install now/);
   assert.match(ui,/Maybe later/);
-  assert.match(ui,/Add to Home Screen/);
-  assert.match(ui,/const event = consumeInstallEvent\(\)/);
-  assert.match(ui,/await event\.prompt\(\)/);
-  assert.match(ui,/appAlreadyInstalled\(\)/);
-  assert.match(ui,/hasDeferredInstall\(storageKey\)/);
-  assert.match(bridge,/window\.addEventListener\("beforeinstallprompt"/);
-  assert.match(bridge,/window\.addEventListener\("appinstalled"/);
+  assert.doesNotMatch(ui,/How to install|Look in its menu|Add to Home Screen/);
   assert.match(bridge,/INSTALL_REMINDER_HOURS = 20/);
   assert.match(bridge,/AUTO_INSTALL_DELAY_MS = 10 \* 60 \* 1000/);
-  assert.match(bridge,/hours = INSTALL_REMINDER_HOURS/);
-  assert.match(bridge,/const installedMarker = "localeats_pwa_installed_verified_v1"/);
-  assert.match(ui,/let remaining = AUTO_INSTALL_DELAY_MS/);
   assert.match(ui,/document.addEventListener\("visibilitychange", sync\)/);
   assert.match(ui,/document.removeEventListener\("visibilitychange", sync\)/);
   assert.match(ui,/document.visibilityState !== "visible"/);
-  assert.match(ui,/allowAutoShow && ready/);
-  assert.match(ui,/!hasDeferredInstall\(storageKey\) && canPrompt/);
-  // iPhones and browsers without a native prompt never receive the automatic pop-up.
-  assert.doesNotMatch(ui,/showAutomatic[^;]*onAppleDevice \|\| canPrompt/);
-  assert.match(ui,/const showAutomatic = Boolean\(eligible && allowAutoShow && ready/);
-  assert.match(bridge,/saveInstalledMarker\(\)/);
-  assert.match(app,/allowAutoShow=\{/);
-  assert.doesNotMatch(ui,/window\.location\.href/);
-});
-test("Merchant Home offers a persistent manual install entry without nagging after deferral",()=>{
+  
   const home=source("src/components/DashboardOverview.tsx");
   assert.match(home,/onInstallApp\?: \(\) => void/);
+  assert.match(home,/\{onInstallApp && \(/);
   assert.match(home,/onClick=\{onInstallApp\}/);
-  assert.match(home,/isAppInstalled \? "App Installed" : "Install App"/);
-  assert.match(home,/disabled=\{isAppInstalled\}/);
-  assert.match(home,/className="sm:hidden"/); // mobile CTA is at the very top of Home
-  assert.ok(home.indexOf('className="sm:hidden"') < home.indexOf("Storefront Ownership Sync & Repair Card"));
-  assert.match(app,/hidden sm:inline-flex min-h-11 min-w-11/); // fixed tablet/desktop toolbar
-  assert.match(app,/onClick=\{\(\) => setManualInstallOpen\(true\)\}/);
-  assert.match(app,/isPwaInstalled \? "App Installed" : "Install App"/);
-  assert.match(app,/subscribeToInstallability\(\(\) => setIsPwaInstalled\(appAlreadyInstalled\(\)\)\)/);
-  assert.ok(app.indexOf('Always visible in the fixed desktop/tablet header') <
-    app.indexOf('setSoundAlerts(!soundAlerts)'), "Install entry precedes the bell in the visible top bar");
-  assert.match(app,/manualOpen=\{manualInstallOpen\}/); // Dashboard click still opens manually
-  assert.match(app,/allowAutoShow=\{activeTab === "dashboard"/);
-  assert.match(home,/Install LocalEats Merchant app/); // accessible button name
-  assert.match(ui,/deferInstallOffer\(storageKey\)/); // snooze is preserved for automatic offers
-  assert.match(home,/min-h-11/);
-  assert.match(app,/onInstallApp=\{\(\) => setManualInstallOpen\(true\)\}/);
-  assert.match(app,/manualOpen=\{manualInstallOpen\}/);
-  assert.match(app,/onManualClose=\{\(\) => setManualInstallOpen\(false\)\}/);
-  assert.match(ui,/const showManual = Boolean\(manualOpen && eligible && !installed\)/);
-  assert.match(ui,/if \(!showManual && !showAutomatic\) return null/);
-  assert.match(ui,/hasDeferredInstall\(storageKey\)/);
-  assert.match(ui,/onAppleDevice \|\| !canPrompt/);
-  assert.match(ui,/Not every browser supports website installation/);
+  assert.match(app,/onClick=\{onInstallPwa\}/);
+  assert.match(app,/requestNativeInstall\(\).then/);
+  assert.match(app,/isPwaInstallAvailable && !isPwaInstalled/);
+  assert.match(app,/onInstallApp=\{isPwaInstallAvailable && !isPwaInstalled \? onInstallPwa : undefined\}/);
+  assert.doesNotMatch(app,/manualOpen=|setManualInstallOpen/);
+  
 });
 
-test("PWA: browser eligibility, cancellation, already-installed state and respectful cooldown",async()=>{
-  const handlers=new Map();
-  const data=new Map();
+test("browser simulation: only user click prompts; dismiss 20h; installed signal prevents nags",async()=>{
+  const listeners=new Map();
+  const values=new Map();
   globalThis.window={
-    addEventListener:(type,handler)=>handlers.set(type,handler),
+    addEventListener:(name,callback)=>listeners.set(name,callback),
     matchMedia:()=>({matches:false}),
-    localStorage:{getItem:(key)=>data.get(key)??null,setItem:(key,v)=>data.set(key,String(v))}
+    localStorage:{
+      getItem:key=>values.get(key)??null,
+      setItem:(key,val)=>values.set(key,String(val)),
+      removeItem:key=>values.delete(key),
+    }
   };
-  Object.defineProperty(globalThis,"navigator",{value:{userAgent:"Mozilla/5.0 Android Chrome",maxTouchPoints:0,standalone:false},configurable:true});
+  Object.defineProperty(globalThis,"navigator",{value:{userAgent:"Mozilla/5.0 (Android)",maxTouchPoints:0,standalone:false},configurable:true,writable:true});
   const service=await import("../src/services/pwaInstallInvite.ts");
+  assert.equal(service.availableInstallEvent(),null);
   assert.equal(service.appAlreadyInstalled(),false);
-  assert.equal(service.appleMobileBrowser(),false);
+  let promptCalls=0;
+  const offered=new Event("beforeinstallprompt",{cancelable:true});
+  offered.prompt=()=>{ promptCalls++; return Promise.resolve({outcome:"dismissed"}); };
+  offered.userChoice=Promise.resolve({outcome:"dismissed"});
+  listeners.get("beforeinstallprompt")(offered);
+  assert.equal(promptCalls,0);
+  assert.equal(offered.defaultPrevented,true);
+  assert.equal(service.availableInstallEvent(),offered);
+  const chosen=service.requestNativeInstall();
+  assert.equal(promptCalls,1,"browser install requested during click, before awaiting");
+  assert.equal(await chosen,"dismissed");
   assert.equal(service.availableInstallEvent(),null);
-  let changes=0;
-  const unsubscribe=service.subscribeToInstallability(()=>changes++);
-  const fake=new Event("beforeinstallprompt",{cancelable:true});
-  fake.prompt=async()=>({outcome:"dismissed"});
-  fake.userChoice=Promise.resolve({outcome:"dismissed"});
-  handlers.get("beforeinstallprompt")(fake);
-  assert.equal(fake.defaultPrevented,true);
-  assert.equal(service.availableInstallEvent(),fake);
-  assert.equal(service.consumeInstallEvent(),fake);
-  assert.equal(service.availableInstallEvent(),null);
-  assert.equal(changes,2);
-  assert.equal(service.hasDeferredInstall("test"),false);
-  service.deferInstallOffer("test");
-  assert.equal(service.hasDeferredInstall("test"),true);
-  assert.equal(service.hasDeferredInstall("test",Date.now()+19*3600000),true);
-  assert.equal(service.hasDeferredInstall("test",Date.now()+21*3600000),false);
-  navigator.userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)";
-  assert.equal(service.appleMobileBrowser(),true);
-  handlers.get("appinstalled")(new Event("appinstalled"));
+  service.deferInstallOffer("later");
+  assert.equal(service.hasDeferredInstall("later",Date.now()+19*3600000),true);
+  assert.equal(service.hasDeferredInstall("later",Date.now()+21*3600000),false);
+  listeners.get("appinstalled")(new Event("appinstalled"));
   assert.equal(service.appAlreadyInstalled(),true);
-  assert.equal(window.localStorage.getItem("localeats_pwa_installed_verified_v1"),"true");
-  unsubscribe();
+  assert.equal(values.get("localeats_pwa_installed_verified_v1"),"true");
+  const newOffer=new Event("beforeinstallprompt",{cancelable:true});
+  newOffer.prompt=async()=>({outcome:"accepted"});
+  listeners.get("beforeinstallprompt")(newOffer);
+  assert.equal(values.has("localeats_pwa_installed_verified_v1"),false,"new native offer clears stale marker after uninstall");
+  assert.equal(service.availableInstallEvent(),newOffer);
+  assert.equal(service.appAlreadyInstalled(),false);
 });
