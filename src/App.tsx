@@ -64,7 +64,8 @@ import {
   ArrowRight,
   MoreHorizontal,
   Heart,
-  QrCode
+  QrCode,
+  Download
 } from "lucide-react";
 import { supabase, isSupabaseMocked } from "./lib/supabase";
 import {
