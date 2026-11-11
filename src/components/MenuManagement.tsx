@@ -1,6 +1,6 @@
 import {MerchantApi} from "../services/MerchantApi";
 import {menuWritesUnavailable} from "../services/merchantMenuPolicy";
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useDeferredValue } from "react";
 import Fuse from "fuse.js";
 import { List } from "react-window";
 import {
@@ -208,6 +208,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
   // Search and Filter states
   const [searchTerm, setSearchTerm] = useState("");
+  // Keep keystrokes responsive while Fuse.js filters a large menu.
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [filterCategory, setFilterCategory] = useState("All");
   const [selectedItems, setSelectedItems] = useState<(number | string)[]>([]);
 
@@ -284,8 +286,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   const filteredItems = useMemo(() => {
     let source = items;
 
-    if (searchTerm && searchTerm.trim().length > 0) {
-      const fuseResults = fuseIndex.search(searchTerm.trim());
+    if (deferredSearchTerm && deferredSearchTerm.trim().length > 0) {
+      const fuseResults = fuseIndex.search(deferredSearchTerm.trim());
       source = fuseResults.map((r) => r.item);
     }
 
@@ -293,7 +295,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       const matchesCategory = filterCategory === "All" || item.category === filterCategory;
       return matchesCategory;
     });
-  }, [items, searchTerm, fuseIndex, filterCategory]);
+  }, [items, deferredSearchTerm, fuseIndex, filterCategory]);
 
   const categories = useMemo(() => {
     const defaultCats = [
@@ -315,22 +317,66 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     return defaultCats;
   }, [items]);
 
+  // Keep the fetch tied to an authenticated, owned shop ID — not to changing
+  // shop object references from background polling.
+  const selectedVerifiedMenuShopId = useMemo(() => {
+    const shop = selectedShopId === "all"
+      ? userOwnedShops[0]
+      : userOwnedShops.find((candidate) => String(candidate.id) === String(selectedShopId));
+    return shop?.id == null ? null : String(shop.id);
+  }, [selectedShopId, userOwnedShops]);
+  const menuScope = user?.id && selectedVerifiedMenuShopId
+    ? `${user.id}:${selectedVerifiedMenuShopId}` : null;
   const menuRequest = React.useRef(0);
-  const fetchMenu = useCallback(async (_showLoadingSpinner = true) => {
-    const request = ++menuRequest.current;
+  const activeMenuScopeRef = React.useRef<string | null>(null);
+  const loadedMenuScopeRef = React.useRef<string | null>(null);
+
+  // Account/shop changes clear the old shop's menu BEFORE painting.
+  // A same-shop background refresh must not blank the verified list.
+  useLayoutEffect(() => {
+    if (activeMenuScopeRef.current === menuScope) return;
+    activeMenuScopeRef.current = menuScope;
+    ++menuRequest.current;
+    loadedMenuScopeRef.current = null;
     setItems([]);
     setMenuError(null);
-    setIsMenuLoading(true);
-    try {
-      const shop = selectedShopId === "all" ? userOwnedShops[0] : userOwnedShops.find(s => String(s.id) === String(selectedShopId));
-      const rows = shop ? await MerchantApi.getMenuItems(shop.id) : [];
-      if (request === menuRequest.current) setItems(rows);
-    } catch (error) {
-      if (request === menuRequest.current) setMenuError(error instanceof Error ? error.message : "Unable to load menu.");
-    } finally {
-      if (request === menuRequest.current) { setIsMenuLoading(false); setIsBackgroundSyncing(false); }
+    setIsMenuLoading(Boolean(menuScope));
+    setIsBackgroundSyncing(false);
+  }, [menuScope]);
+
+  const fetchMenu = useCallback(async (_showLoadingSpinner = true) => {
+    const request = ++menuRequest.current;
+    if (!menuScope || !selectedVerifiedMenuShopId) {
+      setItems([]);
+      setIsMenuLoading(false);
+      setIsBackgroundSyncing(false);
+      return;
     }
-  }, [selectedShopId, userOwnedShops]);
+    const hadVerifiedSnapshot = loadedMenuScopeRef.current === menuScope;
+    setMenuError(null);
+    if (hadVerifiedSnapshot) {
+      setIsBackgroundSyncing(true);
+    } else {
+      setIsMenuLoading(true);
+    }
+    try {
+      const rows = await MerchantApi.getMenuItems(selectedVerifiedMenuShopId);
+      if (request !== menuRequest.current || activeMenuScopeRef.current !== menuScope) return;
+      loadedMenuScopeRef.current = menuScope;
+      setItems(rows);
+    } catch (error) {
+      if (request !== menuRequest.current || activeMenuScopeRef.current !== menuScope) return;
+      const detail = error instanceof Error ? error.message : "Unable to load menu.";
+      setMenuError(hadVerifiedSnapshot
+        ? `Menu refresh failed. Showing last verified items. ${detail}`
+        : detail);
+    } finally {
+      if (request === menuRequest.current && activeMenuScopeRef.current === menuScope) {
+        setIsMenuLoading(false);
+        setIsBackgroundSyncing(false);
+      }
+    }
+  }, [menuScope, selectedVerifiedMenuShopId]);
   useEffect(() => { void fetchMenu(); return () => { ++menuRequest.current; }; }, [fetchMenu]);
 
   const handleAdd = () => {
