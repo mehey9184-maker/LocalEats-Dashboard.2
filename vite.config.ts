@@ -17,8 +17,9 @@ export default defineConfig(({mode}) => {
         filename: 'sw.ts',
         registerType: 'autoUpdate',
         manifest: {
-          short_name: "LocalEats",
-          name: "LocalEats",
+          short_name: "LocalEats Shop",
+          name: "LocalEats Merchant Dashboard",
+          id: "/merchant-dashboard",
           icons: [
             {
               src: "logo.png", // Assuming logo.png is large enough, or icon.svg
@@ -31,7 +32,7 @@ export default defineConfig(({mode}) => {
           background_color: "#faf9f8",
           display: "standalone",
           theme_color: "#FF5A36",
-          description: "LocalEats Platform for ordering and selling."
+          description: "LocalEats Merchant Dashboard for managing your shop, menu and pickup preparation."
         },
         injectManifest: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,woff}'],
