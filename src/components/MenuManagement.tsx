@@ -928,6 +928,18 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
               <RotateCw size={32} className="animate-spin text-primary mx-auto" />
               <p className="text-xs font-bold text-on-surface-variant">Loading menu inventory...</p>
             </div>
+          ) : menuError && items.length === 0 ? (
+            <div role="status" className="py-16 text-center space-y-3 bg-surface-container-lowest rounded-3xl border border-amber-300/40 p-6">
+              <UtensilsCrossed size={40} className="text-on-surface-variant/40 mx-auto" aria-hidden="true" />
+              <h3 className="font-extrabold text-base text-on-surface">Menu could not be verified</h3>
+              <p className="text-xs text-on-surface-variant max-w-sm mx-auto">
+                We could not confirm the latest menu. Please retry; this does not mean your items were deleted.
+              </p>
+              <button type="button" onClick={() => void fetchMenu()}
+                className="le-press-feedback min-h-11 px-5 py-2.5 rounded-xl bg-primary text-on-primary text-xs font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                Retry menu
+              </button>
+            </div>
           ) : filteredItems.length === 0 ? (
             <div className="py-16 text-center space-y-3 bg-surface-container-lowest rounded-3xl border border-outline-variant/15 p-6">
               <UtensilsCrossed size={40} className="text-on-surface-variant/40 mx-auto" />
