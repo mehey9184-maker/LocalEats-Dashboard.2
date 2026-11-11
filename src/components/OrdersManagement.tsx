@@ -2567,6 +2567,8 @@ Notes: "${order.notes || "None"}"
                           )}
                           <div className="flex gap-2">
                             <button
+                              type="button"
+                              disabled={isPickupOrder(order)}
                               onClick={() =>
                                 setChatOrderId(
                                   chatOrderId === order.id ? null : order.id,
@@ -2578,7 +2580,7 @@ Notes: "${order.notes || "None"}"
                                 chatOrderId === order.id &&
                                   "bg-primary text-on-primary",
                               )}
-                              title="Chat with Customer"
+                              title={isPickupOrder(order) ? "Pickup chat is not yet connected. Use the optional customer call instead." : "Chat with Customer"}
                             >
                               <MessageCircle size={kitchenMode ? 24 : 18} />
                             </button>
@@ -2614,7 +2616,7 @@ Notes: "${order.notes || "None"}"
                         </div>
 
                         <AnimatePresence>
-                          {chatOrderId === order.id && (
+                          {chatOrderId === order.id && !isPickupOrder(order) && (
                             <motion.div
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: "auto" }}

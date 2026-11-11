@@ -51,6 +51,16 @@ export function PickupOrderActions({order,onSimulate,compact=false}:{order:any;o
   {simulated && !compact && <p className="text-[10px] font-bold text-amber-900 dark:text-amber-200">Sample pickup · No real order</p>}
   {!compact && <p className="text-[11px] leading-4 font-semibold text-slate-700 dark:text-zinc-200">Pickup · {status==="collected" ? "Collected" : status==="ready_for_pickup" ? "Ready" : status} · {pickupPaymentLabel(order)}</p>}
   {!compact && <p className="text-xs">{pickupAmountLabel(order)}</p>}
+  {!compact && status==="ready_for_pickup" && order.payment_status==="unpaid" && (
+    <p role="status" className="text-xs font-semibold text-amber-700 dark:text-amber-200">
+      Ready · awaiting actual payment at the counter. Do not mark Collected or count this as revenue until payment and food handover are confirmed.
+    </p>
+  )}
+  {!compact && status==="ready_for_pickup" && order.payment_status==="paid" && (
+    <p role="status" className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+      Paid · still awaiting physical handover. Mark Collected only after the customer receives the food.
+    </p>
+  )}
   {!simulated && order.phone && <a className="text-xs underline" href={`tel:${String(order.phone).replace(/[^+0-9]/g,"")}`}>Optional call: {order.phone}</a>}
   <div role="group" aria-label="Pickup order actions" className="flex w-full items-center gap-2 min-w-0">
     {actions.map(label=>{
