@@ -101,6 +101,20 @@ export class MerchantApi {
       return auth.currentUser?.uid===uid && response.ok && data.success===true;
     }catch{return false;}
   }
+  /** Revoke the current browser installation at the authenticated server.
+   * Do not claim notifications are disabled until the API acknowledges.
+   */
+  static async unregisterPushDevice(installationId:string):Promise<boolean> {
+    const uid=auth.currentUser?.uid;
+    if(!uid || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(installationId))return false;
+    try {
+      const response=await fetch(`${getApiUrl()}/api/v1/push-subscriptions/${encodeURIComponent(installationId)}`,{
+        method:"DELETE",headers:await getApiAuthHeaders(),
+      });
+      const data=await readJsonResponse(response);
+      return auth.currentUser?.uid===uid && response.ok && data.success===true;
+    }catch{return false;}
+  }
   static async setAvailability(shopId:string|number,open:boolean,confirmOutsideHours=false,expectedRevision?:number):Promise<VerifiedMerchantShop> {
     const uid=auth.currentUser?.uid;
     const shop=await this.getMerchantShop();
