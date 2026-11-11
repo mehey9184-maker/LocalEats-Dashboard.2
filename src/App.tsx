@@ -1552,6 +1552,10 @@ function App() {
   }
 
   const handleSaveProfile = async (data: ProfileData) => {
+    if (import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true") {
+      toast.info("Preview is read-only. No account details were saved.");
+      return;
+    }
     setIsSaving(true);
     setIsSaveSuccess(false);
     try {
@@ -2531,7 +2535,7 @@ function App() {
                         <h3 className="font-headline font-bold text-lg mb-2">My Account</h3>
                   <button
                     onClick={() => setIsEditingProfile(true)}
-                    className="w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
+                    className="le-press-feedback w-full flex items-center justify-between p-5 bg-surface-container-low hover:bg-surface-container-high rounded-2xl transition-all border border-outline-variant/10 group"
                   >
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
@@ -3647,6 +3651,10 @@ function App() {
                     <button
                       onClick={() => {
                         if (!pushEnabled) {
+                          if (import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true") {
+                            toast.info("Read-only Preview: push registration is disabled.");
+                            return;
+                          }
                           requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
                         } else {
                           toast.info(
