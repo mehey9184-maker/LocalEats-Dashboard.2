@@ -96,11 +96,13 @@ test("browser simulation: only user click prompts; dismiss 20h; installed signal
 test("PWA manifest uses real square 192px and 512px icons from existing branding",()=>{
   assert.match(vite,/pwa-icon-192\.png/);
   assert.match(vite,/pwa-icon-512\.png/);
+  assert.doesNotMatch(vite,/src: "logo.png"/);
   execFileSync(process.execPath,["scripts/generate-pwa-icons.mjs"],{cwd:new URL("../",import.meta.url)});
   for (const size of [192,512]) {
     const png=readFileSync(new URL("../public/pwa-icon-"+size+".png",import.meta.url));
     assert.deepEqual([...png.subarray(0,8)],[137,80,78,71,13,10,26,10]);
     assert.equal(png.readUInt32BE(16),size);
     assert.equal(png.readUInt32BE(20),size);
+    assert.ok(png.length>2048,"icon must contain actual artwork");
   }
 });
