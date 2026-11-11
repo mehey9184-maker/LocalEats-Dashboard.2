@@ -3533,6 +3533,10 @@ function App() {
                         </div>
                       </div>
                       <button
+                       type="button"
+                       role="switch"
+                       aria-label="Sound alerts"
+                       aria-checked={soundAlerts}
                         onClick={() => {
                           const nextState = !soundAlerts;
                           setSoundAlerts(nextState);
@@ -3541,7 +3545,7 @@ function App() {
                           }
                         }}
                         className={cn(
-                          "w-12 h-6 rounded-full transition-all relative",
+                          "le-settings-switch w-12 h-6 rounded-full transition-colors relative",
                           soundAlerts ? "bg-primary" : "bg-outline-variant",
                         )}
                       >
@@ -3656,6 +3660,10 @@ function App() {
                       </div>
                     </div>
                     <button
+                       type="button"
+                       role="switch"
+                       aria-label="Push notifications"
+                       aria-checked={pushEnabled}
                       onClick={() => {
                         if (!pushEnabled) {
                           if (import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true") {
@@ -3670,7 +3678,7 @@ function App() {
                         }
                       }}
                       className={cn(
-                        "w-12 h-6 rounded-full transition-all relative",
+                        "le-settings-switch w-12 h-6 rounded-full transition-colors relative",
                         pushEnabled ? "bg-primary" : "bg-outline-variant",
                       )}
                     >
@@ -3696,9 +3704,13 @@ function App() {
                       </div>
                     </div>
                     <button
+                       type="button"
+                       role="switch"
+                       aria-label="Dark mode"
+                       aria-checked={darkMode}
                       onClick={() => setDarkMode(!darkMode)}
                       className={cn(
-                        "w-12 h-6 rounded-full transition-all relative",
+                        "le-settings-switch w-12 h-6 rounded-full transition-colors relative",
                         darkMode ? "bg-primary" : "bg-outline-variant",
                       )}
                     >
