@@ -85,4 +85,9 @@ test("browser simulation: only user click prompts; dismiss 20h; installed signal
   assert.equal(values.has("localeats_pwa_installed_verified_v1"),false,"new native offer clears stale marker after uninstall");
   assert.equal(service.availableInstallEvent(),newOffer);
   assert.equal(service.appAlreadyInstalled(),false);
+  assert.equal(await service.requestNativeInstall(),"accepted");
+  assert.equal(values.has("localeats_pwa_installed_verified_v1"),false,
+    "Browser chooser acceptance must not be reported as an installed app");
+  listeners.get("appinstalled")(new Event("appinstalled"));
+  assert.equal(service.appAlreadyInstalled(),true);
 });
