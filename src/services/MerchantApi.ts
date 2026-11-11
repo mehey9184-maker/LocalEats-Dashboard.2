@@ -83,6 +83,19 @@ const pickupRecovery=createMerchantPickupRecovery({
 });
 
 export class MerchantApi {
+  /** Revoke only this authenticated merchant's device. Never delete another shop's token. */
+  static async revokePushDevice(installationId:string):Promise<boolean> {
+    const uid=auth.currentUser?.uid;
+    if(!uid || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(installationId))return false;
+    try{
+      const response=await fetch(`${getApiUrl()}/api/v1/push-subscriptions/${encodeURIComponent(installationId)}`,{
+        method:"DELETE",headers:await getApiAuthHeaders()
+      });
+      const data=await readJsonResponse(response);
+      return response.ok && data.success===true;
+    }catch{return false;}
+  }
+
   /** Register a verified merchant's FCM device with the protected pickup API.
    * A browser's permission alone does not mean FCM can reach this merchant.
    */
