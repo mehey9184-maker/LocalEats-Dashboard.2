@@ -1359,21 +1359,21 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
 
   return (
     <div className="space-y-8 md:space-y-12">
-      {/* Visible first on small screens; larger screens use the fixed header action. */}
+      {/* On phones, keep Install App visible before the verification cards. */}
       <div className="sm:hidden">
-        {onInstallApp && ( 
-                <button 
-                        type="button" 
-                        onClick={onInstallApp} 
-                        disabled={isAppInstalled} 
-                        aria-label={isAppInstalled ? "LocalEats Merchant is installed" : "Install LocalEats Merchant app"} 
-                        title={isAppInstalled ? "Already running as an installed app" : "Install LocalEats Merchant or view browser instructions"} 
-                        className="le-press-feedback min-h-11 inline-flex items-center justify-center gap-2 rounded-2xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-xs font-bold text-on-surface hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:opacity-60" 
-                      > 
-                        {isAppInstalled ? <CheckCircle2 size={18} aria-hidden="true" /> : <Download size={18} aria-hidden="true" />} 
-                        {isAppInstalled ? "App Installed" : "Install App"} 
-                      </button> 
-                    )}
+        {onInstallApp && (
+          <button
+            type="button"
+            onClick={onInstallApp}
+            disabled={isAppInstalled}
+            aria-label={isAppInstalled ? "LocalEats Merchant is installed" : "Install LocalEats Merchant app"}
+            title={isAppInstalled ? "Already running as an installed app" : "Install LocalEats Merchant or view browser instructions"}
+            className="le-press-feedback min-h-11 inline-flex items-center justify-center gap-2 rounded-2xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-xs font-bold text-on-surface hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:opacity-60"
+          >
+            {isAppInstalled ? <CheckCircle2 size={18} aria-hidden="true" /> : <Download size={18} aria-hidden="true" />}
+            {isAppInstalled ? "App Installed" : "Install App"}
+          </button>
+        )}
       </div>
       {orderReadState!=="fresh" && <div role={orderReadState==="failed" ? "alert" : "status"} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
         <p>{orderReadState==="failed" ? "Pickup statuses could not be refreshed. Open Orders to review the last confirmed statuses and retry." : "Loading verified pickup statuses…"}</p>
