@@ -960,27 +960,30 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     return start;
   };
 
-  const startOfWeek = getStartOfWeek();
-  const weeklyOrders = orders.filter(
-    (o) => new Date(o.created_at) >= startOfWeek,
+  // Stable numeric week boundary avoids expensive order rescans during
+  // unrelated Home interactions, while still updating when the week changes.
+  const startOfWeekTimestamp = getStartOfWeek().getTime();
+  const weeklyOrders = useMemo(
+    () => orders.filter((o) => new Date(o.created_at).getTime() >= startOfWeekTimestamp),
+    [orders, startOfWeekTimestamp]
   );
 
-  // Robust total sales calculation (Weekly)
-  const weeklySales = weeklyOrders.reduce((acc, curr) => {
+  // Preserve current price parsing and totals; only memoize existing read-only math.
+  const weeklySales = useMemo(() => weeklyOrders.reduce((acc, curr) => {
     const price =
       typeof curr.total_price === "string"
         ? parseFloat((curr.total_price as unknown as string).replace(/[^0-9.]/g, ""))
         : Number(curr.total_price);
     return acc + (isNaN(price) ? 0 : price);
-  }, 0);
+  }, 0), [weeklyOrders]);
 
-  const totalSales = orders.reduce((acc, curr) => {
+  const totalSales = useMemo(() => orders.reduce((acc, curr) => {
     const price =
       typeof curr.total_price === "string"
         ? parseFloat((curr.total_price as unknown as string).replace(/[^0-9.]/g, ""))
         : Number(curr.total_price);
     return acc + (isNaN(price) ? 0 : price);
-  }, 0);
+  }, 0), [orders]);
 
   const orderCount = weeklyOrders.length;
   const hasMenu = menuReadState==="ready" && menuItems.length > 0;
@@ -1024,7 +1027,16 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     })).filter(item => item.value > 0);
   }, [orders]);
 
-  const kitchenQueueCount=orders.filter(order=>["pending","preparing"].includes(order.pickup_status ?? order.status)).length;
+  const kitchenQueueCount=useMemo(
+    () => orders.filter(order=>["pending","preparing"].includes(order.pickup_status ?? order.status)).length,
+    [orders]
+  );
+  const lowStockMenuItems=useMemo(
+    () => menuItems.filter((item) => item.stock_quantity !== null &&
+      item.stock_quantity !== undefined && item.stock_quantity !== -1 &&
+      (item.stock_quantity || 0) < 5),
+    [menuItems]
+  );
 
   const [connections, setConnections] = useState<RiderConnection[]>([]);
   const currentShopId = currentShop?.id;
@@ -1567,14 +1579,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
               <h1 className="text-2xl md:text-3xl font-headline font-bold text-on-surface tracking-tight">
                 {greeting}, Chef!
               </h1>
-              {menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length > 0 && (
+              {lowStockMenuItems.length > 0 && (
                 <button
                   onClick={() => onNavigate("menu")}
                   className="flex items-center gap-1.5 px-3 py-1 bg-error/10 hover:bg-error/20 border border-error/20 text-error rounded-full font-bold text-[10px] uppercase tracking-wider transition-all animate-bounce active:scale-95 cursor-pointer shadow-xs shrink-0"
                   title="Click to manage low stock menu items"
                 >
                   <AlertTriangle size={12} className="animate-pulse" />
-                  <span>{menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length} Items Low Stock</span>
+                  <span>{lowStockMenuItems.length} Items Low Stock</span>
                 </button>
               )}
             </div>
@@ -2114,7 +2126,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
       )}
 
       {/* Low Stock Alerts Section */}
-      {menuItems.filter((i) => i.stock_quantity !== null && i.stock_quantity !== undefined && i.stock_quantity !== -1 && (i.stock_quantity || 0) < 5).length > 0 && (
+      {lowStockMenuItems.length > 0 && (
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

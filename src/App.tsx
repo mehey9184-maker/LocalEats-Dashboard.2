@@ -1114,20 +1114,51 @@ function App() {
     setOrderReadStatus({state:"fresh",lastSuccessAt:Date.now()});
   }, [orderReadScope,orderReadShopId,processAndSetOrders]);
 
-  const menuReadScope=user && merchantShopGate.status==="ready" && currentShop ? `${user.id}:${currentShop.id}` : null;
+  const menuReadShopId=merchantShopGate.status==="ready" && currentShop?.id != null
+    ? String(currentShop.id) : null;
+  const menuReadScope=user?.id && menuReadShopId ? `${user.id}:${menuReadShopId}` : null;
   const [menuReadStatus,setMenuReadStatus]=useState<{scope:string|null;state:"loading"|"ready"|"failed"}>({scope:null,state:"loading"});
   const menuReadRequest = useRef(0);
+
+  // A merchant account/shop change clears the previous menu before paint.
+  // Replacing the same shop object during heartbeat must NOT reset the menu.
+  useLayoutEffect(()=>{
+    ++menuReadRequest.current;
+    setMenuItems([]);
+    setMenuReadStatus({scope:menuReadScope,state:"loading"});
+  },[menuReadScope]);
+
   useEffect(()=>{const refresh=()=>{void fetchOrders();};window.addEventListener("merchant-pickup-order-confirmed",refresh);return()=>window.removeEventListener("merchant-pickup-order-confirmed",refresh);},[fetchOrders]);
   const fetchAllMenuItems = useCallback(async () => {
     const request = ++menuReadRequest.current;
-    if (!user || merchantShopGate.status !== "ready" || !currentShop) { setMenuItems([]);setMenuReadStatus({scope:null,state:"loading"});return; }
-    // Keep same-shop verified menu facts visible during a background refresh.
-    setMenuReadStatus(previous=>previous.scope===menuReadScope && previous.state==="ready" ? previous : {scope:menuReadScope,state:"loading"});
+    if (!menuReadScope || !menuReadShopId) {
+      setMenuItems([]);
+      setMenuReadStatus({scope:null,state:"loading"});
+      return;
+    }
+    // Same-shop reads preserve verified rows during refresh or API failure.
+    // Only a new account/shop scope may clear the previous array.
+    setMenuReadStatus(previous=>previous.scope===menuReadScope && previous.state!=="loading"
+      ? previous : {scope:menuReadScope,state:"loading"});
     let deadline:ReturnType<typeof setTimeout>|undefined;
-    try { const rows = await Promise.race([MerchantApi.getMenuItems(currentShop.id),new Promise<never>((_resolve,reject)=>{deadline=setTimeout(()=>reject(Error("Menu read timed out")),15000);})]); if (request === menuReadRequest.current) {setMenuItems(rows);setMenuReadStatus({scope:menuReadScope,state:"ready"});} }
-    catch { if (request === menuReadRequest.current) {setMenuItems([]);setMenuReadStatus({scope:menuReadScope,state:"failed"});} }
-    finally{clearTimeout(deadline);}
-  }, [user, merchantShopGate.status, currentShop,menuReadScope]);
+    try {
+      const rows = await Promise.race([
+        MerchantApi.getMenuItems(menuReadShopId),
+        new Promise<never>((_resolve,reject)=>{
+          deadline=setTimeout(()=>reject(Error("Menu read timed out")),15000);
+        })
+      ]);
+      if (request === menuReadRequest.current) {
+        setMenuItems(rows);
+        setMenuReadStatus({scope:menuReadScope,state:"ready"});
+      }
+    } catch {
+      if (request === menuReadRequest.current) {
+        // Keep last same-scope snapshot; never represent a failed read as an empty menu.
+        setMenuReadStatus({scope:menuReadScope,state:"failed"});
+      }
+    } finally { clearTimeout(deadline); }
+  }, [menuReadShopId,menuReadScope]);
   useEffect(()=>{void fetchAllMenuItems();return ()=>{menuReadRequest.current++;};},[fetchAllMenuItems]);
 
   const fetchShops = useCallback(async () => {

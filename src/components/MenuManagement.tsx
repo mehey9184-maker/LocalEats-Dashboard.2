@@ -1,6 +1,6 @@
 import {MerchantApi} from "../services/MerchantApi";
 import {menuWritesUnavailable} from "../services/merchantMenuPolicy";
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useDeferredValue } from "react";
 import Fuse from "fuse.js";
 import { List } from "react-window";
 import {
@@ -208,6 +208,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
 
   // Search and Filter states
   const [searchTerm, setSearchTerm] = useState("");
+  // Keep keystrokes responsive while Fuse.js filters a large menu.
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [filterCategory, setFilterCategory] = useState("All");
   const [selectedItems, setSelectedItems] = useState<(number | string)[]>([]);
 
@@ -284,8 +286,8 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   const filteredItems = useMemo(() => {
     let source = items;
 
-    if (searchTerm && searchTerm.trim().length > 0) {
-      const fuseResults = fuseIndex.search(searchTerm.trim());
+    if (deferredSearchTerm && deferredSearchTerm.trim().length > 0) {
+      const fuseResults = fuseIndex.search(deferredSearchTerm.trim());
       source = fuseResults.map((r) => r.item);
     }
 
@@ -293,7 +295,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       const matchesCategory = filterCategory === "All" || item.category === filterCategory;
       return matchesCategory;
     });
-  }, [items, searchTerm, fuseIndex, filterCategory]);
+  }, [items, deferredSearchTerm, fuseIndex, filterCategory]);
 
   const categories = useMemo(() => {
     const defaultCats = [
@@ -315,22 +317,66 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
     return defaultCats;
   }, [items]);
 
+  // Keep the fetch tied to an authenticated, owned shop ID — not to changing
+  // shop object references from background polling.
+  const selectedVerifiedMenuShopId = useMemo(() => {
+    const shop = selectedShopId === "all"
+      ? userOwnedShops[0]
+      : userOwnedShops.find((candidate) => String(candidate.id) === String(selectedShopId));
+    return shop?.id == null ? null : String(shop.id);
+  }, [selectedShopId, userOwnedShops]);
+  const menuScope = user?.id && selectedVerifiedMenuShopId
+    ? `${user.id}:${selectedVerifiedMenuShopId}` : null;
   const menuRequest = React.useRef(0);
-  const fetchMenu = useCallback(async (_showLoadingSpinner = true) => {
-    const request = ++menuRequest.current;
+  const activeMenuScopeRef = React.useRef<string | null>(null);
+  const loadedMenuScopeRef = React.useRef<string | null>(null);
+
+  // Account/shop changes clear the old shop's menu BEFORE painting.
+  // A same-shop background refresh must not blank the verified list.
+  useLayoutEffect(() => {
+    if (activeMenuScopeRef.current === menuScope) return;
+    activeMenuScopeRef.current = menuScope;
+    ++menuRequest.current;
+    loadedMenuScopeRef.current = null;
     setItems([]);
     setMenuError(null);
-    setIsMenuLoading(true);
-    try {
-      const shop = selectedShopId === "all" ? userOwnedShops[0] : userOwnedShops.find(s => String(s.id) === String(selectedShopId));
-      const rows = shop ? await MerchantApi.getMenuItems(shop.id) : [];
-      if (request === menuRequest.current) setItems(rows);
-    } catch (error) {
-      if (request === menuRequest.current) setMenuError(error instanceof Error ? error.message : "Unable to load menu.");
-    } finally {
-      if (request === menuRequest.current) { setIsMenuLoading(false); setIsBackgroundSyncing(false); }
+    setIsMenuLoading(Boolean(menuScope));
+    setIsBackgroundSyncing(false);
+  }, [menuScope]);
+
+  const fetchMenu = useCallback(async (_showLoadingSpinner = true) => {
+    const request = ++menuRequest.current;
+    if (!menuScope || !selectedVerifiedMenuShopId) {
+      setItems([]);
+      setIsMenuLoading(false);
+      setIsBackgroundSyncing(false);
+      return;
     }
-  }, [selectedShopId, userOwnedShops]);
+    const hadVerifiedSnapshot = loadedMenuScopeRef.current === menuScope;
+    setMenuError(null);
+    if (hadVerifiedSnapshot) {
+      setIsBackgroundSyncing(true);
+    } else {
+      setIsMenuLoading(true);
+    }
+    try {
+      const rows = await MerchantApi.getMenuItems(selectedVerifiedMenuShopId);
+      if (request !== menuRequest.current || activeMenuScopeRef.current !== menuScope) return;
+      loadedMenuScopeRef.current = menuScope;
+      setItems(rows);
+    } catch (error) {
+      if (request !== menuRequest.current || activeMenuScopeRef.current !== menuScope) return;
+      const detail = error instanceof Error ? error.message : "Unable to load menu.";
+      setMenuError(hadVerifiedSnapshot
+        ? `Menu refresh failed. Showing last verified items. ${detail}`
+        : detail);
+    } finally {
+      if (request === menuRequest.current && activeMenuScopeRef.current === menuScope) {
+        setIsMenuLoading(false);
+        setIsBackgroundSyncing(false);
+      }
+    }
+  }, [menuScope, selectedVerifiedMenuShopId]);
   useEffect(() => { void fetchMenu(); return () => { ++menuRequest.current; }; }, [fetchMenu]);
 
   const handleAdd = () => {
@@ -881,6 +927,18 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
             <div className="py-20 text-center space-y-3 bg-surface-container-lowest rounded-3xl border border-outline-variant/15">
               <RotateCw size={32} className="animate-spin text-primary mx-auto" />
               <p className="text-xs font-bold text-on-surface-variant">Loading menu inventory...</p>
+            </div>
+          ) : menuError && items.length === 0 ? (
+            <div role="status" className="py-16 text-center space-y-3 bg-surface-container-lowest rounded-3xl border border-amber-300/40 p-6">
+              <UtensilsCrossed size={40} className="text-on-surface-variant/40 mx-auto" aria-hidden="true" />
+              <h3 className="font-extrabold text-base text-on-surface">Menu could not be verified</h3>
+              <p className="text-xs text-on-surface-variant max-w-sm mx-auto">
+                We could not confirm the latest menu. Please retry; this does not mean your items were deleted.
+              </p>
+              <button type="button" onClick={() => void fetchMenu()}
+                className="le-press-feedback min-h-11 px-5 py-2.5 rounded-xl bg-primary text-on-primary text-xs font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                Retry menu
+              </button>
             </div>
           ) : filteredItems.length === 0 ? (
             <div className="py-16 text-center space-y-3 bg-surface-container-lowest rounded-3xl border border-outline-variant/15 p-6">

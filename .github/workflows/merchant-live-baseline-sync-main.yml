@@ -29,6 +29,7 @@ jobs:
           npm run test:merchant-pickup
           node --test tests/merchant-availability.test.cjs
           node --test tests/merchant-smoothness-ux1.test.mjs
+          node --test tests/merchant-smoothness-ux2.test.mjs
       - name: Merchant build
         run: npm run build
       - name: API install
