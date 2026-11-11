@@ -109,6 +109,8 @@ import { LegalDocsModal } from "./components/LegalDocsModal";
 import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
 import { ShopDiagnosticPanel } from "./components/ShopDiagnosticPanel";
 import { OnboardingTour } from "./components/OnboardingTour";
+import { InstallAppInvite } from "./components/InstallAppInvite";
+import { appAlreadyInstalled, availableInstallEvent, requestNativeInstall, subscribeToInstallability } from "./services/pwaInstallInvite";
 import { CreateShopOnboarding } from "./components/CreateShopOnboarding";
 import { PendingShopApproval } from "./components/PendingShopApproval";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -327,12 +329,29 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [merchantShopGate, setMerchantShopGate] = useState<MerchantShopGateState>({ status: "checking" });
     const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [isPwaInstalled, setIsPwaInstalled] = useState(() => appAlreadyInstalled());
+  const [isPwaInstallAvailable, setIsPwaInstallAvailable] = useState(() => Boolean(availableInstallEvent()));
+  useEffect(() => subscribeToInstallability(() => {
+    setIsPwaInstalled(appAlreadyInstalled());
+    setIsPwaInstallAvailable(Boolean(availableInstallEvent()));
+  }), []);
+  const onInstallPwa = () => {
+    // The genuine browser installation chooser must be invoked in this click.
+    void requestNativeInstall().then(result => {
+      if (result === "error") toast.error("Installation is unavailable. Try again later.");
+    });
+  };
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
   // Kitchen status state available if needed
 
   const currentShop = useMemo(
     () => shops.find((s) => isShopOwnedByUser(s, user)) || null,
     [shops, user],
+  );
+
+  const canOfferPwaInstall = Boolean(
+    user?.id && currentShop?.id && currentShop.owner_id === user.id &&
+    merchantShopGate.status === "ready" && !isSessionChecking && isAuthReady
   );
 
   const merchantShopRequest=useRef(0);
@@ -1834,7 +1853,14 @@ function App() {
           expand={true}
         />
         <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
-
+        <InstallAppInvite
+          eligible={canOfferPwaInstall}
+          allowAutoShow={activeTab === "dashboard" && isAudioEnabled && !onboardingOpen &&
+            !isNotificationCenterOpen && !isSaving && !kitchenMode}
+          appName="LocalEats Merchant"
+          storageKey="localeats_merchant_install_defer_v2"
+          variant="merchant"
+        />
 
         <NotificationCenterSidePanel isOpen={isNotificationCenterOpen} onClose={() => setIsNotificationCenterOpen(false)}
           orders={orders} menuItems={menuItems}
@@ -2126,6 +2152,19 @@ function App() {
                 </button>
               )}
 
+              {canOfferPwaInstall && isPwaInstallAvailable && !isPwaInstalled && (
+                <button
+                  type="button"
+                  onClick={onInstallPwa}
+                  aria-label="Install LocalEats Merchant app"
+                  title="Install LocalEats Merchant on this device"
+                  className="hidden sm:inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-2 xl:px-3 text-xs font-bold text-primary hover:bg-primary/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  <Download size={18} aria-hidden="true" />
+                  <span className="hidden xl:inline">Install App</span>
+                </button>
+              )}
+
               <button
                 onClick={() => {
                   setSoundAlerts(!soundAlerts);
@@ -2250,6 +2289,7 @@ function App() {
                     await Promise.all([fetchOrders(), fetchAllMenuItems()]);
                   }}
                   onEditProfile={() => setIsEditingProfile(true)}
+                  onInstallApp={canOfferPwaInstall && isPwaInstallAvailable && !isPwaInstalled ? onInstallPwa : undefined}
                   menuItems={menuItems}
                   menuReadState={menuReadStatus.scope===menuReadScope ? menuReadStatus.state : "loading"}
                   trialInfo={trialInfo}
