@@ -1891,6 +1891,12 @@ function App() {
 
         <NotificationCenterSidePanel isOpen={isNotificationCenterOpen} onClose={() => setIsNotificationCenterOpen(false)}
           orders={orders} menuItems={menuItems}
+          ordersVerified={merchantShopGate.status === "ready"
+            && orderReadStatus.state === "fresh"
+            && orderReadScope === `${user?.id}:${currentShop?.id}`}
+          menuVerified={merchantShopGate.status === "ready"
+            && menuReadStatus.state === "ready"
+            && menuReadScope === `${user?.id}:${currentShop?.id}`}
           onPreviewTestNotice={isMerchantPreviewSimulatorEnabled()
             ? (topic)=>{setIsNotificationCenterOpen(false);pulseNavNotice(topic);}
             : undefined}
@@ -3398,7 +3404,8 @@ function App() {
                            placeholder="e.g. 192.168.1.100"
                            className="bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50 w-full md:w-48"
                         />
-                        <button onClick={() => toast.success("Attempting test print to network printer...")} className="bg-primary/10 text-primary px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap hover:bg-primary/20 transition-colors">Test Print</button>
+                        <button type="button" disabled aria-disabled="true" title="A verified printer connection is required before test printing."
+                           className="min-h-11 bg-primary/10 text-primary px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap opacity-60 cursor-not-allowed">Test Print (Unavailable)</button>
                       </div>
                     </div>
 
