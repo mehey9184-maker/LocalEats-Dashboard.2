@@ -249,14 +249,18 @@ function App() {
   const [testingConnection, setTestingConnection] = useState<boolean>(false);
 
   const handleTestConnection = async () => {
+    if (testingConnection) return;
     setTestingConnection(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      if (navigator.onLine) {
-        toast.success("Connection to relay nodes is optimal.");
+      // navigator.onLine does not prove our merchant API responds.
+      const verified = await MerchantApi.getMerchantShop();
+      if (verified && user?.id && String(verified.owner_id) === String(user.id)) {
+        toast.success("Merchant API and your shop connection were verified.");
       } else {
-        toast.error("Cannot reach dispatch edge servers.");
+        toast.error("Merchant API responded, but your shop could not be verified.");
       }
+    } catch {
+      toast.error("Merchant API connection could not be verified. Please retry.");
     } finally {
       setTestingConnection(false);
     }
@@ -2441,9 +2445,10 @@ function App() {
                          key={category.id}
                          type="button"
                          aria-current={selected ? "page" : undefined}
+                         aria-pressed={selected}
                          onClick={() => setSettingsCategory(category.id)}
                          className={cn(
-                           "group flex items-center gap-3 min-h-14 px-3 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                           "le-press-feedback group flex items-center gap-3 min-h-14 px-3 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                            selected
                              ? "bg-primary text-on-primary shadow-sm"
                              : "text-on-surface-variant hover:bg-surface-container-high"
@@ -2471,7 +2476,7 @@ function App() {
                     )}
                     
                     {settingsCategory === "storefront" && (
-                      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <div className="space-y-4 le-panel-enter">
                         <h3 className="font-headline font-bold text-lg mb-2">My Shop</h3>
                         
                         {/* The full location diagnostic and location editor are retained
@@ -2493,7 +2498,7 @@ function App() {
 
                         <button
                           onClick={() => setActiveTab("storefront")}
-                    className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-0 p-5 bg-primary/5 hover:bg-primary/10 rounded-2xl transition-all border border-primary/20 group shadow-sm shadow-primary/5"
+                    className="le-press-feedback w-full flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-0 p-5 bg-primary/5 hover:bg-primary/10 rounded-2xl transition-all border border-primary/20 group shadow-sm shadow-primary/5"
                   >
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary group-hover:scale-110 transition-transform shrink-0">
@@ -2522,7 +2527,7 @@ function App() {
                     )}
 
                     {settingsCategory === "account" && (
-                      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <div className="space-y-4 le-panel-enter">
                         <h3 className="font-headline font-bold text-lg mb-2">My Account</h3>
                   <button
                     onClick={() => setIsEditingProfile(true)}
@@ -2550,7 +2555,7 @@ function App() {
                     )}
 
                     {settingsCategory === "account" && (
-                      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <div className="space-y-4 le-panel-enter">
                         <h3 className="font-headline font-bold text-lg mb-2">App Preferences</h3>
                   <button
                     onClick={() => {
@@ -3499,7 +3504,7 @@ function App() {
                     )}
 
                     {settingsCategory === "preferences" && (
-                      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <div className="space-y-4 le-panel-enter">
                         <h3 className="font-headline font-bold text-lg text-on-surface">Notifications & Appearance</h3>
                   <div className="w-full flex flex-col p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center justify-between w-full">
@@ -3708,11 +3713,11 @@ function App() {
                     )}
 
                     {settingsCategory === "account" && (
-                      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300 mt-8">
+                      <div className="space-y-4 le-panel-enter mt-8">
                   <div className="w-full p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10"><LanguageSwitcher /></div>
                   <button
                     onClick={handleSignOut}
-                    className="w-full flex items-center justify-between p-5 bg-error/5 hover:bg-error/10 rounded-2xl transition-all border border-error/10 group"
+                    className="le-press-feedback w-full flex items-center justify-between p-5 bg-error/5 hover:bg-error/10 rounded-2xl transition-all border border-error/10 group"
                   >
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-error/10 flex items-center justify-center text-error group-hover:scale-110 transition-transform">
@@ -3739,7 +3744,7 @@ function App() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-outline-variant/10 pb-4">
                   <button
                     onClick={() => setActiveTab("settings")}
-                    className="flex items-center gap-2 text-sm font-bold text-on-surface-variant hover:text-primary transition-colors"
+                    className="le-press-feedback min-h-11 flex items-center gap-2 text-sm font-bold text-on-surface-variant hover:text-primary transition-colors"
                   >
                     <ChevronRight className="rotate-180" size={16} />
                     Back to Settings
