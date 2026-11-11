@@ -1,4 +1,4 @@
-import React, {useMemo, useState} from "react";
+import React, {useEffect, useMemo, useState} from "react";
 import {Info, ReceiptText, ShieldAlert, Store} from "lucide-react";
 import {MerchantSubscriptionPlans} from "./MerchantSubscriptionPlans";
 import type {Order, Shop} from "../types";
@@ -26,6 +26,8 @@ export const PaymentHistory:React.FC<PaymentHistoryProps>=({
 })=>{
   const [tab,setTab]=useState<"pickup"|"billing">("pickup");
   const [limit,setLimit]=useState(20);
+  // A new shop starts at its own first page; never retain stale pagination.
+  useEffect(()=>{setLimit(20);},[shopId]);
   const verified=shopVerified && ordersVerified && !!currentShop && String(currentShop.id)===String(shopId);
   // Order records are not a bank statement or independently verified settlement ledger.
   const pickupOrders=useMemo(()=>{
@@ -60,16 +62,16 @@ export const PaymentHistory:React.FC<PaymentHistoryProps>=({
 
     <div role="group" aria-label="Payment sections" className="flex flex-wrap gap-2">
       <button type="button" aria-pressed={tab==="pickup"} onClick={()=>setTab("pickup")}
-        className={`min-h-11 px-4 py-2 rounded-xl text-xs font-bold transition-colors ${tab==="pickup"?"bg-primary text-on-primary":"bg-surface-container text-on-surface-variant"}`}>
+        className={`le-press-feedback min-h-11 px-4 py-2 rounded-xl text-xs font-bold transition-colors ${tab==="pickup"?"bg-primary text-on-primary":"bg-surface-container text-on-surface-variant"}`}>
         Pickup orders
       </button>
       <button type="button" aria-pressed={tab==="billing"} onClick={()=>setTab("billing")}
-        className={`min-h-11 px-4 py-2 rounded-xl text-xs font-bold transition-colors ${tab==="billing"?"bg-primary text-on-primary":"bg-surface-container text-on-surface-variant"}`}>
+        className={`le-press-feedback min-h-11 px-4 py-2 rounded-xl text-xs font-bold transition-colors ${tab==="billing"?"bg-primary text-on-primary":"bg-surface-container text-on-surface-variant"}`}>
         Subscription & billing
       </button>
     </div>
 
-    {tab==="pickup"?<div aria-label="Pickup order payment information" className="space-y-3">
+    {tab==="pickup"?<div aria-label="Pickup order payment information" className="le-panel-enter space-y-3">
       <div className="flex items-center gap-2">
         <ReceiptText size={17} aria-hidden="true" className="text-primary"/>
         <h3 className="font-headline text-sm font-bold text-on-surface">Pickup order payment information</h3>
@@ -103,11 +105,11 @@ export const PaymentHistory:React.FC<PaymentHistoryProps>=({
           })}
         </div>
         {pickupOrders.length>limit&&<button type="button" onClick={()=>setLimit(n=>n+20)}
-          className="min-h-11 w-full rounded-xl border border-outline-variant/20 text-primary text-xs font-bold">
+          className="le-press-feedback min-h-11 w-full rounded-xl border border-outline-variant/20 text-primary text-xs font-bold hover:bg-primary/5">
           Show 20 more · {pickupOrders.length-limit} remaining
         </button>}
       </>}
-    </div>:<div aria-label="Subscription and billing plans">
+    </div>:<div aria-label="Subscription and billing plans" className="le-panel-enter">
       <MerchantSubscriptionPlans shop={currentShop} verified={shopVerified && !!currentShop && String(currentShop.id)===String(shopId)}/>
     </div>}
   </section>;
