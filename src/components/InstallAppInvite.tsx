@@ -44,7 +44,7 @@ export function InstallAppInvite({ eligible, allowAutoShow = true, appName, stor
     // tab, or reset the timer merely because a logged-in person changes pages.
     let remaining = AUTO_INSTALL_DELAY_MS;
     let startedAt: number | null = null;
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    let timer: number | null = null;
     const stop = () => {
       if (timer !== null) { window.clearTimeout(timer); timer = null; }
       if (startedAt !== null) {
