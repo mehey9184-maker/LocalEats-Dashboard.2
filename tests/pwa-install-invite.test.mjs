@@ -12,6 +12,8 @@ test("PWA: existing standalone manifest remains active and brand identity is cor
   assert.match(vite,/display: "standalone"/);
   assert.match(vite,/icons:/);
   assert.match(vite,/name: "LocalEats Merchant Dashboard"/);
+  assert.match(vite,/start_url: "\/"/); // Preserve existing installed Merchant app identity
+  assert.doesNotMatch(vite,/id: "\/merchant-dashboard"/);
 });
 test("PWA: optional invitation only after verified sign-in, with real user choice and iOS steps",()=>{
   assert.match(app,/import \{ InstallAppInvite \} from "\.\/components\/InstallAppInvite"/);
