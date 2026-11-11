@@ -87,6 +87,7 @@ import { usePageNotificationAttention } from "./hooks/usePageNotificationAttenti
 import { isMerchantPreviewSimulatorEnabled } from "./services/merchantPreviewSimulator";
 import { useAppInitializer } from "./hooks/useAppInitializer";
 import { usePushNotifications } from "./hooks/usePushNotifications";
+import { onForegroundMessage } from "./lib/firebase";
 import {
   Order,
   Shop,
@@ -292,7 +293,7 @@ function App() {
   const currentBuildVersion = useRef(19); // Moving to v5.4 tracker
   const topNavScrollRef = useRef<HTMLDivElement>(null);
   const shopsRef = useRef<Shop[]>([]);
-  const prevPendingCount = useRef<number>(0);
+  const notifiedPendingOrders = useRef<{scope:string|null;ids:Set<string>}>({scope:null,ids:new Set()});
   const activeSoundRef = useRef<{ pause: () => void } | null>(null);
 
   useEffect(() => {
@@ -996,44 +997,34 @@ function App() {
     }
   }, [soundStyle, soundVolume]);
 
-  // Sound alert logic for new orders
+  // Alert only for newly observed, verified pickup IDs, not just a change
+  // in the pending COUNT. One collected/accepted and one new arrival may leave
+  // the total unchanged; that must still raise an alert.
   useEffect(() => {
-    if (!user) return;
-    const currentPendingCount = orders.filter(
-      (o) => o.status === "pending",
-    ).length;
-
-    // Only trigger if count increased and sound is enabled
-    if (soundAlerts && currentPendingCount > prevPendingCount.current) {
-      const audio = playNotificationSound(true); // Enable repeating for new orders
-
-      const stopSound = () => {
-        audio.pause();
-        if (activeSoundRef.current) {
-          activeSoundRef.current.pause();
-          activeSoundRef.current = null;
-        }
-      };
-
-      toast.success("NEW ORDER RECEIVED!", {
-        description: `CRITICAL: You have ${currentPendingCount} pending ${currentPendingCount === 1 ? "order" : "orders"}.`,
-        duration: 15000,
-        important: true,
-        icon: <Bell className="text-primary animate-bounce" />,
-        action: {
-          label: "DISMISS ALERT",
-          onClick: () => {
-            stopSound();
-            setActiveTab("orders");
-          },
-        },
-        onDismiss: () => stopSound(),
-        onAutoClose: () => stopSound(),
-      });
+    const scope = user && currentShop && merchantShopGate.status === "ready"
+      ? String(user.id) + ":" + String(currentShop.id) : null;
+    if (!scope) {
+      notifiedPendingOrders.current={scope:null,ids:new Set()};
+      return;
     }
-
-    prevPendingCount.current = currentPendingCount;
-  }, [orders, soundAlerts, user, playNotificationSound, setActiveTab]);
+    const pendingIds=new Set(orders.filter(o=>o.status==="pending" &&
+      String(o.shop_id)===String(currentShop?.id)).map(o=>String(o.id)));
+    const prev=notifiedPendingOrders.current;
+    const known=prev.scope===scope ? prev.ids : new Set<string>();
+    const newIds=[...pendingIds].filter(id=>!known.has(id));
+    notifiedPendingOrders.current={scope,ids:pendingIds};
+    if (!newIds.length) return;
+    const audio=soundAlerts ? playNotificationSound(true) : null;
+    const stop=()=>{audio?.pause();activeSoundRef.current?.pause();activeSoundRef.current=null;};
+    toast.success("NEW PICKUP ORDER RECEIVED",{
+      description:newIds.length + " new order" + (newIds.length===1?"":"s") +
+        ". Open Orders to accept and start preparation.",
+      duration:15000,important:true,
+      icon:<Bell className="text-primary animate-bounce"/>,
+      action:{label:"VIEW ORDERS",onClick:()=>{stop();setActiveTab("orders");}},
+      onDismiss:stop,onAutoClose:stop,
+    });
+  }, [orders,soundAlerts,user,currentShop,merchantShopGate.status,playNotificationSound,setActiveTab]);
 
   const processAndSetOrders = useCallback((firestoreOrdersList: Order[], supabaseOrdersList: Order[] = []) => {
     // Merge Orders by unique string ID, prioritizing latest updated_at or created_at
@@ -1124,6 +1115,30 @@ function App() {
   const [menuReadStatus,setMenuReadStatus]=useState<{scope:string|null;state:"loading"|"ready"|"failed"}>({scope:null,state:"loading"});
   const menuReadRequest = useRef(0);
   useEffect(()=>{const refresh=()=>{void fetchOrders();};window.addEventListener("merchant-pickup-order-confirmed",refresh);return()=>window.removeEventListener("merchant-pickup-order-confirmed",refresh);},[fetchOrders]);
+  // FCM may wake an open page, but never trust the payload as an order:
+  // always fetch the verified, shop-scoped authoritative API inbox.
+  useEffect(()=>{
+    if(!orderReadScope)return;
+    let active=true;
+    let unsubscribe: (()=>void)|void;
+    void onForegroundMessage(payload=>{
+      if(payload.data?.type==="pickup_new_order" && active) void fetchOrders();
+    }).then(fn=>{
+      if(!active)fn?.();
+      else unsubscribe=fn;
+    });
+    const fromWorker=(event:MessageEvent)=>{
+      if(event.data?.type==="merchant-pickup-order-push")void fetchOrders();
+    };
+    navigator.serviceWorker?.addEventListener("message",fromWorker);
+    return()=>{
+      active=false;
+      unsubscribe?.();
+      navigator.serviceWorker?.removeEventListener("message",fromWorker);
+    };
+  },[orderReadScope,fetchOrders]);
+
+
   const fetchAllMenuItems = useCallback(async () => {
     const request = ++menuReadRequest.current;
     if (!user || merchantShopGate.status !== "ready" || !currentShop) { setMenuItems([]);setMenuReadStatus({scope:null,state:"loading"});return; }
@@ -3628,7 +3643,7 @@ function App() {
                           Push Notifications
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          Get browser alerts even when the app is closed.
+                          {pushEnabled ? "Device registered. Delivery depends on browser and network." : "Register this device; the order inbox updates while open."}
                         </p>
                       </div>
                     </div>
