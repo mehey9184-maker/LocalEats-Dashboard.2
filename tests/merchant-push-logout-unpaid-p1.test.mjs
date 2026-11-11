@@ -28,7 +28,8 @@ test("Ready but unpaid is not presented as a paid sale or completed handover",()
  assert.doesNotMatch(pickup,/setInterval\(/);
  assert.doesNotMatch(pickup,/auto.*cancel.*unpaid/i);
 });
-\ntest("pickup chat is not misrepresented as working while secure order chat is unavailable",()=>{
+
+test("pickup chat is not misrepresented as working while secure order chat is unavailable",()=>{
  const orders=readFileSync(new URL("../src/components/OrdersManagement.tsx",import.meta.url),"utf8");
  assert.match(orders,/disabled=\{isPickupOrder\(order\)\}/);
  assert.match(orders,/Pickup chat is not yet connected/);
