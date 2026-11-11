@@ -263,12 +263,8 @@ export const Marketing: React.FC<MarketingProps> = ({
   const handleOpenWhatsApp = () => {
     const encoded = encodeURIComponent(activeMessage);
     const waUrl = `https://api.whatsapp.com/send?text=${encoded}`;
-    const popup = window.open(waUrl, "_blank", "noopener,noreferrer");
-    if (!popup) {
-      // Some browsers return null when noopener is enabled even if opened.
-      // Do not claim sharing succeeded: the owner can use Copy Message instead.
-      toast.info("If WhatsApp did not open, use Copy Message and share it manually.");
-    }
+    // Opening WhatsApp is the feedback; avoid claiming a share was completed.
+    window.open(waUrl, "_blank", "noopener,noreferrer");
   };
 
   const handleCopyMessage = () => {
@@ -684,7 +680,8 @@ export const Marketing: React.FC<MarketingProps> = ({
         {/* Segment 1: Dashboard Summary */}
         <button
           onClick={() => setMainSegment("dashboard")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
+          aria-pressed={mainSegment === "dashboard"}
+          className={`le-press-feedback min-h-11 flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
             mainSegment === "dashboard"
               ? "bg-primary text-on-primary shadow-sm"
               : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -697,7 +694,8 @@ export const Marketing: React.FC<MarketingProps> = ({
         {/* Segment 2: Campaign Builder */}
         <button
           onClick={() => setMainSegment("campaign_builder")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
+          aria-pressed={mainSegment === "campaign_builder"}
+          className={`le-press-feedback min-h-11 flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
             mainSegment === "campaign_builder"
               ? "bg-primary text-on-primary shadow-sm"
               : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
@@ -710,7 +708,8 @@ export const Marketing: React.FC<MarketingProps> = ({
         {/* Segment 3: Tool Library */}
         <button
           onClick={() => setMainSegment("tool_library")}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
+          aria-pressed={mainSegment === "tool_library"}
+          className={`le-press-feedback min-h-11 flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer ${
             mainSegment === "tool_library"
               ? "bg-primary text-on-primary shadow-sm"
               : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
