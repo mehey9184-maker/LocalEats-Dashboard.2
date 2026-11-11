@@ -34,6 +34,11 @@ The chat-access-hardening.REVIEW_ONLY.sql.txt file is also nondeployable:
 - Investigate rider nudge functions and rls_auto_enable for caller bypass. Prefer revoking PUBLIC/anon/authenticated execute when proven unused by legitimate clients, and keep explicit trusted-backend execution.
 - Separate review for PostGIS extension objects and leaked-password auth settings. These are not automatically changed by this PR.
 
+## Reuse existing reviews of other confirmed risks
+- Signup role escalation: docs/SECURITY_SIGNUP_ROLE_REVIEW_20261106.md and security/drafts/signup_role_metadata_lockdown_REVIEW_ONLY.sql already analyze the active handle_new_user() trigger reading NEW.raw_user_meta_data->>'role' (editable by users). Reuse its isolated tests; do not issue a competing trigger migration. Require owner-approved server-side role assignment and verified signup path first.
+- Rider notification permission escalation: docs/SECURITY_P1_RIDER_NOTIFICATIONS_REVIEW.md and security/drafts/rider_notifications_lockdown_REVIEW_ONLY.sql already cover unrestricted notification access and legacy nudge_rider / nudge_rider_by_id public EXECUTE. Reuse the existing guarded candidate. Riders stay off.
+- Neither existing review plan has been applied to Production. Source-reviewed drafts are not proof of current deployed protections.
+
 ## Ordered release gates
 1. Preserve fresh Production schema/ACL snapshots and confirm deployed Firebase Rules release; no customer data inspection.
 2. Identify browser/API/Realtime/legacy callers and implement Firebase-authenticated order-participant chat plus shop-authorized payment history if required.
