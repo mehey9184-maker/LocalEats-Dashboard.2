@@ -39,6 +39,8 @@ must_deny(){
   [[ "$failure" == *"permission denied"* ]] || { echo "$failure" >&2;exit 1; }
 }
 load "$base" >"$tmp/base.log"
+# Model Supabase service_role BYPASSRLS in disposable PG17. Browser roles remain NOBYPASSRLS.
+pg 'ALTER ROLE r38_backend BYPASSRLS;' >/dev/null
 pg "CREATE TABLE r38_lab.chat_messages(
    id uuid PRIMARY KEY, shop_id bigint, order_id uuid,
    sender_id uuid, sender_role text, message text, created_at timestamptz
