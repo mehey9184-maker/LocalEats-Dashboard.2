@@ -429,7 +429,11 @@ test("P3.2 expiry countdown requires explicit timezone-aware API date; no fabric
   assert.ok(plans.includes("shop.subscription_expires_at"));
   assert.ok(plans.includes("Expiry date awaiting confirmation"));
   assert.ok(plans.includes("Africa/Johannesburg"));
-  assert.ok(plans.includes("setInterval(()=>setNow(Date.now()),1000)"));
+  // UX3: the clock remains accurate when visible without spinning in a hidden tab.
+  assert.ok(plans.includes("window.setInterval(()=>{"));
+  assert.ok(plans.includes('document.visibilityState!=="visible"'));
+  assert.ok(plans.includes('if(tick>=deadline)stop()'));
+  assert.ok(plans.includes('document.addEventListener("visibilitychange",sync)'));
   assert.ok(plans.includes("window.clearInterval(interval)"));
   assert.ok(plans.includes('aria-label={t.elapsed?'));
   assert.ok(!plans.includes("shop.created_at"));
@@ -487,7 +491,7 @@ test("P3 final UI: Free is an introductory mode, not something a merchant needs 
   const plans=readFileSync(new URL("../src/components/MerchantSubscriptionPlans.tsx",import.meta.url),"utf8");
   assert.ok(plans.includes('plan.id==="free"?"Introductory offer · launch date pending":"Not available for purchase yet"'));
   assert.ok(plans.includes('text-xs text-on-surface-variant leading-5'));
-  assert.ok(plans.includes('min-h-10 rounded-lg'));
+  assert.ok(plans.includes('min-h-11 rounded-lg')); // UX3: 44px touch target
   assert.ok(plans.includes('grid-cols-1 sm:grid-cols-2 xl:grid-cols-4'));
 });
 
