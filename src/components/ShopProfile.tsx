@@ -71,6 +71,14 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
   const isReadOnlyPreview = import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true";
   const [uploadingType, setUploadingType] = useState<"logo" | null>(null);
   const [showMapPinConfirm, setShowMapPinConfirm] = useState(false);
+  const mapPinCancelRef = useRef<HTMLButtonElement>(null);
+  const mapPinConfirmRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!showMapPinConfirm) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    mapPinCancelRef.current?.focus();
+    return () => previouslyFocused?.focus();
+  }, [showMapPinConfirm]);
   const [isLocating, setIsLocating] = useState(false);
   const [operatingHours, setOperatingHours] = useState({
     open: shop.operating_hours?.open || "08:00",
@@ -644,7 +652,9 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowMapPinConfirm(true)}
-                  className="text-[10px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 px-2 py-1 rounded-full transition-colors flex items-center gap-1"
+                  disabled={isReadOnlyPreview}
+                  title={isReadOnlyPreview ? "Unavailable in read-only Preview" : undefined}
+                  className="le-press-feedback min-h-11 text-[10px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 px-2 py-1 rounded-full transition-colors flex items-center gap-1 disabled:opacity-50"
                 >
                   <MapPin size={12} />
                   Update Map Pin
@@ -707,9 +717,11 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    setShowMapPinConfirm(true);
+                    if (!isReadOnlyPreview) setShowMapPinConfirm(true);
                   }}
-                  className="absolute bottom-4 right-4 z-[40] bg-surface-container-lowest/90 backdrop-blur-md px-4 py-2 rounded-full shadow-md hover:scale-105 hover:bg-surface-container-lowest transition-all cursor-pointer flex items-center gap-2 border border-outline-variant/20"
+                  disabled={isReadOnlyPreview}
+                  title={isReadOnlyPreview ? "Unavailable in read-only Preview" : undefined}
+                  className="le-press-feedback absolute bottom-4 right-4 z-[40] bg-surface-container-lowest/90 backdrop-blur-md px-4 py-2 rounded-full shadow-md hover:scale-105 hover:bg-surface-container-lowest transition-all cursor-pointer flex items-center gap-2 border border-outline-variant/20"
                 >
                   <MapPin size={14} className="text-primary" />
                   <span className="text-[10px] font-bold text-primary">
@@ -1002,7 +1014,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
             type="submit"
             disabled={isReadOnlyPreview || isSaving || isSuccess}
             className={cn(
-              "w-full py-3 md:py-4 text-on-primary font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2",
+              "le-press-feedback min-h-12 w-full py-3 md:py-4 text-on-primary font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-60",
               isSuccess
                 ? "bg-emerald-500 shadow-emerald-500/20 hover:scale-[0.98] active:scale-95"
                 : isSaving 
@@ -1044,6 +1056,24 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
             className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
           >
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="shop-map-pin-dialog-title"
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && !isLocating) {
+                  e.preventDefault();
+                  setShowMapPinConfirm(false);
+                }
+                if (e.key === "Tab") {
+                  if (e.shiftKey && document.activeElement === mapPinCancelRef.current) {
+                    e.preventDefault();
+                    mapPinConfirmRef.current?.focus();
+                  } else if (!e.shiftKey && document.activeElement === mapPinConfirmRef.current) {
+                    e.preventDefault();
+                    mapPinCancelRef.current?.focus();
+                  }
+                }
+              }}
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
@@ -1052,7 +1082,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-6 mx-auto">
                 <MapPin size={32} />
               </div>
-              <h3 className="text-2xl font-headline font-bold text-on-surface text-center mb-3">
+              <h3 id="shop-map-pin-dialog-title" className="text-2xl font-headline font-bold text-on-surface text-center mb-3">
                 Update Location?
               </h3>
               <p className="text-on-surface-variant text-center mb-8 leading-relaxed">
@@ -1063,16 +1093,20 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
 
               <div className="flex gap-4">
                 <button
+                  type="button"
+                  ref={mapPinCancelRef}
                   onClick={() => setShowMapPinConfirm(false)}
                   disabled={isLocating}
-                  className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-on-surface-variant bg-surface-container-high hover:bg-surface-container-highest transition-colors disabled:opacity-50"
+                  className="le-press-feedback min-h-11 flex-1 py-3.5 px-4 rounded-2xl font-bold text-on-surface-variant bg-surface-container-high hover:bg-surface-container-highest transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
+                  ref={mapPinConfirmRef}
                   onClick={handleUpdateLocation}
-                  disabled={isLocating}
-                  className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-on-primary bg-primary hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                  disabled={isReadOnlyPreview || isLocating}
+                  className="le-press-feedback min-h-11 flex-1 py-3.5 px-4 rounded-2xl font-bold text-on-primary bg-primary hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {isLocating ? (
                     <>
