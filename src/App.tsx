@@ -1894,11 +1894,12 @@ function App() {
         />
         <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
         <InstallAppInvite
-          eligible={Boolean(user?.id && currentShop?.id && currentShop.owner_id === user.id && merchantShopGate.status === "ready" &&
-            !isSessionChecking && isAuthReady &&
-            (manualInstallOpen || (isAudioEnabled && !onboardingOpen && !isNotificationCenterOpen && !isSaving)))}
+          eligible={Boolean(user?.id && currentShop?.id && currentShop.owner_id === user.id &&
+            merchantShopGate.status === "ready" && !isSessionChecking && isAuthReady)}
+          allowAutoShow={activeTab === "dashboard" && isAudioEnabled && !onboardingOpen &&
+            !isNotificationCenterOpen && !isSaving}
           appName="LocalEats Merchant"
-          storageKey="localeats_merchant_install_defer_v1"
+          storageKey="localeats_merchant_install_defer_v2"
           variant="merchant"
           manualOpen={manualInstallOpen}
           onManualClose={() => setManualInstallOpen(false)}
