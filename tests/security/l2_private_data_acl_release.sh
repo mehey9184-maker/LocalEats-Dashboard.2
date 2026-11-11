@@ -16,7 +16,7 @@ sed -e 's/public\./r38_lab./g' -e "s/'public'/'r38_lab'/g" \
     -e 's/\bservice_role\b/r38_backend/g' \
     -e 's/\bauthenticated\b/r38_authenticated/g' \
     -e 's/\banon\b/r38_anon/g' "$migration" >"$tmp/migration.sql"
-if grep -Eq 'public\.chat_messages|public\.payments|service_role|[^a-z]authenticated[^a-z]|[^a-z]anon[^a-z]' "$tmp/migration.sql"; then
+if grep -Pq 'public\.(chat_messages|payments)|\bservice_role\b|\bauthenticated\b|\banon\b' "$tmp/migration.sql"; then
   echo 'L2_SCRATCH_ROLE_RENDER_FAILED' >&2;exit 1
 fi
 docker run -d --name "$name" --rm -e POSTGRES_PASSWORD=disposable_only \
