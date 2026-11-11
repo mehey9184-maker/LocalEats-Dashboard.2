@@ -45,7 +45,8 @@ test("merchant push registration never takes over PWA or reports success on OS p
  assert.match(sdk,/if \(!activeVapidKey\) return null/);
  assert.match(hook,/VITE_FIREBASE_VAPID_KEY/);
  assert.match(hook,/await MerchantApi\.registerPushDevice\(installation,token\)/);
- assert.match(hook,/if\(!saved \|\| auth\.currentUser\?\.uid!==userId\)/);
+ assert.match(hook,/if\(!saved\)\{/);
+ assert.match(hook,/if\(auth\.currentUser\?\.uid!==userId \|\| sequence\.current!==epoch\)return;/);
  assert.match(hook,/setPushEnabled\(true\)/);
  assert.doesNotMatch(hook,/\.from\(['"]push_subscriptions['"]\)/);
  assert.match(api,/this\.getMerchantShop\(\)/);
