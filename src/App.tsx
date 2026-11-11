@@ -764,7 +764,7 @@ function App() {
 
 
   // VAPID Push configuration moved to custom hook usePushNotifications
-  const { pushEnabled, requestPushPermissions } = usePushNotifications(false);
+  const { pushEnabled, pushBusy, requestPushPermissions, disablePushNotifications } = usePushNotifications(false);
 
   const playNotificationSound = useCallback((isRepeating = false, styleOverride?: "calm" | "friendly" | "sparkle") => {
     // Stop previous playing sound if active
@@ -3643,22 +3643,26 @@ function App() {
                           Push Notifications
                         </p>
                         <p className="text-xs text-on-surface-variant">
-                          {pushEnabled ? "Device registered. Delivery depends on browser and network." : "Register this device; the order inbox updates while open."}
+                          {pushBusy ? "Updating verified device registration…" : pushEnabled ? "Registered with LocalEats. Push delivery is best effort; Orders also refresh while open." : "Push is off or unverified. Orders refresh every 15 seconds while open."}
                         </p>
                       </div>
                     </div>
                     <button
+                      type="button"
+                      role="switch"
+                      aria-label="LocalEats merchant push notifications"
+                      aria-checked={pushEnabled}
+                      aria-busy={pushBusy}
+                      disabled={pushBusy}
                       onClick={() => {
                         if (!pushEnabled) {
-                          requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
+                          void requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
                         } else {
-                          toast.info(
-                            "To disable push notifications, please change your browser settings.",
-                          );
+                          void disablePushNotifications();
                         }
                       }}
                       className={cn(
-                        "w-12 h-6 rounded-full transition-all relative",
+                        "w-12 h-6 rounded-full transition-all relative disabled:opacity-50 disabled:cursor-wait",
                         pushEnabled ? "bg-primary" : "bg-outline-variant",
                       )}
                     >
