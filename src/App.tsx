@@ -87,6 +87,8 @@ import { usePageNotificationAttention } from "./hooks/usePageNotificationAttenti
 import { isMerchantPreviewSimulatorEnabled } from "./services/merchantPreviewSimulator";
 import { useAppInitializer } from "./hooks/useAppInitializer";
 import { usePushNotifications } from "./hooks/usePushNotifications";
+import { MerchantPushDiagnostics } from "./components/MerchantPushDiagnostics";
+import { isMessagingWorker } from "./lib/merchantPushDiagnostics";
 import { onForegroundMessage } from "./lib/firebase";
 import {
   Order,
@@ -769,45 +771,10 @@ function App() {
   // observing a real background test. No real order or payment is created.
   const [pushTestState,setPushTestState]=useState<"idle"|"countdown"|"sending">("idle");
   const [pushTestStatus,setPushTestStatus]=useState("");
-  const [localPushTestBusy,setLocalPushTestBusy]=useState(false);
-  const [localPushTestStatus,setLocalPushTestStatus]=useState("");
+  const [foregroundPushTest,setForegroundPushTest]=useState<{scope:string;at:number}>();
+  const [backgroundPushTest,setBackgroundPushTest]=useState<{scope:string;at:number;display:"accepted"|"failed"}>();
   const pushTestTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   useEffect(()=>()=>{if(pushTestTimer.current)clearTimeout(pushTestTimer.current);},[]);
-  // Separate browser/Windows display from Firebase transport and the API.
-  // Only an explicit click creates this local test notification.
-  const testWindowsNotificationLocally=async()=>{
-    if(localPushTestBusy)return;
-    setLocalPushTestBusy(true);
-    setLocalPushTestStatus("Checking this browser's notification permission…");
-    try{
-      if(!("Notification" in window) || !("serviceWorker" in navigator)){
-        setLocalPushTestStatus("Chrome notification support is unavailable here.");
-        return;
-      }
-      if(Notification.permission!=="granted"){
-        setLocalPushTestStatus("Chrome notifications are not allowed for this website. Check the lock icon in the address bar.");
-        return;
-      }
-      const registration=await navigator.serviceWorker.getRegistration("/firebase-cloud-messaging-push-scope/");
-      if(!registration?.active){
-        setLocalPushTestStatus("The LocalEats Firebase background service worker is not active. Re-open the dashboard and register push again.");
-        return;
-      }
-      const tag="localeats-local-windows-check-"+Date.now();
-      await registration.showNotification("LocalEats Windows check",{
-        body:"Browser-only test; Firebase was not contacted. No order or payment was created.",
-        icon:"/logo.png",tag,data:{type:"merchant_push_test"}
-      });
-      const visible=await registration.getNotifications({tag});
-      setLocalPushTestStatus(visible.length>0
-        ? "Chrome created a local notification. Did Windows show it? If not, check Windows Do Not Disturb and Chrome notification settings."
-        : "Chrome accepted the local test call, but the notification was not found. Check Windows and Chrome notification settings.");
-    }catch{
-      setLocalPushTestStatus("Chrome could not create a local notification. Check browser and Windows notification permissions.");
-    }finally{
-      setLocalPushTestBusy(false);
-    }
-  };
   const scheduleMerchantPushTest=()=>{
     if(!pushEnabled || pushBusy || pushTestState!=="idle"){
       setPushTestStatus("Device registration or another test is in progress.");
@@ -825,8 +792,8 @@ function App() {
       toast.error("Register push notifications first.");return;
     }
     setPushTestState("countdown");
-    setPushTestStatus("Test scheduled. Minimize Chrome now; sending in 7 seconds.");
-    toast.info("Sending a test in 7 seconds. Switch tabs or minimize Chrome now.");
+    setPushTestStatus("Test scheduled. Stay here for a foreground test, or hide all LocalEats windows for a background test. Sending in 7 seconds.");
+    toast.info("Sending a test in 7 seconds.");
     pushTestTimer.current=setTimeout(async()=>{
       pushTestTimer.current=null;
       if(firebaseAuth.currentUser?.uid!==uid){
@@ -1203,18 +1170,28 @@ function App() {
   useEffect(()=>{
     if(!orderReadScope)return;
     let active=true;
-    let unsubscribe: (()=>void)|void;
+    let unsubscribe: (()=>void)|undefined;
     void onForegroundMessage(payload=>{
       if(!active)return;
       if(payload.data?.type==="pickup_new_order")void fetchOrders();
-      if(payload.data?.type==="merchant_push_test")
+      if(payload.data?.type==="merchant_push_test"){
+        setForegroundPushTest({scope:orderReadScope,at:Date.now()});
         toast.success("Test push reached this open dashboard. Background alerts still need a Windows check.");
+      }
     }).then(fn=>{
-      if(!active)fn?.();
+      if(typeof fn!=="function")return;
+      if(!active)fn();
       else unsubscribe=fn;
     });
     const fromWorker=(event:MessageEvent)=>{
       if(event.data?.type==="merchant-pickup-order-push")void fetchOrders();
+      const source=event.source;
+      const display=event.data?.display;
+      if(event.data?.type==="merchant-push-test-background" &&
+        source && "scriptURL" in source && isMessagingWorker(source.scriptURL,location.origin) &&
+        (display==="accepted" || display==="failed")){
+        setBackgroundPushTest({scope:orderReadScope,at:Date.now(),display});
+      }
     };
     navigator.serviceWorker?.addEventListener("message",fromWorker);
     return()=>{
@@ -3787,16 +3764,12 @@ function App() {
                           {pushTestState==="countdown"?"Sending in 7 seconds…":pushTestState==="sending"?"Contacting Firebase…":"Send test notification"}
                         </button>
                         {pushTestStatus && <p role="status" aria-live="polite" className="max-w-sm text-right text-xs text-on-surface-variant">{pushTestStatus}</p>}
-                        <button type="button" disabled={localPushTestBusy || pushBusy}
-                          onClick={()=>{void testWindowsNotificationLocally();}}
-                          className="min-h-10 cursor-pointer rounded-xl border border-outline-variant/40 bg-surface-container-high px-4 py-2 text-xs font-semibold text-on-surface hover:bg-surface-container-highest focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
-                          aria-label="Test Windows notifications locally without Firebase">
-                          {localPushTestBusy?"Checking Windows alerts…":"Test Windows alert (browser only)"}
-                        </button>
-                        {localPushTestStatus && <p role="status" aria-live="polite" className="max-w-sm text-right text-xs text-on-surface-variant">{localPushTestStatus}</p>}
                       </div>
                     </div>
                   )}
+                  <MerchantPushDiagnostics key={orderReadScope} registered={pushEnabled}
+                    foregroundAt={foregroundPushTest?.scope===orderReadScope ? foregroundPushTest?.at : undefined}
+                    background={backgroundPushTest?.scope===orderReadScope ? backgroundPushTest : undefined} />
 
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center gap-4">

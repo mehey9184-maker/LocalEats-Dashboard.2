@@ -27,6 +27,7 @@ test("only previously confirmed installations revalidate without permission prom
  assert.match(hook,/const existing=localStorage\.getItem\(installationKey\(uid\)\)/);
  assert.match(hook,/if\(!existing \|\| !VALID_INSTALLATION\.test\(existing\)\)return/);
  assert.match(hook,/if\(Notification\.permission!=="granted"\)/);
+ assert.match(hook,/const revalidate=[\s\S]*?await requestNotificationPermissionAndGetToken\(\{prompt:false\}\)/);
  assert.match(hook,/if\(!token\)\{setPushEnabled\(false\);return;\}/);
  assert.match(hook,/sequence\.current!==epoch/);
  assert.match(hook,/if\(auth\.currentUser\?\.uid!==userId \|\| sequence\.current!==epoch\)return;/);
