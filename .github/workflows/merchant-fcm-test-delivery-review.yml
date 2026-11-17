@@ -1,0 +1,50 @@
+name: LocalEats merchant FCM test-delivery safety
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/src/orders/merchantPushTest.ts'
+      - 'localeats-api/src/orders/merchantPushTest.test.ts'
+      - 'localeats-api/src/routes/pickupNotifications.ts'
+      - 'src/services/MerchantApi.ts'
+      - 'src/App.tsx'
+      - 'public/firebase-messaging-sw.js'
+      - 'tests/merchant-push-test-ui.test.mjs'
+      - '.github/workflows/merchant-fcm-test-delivery-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  safe-push-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      DATABASE_URL: ''
+      SUPABASE_URL: ''
+      SUPABASE_SERVICE_ROLE_KEY: ''
+      FIREBASE_PRIVATE_KEY: ''
+      FIREBASE_CLIENT_EMAIL: ''
+      VERCEL_TOKEN: ''
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Lock actual orders and cloud credentials off for test
+        run: |
+          test "$PICKUP_WRITES_ENABLED" = "false"
+          test -z "$SUPABASE_URL" && test -z "$SUPABASE_SERVICE_ROLE_KEY"
+          test -z "$FIREBASE_PRIVATE_KEY" && test -z "$FIREBASE_CLIENT_EMAIL"
+      - name: Compile actual API
+        run: npm ci --prefix localeats-api --no-audit --no-fund && npm run build --prefix localeats-api
+      - name: Test merchant isolation, cooldown and no-order FCM test
+        run: node --test localeats-api/dist/orders/merchantPushTest.test.js
+      - name: Check browser, worker and API safety contracts
+        run: node --test tests/merchant-push-test-ui.test.mjs
+      - name: Compile merchant frontend
+        run: npm ci --no-audit --no-fund && npm run build
