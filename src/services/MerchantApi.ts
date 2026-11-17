@@ -128,6 +128,33 @@ export class MerchantApi {
       return auth.currentUser?.uid===uid && response.ok && data.success===true;
     }catch{return false;}
   }
+  /**
+   * Send a single explicit test to this merchant's registered browser.
+   * Firebase acceptance is NOT proof of Windows/background delivery.
+   * The server never returns an FCM token or invents an order.
+   */
+  static async sendTestPushNotification(installationId:string):Promise<void>{
+    const uid=auth.currentUser?.uid;
+    if(!uid || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(installationId)){
+      throw new MerchantApiError("Sign in and register this device before testing notifications.");
+    }
+    const response=await fetch(`${getApiUrl()}/api/v1/push-subscriptions/${encodeURIComponent(installationId)}/test`,{
+      method:"POST",
+      headers:await getApiAuthHeaders(),
+      body:"{}"
+    });
+    const data=await readJsonResponse(response);
+    if(auth.currentUser?.uid!==uid)throw new MerchantApiError("Account changed. Test result discarded.");
+    if(response.status!==202 || data.success!==true || data.code!=="FCM_ACCEPTED_NOT_DEVICE_DELIVERED"){
+      const msg=response.status===429 ? "Please try again after one minute."
+        : response.status===404 ? "Device registration was not found. Turn push off and on again."
+        : response.status===403 ? "Only an approved merchant can test this device."
+        : "Firebase could not accept the test notification. Try again.";
+      const error=new MerchantApiError(msg,response.status);
+      error.code=typeof data.code==="string"?data.code:undefined;
+      throw error;
+    }
+  }
   static async setAvailability(shopId:string|number,open:boolean,confirmOutsideHours=false,expectedRevision?:number):Promise<VerifiedMerchantShop> {
     const uid=auth.currentUser?.uid;
     const shop=await this.getMerchantShop();
