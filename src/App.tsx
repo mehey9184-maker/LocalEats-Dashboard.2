@@ -769,36 +769,6 @@ function App() {
   // observing a real background test. No real order or payment is created.
   const [pushTestState,setPushTestState]=useState<"idle"|"countdown"|"sending">("idle");
   const [pushTestStatus,setPushTestStatus]=useState("");
-  const [pushTestBrowserCheck,setPushTestBrowserCheck]=useState("");
-  const pushTestButtonRef=useRef<HTMLButtonElement|null>(null);
-  // Read-only browser diagnosis. This does not access credentials, tokens or orders.
-  useEffect(()=>{
-    if(settingsCategory!=="preferences" || !pushEnabled)return;
-    const timer=window.setTimeout(()=>{
-      const button=pushTestButtonRef.current;
-      if(!button)return;
-      const box=button.getBoundingClientRect();
-      if(box.width<=0 || box.height<=0){
-        setPushTestBrowserCheck("Browser check: test control has no visible size.");
-        return;
-      }
-      const x=box.left+box.width/2;
-      const y=box.top+box.height/2;
-      if(x<0 || x>=window.innerWidth || y<0 || y>=window.innerHeight){
-        setPushTestBrowserCheck("Browser check: scroll the test button fully into view.");
-        return;
-      }
-      const top=document.elementFromPoint(x,y);
-      if(top && top!==button && !button.contains(top)){
-        setPushTestBrowserCheck("Browser check: another element covers this button ("+top.tagName.toLowerCase()+").");
-        return;
-      }
-      setPushTestBrowserCheck(button.tabIndex<0
-        ? "Browser check: this control is excluded from keyboard navigation."
-        : "Browser check: button is in the keyboard order and its centre is unobstructed.");
-    },250);
-    return()=>window.clearTimeout(timer);
-  },[settingsCategory,pushEnabled,pushBusy,pushTestState]);
   const pushTestTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   useEffect(()=>()=>{if(pushTestTimer.current)clearTimeout(pushTestTimer.current);},[]);
   const scheduleMerchantPushTest=()=>{
@@ -806,7 +776,7 @@ function App() {
       setPushTestStatus("Device registration or another test is in progress.");
       return;
     }
-    const uid=auth.currentUser?.uid;
+    const uid=firebaseAuth.currentUser?.uid;
     if(!uid || uid!==user?.id){
       setPushTestStatus("Sign in as the registered merchant first.");
       toast.error("Sign in as the registered merchant first.");return;
@@ -822,7 +792,7 @@ function App() {
     toast.info("Sending a test in 7 seconds. Switch tabs or minimize Chrome now.");
     pushTestTimer.current=setTimeout(async()=>{
       pushTestTimer.current=null;
-      if(auth.currentUser?.uid!==uid){
+      if(firebaseAuth.currentUser?.uid!==uid){
         setPushTestState("idle");
         setPushTestStatus("Signed-in merchant changed. Test cancelled.");
         return;
@@ -1581,7 +1551,7 @@ function App() {
   const handleSignOut = async () => {
     // Protect shared devices: revoke this merchant's FCM device while the
     // authenticated token is still available. Never block signout on outage.
-    const uid=auth.currentUser?.uid;
+    const uid=firebaseAuth.currentUser?.uid;
     if(uid && typeof navigator!=="undefined" && navigator.onLine){
       let installation:string|null=null;
       try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch{}
@@ -3773,15 +3743,13 @@ function App() {
                         Test this device only. No customer order or payment is created.
                       </p>
                       <div className="relative z-10 flex flex-col items-end gap-2">
-                        <button ref={pushTestButtonRef} type="button"
-                          aria-disabled={pushBusy || pushTestState!=="idle"}
+                        <button type="button" disabled={pushBusy || pushTestState!=="idle"}
                           onClick={scheduleMerchantPushTest}
                           className="relative z-10 pointer-events-auto min-h-11 cursor-pointer rounded-xl border border-primary/20 bg-primary/10 px-4 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-50"
                           aria-label="Send a push notification test to this merchant device">
                           {pushTestState==="countdown"?"Sending in 7 seconds…":pushTestState==="sending"?"Contacting Firebase…":"Send test notification"}
                         </button>
                         {pushTestStatus && <p role="status" aria-live="polite" className="max-w-sm text-right text-xs text-on-surface-variant">{pushTestStatus}</p>}
-                        {pushTestBrowserCheck && <p className="max-w-sm text-right text-[11px] text-on-surface-variant/80">{pushTestBrowserCheck}</p>}
                       </div>
                     </div>
                   )}
