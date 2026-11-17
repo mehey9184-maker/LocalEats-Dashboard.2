@@ -9,7 +9,7 @@ self.addEventListener('notificationclick', event => {
     const existing=tabs.find(tab=>new URL(tab.url).origin===self.location.origin);
     if(existing){
       await existing.focus();
-      existing.postMessage({type:'merchant-pickup-order-push'});
+      if(event.notification.data?.type==='pickup_new_order') existing.postMessage({type:'merchant-pickup-order-push'});
       return;
     }
     await clients.openWindow(destination);
@@ -22,7 +22,18 @@ firebase.initializeApp({"apiKey":"AIzaSyBuX3QvWFTWSLoaEsMPE7TsQLEodAaFS1M","auth
 const messaging=firebase.messaging();
 messaging.onBackgroundMessage(payload=>{
   // Notification-payload messages are already displayed by FCM.
-  if(payload.notification||payload.data?.type!=='pickup_new_order')return;
+  // Data-only messages: never turn a synthetic connectivity check into an order.
+  if(payload.notification)return;
+  if(payload.data?.type==='merchant_push_test'){
+    self.registration.showNotification('LocalEats notification test',{
+      body:'This is a test alert. No customer order or payment was created.',
+      icon:'/icon-192.png',badge:'/icon-192.png',
+      tag:'localeats-push-test-'+String(payload.data.test_id||'test').slice(0,80),
+      data:{type:'merchant_push_test'},
+    });
+    return;
+  }
+  if(payload.data?.type!=='pickup_new_order')return;
   self.registration.showNotification('New pickup order received',{
     body:'Open your LocalEats dashboard to check and accept the order.',
     icon:'/icon-192.png',badge:'/icon-192.png',
