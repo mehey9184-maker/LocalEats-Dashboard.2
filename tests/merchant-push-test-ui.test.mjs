@@ -15,6 +15,10 @@ test("Merchant Settings has a labeled test button, no artificial purchase or ord
  assert.match(app,/auth\.currentUser\?\.uid!==uid/);
  assert.match(app,/MerchantApi\.sendTestPushNotification\(installation!\)/);
  assert.match(app,/No customer order or payment is created/);
+ assert.match(app,/role="status" aria-live="polite"/);
+ assert.match(app,/relative z-10 pointer-events-auto min-h-11 cursor-pointer/);
+ assert.match(app,/setPushTestStatus\("Test scheduled\. Minimize Chrome now/);
+ assert.match(app,/Firebase accepted the test request\. Check for a Windows notification; delivery is not yet confirmed/);
  assert.match(api,/POST|method:"POST"/);
  assert.match(api,/api\/v1\/push-subscriptions\/\$\{encodeURIComponent\(installationId\)\}\/test/);
  assert.doesNotMatch(api,/method:"POST"[\s\S]{0,130}order_id/);

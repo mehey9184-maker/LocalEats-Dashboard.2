@@ -768,26 +768,45 @@ function App() {
   // Delay by seven seconds so the merchant can minimize Chrome before
   // observing a real background test. No real order or payment is created.
   const [pushTestState,setPushTestState]=useState<"idle"|"countdown"|"sending">("idle");
+  const [pushTestStatus,setPushTestStatus]=useState("");
   const pushTestTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   useEffect(()=>()=>{if(pushTestTimer.current)clearTimeout(pushTestTimer.current);},[]);
   const scheduleMerchantPushTest=()=>{
-    if(!pushEnabled || pushBusy || pushTestState!=="idle")return;
+    if(!pushEnabled || pushBusy || pushTestState!=="idle"){
+      setPushTestStatus("Device registration or another test is in progress.");
+      return;
+    }
     const uid=auth.currentUser?.uid;
-    if(!uid || uid!==user?.id){toast.error("Sign in as the registered merchant first.");return;}
+    if(!uid || uid!==user?.id){
+      setPushTestStatus("Sign in as the registered merchant first.");
+      toast.error("Sign in as the registered merchant first.");return;
+    }
     let installation:string|null=null;
     try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch{}
-    if(!installation){toast.error("Register push notifications first.");return;}
+    if(!installation){
+      setPushTestStatus("Register push notifications first.");
+      toast.error("Register push notifications first.");return;
+    }
     setPushTestState("countdown");
+    setPushTestStatus("Test scheduled. Minimize Chrome now; sending in 7 seconds.");
     toast.info("Sending a test in 7 seconds. Switch tabs or minimize Chrome now.");
     pushTestTimer.current=setTimeout(async()=>{
       pushTestTimer.current=null;
-      if(auth.currentUser?.uid!==uid){setPushTestState("idle");return;}
+      if(auth.currentUser?.uid!==uid){
+        setPushTestState("idle");
+        setPushTestStatus("Signed-in merchant changed. Test cancelled.");
+        return;
+      }
       setPushTestState("sending");
+      setPushTestStatus("Contacting Firebase for this device…");
       try{
         await MerchantApi.sendTestPushNotification(installation!);
+        setPushTestStatus("Firebase accepted the test request. Check for a Windows notification; delivery is not yet confirmed.");
         toast.success("Firebase accepted the test. Did a Windows notification appear?");
       }catch(error){
-        toast.error(error instanceof Error?error.message:"Test alert could not be sent.");
+        const message=error instanceof Error?error.message:"Test alert could not be sent.";
+        setPushTestStatus(message);
+        toast.error(message);
       }finally{setPushTestState("idle");}
     },7000);
   };
@@ -3723,12 +3742,15 @@ function App() {
                       <p className="text-xs text-on-surface-variant">
                         Test this device only. No customer order or payment is created.
                       </p>
-                      <button type="button" disabled={pushBusy || pushTestState!=="idle"}
-                        onClick={scheduleMerchantPushTest}
-                        className="rounded-xl border border-outline-variant/30 bg-surface-container px-4 py-2 text-xs font-bold text-on-surface hover:bg-surface-container-high disabled:opacity-50"
-                        aria-label="Send a push notification test to this merchant device">
-                        {pushTestState==="countdown"?"Sending in 7 seconds…":pushTestState==="sending"?"Contacting Firebase…":"Send test notification"}
-                      </button>
+                      <div className="relative z-10 flex flex-col items-end gap-2">
+                        <button type="button" disabled={pushBusy || pushTestState!=="idle"}
+                          onClick={scheduleMerchantPushTest}
+                          className="relative z-10 pointer-events-auto min-h-11 cursor-pointer rounded-xl border border-primary/20 bg-primary/10 px-4 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-50"
+                          aria-label="Send a push notification test to this merchant device">
+                          {pushTestState==="countdown"?"Sending in 7 seconds…":pushTestState==="sending"?"Contacting Firebase…":"Send test notification"}
+                        </button>
+                        {pushTestStatus && <p role="status" aria-live="polite" className="max-w-sm text-right text-xs text-on-surface-variant">{pushTestStatus}</p>}
+                      </div>
                     </div>
                   )}
 
