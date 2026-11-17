@@ -23,6 +23,20 @@ test("Merchant Settings has a labeled test button, no artificial purchase or ord
  assert.match(api,/api\/v1\/push-subscriptions\/\$\{encodeURIComponent\(installationId\)\}\/test/);
  assert.doesNotMatch(api,/method:"POST"[\s\S]{0,130}order_id/);
 });
+test("merchant test stays keyboard focusable while safely guarding duplicate requests",()=>{
+ const start=app.indexOf('<button ref={pushTestButtonRef} type="button"');
+ assert.notEqual(start,-1);
+ const control=app.slice(start,app.indexOf("</button>",start));
+ assert.match(control,/aria-disabled=\{pushBusy \|\| pushTestState!=="idle"\}/);
+ assert.doesNotMatch(control,/\sdisabled=\{/);
+ assert.match(control,/onClick=\{scheduleMerchantPushTest\}/);
+ assert.match(app,/if\(!pushEnabled \|\| pushBusy \|\| pushTestState!=="idle"\)/);
+ assert.match(app,/document\.elementFromPoint\(x,y\)/);
+ assert.match(app,/button\.contains\(top\)/);
+ assert.match(app,/button\.tabIndex<0/);
+ assert.match(app,/pushTestBrowserCheck && <p/);
+ assert.doesNotMatch(app,/setPushTestBrowserCheck\([^\n]*(?:fcm_token|idToken|accessToken)/);
+});
 test("test sends only using authenticated Merchant API and server-side owned device",()=>{
  assert.match(server,/post\("\/push-subscriptions\/:installationId\/test",\s*authenticateFirebase/);
  assert.match(server,/\.eq\("owner_id",uid\)\.is\("archived_at",null\)/);
