@@ -49,3 +49,25 @@ test("sign-out uses the defined Firebase Auth instance before revoking the merch
  assert.match(signout,/MerchantApi\.revokePushDevice\(installation\)/);
  assert.doesNotMatch(signout,/(?<![\w.])auth\.currentUser/);
 });
+
+test("browser-only Windows check is separate from Firebase transport",()=>{
+ assert.match(app,/const testWindowsNotificationLocally=async\(\)=>/);
+ assert.match(app,/Notification\.permission!=="granted"/);
+ assert.match(app,/navigator\.serviceWorker\.getRegistration\("\/firebase-cloud-messaging-push-scope\/"\)/);
+ assert.match(app,/registration\.showNotification\("LocalEats Windows check"/);
+ assert.match(app,/registration\.getNotifications\(\{tag\}\)/);
+ assert.match(app,/Test Windows alert \(browser only\)/);
+ const local=app.slice(app.indexOf("const testWindowsNotificationLocally=async()=>"),app.indexOf("const scheduleMerchantPushTest=()=>"));
+ assert.doesNotMatch(local,/MerchantApi|sendTestPushNotification|fetch\(/);
+ assert.match(local,/No order or payment was created/);
+});
+
+test("background FCM message returns display promises and references an available logo",()=>{
+ const bg=sw.slice(sw.indexOf("messaging.onBackgroundMessage"));
+ const displays=bg.match(/return self\.registration\.showNotification\(/g)||[];
+ assert.equal(displays.length,2);
+ assert.match(bg,/icon:'\/logo\.png',badge:'\/logo\.png'/);
+ assert.doesNotMatch(bg,/\/icon-192\.png/);
+ assert.match(bg,/if\(payload\.notification\)return/);
+ assert.match(bg,/payload\.data\?\.type!=='pickup_new_order'/);
+});

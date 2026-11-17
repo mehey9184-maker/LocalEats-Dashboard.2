@@ -25,18 +25,18 @@ messaging.onBackgroundMessage(payload=>{
   // Data-only messages: never turn a synthetic connectivity check into an order.
   if(payload.notification)return;
   if(payload.data?.type==='merchant_push_test'){
-    self.registration.showNotification('LocalEats notification test',{
+    return self.registration.showNotification('LocalEats notification test',{
       body:'This is a test alert. No customer order or payment was created.',
-      icon:'/icon-192.png',badge:'/icon-192.png',
+      icon:'/logo.png',badge:'/logo.png',
       tag:'localeats-push-test-'+String(payload.data.test_id||'test').slice(0,80),
       data:{type:'merchant_push_test'},
     });
     return;
   }
   if(payload.data?.type!=='pickup_new_order')return;
-  self.registration.showNotification('New pickup order received',{
+  return self.registration.showNotification('New pickup order received',{
     body:'Open your LocalEats dashboard to check and accept the order.',
-    icon:'/icon-192.png',badge:'/icon-192.png',
+    icon:'/logo.png',badge:'/logo.png',
     tag:'localeats-new-order-'+String(payload.data.event_id||payload.data.order_id||'pickup').slice(0,80),
     data:{type:'pickup_new_order'},
   });
