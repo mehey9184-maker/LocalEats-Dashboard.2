@@ -5,6 +5,7 @@ const app=readFileSync("src/App.tsx","utf8");
 const api=readFileSync("src/services/MerchantApi.ts","utf8");
 const sw=readFileSync("public/firebase-messaging-sw.js","utf8");
 const server=readFileSync("localeats-api/src/routes/pickupNotifications.ts","utf8");
+const testService=readFileSync("localeats-api/src/orders/merchantPushTest.ts","utf8");
 
 test("Merchant Settings has a labeled test button, no artificial purchase or order",()=>{
  assert.match(app,/Send test notification/);
@@ -23,7 +24,8 @@ test("test sends only using authenticated Merchant API and server-side owned dev
  assert.match(server,/\.eq\("owner_id",uid\)\.is\("archived_at",null\)/);
  assert.match(server,/\.eq\("user_id",uid\)\.eq\("installation_id",installationId\)/);
  assert.match(server,/\.is\("revoked_at",null\)/);
- assert.match(server,/FCM_ACCEPTED_NOT_DEVICE_DELIVERED/);
+ assert.match(server,/code:result\.code/);
+ assert.match(testService,/FCM_ACCEPTED_NOT_DEVICE_DELIVERED/);
 });
 test("FCM background test is distinct from real pickup order and says no order was created",()=>{
  assert.match(sw,/payload\.data\?\.type==='merchant_push_test'/);
