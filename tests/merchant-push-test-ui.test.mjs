@@ -12,7 +12,11 @@ test("Merchant Settings has a labeled test button, no artificial purchase or ord
  assert.match(app,/scheduleMerchantPushTest/);
  assert.match(app,/setTimeout\(async\(\)=>\{/);
  assert.match(app,/},7000\)/);
- assert.match(app,/auth\.currentUser\?\.uid!==uid/);
+ assert.match(app,/firebaseAuth\.currentUser\?\.uid!==uid/);
+ assert.match(app,/const uid=firebaseAuth\.currentUser\?\.uid/);
+ assert.doesNotMatch(app,/(?<![\w.])auth\.currentUser/);
+ assert.match(app,/import \{[\s\S]*?auth as firebaseAuth,/);
+
  assert.match(app,/MerchantApi\.sendTestPushNotification\(installation!\)/);
  assert.match(app,/No customer order or payment is created/);
  assert.match(app,/role="status" aria-live="polite"/);
@@ -37,4 +41,11 @@ test("FCM background test is distinct from real pickup order and says no order w
  assert.match(sw,/No customer order or payment was created/);
  assert.match(sw,/payload\.data\?\.type!=='pickup_new_order'/);
  assert.match(app,/payload\.data\?\.type==="merchant_push_test"/);
+});
+
+test("sign-out uses the defined Firebase Auth instance before revoking the merchant device",()=>{
+ const signout=app.slice(app.indexOf("const handleSignOut = async () =>"),app.indexOf("if (isSessionChecking || loading || !isAuthReady)"));
+ assert.match(signout,/const uid=firebaseAuth\.currentUser\?\.uid/);
+ assert.match(signout,/MerchantApi\.revokePushDevice\(installation\)/);
+ assert.doesNotMatch(signout,/(?<![\w.])auth\.currentUser/);
 });

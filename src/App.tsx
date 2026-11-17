@@ -776,7 +776,7 @@ function App() {
       setPushTestStatus("Device registration or another test is in progress.");
       return;
     }
-    const uid=auth.currentUser?.uid;
+    const uid=firebaseAuth.currentUser?.uid;
     if(!uid || uid!==user?.id){
       setPushTestStatus("Sign in as the registered merchant first.");
       toast.error("Sign in as the registered merchant first.");return;
@@ -792,7 +792,7 @@ function App() {
     toast.info("Sending a test in 7 seconds. Switch tabs or minimize Chrome now.");
     pushTestTimer.current=setTimeout(async()=>{
       pushTestTimer.current=null;
-      if(auth.currentUser?.uid!==uid){
+      if(firebaseAuth.currentUser?.uid!==uid){
         setPushTestState("idle");
         setPushTestStatus("Signed-in merchant changed. Test cancelled.");
         return;
@@ -1551,7 +1551,7 @@ function App() {
   const handleSignOut = async () => {
     // Protect shared devices: revoke this merchant's FCM device while the
     // authenticated token is still available. Never block signout on outage.
-    const uid=auth.currentUser?.uid;
+    const uid=firebaseAuth.currentUser?.uid;
     if(uid && typeof navigator!=="undefined" && navigator.onLine){
       let installation:string|null=null;
       try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch{}
