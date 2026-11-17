@@ -1149,7 +1149,10 @@ function App() {
     let active=true;
     let unsubscribe: (()=>void)|void;
     void onForegroundMessage(payload=>{
-      if(payload.data?.type==="pickup_new_order" && active) void fetchOrders();
+      if(!active)return;
+      if(payload.data?.type==="pickup_new_order")void fetchOrders();
+      if(payload.data?.type==="merchant_push_test")
+        toast.success("Test push reached this open dashboard. Background alerts still need a Windows check.");
     }).then(fn=>{
       if(!active)fn?.();
       else unsubscribe=fn;
