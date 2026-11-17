@@ -52,7 +52,7 @@ export const usePushNotifications=(initialState=false):PushNotificationHook=>{
     if(!existing || !VALID_INSTALLATION.test(existing))return;
     inFlight.current=true;
     try {
-      const token=await requestNotificationPermissionAndGetToken();
+      const token=await requestNotificationPermissionAndGetToken({prompt:false});
       if(auth.currentUser?.uid!==uid || sequence.current!==epoch)return;
       if(!token){setPushEnabled(false);return;}
       const confirmed=await MerchantApi.registerPushDevice(existing,token);
@@ -106,7 +106,7 @@ export const usePushNotifications=(initialState=false):PushNotificationHook=>{
     setPushEnabled(false);
     const epoch=sequence.current;
     try{
-      const token=await requestNotificationPermissionAndGetToken();
+      const token=await requestNotificationPermissionAndGetToken({prompt:true});
       if(!token){
         toast.error("Browser notification permission or device registration failed. Orders still refresh in-app.");
         return;

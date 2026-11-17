@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 const app=readFileSync("src/App.tsx","utf8");
+const diagnostics=readFileSync("src/components/MerchantPushDiagnostics.tsx","utf8");
+const browserCheck=readFileSync("src/lib/merchantPushDiagnostics.ts","utf8");
 const api=readFileSync("src/services/MerchantApi.ts","utf8");
 const sw=readFileSync("public/firebase-messaging-sw.js","utf8");
 const server=readFileSync("localeats-api/src/routes/pickupNotifications.ts","utf8");
@@ -21,7 +23,7 @@ test("Merchant Settings has a labeled test button, no artificial purchase or ord
  assert.match(app,/No customer order or payment is created/);
  assert.match(app,/role="status" aria-live="polite"/);
  assert.match(app,/relative z-10 pointer-events-auto min-h-11 cursor-pointer/);
- assert.match(app,/setPushTestStatus\("Test scheduled\. Minimize Chrome now/);
+ assert.match(app,/setPushTestStatus\("Test scheduled\. Stay here for a foreground test/);
  assert.match(app,/Firebase accepted the test request\. Check for a Windows notification; delivery is not yet confirmed/);
  assert.match(api,/POST|method:"POST"/);
  assert.match(api,/api\/v1\/push-subscriptions\/\$\{encodeURIComponent\(installationId\)\}\/test/);
@@ -51,20 +53,15 @@ test("sign-out uses the defined Firebase Auth instance before revoking the merch
 });
 
 test("browser-only Windows check is separate from Firebase transport",()=>{
- assert.match(app,/const testWindowsNotificationLocally=async\(\)=>/);
- assert.match(app,/Notification\.permission!=="granted"/);
- assert.match(app,/navigator\.serviceWorker\.getRegistration\("\/firebase-cloud-messaging-push-scope\/"\)/);
- assert.match(app,/registration\.showNotification\("LocalEats Windows check"/);
- assert.match(app,/registration\.getNotifications\(\{tag\}\)/);
- assert.match(app,/Test Windows alert \(browser only\)/);
- const local=app.slice(app.indexOf("const testWindowsNotificationLocally=async()=>"),app.indexOf("const scheduleMerchantPushTest=()=>"));
- assert.doesNotMatch(local,/MerchantApi|sendTestPushNotification|fetch\(/);
- assert.match(local,/No order or payment was created/);
+ assert.match(diagnostics,/Notification\.permission !== "granted"/);
+ assert.match(diagnostics,/Test Windows alert \(browser only\)/);
+ assert.doesNotMatch(diagnostics+browserCheck,/MerchantApi|sendTestPushNotification|fetch\(|requestPermission|localStorage|sessionStorage/);
+ assert.match(browserCheck,/No order or payment was created/);
 });
 
 test("background FCM message returns display promises and references an available logo",()=>{
  const bg=sw.slice(sw.indexOf("messaging.onBackgroundMessage"));
- const displays=bg.match(/return self\.registration\.showNotification\(/g)||[];
+ const displays=bg.match(/(?:return|await) self\.registration\.showNotification\(/g)||[];
  assert.equal(displays.length,2);
  assert.match(bg,/icon:'\/logo\.png',badge:'\/logo\.png'/);
  assert.doesNotMatch(bg,/\/icon-192\.png/);

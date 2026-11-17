@@ -20,17 +20,26 @@ importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 firebase.initializeApp({"apiKey":"AIzaSyBuX3QvWFTWSLoaEsMPE7TsQLEodAaFS1M","authDomain":"localeats-5e26e.firebaseapp.com","projectId":"localeats-5e26e","storageBucket":"localeats-5e26e.firebasestorage.app","messagingSenderId":"281496568360","appId":"1:281496568360:web:45557127bbd2a352bfeb1d"});
 const messaging=firebase.messaging();
-messaging.onBackgroundMessage(payload=>{
+messaging.onBackgroundMessage(async payload=>{
   // Notification-payload messages are already displayed by FCM.
   // Data-only messages: never turn a synthetic connectivity check into an order.
   if(payload.notification)return;
   if(payload.data?.type==='merchant_push_test'){
-    return self.registration.showNotification('LocalEats notification test',{
-      body:'This is a test alert. No customer order or payment was created.',
-      icon:'/logo.png',badge:'/logo.png',
-      tag:'localeats-push-test-'+String(payload.data.test_id||'test').slice(0,80),
-      data:{type:'merchant_push_test'},
-    });
+    let display='accepted';
+    try {
+      await self.registration.showNotification('LocalEats notification test',{
+        body:'This is a test alert. No customer order or payment was created.',
+        icon:'/logo.png',badge:'/logo.png',
+        tag:'localeats-push-test-'+String(payload.data.test_id||'test').slice(0,80),
+        data:{type:'merchant_push_test'},
+      });
+    } catch {
+      display='failed';
+    }
+    // This receipt goes only to open, same-origin windows. Keep it out of
+    // storage and omit the payload, identifiers and raw browser errors.
+    const tabs=await clients.matchAll({type:'window',includeUncontrolled:true});
+    for(const tab of tabs) tab.postMessage({type:'merchant-push-test-background',display});
     return;
   }
   if(payload.data?.type!=='pickup_new_order')return;

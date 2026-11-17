@@ -41,7 +41,8 @@ test("merchant FCM worker uses complete public configuration and one background 
  assert.match(sw,/new URL\('\/',self\.location\.origin\)/);
 });
 test("merchant push registration never takes over PWA or reports success on OS permission alone",()=>{
- assert.match(sdk,/scope:"\/firebase-cloud-messaging-push-scope\/"/);
+ assert.match(sdk,/register\(FCM_SCRIPT, \{scope:FCM_SCOPE\}\)/);
+ assert.match(read("src/lib/merchantPushDiagnostics.ts"),/FCM_SCOPE = "\/firebase-cloud-messaging-push-scope\/"/);
  assert.match(sdk,/if \(!activeVapidKey\) return null/);
  assert.match(hook,/VITE_FIREBASE_VAPID_KEY/);
  assert.match(hook,/await MerchantApi\.registerPushDevice\(installation,token\)/);

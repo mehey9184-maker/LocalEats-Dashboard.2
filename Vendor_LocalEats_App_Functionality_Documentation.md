@@ -649,3 +649,13 @@ Merchant owners asked for clearer Settings icons after the four-section simplifi
 - Icons are decorative beside visible labels and use `aria-hidden`. Section buttons preserve `aria-current`, focus-visible outlines and minimum 44px targets. No continuous motion is introduced and no new images or font assets are bundled.
 
 Changes are restricted to `src/App.tsx`, `src/components/SimpleOpeningHours.tsx`, Settings regressions, and this documentation. Verify the exact-commit Merchant Preview and GitHub release gates. No merge, real-order activation, payment activation, database writes or Production environment changes without separate owner approval.
+
+## Merchant Windows notification troubleshooting
+
+Settings → Notifications & Appearance includes a browser-only alert and a read-only troubleshooting report. The browser-only check can use the offline worker even when Firebase registration is missing. It labels the exact worker used, reports what Chrome returned, and asks the merchant to check for a Windows banner or a Notification Center entry. When both workers are active, the optional comparison can distinguish a registration-specific result from a result common to both.
+
+FCM registration waits for the separate messaging worker to activate before acquiring the token. The troubleshooting report shows whether Chrome has an active subscription and whether its Web Push public key matches the configured key. It only displays status and never exposes the subscription endpoint, key, token, account or shop identifiers. Foreground test receipts and background worker display outcomes stay in dashboard memory. The API acceptance message, worker receipt, browser display request and Windows observation each describe a different stage.
+
+For Windows 11 testing, allow notifications for the dashboard origin in Chrome. In Windows Settings → System → Notifications, enable Google Chrome or the installed LocalEats sender, enable banners and Notification Center, and turn off Do not disturb for the test. Run the browser-only check and look for “LocalEats Windows check” with Win + N. For a foreground Firebase test, keep LocalEats visible during the countdown and look for the in-app receipt. Wait at least one minute, start the background test and hide all LocalEats windows while keeping Chrome running. Check Win + N for “LocalEats notification test,” then reopen the dashboard to check the worker result. A closed dashboard has no page to receive the in-memory receipt.
+
+The verified Orders inbox remains the primary source of pickup updates. The authenticated test still targets only the current merchant’s registered installation and creates no order or payment. Preview device registration and FCM sends require an isolated merchant test environment.

@@ -8,8 +8,12 @@ on:
       - 'localeats-api/src/routes/pickupNotifications.ts'
       - 'src/services/MerchantApi.ts'
       - 'src/App.tsx'
+      - 'src/components/MerchantPushDiagnostics.tsx'
+      - 'src/lib/merchantPushDiagnostics.ts'
+      - 'src/lib/firebase.ts'
       - 'public/firebase-messaging-sw.js'
       - 'tests/merchant-push-test-ui.test.mjs'
+      - 'tests/merchant-push-diagnostics.test.mjs'
       - '.github/workflows/merchant-fcm-test-delivery-review.yml'
   workflow_dispatch:
 permissions:
@@ -45,6 +49,6 @@ jobs:
       - name: Test merchant isolation, cooldown and no-order FCM test
         run: node --test localeats-api/dist/orders/merchantPushTest.test.js
       - name: Check browser, worker and API safety contracts
-        run: node --test tests/merchant-push-test-ui.test.mjs
+        run: node --experimental-strip-types --test tests/merchant-push-test-ui.test.mjs tests/merchant-push-diagnostics.test.mjs
       - name: Compile merchant frontend
         run: npm ci --no-audit --no-fund && npm run build

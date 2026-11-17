@@ -1,4 +1,5 @@
 import {projectMerchantSessionMetadata} from "./merchantSessionMetadata";
+import {FCM_SCOPE, FCM_SCRIPT, waitForMessagingWorker} from "./merchantPushDiagnostics";
 import {legacyOrderWriteError} from "./legacyOrderWrite";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
@@ -920,24 +921,23 @@ export async function getFirestoreCoupons(shopId?: string | number): Promise<Cou
 /**
  * Web Push Notifications
  */
-export async function requestNotificationPermissionAndGetToken(vapidKey?: string): Promise<string | null> {
+export async function requestNotificationPermissionAndGetToken({prompt}: {prompt: boolean}): Promise<string | null> {
   try {
     const supported = await isSupported();
     if (!supported) return null;
 
     if (!("Notification" in window)) return null;
 
-    const permission = Notification.permission === "granted"
-      ? "granted" : await Notification.requestPermission();
+    const permission = prompt && Notification.permission === "default"
+      ? await Notification.requestPermission() : Notification.permission;
     if (permission !== "granted" || !("serviceWorker" in navigator)) return null;
 
     // The regular PWA offline worker owns scope "/". A separate scope stops
     // FCM registration from replacing the installed application's worker.
-    const serviceWorkerRegistration = await navigator.serviceWorker.register(
-      "/firebase-messaging-sw.js", {scope:"/firebase-cloud-messaging-push-scope/"}
-    );
-    const activeVapidKey = vapidKey || import.meta.env.VITE_FIREBASE_VAPID_KEY;
+    const serviceWorkerRegistration = await navigator.serviceWorker.register(FCM_SCRIPT, {scope:FCM_SCOPE});
+    const activeVapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
     if (!activeVapidKey) return null;
+    await waitForMessagingWorker(serviceWorkerRegistration);
     const messaging = getMessaging(app);
     const currentToken = await getToken(messaging, {
       vapidKey: activeVapidKey,
@@ -945,8 +945,8 @@ export async function requestNotificationPermissionAndGetToken(vapidKey?: string
     });
 
     return currentToken || null;
-  } catch (error) {
-    console.warn("[FCM] Warning acquiring push notification token:", error);
+  } catch {
+    console.warn("[FCM] Could not acquire a notification registration.");
     return null;
   }
 }
