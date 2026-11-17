@@ -4,6 +4,7 @@ import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 import { object, onlyKeys, UUID } from "../orders/pickupService.js";
 import { OrderContractError } from "../orders/orderContract.js";
 import { drainPickupPush } from "../orders/pickupPush.js";
+import {createMerchantPushTestService,sendMerchantTestPushToFirebase} from "../orders/merchantPushTest.js";
 export const pickupNotificationRoutes=Router();
 const errorResponse=(res:Response,error:unknown):void=>{
   const e=error instanceof OrderContractError ? error : new OrderContractError(503,"NOTIFICATION_SERVICE_UNAVAILABLE","Notifications unavailable.");
@@ -59,3 +60,44 @@ pickupNotificationRoutes.delete("/push-subscriptions/:installationId",authentica
     res.json({success:true});
   } catch(error) { errorResponse(res,error); }
 });
+
+/**
+ * Human-triggered test notification, never an order or purchase.
+ * Only the authenticated approved shop owner may send to their own
+ * active, explicitly registered installation. No identifiers are echoed.
+ */
+const sendMerchantTestNotification=createMerchantPushTestService({
+  hasApprovedShop:async uid=>{
+    const {data,error}=await supabaseAdmin.from("shops")
+      .select("id,approval_status")
+      .eq("owner_id",uid).is("archived_at",null).limit(2);
+    if(error)throw error;
+    return Array.isArray(data)&&data.length===1&&data[0]?.approval_status==="approved";
+  },
+  findOwnedActiveDevice:async(uid,installationId)=>{
+    const {data,error}=await supabaseAdmin.from("pickup_push_subscriptions")
+      .select("fcm_token")
+      .eq("user_id",uid).eq("installation_id",installationId)
+      .is("revoked_at",null).maybeSingle();
+    if(error)throw error;
+    return typeof data?.fcm_token==="string" && data.fcm_token.length>=20 ? data.fcm_token:null;
+  },
+  send:sendMerchantTestPushToFirebase
+});
+pickupNotificationRoutes.post("/push-subscriptions/:installationId/test",
+  authenticateFirebase,async(req:AuthenticatedRequest,res:Response)=>{
+    res.set("Cache-Control","no-store");
+    if(!req.body || typeof req.body!=="object" || Array.isArray(req.body) ||
+       Object.keys(req.body).length>0){
+      res.status(400).json({success:false,code:"TEST_INVALID_PAYLOAD"});return;
+    }
+    const result=await sendMerchantTestNotification(
+      req.authUser!.uid,String(req.params.installationId||"")
+    );
+    res.status(result.status).json({
+      success:result.status===202,
+      code:result.code,
+      ...(result.status===202?{message:"Firebase accepted the test message; device delivery is not yet verified."}:{})
+    });
+  }
+);

@@ -765,6 +765,33 @@ function App() {
 
   // VAPID Push configuration moved to custom hook usePushNotifications
   const { pushEnabled, pushBusy, requestPushPermissions, disablePushNotifications } = usePushNotifications(false);
+  // Delay by seven seconds so the merchant can minimize Chrome before
+  // observing a real background test. No real order or payment is created.
+  const [pushTestState,setPushTestState]=useState<"idle"|"countdown"|"sending">("idle");
+  const pushTestTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  useEffect(()=>()=>{if(pushTestTimer.current)clearTimeout(pushTestTimer.current);},[]);
+  const scheduleMerchantPushTest=()=>{
+    if(!pushEnabled || pushBusy || pushTestState!=="idle")return;
+    const uid=auth.currentUser?.uid;
+    if(!uid || uid!==user?.id){toast.error("Sign in as the registered merchant first.");return;}
+    let installation:string|null=null;
+    try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch{}
+    if(!installation){toast.error("Register push notifications first.");return;}
+    setPushTestState("countdown");
+    toast.info("Sending a test in 7 seconds. Switch tabs or minimize Chrome now.");
+    pushTestTimer.current=setTimeout(async()=>{
+      pushTestTimer.current=null;
+      if(auth.currentUser?.uid!==uid){setPushTestState("idle");return;}
+      setPushTestState("sending");
+      try{
+        await MerchantApi.sendTestPushNotification(installation!);
+        toast.success("Firebase accepted the test. Did a Windows notification appear?");
+      }catch(error){
+        toast.error(error instanceof Error?error.message:"Test alert could not be sent.");
+      }finally{setPushTestState("idle");}
+    },7000);
+  };
+
 
   const playNotificationSound = useCallback((isRepeating = false, styleOverride?: "calm" | "friendly" | "sparkle") => {
     // Stop previous playing sound if active
@@ -1122,7 +1149,10 @@ function App() {
     let active=true;
     let unsubscribe: (()=>void)|void;
     void onForegroundMessage(payload=>{
-      if(payload.data?.type==="pickup_new_order" && active) void fetchOrders();
+      if(!active)return;
+      if(payload.data?.type==="pickup_new_order")void fetchOrders();
+      if(payload.data?.type==="merchant_push_test")
+        toast.success("Test push reached this open dashboard. Background alerts still need a Windows check.");
     }).then(fn=>{
       if(!active)fn?.();
       else unsubscribe=fn;
@@ -3687,6 +3717,20 @@ function App() {
                       />
                     </button>
                   </div>
+
+                  {pushEnabled && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 px-5 -mt-2">
+                      <p className="text-xs text-on-surface-variant">
+                        Test this device only. No customer order or payment is created.
+                      </p>
+                      <button type="button" disabled={pushBusy || pushTestState!=="idle"}
+                        onClick={scheduleMerchantPushTest}
+                        className="rounded-xl border border-outline-variant/30 bg-surface-container px-4 py-2 text-xs font-bold text-on-surface hover:bg-surface-container-high disabled:opacity-50"
+                        aria-label="Send a push notification test to this merchant device">
+                        {pushTestState==="countdown"?"Sending in 7 seconds…":pushTestState==="sending"?"Contacting Firebase…":"Send test notification"}
+                      </button>
+                    </div>
+                  )}
 
                   <div className="w-full flex items-center justify-between p-5 bg-surface-container-low rounded-2xl border border-outline-variant/10">
                     <div className="flex items-center gap-4">
