@@ -38,7 +38,10 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  // The authenticated FCM browser installation endpoint requires PUT.
+  // CORS only permits the preflight; Firebase auth and shop ownership still
+  // authorize the actual write on the API.
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
