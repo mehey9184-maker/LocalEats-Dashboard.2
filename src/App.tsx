@@ -2180,7 +2180,7 @@ function App() {
                       )}
                       <span key={`desktop-${item.id}-${navAttention[item.id as keyof typeof navAttention]??0}`}
                         className={cn("inline-flex shrink-0",navAttention[item.id as keyof typeof navAttention]&&"localeats-nav-notice-wiggle")}>
-                        <item.icon size={15} className={cn(isActive ? "stroke-[2.5px]" : "stroke-[1.8px]")} />
+                        <item.icon size={18} aria-hidden="true" className={cn(isActive ? "stroke-[2.25px]" : "stroke-[1.8px]")} />
                       </span>
                       {item.label}
                       {item.badge && (
@@ -4104,7 +4104,7 @@ function App() {
 
       {/* BottomNavBar */}
       {!kitchenMode && (
-        <nav className="md:hidden fixed bottom-0 left-0 w-full z-[100] bg-white/80 dark:bg-surface-container-lowest/80 backdrop-blur-2xl rounded-t-3xl border-t border-outline-variant/10 shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
+        <nav aria-label="Merchant main navigation" className="md:hidden fixed bottom-0 left-0 w-full z-[100] bg-white/80 dark:bg-surface-container-lowest/80 backdrop-blur-2xl rounded-t-3xl border-t border-outline-variant/10 shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
           <div className="flex items-center justify-between gap-1 px-3 pb-8 pt-4 overflow-x-auto scrollbar-hide">
             {(() => {
               const primaryMobileTabIds = ["dashboard", "orders", "menu", "riders"];
@@ -4119,12 +4119,13 @@ function App() {
                     return (
                       <motion.button
                         key={item.id}
+                        type="button"
                         onClick={() => setActiveTab(item.id)}
-                    aria-label={item.label}
+                        aria-label={item.label}
                     aria-current={isActive ? "page" : undefined}
                         whileTap={{ scale: 0.95 }}
                         className={cn(
-                          "flex flex-col items-center justify-center min-w-[64px] shrink-0 py-2 rounded-2xl relative group transition-colors duration-300",
+                          "flex flex-col items-center justify-center min-w-[56px] flex-1 shrink-0 min-h-[56px] py-2 rounded-2xl relative group transition-colors duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                           isActive
                             ? "text-white"
                             : "text-on-surface-variant/60 hover:text-primary",
@@ -4143,7 +4144,7 @@ function App() {
                         )}>
                           <span key={`mobile-${item.id}-${navAttention[item.id as keyof typeof navAttention]??0}`}
                             className={cn("inline-flex",navAttention[item.id as keyof typeof navAttention]&&"localeats-nav-notice-wiggle")}>
-                            <item.icon size={20} className={cn(isActive ? "stroke-[2.5px]" : "stroke-[1.5px]")} />
+                            <item.icon size={20} aria-hidden="true" className={cn(isActive ? "stroke-[2.5px]" : "stroke-[1.5px]")} />
                           </span>
                           {item.badge && (
                             <span className={cn(
@@ -4155,7 +4156,7 @@ function App() {
                           )}
                         </div>
                         <span className={cn(
-                          "text-[8px] uppercase tracking-widest font-black mt-1.5",
+                          "text-[10px] uppercase tracking-wide font-bold mt-1.5 leading-tight",
                           isActive ? "text-white" : "text-inherit"
                         )}>
                           {item.label === "Dashboard" ? "Home" : item.label}
@@ -4166,10 +4167,14 @@ function App() {
 
                   {/* More Button */}
                   <motion.button
+                    type="button"
+                    aria-label="More merchant pages"
+                    aria-haspopup="dialog"
+                    aria-expanded={isMobileMoreOpen}
                     onClick={() => setIsMobileMoreOpen(true)}
                     whileTap={{ scale: 0.95 }}
                     className={cn(
-                      "flex flex-col items-center justify-center min-w-[64px] shrink-0 py-2 rounded-2xl relative group transition-colors duration-300",
+                      "flex flex-col items-center justify-center min-w-[56px] flex-1 shrink-0 min-h-[56px] py-2 rounded-2xl relative group transition-colors duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                       isMoreActive
                         ? "text-white"
                         : "text-on-surface-variant/60 hover:text-primary",
@@ -4185,7 +4190,7 @@ function App() {
                     <div className="relative">
                       <span key={`mobile-more-${secondaryMobileNavItems.map(item=>navAttention[item.id as keyof typeof navAttention]??0).join("-")}`}
                         className={cn("inline-flex",secondaryMobileNavItems.some(item=>navAttention[item.id as keyof typeof navAttention])&&"localeats-nav-notice-wiggle")}>
-                        <MoreHorizontal size={20} className={cn(isMoreActive ? "stroke-[2.5px]" : "stroke-[1.5px]")}/>
+                        <MoreHorizontal size={20} aria-hidden="true" className={cn(isMoreActive ? "stroke-[2.5px]" : "stroke-[1.5px]")}/>
                       </span>
                       {secondaryMobileNavItems.some(item => item.badge) && (
                         <span className={cn(
@@ -4197,7 +4202,7 @@ function App() {
                       )}
                     </div>
                     <span className={cn(
-                      "text-[8px] uppercase tracking-widest font-black mt-1.5",
+                      "text-[10px] uppercase tracking-wide font-bold mt-1.5 leading-tight",
                       isMoreActive ? "text-white" : "text-inherit"
                     )}>
                       More

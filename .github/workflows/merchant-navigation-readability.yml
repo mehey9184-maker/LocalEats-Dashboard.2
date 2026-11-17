@@ -1,0 +1,31 @@
+name: Merchant mobile navigation readability
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/App.tsx'
+      - 'index.html'
+      - 'src/index.css'
+      - 'tests/merchant-navigation-typography-preview.test.mjs'
+      - '.github/workflows/merchant-navigation-readability.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-nav-visual-baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked Merchant dependencies without live credentials
+        run: npm ci --no-audit --no-fund
+      - name: Verify merchant navigation semantics, spacing and typography
+        run: node --test tests/merchant-navigation-typography-preview.test.mjs
+      - name: Verify Merchant production build (not a deployment)
+        run: npm run build
