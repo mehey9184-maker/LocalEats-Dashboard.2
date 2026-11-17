@@ -38,7 +38,8 @@ test("only previously confirmed installations revalidate without permission prom
 test("push payload is never treated as authoritative order details",()=>{
  assert.match(orders,/if \(!result\.replayed\)/);
  assert.match(orders,/await tryMerchantPickupPush\(/);
- assert.match(ui,/if\(payload\.data\?\.type==="pickup_new_order" && active\) void fetchOrders\(\)/);
+ assert.match(ui,/if\(!active\)return;/);
+ assert.match(ui,/if\(payload\.data\?\.type==="pickup_new_order"\)void fetchOrders\(\)/);
  assert.match(ui,/setInterval\(refreshVisibleOrders, 15000\)/);
  assert.match(ui,/if \(document\.visibilityState === "visible" && navigator\.onLine\) void fetchOrders\(\)/);
 });
