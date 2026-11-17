@@ -163,3 +163,43 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .localeats-nav-notice-wiggle { animation: none !important; }
 }
+
+
+/* UX1 — quiet, consistent tactile response. Never alter layout or action semantics. */
+@layer base {
+  button, [role="button"] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:focus-visible, [role="button"]:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 3px;
+  }
+  button:disabled, [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+}
+
+/* The individual 'scale' property composes with Tailwind's transform utilities.
+   Keep this opt-in: Framer Motion navigation already provides its own tap scale. */
+@media (prefers-reduced-motion: no-preference) {
+  .le-press-feedback {
+    transition-property: scale, box-shadow, background-color, border-color, color, opacity;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .le-press-feedback:active:not(:disabled):not([aria-disabled="true"]) {
+    scale: 0.985;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .le-press-feedback { scale: 1 !important; }
+}

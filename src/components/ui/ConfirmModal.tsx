@@ -22,6 +22,17 @@ export function ConfirmModal({
   onCancel,
   isDestructive = true,
 }: ConfirmModalProps) {
+  const titleId = React.useId();
+  const descriptionId = React.useId();
+  const cancelRef = React.useRef<HTMLButtonElement>(null);
+  const confirmRef = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    cancelRef.current?.focus();
+    return () => previouslyFocused?.focus();
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
@@ -32,7 +43,26 @@ export function ConfirmModal({
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            onCancel();
+          } else if (e.key === "Tab") {
+            if (e.shiftKey && document.activeElement === cancelRef.current) {
+              e.preventDefault();
+              confirmRef.current?.focus();
+            } else if (!e.shiftKey && document.activeElement === confirmRef.current) {
+              e.preventDefault();
+              cancelRef.current?.focus();
+            }
+          }
+        }}
         className="relative w-full max-w-sm bg-surface-container-lowest rounded-2xl shadow-xl overflow-hidden transform scale-100 opacity-100 transition-all duration-300"
       >
         <div className="p-6">
@@ -41,10 +71,10 @@ export function ConfirmModal({
               <AlertCircle size={24} />
             </div>
             <div className="flex-1 pt-1">
-              <h3 className="text-lg font-bold text-on-surface leading-tight mb-2">
+              <h3 id={titleId} className="text-lg font-bold text-on-surface leading-tight mb-2">
                 {title}
               </h3>
-              <p className="text-sm text-on-surface-variant leading-relaxed">
+              <p id={descriptionId} className="text-sm text-on-surface-variant leading-relaxed">
                 {message}
               </p>
             </div>
@@ -53,14 +83,18 @@ export function ConfirmModal({
         
         <div className="flex items-center gap-3 p-4 bg-surface-container-low border-t border-outline-variant/10">
           <button
+            type="button"
+            ref={cancelRef}
             onClick={onCancel}
-            className="flex-1 px-4 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container-highest rounded-xl transition-colors cursor-pointer"
+            className="le-press-feedback min-h-11 flex-1 px-4 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container-highest rounded-xl transition-colors cursor-pointer"
           >
             {cancelText}
           </button>
           <button
+            type="button"
+            ref={confirmRef}
             onClick={onConfirm}
-            className={`flex-1 px-4 py-2.5 text-sm font-bold text-white rounded-xl transition-all active:scale-95 shadow-sm cursor-pointer ${
+            className={`le-press-feedback min-h-11 flex-1 px-4 py-2.5 text-sm font-bold text-white rounded-xl shadow-sm cursor-pointer ${
               isDestructive 
                 ? 'bg-red-500 hover:bg-red-600' 
                 : 'bg-primary hover:bg-primary/90'
