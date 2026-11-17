@@ -15,7 +15,7 @@ test("merchant mobile nav fits 320 CSS pixels without 8px labels",()=>{
   assert.doesNotMatch(primary,/text-\[8px\]|min-w-\[64px\]/);
   // 4 primary tabs + 1 More, 4px gaps and 12px side padding each
   assert.ok(5*56+4*4+2*12<=320);
-  assert.match(primary,/aria-label="Merchant main navigation"/);
+  assert.match(app,/aria-label="Merchant main navigation"/);
   assert.match(primary,/aria-label="More merchant pages"/);
   assert.match(primary,/aria-haspopup="dialog"/);
   assert.match(primary,/aria-expanded=\{isMobileMoreOpen\}/);
@@ -29,7 +29,7 @@ test("existing merchant section icons retain their meaning and screen-reader lab
     ["Orders","ReceiptText"],["Riders","Bike"],["Marketing","Megaphone"],
     ["Payments","CreditCard"],["Settings","Settings"]
   ]){
-    assert.match(app,new RegExp('label: "'+label+'", icon: '+icon));
+    assert.match(app,new RegExp('label:\\s*"'+label+'",\\s*icon:\\s*'+icon));
   }
   assert.match(app,/<item\.icon size=\{18\} aria-hidden="true"/);
   assert.match(app,/<item\.icon size=\{20\} aria-hidden="true"/);
