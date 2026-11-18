@@ -649,3 +649,11 @@ Merchant owners asked for clearer Settings icons after the four-section simplifi
 - Icons are decorative beside visible labels and use `aria-hidden`. Section buttons preserve `aria-current`, focus-visible outlines and minimum 44px targets. No continuous motion is introduced and no new images or font assets are bundled.
 
 Changes are restricted to `src/App.tsx`, `src/components/SimpleOpeningHours.tsx`, Settings regressions, and this documentation. Verify the exact-commit Merchant Preview and GitHub release gates. No merge, real-order activation, payment activation, database writes or Production environment changes without separate owner approval.
+
+
+## L3-N1 — Customer-owned notification test preparation (2026-11-18, DRAFT ONLY)
+- A **separate** `POST /api/v1/customer-push-subscriptions/:installationId/test` path is prepared in the shared pickup API. It requires Firebase authentication, a nonanonymous allowlisted staging UID, an active subscription belonging to that exact UID and installation, a strictly empty JSON body, and an atomic staging-only database quota (60 seconds between sends and ten per UTC day across installations).
+- The sender is **disabled by default**, refuses Production and ordinary Preview, requires verified separate staging Supabase hostname, and refuses when pickup writes are enabled. Missing staging quota RPC fails closed. The SQL at `supabase/drafts/l3_customer_push_test_rate_limit.sql` is a review-only staging draft, NOT executed.
+- FCM payload contains only `customer_push_test` and a random test ID; it never carries order, customer, phone, location, payment or Firebase token data. A 202 means accepted by Firebase only, **not** shown by Windows or received by a PWA.
+- Does not alter merchant push test, merchant ownership rules, collection/payment/ordering gates, normal customer subscriptions, production schema or Firebase rules. Customer service-worker support belongs to its own draft PR.
+- Verification is synthetic CI first, then separately approved truly isolated staging/browser device acceptance. No cloud push was sent in this phase.
