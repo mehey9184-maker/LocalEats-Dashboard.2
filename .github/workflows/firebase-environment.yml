@@ -10,8 +10,10 @@ on:
       - 'src/services/MerchantApi.ts'
       - 'src/services/merchantPickupRecovery.ts'
       - 'src/components/OrdersManagement.tsx'
+      - 'src/components/PickupOrderActions.tsx'
       - 'src/utils/receiptText.ts'
       - 'tests/merchant-pickup.test.mjs'
+      - 'tests/merchant-handover.test.mjs'
       - 'tests/merchant-activation.test.mjs'
       - 'tests/merchant-command-recovery.test.mjs'
       - 'tests/firebase-environment.test.mjs'
@@ -35,5 +37,5 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: node --experimental-strip-types --test tests/firebase-environment.test.mjs tests/merchant-firebase-session-metadata.test.mjs tests/merchant-pickup.test.mjs tests/merchant-riders-coming-soon-main.test.mjs tests/merchant-activation.test.mjs tests/merchant-command-recovery.test.mjs
+      - run: node --experimental-strip-types --test tests/firebase-environment.test.mjs tests/merchant-firebase-session-metadata.test.mjs tests/merchant-pickup.test.mjs tests/merchant-riders-coming-soon-main.test.mjs tests/merchant-activation.test.mjs tests/merchant-command-recovery.test.mjs tests/merchant-handover.test.mjs
       - run: npm run build

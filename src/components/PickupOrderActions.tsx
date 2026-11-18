@@ -8,20 +8,24 @@ import {pickupNeedsUncollectedAttention,pickupUnpaidWaitingMinutes} from "../ser
 
 type SimulatedTransition = (action: PickupAction, extra: Record<string,unknown>) => Promise<void> | void;
 
-export function PickupOrderActions({order,onSimulate,compact=false}:{order:any;onSimulate?:SimulatedTransition;compact?:boolean}){
+export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=false}:{order:any;onSimulate?:SimulatedTransition;compact?:boolean;recoveryOnly?:boolean}){
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
  // ONLY fake order IDs on the guarded no-write Preview may bypass the real pickup write gate.
  const simulated=!!onSimulate && isMerchantPreviewSimulatorEnabled() &&
    typeof order?.id==="string" && /^FAKE-L1C3-[0-9]+$/.test(order.id);
  let status:string;
  try{status=pickupState(order);}catch{return <p role="alert" className="text-xs text-amber-700">Pickup state unavailable. Required schema is not installed; no action was saved.</p>;}
+ const awaitingHandover=status==="ready_for_pickup" && order.payment_status==="paid";
  const actions=status==="pending" ? ["Accept → Preparing","Reject"] : status==="preparing" ? ["Mark Ready"] : status==="ready_for_pickup" ?
-  order.payment_status==="paid" ? ["Food handed over → Collected"] : ["Confirm cash received","Confirm card-machine payment"] : [];
- const pending=simulated ? false : MerchantApi.hasPendingPickupCommand(order);
+  awaitingHandover ? ["Confirm handover"] : ["Confirm cash received","Confirm card-machine payment"] : [];
+ const pendingPath=simulated ? null : MerchantApi.getPendingPickupCommandPath(order);
+ const pending=pendingPath!==null;
+ const handoverPending=pendingPath==="collect";
  const canAct=simulated || pickupOrderingEnabled();
+ if(recoveryOnly && (!pending || !canAct))return null;
  const act=async(label:string)=>{
-  if(busy || !canAct)return;
-  let action:PickupAction=label.startsWith("Accept") ? "accept" : label==="Reject" ? "reject" : label==="Mark Ready" ? "ready" : label.startsWith("Food") ? "collect" : "confirm_payment";
+  if(busy || pending || !canAct)return;
+  const action:PickupAction=label.startsWith("Accept") ? "accept" : label==="Reject" ? "reject" : label==="Mark Ready" ? "ready" : label==="Confirm handover" ? "collect" : "confirm_payment";
   const extra:Record<string,unknown>={};
   if(action==="reject"){
    const reason=window.prompt(simulated ? "TEST ONLY: Why would this sample order be rejected?" : "Why is this order rejected?");
@@ -45,12 +49,31 @@ export function PickupOrderActions({order,onSimulate,compact=false}:{order:any;o
     window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));
    }
   }
-  catch(e){setError(e instanceof Error?e.message:"No change was confirmed. Retry the same action.");}
+  catch(e){
+   if(action==="collect" && !simulated){
+    if(MerchantApi.getPendingPickupCommandPath(order)!=="collect")
+     setError("Handover could not be confirmed. Refresh orders before trying again.");
+   }else setError(e instanceof Error?e.message:"No change was confirmed. Retry the same action.");
+  }
   finally{setBusy(false);}
+ };
+ const retry=async()=>{
+  if(busy || !canAct || !pending || simulated)return;
+  setBusy(true);setError("");
+  try{
+   await MerchantApi.retryPendingPickupOrder(order);
+   window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));
+  }catch(e){
+   if(handoverPending){
+    if(MerchantApi.getPendingPickupCommandPath(order)!=="collect")
+     setError("Handover could not be confirmed. Refresh orders before trying again.");
+   }else setError(e instanceof Error?e.message:"Outcome unconfirmed.");
+  }finally{setBusy(false);}
  };
  return <div className={compact?"space-y-2 py-1":"space-y-2 py-2"} aria-busy={busy}>
   {simulated && !compact && <p className="text-[10px] font-bold text-amber-900 dark:text-amber-200">Sample pickup · No real order</p>}
-  {!compact && <p className="text-[11px] leading-4 font-semibold text-slate-700 dark:text-zinc-200">Pickup · {status==="collected" ? "Collected" : status==="ready_for_pickup" ? "Ready" : status} · {pickupPaymentLabel(order)}</p>}
+  {!compact && !awaitingHandover && <p className="text-[11px] leading-4 font-semibold text-slate-700 dark:text-zinc-200">Pickup · {status==="collected" ? "Collected" : status==="ready_for_pickup" ? "Ready" : status} · {pickupPaymentLabel(order)}</p>}
+  {awaitingHandover && <p role="status" className="text-xs font-bold text-slate-800 dark:text-slate-100">Paid · Awaiting handover</p>}
   {!compact && <p className="text-xs">{pickupAmountLabel(order)}</p>}
   {!compact && status==="ready_for_pickup" && order.payment_status==="unpaid" && (
     <p role="status" className="text-xs font-semibold text-amber-700 dark:text-amber-200">
@@ -60,13 +83,8 @@ export function PickupOrderActions({order,onSimulate,compact=false}:{order:any;o
       {pickupUnpaidWaitingMinutes(order)!==null && " · "+pickupUnpaidWaitingMinutes(order)+" min since last status update"}
     </p>
   )}
-  {!compact && status==="ready_for_pickup" && order.payment_status==="paid" && (
-    <p role="status" className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-      Paid · still awaiting physical handover. Mark Collected only after the customer receives the food.
-    </p>
-  )}
-  {!simulated && order.phone && <a className="text-xs underline" href={`tel:${String(order.phone).replace(/[^+0-9]/g,"")}`}>Optional call: {order.phone}</a>}
-  <div role="group" aria-label="Pickup order actions" className="flex w-full items-center gap-2 min-w-0">
+  {!recoveryOnly && !simulated && order.phone && <a className="text-xs underline" href={`tel:${String(order.phone).replace(/[^+0-9]/g,"")}`}>Optional call: {order.phone}</a>}
+  {!handoverPending && actions.length>0 && <div role="group" aria-label="Pickup order actions" className="flex w-full items-center gap-2 min-w-0">
     {actions.map(label=>{
       const reject=label==="Reject";
       const accept=label.startsWith("Accept");
@@ -91,9 +109,14 @@ export function PickupOrderActions({order,onSimulate,compact=false}:{order:any;o
         </>}
       </button>;
     })}
-  </div>
+  </div>}
   {busy && <p role="status" className="text-xs">{simulated ? "Simulating this step…" : "Waiting for the shop service to confirm…"}</p>}
-  {!simulated && pickupOrderingEnabled() && pending && <button type="button" className="min-h-11 px-3 underline text-sm disabled:opacity-50" disabled={busy} onClick={async()=>{setBusy(true);setError("");try{await MerchantApi.retryPendingPickupOrder(order);window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));setError("");}catch(e){setError(e instanceof Error?e.message:"Outcome unconfirmed.");}finally{setBusy(false);}}}>Retry previous action</button>}
+  {!simulated && canAct && pending && (handoverPending ? (
+    <>
+      {!busy && <p role="alert" className="text-xs font-semibold text-amber-800 dark:text-amber-200">Handover could not be confirmed. Retry to check the original confirmation.</p>}
+      <button type="button" className="min-h-11 w-full rounded-xl bg-orange-500 px-3 text-xs font-bold text-white hover:bg-orange-600 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" disabled={busy} onClick={()=>void retry()}>Retry handover confirmation</button>
+    </>
+  ) : <button type="button" className="min-h-11 px-3 underline text-sm disabled:opacity-50" disabled={busy} onClick={()=>void retry()}>Retry previous action</button>)}
   {error && <p role="alert">{error}</p>}
   {!!actions.length && !canAct && <p className="text-xs text-on-surface-variant">Pickup changes are disabled pending database activation. Payment and actual handover are separate confirmations.</p>}
   {simulated && !compact && <p className="text-[10px] text-amber-800 dark:text-amber-200">Test actions stay in this browser; no payment or order is saved.</p>}

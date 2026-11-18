@@ -16,6 +16,17 @@ function validCommand(value:any):value is Command {
 }
 export function createMerchantPickupRecovery(options:Options){
  const running=new Map<string,Promise<Order>>();
+ const pendingPath=(order:Order):string|null=>{
+  const uid=options.identity();
+  if(!uid || !order?.id || order.delivery_type!=='collection')return null;
+  let saved:string|null;
+  try{saved=options.storage.getItem(`pickup-command:${uid}:${order.id}`);}catch{return null;}
+  if(!saved)return null;
+  try{
+   const command:unknown=JSON.parse(saved);
+   return validCommand(command) ? command.path : 'unknown';
+  }catch{return 'unknown';}
+ };
  const run=async(order:Order,command?:Command):Promise<Order>=>{
   if(!options.enabled())throw Error('Pickup actions are not enabled. No change was saved.');
   const uid=options.identity();if(!uid || !order.id || !order.shop_id || order.delivery_type!=='collection')throw Error('Sign in to the merchant account for this pickup.');
@@ -62,5 +73,5 @@ export function createMerchantPickupRecovery(options:Options){
   })().finally(()=>running.delete(key));
   running.set(key,request);return request;
  };
- return {send:(order:Order,command:Command)=>run(order,command),retry:(order:Order)=>run(order)};
+ return {send:(order:Order,command:Command)=>run(order,command),retry:(order:Order)=>run(order),pendingPath};
 }

@@ -23,8 +23,8 @@ test("Ready but unpaid is not presented as a paid sale or completed handover",()
  assert.match(pickup,/Ready · awaiting actual payment at the counter/);
  assert.match(pickup,/Do not mark Collected or count this as revenue until payment/);
  assert.match(pickup,/status==="ready_for_pickup" && order.payment_status==="paid"/);
- assert.match(pickup,/still awaiting physical handover/);
- assert.match(pickup,/Mark Collected only after the customer receives the food/);
+ assert.match(pickup,/Paid · Awaiting handover/);
+ assert.match(pickup,/Confirm the food has actually been handed to the customer/);
  assert.doesNotMatch(pickup,/setInterval\(/);
  assert.doesNotMatch(pickup,/auto.*cancel.*unpaid/i);
 });

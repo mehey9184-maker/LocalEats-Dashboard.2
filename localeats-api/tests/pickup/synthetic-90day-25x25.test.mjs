@@ -1,7 +1,7 @@
 /**
- * LocalEats L2 accelerated 90-day synthetic pickup pilot.
+ * LocalEats accelerated synthetic pickup pilots.
  *
- * Exactly 25 fake merchants, 25 fake customers and 90 simulated calendar days.
+ * 25 fake merchants and 25 fake customers, with up to six virtual calendar months.
  * Invokes the REAL compiled pickup pricing/create/command service logic, but
  * replaces the storage RPC adapter, inbox, notification transport, identities
  * and money with disposable memory-only fixtures. No network, Firebase, real
@@ -23,14 +23,14 @@ const UUID = n => n.toString(16).padStart(8,"0")+"-0000-4000-8000-"+n.toString(1
 const MERCHANT = i => "synthetic-merchant-"+String(i).padStart(2,"0");
 const CUSTOMER = i => "synthetic-customer-"+String(i).padStart(2,"0");
 const SHOP = i => "synthetic-kota-shop-"+String(i).padStart(2,"0");
-const makeInput = (index,shopId) => ({
+const makeInput = (index,shopId,paymentMethod="cash") => ({
   contract_version:"pickup-v1",
   idempotency_key:UUID(1000+index),
   shop_id:shopId,
   items:[{menu_item_id:"item-"+shopId,quantity:1}],
   delivery_type:"collection",
   delivery_schedule_mode:"standard",
-  payment_method:"cash",
+  payment_method:paymentMethod,
   customer_details:{name:"Fictional Customer",phone:"+27700000000"},
   launch_location:{lat:-26,lng:28}
 });
@@ -46,6 +46,8 @@ function makeSandbox(){
   const byShop = new Map(shops.map(s=>[s.id,s]));
   const ordersByKey=new Map(),ordersById=new Map(),merchantInbox=new Map();
   const events=[],pushNotices=[],commandsById=new Map();
+  const dropAcknowledgments=new Set();
+  let now;
   const stats={createAttempts:0,precommitFailures:0,lostAfterCommit:0,
     duplicateClicks:0,recoveredRetries:0,crossTenantDenied:0,
     badTransitionsDenied:0,paid:0,collected:0,cancelled:0,rejected:0,
@@ -75,7 +77,7 @@ function makeSandbox(){
         return {data:null,error:{message:"Synthetic temporary database failure"}};
       }
       const id=UUID(2000000+ordersByKey.size);
-      const order={...r,id,user_id:uid,create_intent_hash:args.p_intent_hash,
+      const order={...r,id,user_id:uid,create_intent_hash:args.p_intent_hash,created_at:now,
         status:"pending",revision:0,delivery_type:"collection",
         delivery_status:"none",rider_id:null,payment_status:"unpaid",
         service_fee:0,delivery_fee:0,total_price:25};
@@ -115,20 +117,22 @@ function makeSandbox(){
       if(!delivered)stats.undeliveredPush++;
     }else if(action==="confirm_payment" && order.status==="ready_for_pickup" &&
       order.payment_status==="unpaid" && ["cash","card_machine"].includes(args.p_payment_method)){
-      order.payment_status="paid";kind="payment_confirmed";stats.paid++;
+      order.payment_status="paid";order.payment_method=args.p_payment_method;kind="payment_confirmed";stats.paid++;
     }else if(action==="collect" && order.status==="ready_for_pickup" &&
       order.payment_status==="paid" && args.p_handover_confirmed===true){
       order.status="collected";kind="collected";stats.collected++;
     }else if(action==="cancel" && order.status==="pending"){
       order.status="cancelled";kind="customer_cancelled";stats.cancelled++;
     }else if(action==="reject" && order.status==="pending"){
-      order.status="rejected";kind="merchant_rejected";stats.rejected++;
+      order.status="cancelled";kind="merchant_rejected";stats.rejected++;
     }else return {data:null,error:{message:"INVALID_ORDER_TRANSITION"}};
     order.revision++;
-    const event={order_id:order.id,kind,revision:order.revision,
-      actor_uid:actor,command_id:args.p_command_id};
+    const event={order_id:order.id,kind,revision:order.revision,occurred_at:now,
+      actor_uid:actor,command_id:args.p_command_id,details:kind==="payment_confirmed" ?
+        {amount:order.total_price,currency:"ZAR",method:order.payment_method} : {}};
     events.push(event);
     commandsById.set(args.p_command_id,{actor,action,orderId:order.id,event});
+    if(dropAcknowledgments.delete(kind))throw Error("Synthetic merchant response lost after commit");
     return {data:{order,replayed:false,event},error:null};
   }};
   function customerHistory(uid){
@@ -143,6 +147,7 @@ function makeSandbox(){
   function eraseAll(){
     ordersByKey.clear();ordersById.clear();merchantInbox.clear();
     events.length=0;pushNotices.length=0;commandsById.clear();
+    dropAcknowledgments.clear();
     shops.length=0;customers.length=0;merchants.length=0;byShop.clear();
     assert.equal(ordersByKey.size,0);
     assert.equal(ordersById.size,0);
@@ -154,7 +159,9 @@ function makeSandbox(){
   }
   const nextCommand=()=>UUID(4000000+(++commandSequence));
   return {repository,rpc,merchants,customers,shops,ordersById,ordersByKey,
-    merchantInbox,events,pushNotices,commandsById,stats,customerHistory,merchantOrders,eraseAll,nextCommand};
+    merchantInbox,events,pushNotices,commandsById,stats,customerHistory,merchantOrders,eraseAll,nextCommand,
+    setTime:milliseconds=>{now=new Date(milliseconds).toISOString();},
+    dropAcknowledgment:kind=>dropAcknowledgments.add(kind)};
 }
 
 async function submit(box,uid,raw){
@@ -181,21 +188,52 @@ async function command(box,actor,order,action,extra={}){
   });
   return result.order;
 }
-async function run(days=DAYS){
+async function confirmWithRecovery(box,merchant,order,action,details,lostEvent){
+  const request={...details,command_id:box.nextCommand(),expected_revision:order.revision};
+  const send=()=>commandPickup(box.rpc,merchant,order.id,action,request);
+  if(lostEvent){
+    box.dropAcknowledgment(lostEvent);
+    await assert.rejects(send,/Synthetic merchant response lost after commit/);
+  }
+  const confirmation=await send();
+  assert.equal(confirmation.replayed,Boolean(lostEvent));
+  assert.equal(confirmation.event.command_id,request.command_id);
+  return confirmation.event;
+}
+
+async function run(days=DAYS,workload){
   const box=makeSandbox();
   const start=new Date("2026-11-11T00:00:00Z");
+  const calendar=Array.from({length:days},(_,day)=>new Date(start.getTime()+day*86400000));
+  const weights=calendar.map(date=>[0,6].includes(date.getUTCDay())?2:1);
+  const totalWeight=weights.reduce((sum,weight)=>sum+weight,0);
+  const dayVolumes=[];
+  const monthlyOrders={};
   const daysCovered=new Set(),merchantsUsed=new Set(),customersUsed=new Set();
   const allOrderIds=new Set();
   let completed=0,cancelled=0,rejected=0,noShows=0;
+  let cashHandover=0,cardTerminalHandover=0,paymentMethodChangedAtShop=0,lateCollections=0;
+  let recoveredPaymentAcknowledgments=0,recoveredHandoverAcknowledgments=0;
+  let submitted=0,weightBefore=0;
   for(let day=0;day<days;day++){
-    const virtualDate=new Date(start.getTime()+day*86400000).toISOString().slice(0,10);
+    const virtualDate=calendar[day].toISOString().slice(0,10);
     daysCovered.add(virtualDate);
-    for(let slot=0;slot<ORDERS_PER_DAY;slot++){
-      const i=day*ORDERS_PER_DAY+slot;
+    const dayOrders=workload
+      ? Math.floor((weightBefore+weights[day])*workload/totalWeight)-Math.floor(weightBefore*workload/totalWeight)
+      : ORDERS_PER_DAY;
+    weightBefore+=weights[day];
+    dayVolumes.push(dayOrders);
+    const month=virtualDate.slice(0,7);
+    monthlyOrders[month]=(monthlyOrders[month]??0)+dayOrders;
+    for(let slot=0;slot<dayOrders;slot++){
+      const i=submitted++;
       const shopIdx=(i*7)%MERCHANTS,customerIdx=(i*13)%CUSTOMERS;
       const shopId=SHOP(shopIdx),merchant=MERCHANT(shopIdx),customer=CUSTOMER(customerIdx);
       merchantsUsed.add(merchant);customersUsed.add(customer);
-      const {order,request,quote}=await submit(box,customer,makeInput(i,shopId));
+      const orderTime=calendar[day].getTime()+9*3600000+slot*900000;
+      box.setTime(orderTime);
+      const selectedMethod=workload && i%2===1?"card_machine":"cash";
+      const {order,request,quote}=await submit(box,customer,makeInput(i,shopId,selectedMethod));
       assert.equal(quote.total_minor,2500);
       assert.equal(order.total_price,25);
       assert.equal(order.payment_status,"unpaid");
@@ -226,7 +264,7 @@ async function run(days=DAYS){
           e=>e?.status===409);
         box.stats.crossTenantDenied+=4;
       }
-      const outcome=slot;
+      const outcome=workload? i%20 : slot;
       if(outcome===7){
         await command(box,customer,order,"cancel",{reason:"Synthetic changed mind"});
         assert.equal(order.status,"cancelled");
@@ -234,10 +272,12 @@ async function run(days=DAYS){
       }
       if(outcome===8){
         await command(box,merchant,order,"reject",{reason:"Synthetic stock unavailable"});
-        assert.equal(order.status,"rejected");
+        assert.equal(order.status,"cancelled");
         rejected++;continue;
       }
       await command(box,merchant,order,"accept");
+      const readyTime=orderTime+20*60000;
+      box.setTime(readyTime);
       await command(box,merchant,order,"ready");
       if(outcome===9){
         assert.equal(order.payment_status,"unpaid");
@@ -255,14 +295,33 @@ async function run(days=DAYS){
       await assert.rejects(()=>command(box,customer,order,"confirm_payment",{payment_method:"cash"}),
         e=>e?.status===403);
       box.stats.crossTenantDenied++;
-      await command(box,merchant,order,"confirm_payment",{payment_method:"cash"});
+      const late=Boolean(workload && i%7===0);
+      const handoverTime=readyTime+(late?45:8)*60000;
+      box.setTime(handoverTime);
+      const actualMethod=workload && i%13===0
+        ? (selectedMethod==="cash"?"card_machine":"cash") : selectedMethod;
+      const lostPayment=Boolean(workload && i%29===0);
+      const lostHandover=Boolean(workload && i%23===0);
+      const payment=await confirmWithRecovery(box,merchant,order,"confirm_payment",
+        {payment_method:actualMethod},lostPayment?"payment_confirmed":null);
       assert.equal(order.payment_status,"paid");
-      await command(box,merchant,order,"collect",{handover_confirmed:true});
+      assert.equal(order.status,"ready_for_pickup");
+      const collected=await confirmWithRecovery(box,merchant,order,"collect",
+        {handover_confirmed:true},lostHandover?"collected":null);
       assert.equal(order.status,"collected");
+      assert.deepEqual(payment.details,{amount:25,currency:"ZAR",method:actualMethod});
+      assert.equal(collected.occurred_at,new Date(handoverTime).toISOString());
+      assert.equal(order.payment_method,actualMethod);
+      if(actualMethod==="cash")cashHandover++;
+      else cardTerminalHandover++;
+      if(actualMethod!==selectedMethod)paymentMethodChangedAtShop++;
+      if(late)lateCollections++;
+      if(lostPayment)recoveredPaymentAcknowledgments++;
+      if(lostHandover)recoveredHandoverAcknowledgments++;
       completed++;
     }
   }
-  const intended=days*ORDERS_PER_DAY;
+  const intended=workload??days*ORDERS_PER_DAY;
   assert.equal(daysCovered.size,days);
   assert.equal(merchantsUsed.size,MERCHANTS);
   assert.equal(customersUsed.size,CUSTOMERS);
@@ -270,15 +329,15 @@ async function run(days=DAYS){
   assert.equal(box.ordersById.size,intended);
   assert.equal(box.ordersByKey.size,intended);
   assert.equal([...box.merchantInbox.values()].reduce((a,b)=>a+b.length,0),intended);
-  assert.equal(completed,days*7);
-  assert.equal(cancelled,days);
-  assert.equal(rejected,days);
-  assert.equal(noShows,days);
+  assert.equal(completed+cancelled+rejected+noShows,intended);
   assert.equal(box.stats.collected,completed);
   assert.equal(box.stats.paid,completed);
   assert.equal(box.stats.cancelled,cancelled);
   assert.equal(box.stats.rejected,rejected);
   assert.equal(box.pushNotices.length,completed+noShows);
+  assert.equal(new Set(box.pushNotices.map(n=>n.order_id)).size,completed+noShows);
+  assert.equal(box.events.filter(event=>event.kind==="payment_confirmed").length,completed);
+  assert.equal(box.events.filter(event=>event.kind==="collected").length,completed);
   assert.ok(box.stats.undeliveredPush>0);
   assert.ok(box.stats.precommitFailures>0);
   assert.ok(box.stats.lostAfterCommit>0);
@@ -289,7 +348,11 @@ async function run(days=DAYS){
     virtualDays:days,syntheticMerchants:MERCHANTS,syntheticCustomers:CUSTOMERS,
     fictionalOrders:intended,collectedModel:completed,cancelledModel:cancelled,
     rejectedModel:rejected,readyButUnpaidModel:noShows,
-    fictionalCashCollectedZAR:completed*25,
+    fictionalCashCollectedZAR:cashHandover*25,
+    fictionalCardTerminalCollectedZAR:cardTerminalHandover*25,
+    cashHandover,cardTerminalHandover,paymentMethodChangedAtShop,lateCollections,
+    recoveredPaymentAcknowledgments,recoveredHandoverAcknowledgments,monthlyOrders,
+    minOrdersPerDay:Math.min(...dayVolumes),maxOrdersPerDay:Math.max(...dayVolumes),
     actualCashCollectedZAR:0,
     uniqueOrderIDs:allOrderIds.size,merchantInboxEntries:intended,
     simulatedPushFailures:box.stats.undeliveredPush,
@@ -336,4 +399,23 @@ test("180 virtual days (six months) x 25 merchants x 25 customers: no duplicate 
   assert.equal(result.syntheticCustomersAfterCleanup,0);
   assert.equal(result.syntheticMerchantsAfterCleanup,0);
   assert.equal(result.actualCashCollectedZAR,0);
+});
+
+test("2,500 pickup orders across six calendar months exercise both sides of payment and handover", {
+  timeout:120000
+}, async () => {
+  const result=await run(181,2500);
+  assert.equal(result.timelineStart,"2026-11-11");
+  assert.equal(result.timelineEnd,"2027-05-10");
+  assert.equal(result.uniqueOrderIDs,2500);
+  assert.equal(result.merchantInboxEntries,2500);
+  assert.equal(result.collectedModel+result.cancelledModel+result.rejectedModel+result.readyButUnpaidModel,2500);
+  assert.equal(result.cashHandover+result.cardTerminalHandover,result.collectedModel);
+  assert.ok(result.cashHandover>0 && result.cardTerminalHandover>0);
+  assert.ok(result.paymentMethodChangedAtShop>0);
+  assert.ok(result.lateCollections>0);
+  assert.ok(result.recoveredPaymentAcknowledgments>0 && result.recoveredHandoverAcknowledgments>0);
+  assert.ok(result.maxOrdersPerDay>result.minOrdersPerDay);
+  assert.equal(result.syntheticRecordsAfterCleanup,0);
+  assert.equal(result.realPayments,0);
 });

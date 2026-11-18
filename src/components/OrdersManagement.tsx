@@ -3454,7 +3454,7 @@ Notes: "${order.notes || "None"}"
                         </div>
 
                         {/* Action buttons with inline input forms */}
-                        {acceptingOrderId === order.id ? (
+                        {isPickupOrder(order) ? <PickupOrderActions order={order}/> : acceptingOrderId === order.id ? (
                           <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
                             <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Order Notes & Custom Message</label>
                             <input
@@ -3685,7 +3685,7 @@ Notes: "${order.notes || "None"}"
                         </div>
 
                         {/* Action buttons with inline input forms */}
-                        {order.status === "accepted" ? (
+                        {isPickupOrder(order) ? <PickupOrderActions order={order}/> : order.status === "accepted" ? (
                           preparingOrderId === order.id ? (
                             <div className="space-y-2 mt-3 pt-3 border-t border-outline-variant/5">
                               <label className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/60 block">Prep Time (mins)</label>
@@ -3946,12 +3946,12 @@ Notes: "${order.notes || "None"}"
                         {/* Action buttons */}
                         <div className="mt-4 pt-4 border-t-2 border-dashed border-outline-variant/20 flex flex-col items-stretch gap-4">
                           <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
-                          <button disabled={isPickupOrder(order)}
+                          {isPickupOrder(order) ? <PickupOrderActions order={order}/> : <button
                             onClick={() => onUpdateStatus(order.id, "completed")}
                             className="w-full mt-4 py-5 bg-blue-600 text-white text-lg md:text-xl font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-blue-500 active:scale-95 transition-all cursor-pointer text-center block"
                           >
                             Complete
-                          </button>
+                          </button>}
                         </div>
 
                         {/* Quick Tag Toggles */}
@@ -4079,6 +4079,7 @@ Notes: "${order.notes || "None"}"
                           <div className="text-center font-mono font-black text-2xl text-on-surface bg-surface-container-high py-2 rounded-xl">TOTAL: R {Number(order.total_price || 0).toFixed(2)}</div>
                           <span className="text-[9px] font-bold text-zinc-500 font-mono uppercase">Done</span>
                         </div>
+                        {isPickupOrder(order) && <PickupOrderActions order={order} compact recoveryOnly/>}
 
                         {/* Quick Tag Toggles */}
                         <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">

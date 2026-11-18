@@ -649,3 +649,9 @@ Merchant owners asked for clearer Settings icons after the four-section simplifi
 - Icons are decorative beside visible labels and use `aria-hidden`. Section buttons preserve `aria-current`, focus-visible outlines and minimum 44px targets. No continuous motion is introduced and no new images or font assets are bundled.
 
 Changes are restricted to `src/App.tsx`, `src/components/SimpleOpeningHours.tsx`, Settings regressions, and this documentation. Verify the exact-commit Merchant Preview and GitHub release gates. No merge, real-order activation, payment activation, database writes or Production environment changes without separate owner approval.
+
+## Merchant pickup pilot handover
+
+Both Orders ticket styles and the fallback kitchen board use `PickupOrderActions` for persisted collection orders. A verified Ready order with payment recorded shows **Paid · Awaiting handover** and the primary **Confirm handover** action. Confirm payment and confirm physical handover remain separate. The handover prompt is about food actually given to the customer. The existing authenticated pickup-write gate and server revision checks still apply.
+
+If the handover result is unconfirmed and the original command is retained, **Retry handover confirmation** resends that exact account/order-scoped command, including after refresh. It requires a matching server command receipt before clearing recovery. Session storage only identifies the pending action; it cannot confirm handover, collection or payment. A test-only simulator retains its existing no-write boundary.

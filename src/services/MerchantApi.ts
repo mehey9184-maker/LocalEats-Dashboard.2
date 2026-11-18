@@ -205,8 +205,10 @@ export class MerchantApi {
   }
 
   static hasPendingPickupCommand(order:any):boolean {
-    const uid=auth.currentUser?.uid;
-    try{return !!uid && !!sessionStorage.getItem(`pickup-command:${uid}:${order.id}`);}catch{return false;}
+    return this.getPendingPickupCommandPath(order)!==null;
+  }
+  static getPendingPickupCommandPath(order:Record<string,unknown>):string|null {
+    return pickupRecovery.pendingPath(order);
   }
   private static async sendPickupCommand(order:Record<string,unknown>,command:any) {
     pickupMutationsDisabled();
