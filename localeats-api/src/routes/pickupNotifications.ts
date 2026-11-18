@@ -7,6 +7,12 @@ import { drainPickupPush } from "../orders/pickupPush.js";
 import {createMerchantPushTestService,sendMerchantTestPushToFirebase} from "../orders/merchantPushTest.js";
 import {createCustomerPushTestService,sendCustomerTestPushToFirebase,customerPushTestEnabled,customerPushTestAllowUser} from "../orders/customerPushTest.js";
 export const pickupNotificationRoutes=Router();
+const isAuthorizedPreviewDevice=(req:AuthenticatedRequest):boolean=>{
+  // Production and local customer subscription behavior is unchanged.
+  if(process.env.VERCEL_ENV!=="preview")return true;
+  return !req.authUser?.isAnonymous && !!req.authUser?.uid &&
+    customerPushTestEnabled() && customerPushTestAllowUser(req.authUser.uid);
+};
 const errorResponse=(res:Response,error:unknown):void=>{
   const e=error instanceof OrderContractError ? error : new OrderContractError(503,"NOTIFICATION_SERVICE_UNAVAILABLE","Notifications unavailable.");
   res.status(e.status).json({success:false,code:e.code,error:e.message});
@@ -32,6 +38,9 @@ pickupNotificationRoutes.get("/notifications",authenticateFirebase,async(req:Aut
 });
 pickupNotificationRoutes.put("/push-subscriptions/:installationId",authenticateFirebase,async(req:AuthenticatedRequest,res:Response)=>{
   try {
+    if(!isAuthorizedPreviewDevice(req)){
+      res.status(403).set("Cache-Control","no-store").json({success:false,code:"PREVIEW_TEST_CUSTOMER_NOT_AUTHORIZED"});return;
+    }
     const uid=req.authUser!.uid,installation=req.params.installationId;
     if(typeof installation!=="string" || !UUID.test(installation)) throw new OrderContractError(400,"INVALID_INSTALLATION","Invalid installation.");
     const body=object(req.body); onlyKeys(body,["fcm_token","permission_granted"]);
@@ -53,6 +62,9 @@ pickupNotificationRoutes.put("/push-subscriptions/:installationId",authenticateF
 });
 pickupNotificationRoutes.delete("/push-subscriptions/:installationId",authenticateFirebase,async(req:AuthenticatedRequest,res:Response)=>{
   try {
+    if(!isAuthorizedPreviewDevice(req)){
+      res.status(403).set("Cache-Control","no-store").json({success:false,code:"PREVIEW_TEST_CUSTOMER_NOT_AUTHORIZED"});return;
+    }
     const installation=req.params.installationId;
     if(typeof installation!=="string" || !UUID.test(installation)) throw new OrderContractError(400,"INVALID_INSTALLATION","Invalid installation.");
     const {error}=await supabaseAdmin.from("pickup_push_subscriptions").update({revoked_at:new Date().toISOString(),fcm_token:null})

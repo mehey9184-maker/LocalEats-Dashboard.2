@@ -1,4 +1,5 @@
 import type {RequestHandler} from "express";
+import {canUseIsolatedCustomerPushPreview} from "./customerPushPreviewAdmission.js";
 
 /**
  * A Preview deployment can share read credentials with the live database.
@@ -10,6 +11,9 @@ import type {RequestHandler} from "express";
  */
 export const previewReadOnlyGate:RequestHandler=(req,res,next)=>{
   if(process.env.VERCEL_ENV !== "preview" && process.env.LOCALEATS_PREVIEW_READ_ONLY !== "true") { next(); return; }
+  // Exception limited to authenticated, allowlisted Customer device tests.
+  // A separate route handler rechecks the Firebase UID after authentication.
+  if(canUseIsolatedCustomerPushPreview(req)) {next();return;}
   const method=req.method.toUpperCase();
   // The legacy GET /notifications endpoint internally drains FCM outbox jobs
   // (writes + sends push). Block both GET and implicit HEAD on that route.

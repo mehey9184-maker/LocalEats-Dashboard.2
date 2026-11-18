@@ -1,12 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+import {resolveSupabaseServerKey} from "./supabaseServerKey.js";
 
 dotenv.config();
 
 const supabaseUrl = process.env.SUPABASE_URL || "https://dummy.supabase.co";
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "dummy_key";
+const supabaseServiceRoleKey = resolveSupabaseServerKey() || "dummy_key";
 
-if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+if (!process.env.SUPABASE_URL || !resolveSupabaseServerKey()) {
   console.warn("Missing Supabase configuration. Ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.");
 }
 

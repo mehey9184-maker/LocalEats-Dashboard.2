@@ -1,0 +1,32 @@
+name: L3-N3 Customer isolated Preview device admission (synthetic)
+on:
+  pull_request:
+    paths:
+      - 'localeats-api/src/middleware/customerPushPreviewAdmission*'
+      - 'localeats-api/src/middleware/previewReadOnlyGate.ts'
+      - 'localeats-api/src/lib/supabaseAdmin.ts'
+      - 'localeats-api/src/lib/supabaseServerKey*'
+      - 'localeats-api/src/routes/pickupNotifications.ts'
+      - 'localeats-api/src/corsOrigins.ts'
+      - 'localeats-api/package.json'
+      - '.github/workflows/l3-n3-customer-device-admission.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-security:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: localeats-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Test Preview write barrier, staging origin and account gates (mock data only)
+        run: node --test dist/middleware/customerPushPreviewAdmission.test.js dist/lib/supabaseServerKey.test.js dist/middleware/previewReadOnlyGate.test.js dist/orders/customerPushTest.test.js dist/corsOrigins.test.js
