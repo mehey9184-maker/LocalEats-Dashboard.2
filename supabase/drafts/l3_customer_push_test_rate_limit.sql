@@ -1,6 +1,7 @@
 -- L3-N1 DESIGN DRAFT ONLY. DO NOT APPLY TO PRODUCTION OR SHARED PREVIEW.
 -- Apply only in independently verified disposable/isolated Supabase staging.
--- The server-side diagnostic function is service_role-only; browser direct writes denied.
+-- SECURITY INVOKER: only the server's isolated staging service_role may call the RPC.
+-- The service_role has table privileges; do not grant this function to browser roles.
 create table if not exists public.customer_push_test_attempts (
   firebase_uid text primary key,
   last_attempt_at timestamptz not null,
@@ -13,7 +14,7 @@ grant select,insert,update on public.customer_push_test_attempts to service_role
 
 create or replace function public.claim_customer_push_test_attempt(p_uid text)
 returns boolean
-language plpgsql security definer set search_path = public, pg_temp
+language plpgsql security invoker set search_path = public, pg_temp
 as $$
 declare claimed boolean := false;
 begin
