@@ -1,6 +1,6 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
-**Install LocalEats Merchant.** Verified merchants can use the desktop header or mobile dashboard control to open the browser’s install prompt, or view the steps for their browser. The delayed invite still depends on a native offer and the existing dashboard eligibility checks. Installed sessions hide both controls, and install help stays outside kitchen mode. The launcher and browser tab use a storefront icon, with a separate maskable Android icon and a 180 px Apple touch icon.
+**Install LocalEats Merchant.** Verified merchants can use the desktop header or mobile dashboard control to open the browser’s install prompt, or view the steps for their browser. The delayed invite still depends on a native offer and the existing dashboard eligibility checks. Installed sessions hide both controls, and install help stays outside kitchen mode. The launcher and browser tab show the storefront symbol in front of the LocalEats logo watermark. Android uses a separate maskable asset and Apple uses a 180 px touch icon.
 
 ## Isolated Firebase staging configuration — 2026-11-05
 
