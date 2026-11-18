@@ -97,6 +97,6 @@ test("one exact Customer Preview origin may read isolated staging API without en
   {...off,PICKUP_WRITES_ENABLED:"true"},
   {...off,FIREBASE_PROJECT_ID:"localeats-5e26e"},
   {...off,SUPABASE_URL:"https://phdjumtqkooyppxozqsi.supabase.co"}
- ])assert.equal(isAllowedOrigin(paired,negative),false);
+ ] as NodeJS.ProcessEnv[])assert.equal(isAllowedOrigin(paired,negative),false);
  assert.equal(canUseIsolatedCustomerPushPreview(req("POST",diagnostic,paired),off),false);
 });
