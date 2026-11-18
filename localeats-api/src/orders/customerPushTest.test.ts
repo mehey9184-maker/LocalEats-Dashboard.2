@@ -48,10 +48,17 @@ test("database outage and provider failure never imply delivery",async()=>{
 test("enabled only on explicit isolated Vercel Preview with separate Supabase host",()=>{
   const env:NodeJS.ProcessEnv={CUSTOMER_PUSH_TEST_ENABLED:"true",CUSTOMER_PUSH_TEST_ISOLATED:"true",
     CUSTOMER_PUSH_TEST_STAGING_SUPABASE_HOST:"isolated-preview.supabase.co",
+    LOCALEATS_STAGING_ONLY:"true",FIREBASE_PROJECT_ID:"localeats-staging-fixture",
+    CUSTOMER_PUSH_TEST_STAGING_FIREBASE_PROJECT_ID:"localeats-staging-fixture",
+    FIREBASE_CLIENT_EMAIL:"fixture@localeats-staging-fixture.iam.gserviceaccount.com",
     SUPABASE_URL:"https://isolated-preview.supabase.co",VERCEL_ENV:"preview",PICKUP_WRITES_ENABLED:"false",
     CUSTOMER_PUSH_TEST_UIDS:"synthetic-customer, another"};
   assert.equal(customerPushTestEnabled(env),true);
-  for(const [key,value] of Object.entries({VERCEL_ENV:"production",CUSTOMER_PUSH_TEST_ISOLATED:"false",CUSTOMER_PUSH_TEST_ENABLED:"false",PICKUP_WRITES_ENABLED:"true",CUSTOMER_PUSH_TEST_STAGING_SUPABASE_HOST:"production.supabase.co"})){
+  assert.equal(customerPushTestEnabled({...env,FIREBASE_PROJECT_ID:"localeats-5e26e"}),false);
+  assert.equal(customerPushTestEnabled({...env,FIREBASE_CLIENT_EMAIL:"fixture@other-project.iam.gserviceaccount.com"}),false);
+  assert.equal(customerPushTestEnabled({...env,LOCALEATS_STAGING_ONLY:"false"}),false);
+  assert.equal(customerPushTestEnabled({...env,PICKUP_WRITES_ENABLED:undefined}),false);
+  for(const [key,value] of Object.entries({VERCEL_ENV:"production",CUSTOMER_PUSH_TEST_ISOLATED:"false",CUSTOMER_PUSH_TEST_ENABLED:"false",PICKUP_WRITES_ENABLED:"true",CUSTOMER_PUSH_TEST_STAGING_SUPABASE_HOST:"production.supabase.co",FIREBASE_PROJECT_ID:"localeats-5e26e"})){
     assert.equal(customerPushTestEnabled({...env,[key]:value}),false,key);
   }
   assert.equal(customerPushTestAllowUser(uid,env),true);
