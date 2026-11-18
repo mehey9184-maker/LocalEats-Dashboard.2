@@ -1,3 +1,4 @@
+import {privateMyKotaCorsAllowed} from "./routes/privateMyKotaTest.js";
 import {isIsolatedCustomerPushCorsOrigin} from "./middleware/customerPushPreviewAdmission.js";
 interface CorsOriginEnvironment {
   MERCHANT_DASHBOARD_ORIGIN?: string;
@@ -41,6 +42,8 @@ export const isAllowedOrigin = (
   environment: CorsOriginEnvironment = process.env
 ): boolean => {
   if (origin === undefined) return true;
+  // Exact isolated Preview origin only when server-side test UID/expiry gates pass.
+  if (privateMyKotaCorsAllowed(origin,environment as NodeJS.ProcessEnv)) return true;
   // Canonical Customer Production origin only; Firebase still authorizes private reads/quotes.
   if (origin === "https://www.localeatssa.co.za") return true;
 
