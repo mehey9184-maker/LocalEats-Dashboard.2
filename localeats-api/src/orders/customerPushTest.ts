@@ -36,19 +36,27 @@ export function createCustomerPushTestService(d:CustomerPushTestDependencies) {
   };
 }
 export function customerPushTestEnabled(env:NodeJS.ProcessEnv=process.env):boolean {
-  // A generic Vercel Preview might share Production resources; require an
-  // independently provisioned staging Supabase hostname and explicit switches.
+  // No generic PR Preview, shared-Production database, Production Firebase
+  // service account, or live-order environment may send a Customer cloud test.
   if(env.CUSTOMER_PUSH_TEST_ENABLED!=="true" ||
      env.CUSTOMER_PUSH_TEST_ISOLATED!=="true" ||
+     env.LOCALEATS_STAGING_ONLY!=="true" ||
      env.VERCEL_ENV!=="preview" ||
-     env.PICKUP_WRITES_ENABLED==="true") return false;
-  const expected=env.CUSTOMER_PUSH_TEST_STAGING_SUPABASE_HOST;
+     env.PICKUP_WRITES_ENABLED!=="false") return false;
+  const expectedHost=env.CUSTOMER_PUSH_TEST_STAGING_SUPABASE_HOST;
   const url=env.SUPABASE_URL;
-  if(!expected || !url) return false;
+  const firebaseId=env.FIREBASE_PROJECT_ID;
+  const expectedFirebase=env.CUSTOMER_PUSH_TEST_STAGING_FIREBASE_PROJECT_ID;
+  const serviceAccount=env.FIREBASE_CLIENT_EMAIL;
+  if(!expectedHost || !url || !firebaseId || !expectedFirebase || !serviceAccount ||
+     firebaseId==="localeats-5e26e" || firebaseId!==expectedFirebase ||
+     !serviceAccount.endsWith("@"+firebaseId+".iam.gserviceaccount.com")) return false;
   try {
     const parsed=new URL(url);
-    return parsed.protocol==="https:" && parsed.hostname===expected &&
-      expected.endsWith(".supabase.co");
+    return parsed.protocol==="https:" && parsed.hostname===expectedHost &&
+      parsed.pathname==="/" && !parsed.username && !parsed.password &&
+      !parsed.hash && !parsed.search && expectedHost.endsWith(".supabase.co") &&
+      expectedHost!=="phdjumtqkooyppxozqsi.supabase.co";
   } catch {return false;}
 }
 export function customerPushTestAllowUser(uid:string,env:NodeJS.ProcessEnv=process.env):boolean {
