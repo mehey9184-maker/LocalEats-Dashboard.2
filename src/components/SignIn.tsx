@@ -182,11 +182,13 @@ export const SignIn: React.FC<SignInProps> = ({ onSignUpClick, onSuccess }) => {
                   Password
                 </label>
                 <button
-                  className="absolute right-4 top-4 text-on-surface-variant hover:text-primary transition-colors"
+                  className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
                   type="button"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-controls="password"
                   onClick={() => setShowPassword(!showPassword)}
                 >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  {showPassword ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}
                 </button>
               </div>
               <div className="flex justify-end">

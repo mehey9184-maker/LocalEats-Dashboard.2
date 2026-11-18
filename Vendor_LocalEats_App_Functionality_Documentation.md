@@ -649,3 +649,5 @@ Merchant owners asked for clearer Settings icons after the four-section simplifi
 - Icons are decorative beside visible labels and use `aria-hidden`. Section buttons preserve `aria-current`, focus-visible outlines and minimum 44px targets. No continuous motion is introduced and no new images or font assets are bundled.
 
 Changes are restricted to `src/App.tsx`, `src/components/SimpleOpeningHours.tsx`, Settings regressions, and this documentation. Verify the exact-commit Merchant Preview and GitHub release gates. No merge, real-order activation, payment activation, database writes or Production environment changes without separate owner approval.
+
+The Merchant sign-in password visibility control has an accessible Show password or Hide password label, a visible keyboard focus indicator, and a 44px target. It still changes visibility in the current field only.

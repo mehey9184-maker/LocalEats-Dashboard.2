@@ -1,0 +1,21 @@
+diff --git a/localeats-api/tests/pickup/journey.mjs b/localeats-api/tests/pickup/journey.mjs
+index c7ea3dc..a51726f 100644
+--- a/localeats-api/tests/pickup/journey.mjs
++++ b/localeats-api/tests/pickup/journey.mjs
+@@ -11,6 +11,7 @@ import {supabaseAdmin} from "../../dist/lib/supabaseAdmin.js";
+ import {customerOrderRoutes,merchantOrderRoutes} from "../../dist/routes/orders.js";
+ import {pickupNotificationRoutes} from "../../dist/routes/pickupNotifications.js";
+ import {makeCatalogRouter,SupabaseCatalogRepository} from "../../dist/routes/catalog.js";
++import merchantRoutes from "../../dist/routes/merchant.js";
+ import riderRoutes from "../../dist/routes/riderOrders.js";
+ import {configureApiCacheSafety} from "../../dist/middleware/apiCacheSafety.js";
+ const [connection,bin,mode]=process.argv.slice(2);
+@@ -88,7 +89,7 @@ app.get("/__pickup_fixture/location",(_req,res)=>res.json({lat:-26,lng:28}));
+ configureApiCacheSafety(app);app.use(express.json());
+ app.use("/api/v1",pickupNotificationRoutes);app.use("/api/v1/orders",customerOrderRoutes);
+ app.use("/api/v1/merchant/orders",merchantOrderRoutes);
+-app.use("/api/v1/catalog",makeCatalogRouter(new SupabaseCatalogRepository(supabaseAdmin)));
++app.use("/api/v1/merchant",merchantRoutes); app.use("/api/v1/catalog",makeCatalogRouter(new SupabaseCatalogRepository(supabaseAdmin)));
+ app.use("/api/v1/rider/orders",riderRoutes);
+ const server=app.listen(mode==="serve" ? 4000 : 0,"127.0.0.1");await once(server,"listening");
+ if(mode==="serve") {

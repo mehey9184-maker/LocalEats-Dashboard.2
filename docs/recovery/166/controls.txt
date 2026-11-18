@@ -1,0 +1,11 @@
+Both fixture documents opened
+MERCHANT_TOGGLE_PASS 390 44 44
+SCREEN merchant-390 {"width":390,"scroll":390,"heading":"Welcome Back","font":"ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"","headingFont":"Quicksand, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif"}
+CUSTOMER_LOGIN_HIT_TEST_PASS 390
+SCREEN customer-390 {"width":390,"scroll":390,"heading":"Find the legendary Kota joints near you.","font":"Inter, ui-sans-serif, system-ui, sans-serif","headingFont":null}
+MERCHANT_TOGGLE_PASS 320 44 44
+SCREEN merchant-320 {"width":320,"scroll":320,"heading":"Welcome Back","font":"ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"","headingFont":"Quicksand, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif"}
+CUSTOMER_LOGIN_HIT_TEST_FAIL 320 privacy notice intercepts pointer events
+SCREEN customer-320 {"width":320,"scroll":320,"heading":"Find the legendary Kota joints near you.","font":"Inter, ui-sans-serif, system-ui, sans-serif","headingFont":null}
+SCREEN customer-consent-copy-320 {"width":320,"scroll":320,"heading":"Good morning, there👋","font":"Inter, ui-sans-serif, system-ui, sans-serif","headingFont":null}
+CUSTOMER_CONSENT_COPY_PASS
