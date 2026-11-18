@@ -5,6 +5,7 @@ import { object, onlyKeys, UUID } from "../orders/pickupService.js";
 import { OrderContractError } from "../orders/orderContract.js";
 import { drainPickupPush } from "../orders/pickupPush.js";
 import {createMerchantPushTestService,sendMerchantTestPushToFirebase} from "../orders/merchantPushTest.js";
+import {createCustomerPushTestService,sendCustomerTestPushToFirebase,customerPushTestEnabled,customerPushTestAllowUser} from "../orders/customerPushTest.js";
 export const pickupNotificationRoutes=Router();
 const errorResponse=(res:Response,error:unknown):void=>{
   const e=error instanceof OrderContractError ? error : new OrderContractError(503,"NOTIFICATION_SERVICE_UNAVAILABLE","Notifications unavailable.");
@@ -98,6 +99,45 @@ pickupNotificationRoutes.post("/push-subscriptions/:installationId/test",
       success:result.status===202,
       code:result.code,
       ...(result.status===202?{message:"Firebase accepted the test message; device delivery is not yet verified."}:{})
+    });
+  }
+);
+
+/**
+ * L3-N1 CUSTOMER-only diagnostic. Unlike merchant /push-subscriptions/:id/test,
+ * this handler requires an allowlisted signed-in customer and a staging-owned
+ * active installation. Disabled by default, including Production and ordinary
+ * Previews. No order, payment, collection or notification-outbox writes.
+ */
+const sendCustomerTestNotification=createCustomerPushTestService({
+  enabled:()=>customerPushTestEnabled(),
+  allowUser:uid=>customerPushTestAllowUser(uid),
+  findOwnedActiveDevice:async(uid,installationId)=>{
+    const {data,error}=await supabaseAdmin.from("pickup_push_subscriptions")
+      .select("fcm_token").eq("user_id",uid).eq("installation_id",installationId)
+      .is("revoked_at",null).maybeSingle();
+    if(error) throw error;
+    return typeof data?.fcm_token==="string" && data.fcm_token.length>=20 ? data.fcm_token:null;
+  },
+  claimQuota:async uid=>{
+    // Missing staging SQL, permission or DB outage: reject without a cloud send.
+    const {data,error}=await supabaseAdmin.rpc("claim_customer_push_test_attempt",{p_uid:uid});
+    if(error || typeof data!=="boolean") throw Error("Customer test quota unavailable");
+    return data;
+  },
+  send:sendCustomerTestPushToFirebase
+});
+pickupNotificationRoutes.post("/customer-push-subscriptions/:installationId/test",
+  authenticateFirebase,async(req:AuthenticatedRequest,res:Response)=>{
+    res.set("Cache-Control","no-store");
+    if(req.authUser?.isAnonymous || !req.body || typeof req.body!=="object" ||
+       Array.isArray(req.body) || Object.keys(req.body).length!==0){
+      res.status(400).json({success:false,code:"TEST_INVALID_PAYLOAD"});return;
+    }
+    const result=await sendCustomerTestNotification(req.authUser!.uid,String(req.params.installationId||""));
+    res.status(result.status).json({
+      success:result.status===202,code:result.code,
+      ...(result.status===202?{message:"Firebase accepted a test message; check the device for actual receipt."}:{})
     });
   }
 );

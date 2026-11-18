@@ -1,0 +1,62 @@
+name: L3-N2 Customer staging push API security (synthetic)
+on:
+  pull_request:
+    paths:
+      - 'localeats-api/src/orders/customerPushTest*'
+      - 'localeats-api/src/routes/pickupNotifications.ts'
+      - 'localeats-api/tests/l3-n2-quota.sql'
+      - 'supabase/drafts/l3_customer_push_test_rate_limit.sql'
+      - 'localeats-api/package.json'
+      - '.github/workflows/l3-n1-customer-push-api.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: synthetic-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: localeats-api
+    env:
+      CUSTOMER_PUSH_TEST_ENABLED: "false"
+      PICKUP_WRITES_ENABLED: "false"
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGDATABASE: postgres
+      PGPASSWORD: synthetic-ci-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node --test dist/orders/customerPushTest.test.js
+      - name: Verify browser role denial and daily/cooldown quota in disposable PostgreSQL
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -c "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;"
+          psql -v ON_ERROR_STOP=1 -f ../supabase/drafts/l3_customer_push_test_rate_limit.sql
+          psql -v ON_ERROR_STOP=1 -f tests/l3-n2-quota.sql
+          : > /tmp/l3-n2-parallel.txt
+          for _ in $(seq 1 12); do
+            (psql -X -At -v ON_ERROR_STOP=1 -c "SET ROLE service_role; SELECT public.claim_customer_push_test_attempt('fixture-parallel');" | tail -n 1 >> /tmp/l3-n2-parallel.txt) &
+          done
+          wait
+          test "$(grep -cx 't' /tmp/l3-n2-parallel.txt)" -eq 1
+          test "$(grep -cx 'f' /tmp/l3-n2-parallel.txt)" -eq 11
