@@ -79,6 +79,7 @@ export interface DashboardOverviewProps {
   onNavigate: (tab: string) => void;
   onEditProfile: () => void;
   onInstallApp?: () => void;
+  installAppBusy?: boolean;
   menuItems: MenuItem[];
   menuReadState?: "loading"|"ready"|"failed";
   orderReadState?: "unverified"|"fresh"|"failed";
@@ -890,6 +891,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   onNavigate,
   onEditProfile,
   onInstallApp,
+  installAppBusy = false,
   menuItems,
   menuReadState="loading",
   orderReadState="unverified",
@@ -905,6 +907,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
   onNavigate: (tab: string) => void;
   onEditProfile: () => void;
   onInstallApp?: () => void;
+  installAppBusy?: boolean;
   menuItems: MenuItem[];
   menuReadState?: "loading"|"ready"|"failed";
   orderReadState?: "unverified"|"fresh"|"failed";
@@ -1349,11 +1352,12 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
           <button
             type="button"
             onClick={onInstallApp}
+              disabled={installAppBusy}
             aria-label="Install LocalEats Merchant app"
             className="min-h-11 inline-flex items-center justify-center gap-2 rounded-2xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-xs font-bold text-on-surface hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <Download size={18} aria-hidden="true" />
-            Install App
+              {installAppBusy ? "Opening install prompt…" : "Install App"}
           </button>
         </div>
       )}

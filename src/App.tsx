@@ -112,7 +112,8 @@ import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
 import { ShopDiagnosticPanel } from "./components/ShopDiagnosticPanel";
 import { OnboardingTour } from "./components/OnboardingTour";
 import { InstallAppInvite } from "./components/InstallAppInvite";
-import { appAlreadyInstalled, availableInstallEvent, requestNativeInstall, subscribeToInstallability } from "./services/pwaInstallInvite";
+import { InstallAppHelp } from "./components/InstallAppHelp";
+import { useAppInstallation } from "./hooks/useAppInstallation";
 import { CreateShopOnboarding } from "./components/CreateShopOnboarding";
 import { PendingShopApproval } from "./components/PendingShopApproval";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -331,17 +332,9 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [merchantShopGate, setMerchantShopGate] = useState<MerchantShopGateState>({ status: "checking" });
     const [onboardingOpen, setOnboardingOpen] = useState(false);
-  const [isPwaInstalled, setIsPwaInstalled] = useState(() => appAlreadyInstalled());
-  const [isPwaInstallAvailable, setIsPwaInstallAvailable] = useState(() => Boolean(availableInstallEvent()));
-  useEffect(() => subscribeToInstallability(() => {
-    setIsPwaInstalled(appAlreadyInstalled());
-    setIsPwaInstallAvailable(Boolean(availableInstallEvent()));
-  }), []);
+  const installation = useAppInstallation();
   const onInstallPwa = () => {
-    // The genuine browser installation chooser must be invoked in this click.
-    void requestNativeInstall().then(result => {
-      if (result === "error") toast.error("Installation is unavailable. Try again later.");
-    });
+    void installation.install();
   };
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
   // Kitchen status state available if needed
@@ -1971,11 +1964,14 @@ function App() {
         <InstallAppInvite
           eligible={canOfferPwaInstall}
           allowAutoShow={activeTab === "dashboard" && isAudioEnabled && !onboardingOpen &&
-            !isNotificationCenterOpen && !isSaving && !kitchenMode}
+            !isNotificationCenterOpen && !isSaving && !kitchenMode && !installation.showHelp && !installation.busy}
           appName="LocalEats Merchant"
           storageKey="localeats_merchant_install_defer_v2"
           variant="merchant"
         />
+        {canOfferPwaInstall && !kitchenMode && installation.showHelp && (
+          <InstallAppHelp appName="LocalEats Merchant" instructions={installation.instructions} onClose={installation.closeHelp} />
+        )}
 
         <NotificationCenterSidePanel isOpen={isNotificationCenterOpen} onClose={() => setIsNotificationCenterOpen(false)}
           orders={orders} menuItems={menuItems}
@@ -2267,16 +2263,17 @@ function App() {
                 </button>
               )}
 
-              {canOfferPwaInstall && isPwaInstallAvailable && !isPwaInstalled && (
+              {canOfferPwaInstall && !kitchenMode && installation.available && (
                 <button
                   type="button"
                   onClick={onInstallPwa}
+                  disabled={installation.busy}
                   aria-label="Install LocalEats Merchant app"
                   title="Install LocalEats Merchant on this device"
                   className="hidden sm:inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-2 xl:px-3 text-xs font-bold text-primary hover:bg-primary/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <Download size={18} aria-hidden="true" />
-                  <span className="hidden xl:inline">Install App</span>
+                  <span className="hidden xl:inline">{installation.busy ? "Opening…" : "Install App"}</span>
                 </button>
               )}
 
@@ -2404,7 +2401,8 @@ function App() {
                     await Promise.all([fetchOrders(), fetchAllMenuItems()]);
                   }}
                   onEditProfile={() => setIsEditingProfile(true)}
-                  onInstallApp={canOfferPwaInstall && isPwaInstallAvailable && !isPwaInstalled ? onInstallPwa : undefined}
+                  onInstallApp={canOfferPwaInstall && !kitchenMode && installation.available ? onInstallPwa : undefined}
+                  installAppBusy={installation.busy}
                   menuItems={menuItems}
                   menuReadState={menuReadStatus.scope===menuReadScope ? menuReadStatus.state : "loading"}
                   trialInfo={trialInfo}

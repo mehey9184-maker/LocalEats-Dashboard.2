@@ -1,5 +1,7 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+**Install LocalEats Merchant.** Verified merchants can use the desktop header or mobile dashboard control to open the browser’s install prompt, or view the steps for their browser. The delayed invite still depends on a native offer and the existing dashboard eligibility checks. Installed sessions hide both controls, and install help stays outside kitchen mode. The launcher and browser tab show the storefront symbol in front of the LocalEats logo watermark. Android uses a separate maskable asset and Apple uses a 180 px touch icon.
+
 ## Isolated Firebase staging configuration — 2026-11-05
 
 The Dashboard previously preferred bundled Firebase values even when staging environment values were supplied. Staging builds now explicitly select `VITE_FIREBASE_CONFIG_SOURCE=environment` and provide all six Firebase app values. Incomplete environment configurations fail before Firebase initializes. The Firestore database is selected with `VITE_FIREBASE_FIRESTORE_DATABASE_ID`, defaulting to `(default)` in that mode. Existing deployments continue using their bundled configuration unless opted in. This does not activate ordering or deploy security rules. `tests/firebase-environment.test.mjs` captures the Firebase SDK initialization arguments to verify both staging isolation and existing-build compatibility.

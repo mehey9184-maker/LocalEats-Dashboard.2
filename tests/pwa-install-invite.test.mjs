@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 const source=path=>readFileSync(new URL("../"+path,import.meta.url),"utf8");
 const app=source("src/App.tsx");
 const ui=source("src/components/InstallAppInvite.tsx");
 const bridge=source("src/services/pwaInstallInvite.ts");
+const installAction=source("src/hooks/useAppInstallation.ts");
 const vite=source("vite.config.ts");
 
 test("PWA manifest identity stays stable across app updates",()=>{
@@ -15,7 +15,7 @@ test("PWA manifest identity stays stable across app updates",()=>{
   assert.match(vite,/name: "LocalEats Merchant Dashboard"/); assert.doesNotMatch(vite,/id: "\/merchant-dashboard"/);
 });
 
-test("native one-click install only; no false how-to fallback or already-installed CTA",()=>{
+test("automatic install invitation stays native-only and manual install has browser-specific help",()=>{
   assert.match(bridge,/window.addEventListener\("beforeinstallprompt"/);
   assert.match(bridge,/window.addEventListener\("appinstalled"/);
   assert.match(bridge,/requestNativeInstall/);
@@ -39,13 +39,13 @@ test("native one-click install only; no false how-to fallback or already-install
   assert.match(home,/\{onInstallApp && \(/);
   assert.match(home,/onClick=\{onInstallApp\}/);
   assert.match(app,/onClick=\{onInstallPwa\}/);
-  assert.match(app,/requestNativeInstall\(\).then/);
-  assert.match(app,/isPwaInstallAvailable && !isPwaInstalled/);
-  assert.match(app,/onInstallApp=\{canOfferPwaInstall && isPwaInstallAvailable && !isPwaInstalled \? onInstallPwa : undefined\}/);
+  assert.match(installAction,/await requestNativeInstall\(\)/);
+  assert.match(installAction,/available: !installed && Boolean\(offer \|\| instructions \|\| busy\)/);
+  assert.match(app,/onInstallApp=\{canOfferPwaInstall && !kitchenMode && installation.available \? onInstallPwa : undefined\}/);
   assert.match(app,/currentShop.owner_id === user.id/);
   assert.match(app,/merchantShopGate.status === "ready"/);
   assert.match(app,/!kitchenMode/);
-  assert.doesNotMatch(app,/manualOpen=|setManualInstallOpen/);
+  assert.match(app,/canOfferPwaInstall && !kitchenMode && installation.showHelp/);
   
 });
 
@@ -96,13 +96,17 @@ test("browser simulation: only user click prompts; dismiss 20h; installed signal
   assert.equal(service.appAlreadyInstalled(),true);
 });
 
-test("PWA manifest uses real square 192px and 512px icons from existing branding",()=>{
+test("PWA manifest uses square standard and maskable icons plus a 180px Apple touch icon",()=>{
   assert.match(vite,/pwa-icon-192\.png/);
   assert.match(vite,/pwa-icon-512\.png/);
   assert.doesNotMatch(vite,/src: "logo.png"/);
-  execFileSync(process.execPath,["scripts/generate-pwa-icons.mjs"],{cwd:new URL("../",import.meta.url)});
-  for (const size of [192,512]) {
-    const png=readFileSync(new URL("../public/pwa-icon-"+size+".png",import.meta.url));
+  assert.match(vite,/pwa-icon-maskable-512\.png[\s\S]*purpose: "maskable"/);
+  assert.match(source("index.html"), /rel="apple-touch-icon" sizes="180x180" href="\/apple-touch-icon\.png"/);
+  for (const [file, size] of [
+    ["pwa-icon-192.png", 192], ["pwa-icon-512.png", 512],
+    ["pwa-icon-maskable-512.png", 512], ["apple-touch-icon.png", 180],
+  ]) {
+    const png=readFileSync(new URL("../public/"+file,import.meta.url));
     assert.deepEqual([...png.subarray(0,8)],[137,80,78,71,13,10,26,10]);
     assert.equal(png.readUInt32BE(16),size);
     assert.equal(png.readUInt32BE(20),size);
