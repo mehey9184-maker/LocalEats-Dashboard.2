@@ -1,3 +1,4 @@
+import {isIsolatedCustomerPushCorsOrigin} from "./middleware/customerPushPreviewAdmission.js";
 interface CorsOriginEnvironment {
   MERCHANT_DASHBOARD_ORIGIN?: string;
   MERCHANT_DASHBOARD_PREVIEW_HOST_PREFIX?: string;
@@ -50,6 +51,10 @@ export const isAllowedOrigin = (
     environment.SUPER_ADMIN_ORIGIN
   );
   if (superAdminOrigin !== null && origin === superAdminOrigin) return true;
+
+  // Only when the isolated sender is explicitly enabled: one exact staging
+  // Customer origin. No wildcard CORS for ordinary PR Previews.
+  if(isIsolatedCustomerPushCorsOrigin(origin,environment)) return true;
 
   const customerOrigin = normalizeExactBrowserOrigin(environment.CUSTOMER_APP_ORIGIN);
   if (customerOrigin !== null && origin === customerOrigin) return true;
