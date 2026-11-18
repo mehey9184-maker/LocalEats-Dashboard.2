@@ -1,0 +1,29 @@
+name: L3 private My-Kota staging catalog security
+on:
+  pull_request:
+    paths:
+      - 'localeats-api/src/routes/privateMyKotaTest*'
+      - 'localeats-api/src/server.ts'
+      - 'localeats-api/src/corsOrigins.ts'
+      - 'localeats-api/package.json'
+      - '.github/workflows/l3-private-my-kota.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-private-visibility:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: localeats-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Verify Firebase UID isolation, test radius, no public leakage and no-write semantics
+        run: node --test dist/routes/privateMyKotaTest.test.js dist/routes/catalog.test.js dist/corsOrigins.test.js
