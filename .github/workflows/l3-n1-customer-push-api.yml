@@ -1,0 +1,30 @@
+name: L3-N1 Customer push API safety (synthetic)
+on:
+  pull_request:
+    paths:
+      - 'localeats-api/src/orders/customerPushTest*'
+      - 'localeats-api/src/routes/pickupNotifications.ts'
+      - 'localeats-api/package.json'
+      - '.github/workflows/l3-n1-customer-push-api.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: localeats-api
+    env:
+      CUSTOMER_PUSH_TEST_ENABLED: "false"
+      PICKUP_WRITES_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node --test dist/orders/customerPushTest.test.js
