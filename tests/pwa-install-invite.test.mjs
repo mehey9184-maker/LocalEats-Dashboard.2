@@ -6,6 +6,7 @@ const source=path=>readFileSync(new URL("../"+path,import.meta.url),"utf8");
 const app=source("src/App.tsx");
 const ui=source("src/components/InstallAppInvite.tsx");
 const bridge=source("src/services/pwaInstallInvite.ts");
+const installAction=source("src/hooks/useAppInstallation.ts");
 const vite=source("vite.config.ts");
 
 test("PWA manifest identity stays stable across app updates",()=>{
@@ -15,7 +16,7 @@ test("PWA manifest identity stays stable across app updates",()=>{
   assert.match(vite,/name: "LocalEats Merchant Dashboard"/); assert.doesNotMatch(vite,/id: "\/merchant-dashboard"/);
 });
 
-test("native one-click install only; no false how-to fallback or already-installed CTA",()=>{
+test("automatic install invitation stays native-only and manual install has browser-specific help",()=>{
   assert.match(bridge,/window.addEventListener\("beforeinstallprompt"/);
   assert.match(bridge,/window.addEventListener\("appinstalled"/);
   assert.match(bridge,/requestNativeInstall/);
@@ -39,13 +40,13 @@ test("native one-click install only; no false how-to fallback or already-install
   assert.match(home,/\{onInstallApp && \(/);
   assert.match(home,/onClick=\{onInstallApp\}/);
   assert.match(app,/onClick=\{onInstallPwa\}/);
-  assert.match(app,/requestNativeInstall\(\).then/);
-  assert.match(app,/isPwaInstallAvailable && !isPwaInstalled/);
-  assert.match(app,/onInstallApp=\{canOfferPwaInstall && isPwaInstallAvailable && !isPwaInstalled \? onInstallPwa : undefined\}/);
+  assert.match(installAction,/await requestNativeInstall\(\)/);
+  assert.match(installAction,/available: !installed && Boolean\(offer \|\| instructions \|\| busy\)/);
+  assert.match(app,/onInstallApp=\{canOfferPwaInstall && !kitchenMode && installation.available \? onInstallPwa : undefined\}/);
   assert.match(app,/currentShop.owner_id === user.id/);
   assert.match(app,/merchantShopGate.status === "ready"/);
   assert.match(app,/!kitchenMode/);
-  assert.doesNotMatch(app,/manualOpen=|setManualInstallOpen/);
+  assert.match(app,/canOfferPwaInstall && !kitchenMode && installation.showHelp/);
   
 });
 

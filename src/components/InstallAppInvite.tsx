@@ -64,7 +64,7 @@ export function InstallAppInvite({
 
   const available = Boolean(availableInstallEvent()) && !appAlreadyInstalled();
   const show = eligible && allowAutoShow && ready && !dismissedHere &&
-    !hasDeferredInstall(storageKey) && available;
+    !hasDeferredInstall(storageKey) && !appAlreadyInstalled() && (available || busy);
   if (!show) return null;
 
   const later = () => {
@@ -94,12 +94,12 @@ export function InstallAppInvite({
           <Smartphone size={22} />
         </div>
         <div className="flex-1 min-w-0">
-          <h2 className="font-extrabold text-base leading-6">Keep {appName} on your phone</h2>
+          <h2 className="font-extrabold text-base leading-6">Install {appName}</h2>
           <p className={`text-xs leading-5 mt-1 ${merchant
             ? "text-on-surface-variant"
             : "text-slate-600 dark:text-slate-300"}`}>
-            {merchant ? "Open your shop dashboard from your home screen."
-              : "Find your next local kota right from your home screen."}
+            {merchant ? "Open your shop dashboard from your device’s app list."
+              : "Find your next local kota from your device’s app list."}
           </p>
         </div>
         <button type="button" onClick={later} aria-label="Maybe later — dismiss install offer"
@@ -110,7 +110,7 @@ export function InstallAppInvite({
       </div>
       <div className="mt-4 flex gap-2">
         <button type="button" onClick={() => { void install(); }} disabled={busy}
-          className={`min-h-11 flex-1 rounded-xl px-4 py-2.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 ${merchant
+          className={`min-h-11 flex-1 rounded-xl px-4 py-2.5 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 motion-safe:transition-transform motion-safe:active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 ${merchant
             ? "bg-primary text-on-primary hover:opacity-90"
             : "bg-orange-600 text-white hover:bg-orange-700"}`}>
           <Download size={17} aria-hidden="true" />
