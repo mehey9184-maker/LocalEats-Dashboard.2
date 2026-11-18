@@ -56,6 +56,17 @@ export const isAllowedOrigin = (
   // Customer origin. No wildcard CORS for ordinary PR Previews.
   if(isIsolatedCustomerPushCorsOrigin(origin,environment as NodeJS.ProcessEnv)) return true;
 
+  // L3-N3 pinned read-only Customer Preview pairing. Only the dedicated
+  // staging API build may read from this exact immutable Customer origin;
+  // generic PR Previews and Production cannot borrow this exception.
+  const stage=environment as NodeJS.ProcessEnv;
+  if(origin==="https://localeats-customer-staging-r52d-mejyo1nm2.vercel.app" &&
+     stage.VERCEL_ENV==="preview" &&
+     stage.LOCALEATS_STAGING_ONLY==="true" &&
+     stage.PICKUP_WRITES_ENABLED==="false" &&
+     stage.FIREBASE_PROJECT_ID==="localeats-staging" &&
+     stage.SUPABASE_URL==="https://rgpbdajhlrwfmhopzgzk.supabase.co") return true;
+
   const customerOrigin = normalizeExactBrowserOrigin(environment.CUSTOMER_APP_ORIGIN);
   if (customerOrigin !== null && origin === customerOrigin) return true;
 
