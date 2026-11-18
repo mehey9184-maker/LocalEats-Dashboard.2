@@ -80,3 +80,23 @@ test("Preview middleware never removes generic write barrier; enablement is expl
   assert.deepEqual(invoke("POST",diagnostic),{admitted:false,statusCode:503});
  }finally{process.env=orig;}
 });
+
+test("one exact Customer Preview origin may read isolated staging API without enabling test sends",()=>{
+ const paired="https://localeats-customer-staging-r52d-mejyo1nm2.vercel.app";
+ const off:NodeJS.ProcessEnv={
+  VERCEL_ENV:"preview",LOCALEATS_STAGING_ONLY:"true",PICKUP_WRITES_ENABLED:"false",
+  FIREBASE_PROJECT_ID:"localeats-staging",
+  SUPABASE_URL:"https://rgpbdajhlrwfmhopzgzk.supabase.co",
+  CUSTOMER_PUSH_TEST_ENABLED:"false"
+ };
+ assert.equal(isAllowedOrigin(paired,off),true);
+ assert.equal(isAllowedOrigin("https://localeats-customer-staging-r52d-other.vercel.app",off),false);
+ for(const negative of [
+  {...off,VERCEL_ENV:"production"},
+  {...off,LOCALEATS_STAGING_ONLY:"false"},
+  {...off,PICKUP_WRITES_ENABLED:"true"},
+  {...off,FIREBASE_PROJECT_ID:"localeats-5e26e"},
+  {...off,SUPABASE_URL:"https://phdjumtqkooyppxozqsi.supabase.co"}
+ ])assert.equal(isAllowedOrigin(paired,negative),false);
+ assert.equal(canUseIsolatedCustomerPushPreview(req("POST",diagnostic,paired),off),false);
+});
