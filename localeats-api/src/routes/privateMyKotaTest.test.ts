@@ -58,7 +58,7 @@ test("only configured private Customer origin qualifies; no wildcard and no gene
  assert.equal(privateMyKotaCorsAllowed("https://other.vercel.app",good),false);
  assert.equal(privateMyKotaCorsAllowed(origin,{...good,PRIVATE_MYKOTA_TEST_ENABLED:"false"}),false);
  // isAllowedOrigin uses Date.now; test with a future expiry relative to this test run.
- const live={...good,PRIVATE_MYKOTA_TEST_EXPIRES_AT:new Date(Date.now()+24*3600000).toISOString()};
+ const live={...good,CUSTOMER_APP_ORIGIN:"",PRIVATE_MYKOTA_TEST_EXPIRES_AT:new Date(Date.now()+24*3600000).toISOString()};
  assert.equal(isAllowedOrigin(origin,live),true);
  assert.equal(isAllowedOrigin("https://other-private-preview.vercel.app",live),false);
 });
