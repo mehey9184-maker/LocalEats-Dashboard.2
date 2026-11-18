@@ -1,0 +1,12 @@
+database|pickup_audit_http_v3
+orders|cancelled|unpaid|4
+orders|collected|paid|2
+orders|ready_for_pickup|unpaid|1
+events|accepted|3
+events|collected|2
+events|created|7
+events|customer_cancelled|2
+events|merchant_rejected|2
+events|payment_confirmed|2
+events|ready|3
+unexpected_delivery_or_rider|0
