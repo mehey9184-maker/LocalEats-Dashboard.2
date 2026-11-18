@@ -54,7 +54,7 @@ export const isAllowedOrigin = (
 
   // Only when the isolated sender is explicitly enabled: one exact staging
   // Customer origin. No wildcard CORS for ordinary PR Previews.
-  if(isIsolatedCustomerPushCorsOrigin(origin,environment)) return true;
+  if(isIsolatedCustomerPushCorsOrigin(origin,environment as NodeJS.ProcessEnv)) return true;
 
   const customerOrigin = normalizeExactBrowserOrigin(environment.CUSTOMER_APP_ORIGIN);
   if (customerOrigin !== null && origin === customerOrigin) return true;
