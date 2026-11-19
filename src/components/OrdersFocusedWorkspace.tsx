@@ -1,8 +1,6 @@
 import React, {useEffect, useMemo, useState} from "react";
-import {Bell, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Clock3, MoreHorizontal, RefreshCw, Search, ShieldCheck, X} from "lucide-react";
+import {Bell, ChevronDown, ClipboardList, Clock3, MoreHorizontal, RefreshCw, Search, ShieldCheck, X} from "lucide-react";
 import type {Order} from "../types";
-import {PickupOrderActions} from "./PickupOrderActions";
-import {isPickupOrder, pickupPaymentLabel} from "../services/merchantPickupPolicy";
 import {PreviewFakeOrderTrigger, type PreviewTestPickupOrder, type PreviewTestPickupAction} from "./PreviewFakeOrders";
 import {OrdersStyleBoard, type OrderBoardStyle, type BoardEntry} from "./OrdersStyleBoard";
 import {isMerchantPreviewSimulatorEnabled} from "../services/merchantPreviewSimulator";

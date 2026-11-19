@@ -1,0 +1,85 @@
+name: L3-N7B Merchant baseline quality regression
+on:
+  pull_request:
+    branches:
+      - review/l3-my-kota-private-test-api
+    paths:
+      - 'src/**'
+      - 'tests/l3-n7b/**'
+      - '.github/workflows/l3-n7b-merchant-quality.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install repository-locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Record existing TypeScript/lint diagnostics without hiding them
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/tsc -p tsconfig.json --noEmit > /tmp/n7b-ts.log 2>&1 || true
+          ./node_modules/.bin/eslint . --format json --output-file /tmp/n7b-eslint.json >/dev/null 2>&1 || true
+          node tests/l3-n7b/report-baseline.mjs /tmp/n7b-ts.log /tmp/n7b-eslint.json
+      - name: Run core Merchant regressions
+        run: |
+          npm run test:merchant-pickup
+          node --experimental-strip-types --test tests/merchant-command-recovery.test.mjs
+      - name: Build unchanged Merchant UI with pickup OFF
+        run: npm run build
+      - name: Confirm no live activation
+        run: |
+          test "$PICKUP_WRITES_ENABLED" = 'false'
+          test "$VITE_PICKUP_ORDERING_ENABLED" = 'false'
+          test -z "${DATABASE_URL:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}"
+          echo 'L3_N7B_NO_HOSTED_MUTATIONS'
+
+  no-new-baseline-diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout current untouched L3 as independent baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: review/l3-my-kota-private-test-api
+          path: baseline
+          persist-credentials: false
+      - name: Checkout L3-N7B review branch independently
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: review/l3-n7b-merchant-baseline-quality
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Install both locked dependency trees without scripts
+        run: |
+          npm ci --prefix baseline --ignore-scripts --no-audit --no-fund
+          npm ci --prefix candidate --ignore-scripts --no-audit --no-fund
+      - name: Require every old error removed or preserved, never a new error
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd baseline
+          ./node_modules/.bin/tsc -p tsconfig.json --noEmit > /tmp/l3n7b-base-ts.log 2>&1 || true
+          ./node_modules/.bin/eslint . --format json --output-file /tmp/l3n7b-base-eslint.json >/dev/null 2>&1 || true
+          cd ../candidate
+          ./node_modules/.bin/tsc -p tsconfig.json --noEmit > /tmp/l3n7b-new-ts.log 2>&1 || true
+          ./node_modules/.bin/eslint . --format json --output-file /tmp/l3n7b-new-eslint.json >/dev/null 2>&1 || true
+          node tests/l3-n7b/compare-quality-diagnostics.mjs /tmp/l3n7b-base-ts.log /tmp/l3n7b-new-ts.log /tmp/l3n7b-base-eslint.json /tmp/l3n7b-new-eslint.json "$GITHUB_WORKSPACE/baseline" "$GITHUB_WORKSPACE/candidate"
+          echo 'L3_N7B_NO_NEW_MERCHANT_DIAGNOSTICS'

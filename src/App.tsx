@@ -849,7 +849,7 @@ function App() {
   };
 
 
-  const playNotificationSound = useCallback((isRepeating = false, styleOverride?: "calm" | "friendly" | "sparkle") => {
+  const playNotificationSound = useCallback((isRepeating = false, styleOverride?: string) => {
     // Stop previous playing sound if active
     if (activeSoundRef.current) {
       try {
@@ -1102,7 +1102,7 @@ function App() {
     toast.success("NEW PICKUP ORDER RECEIVED",{
       description:newIds.length + " new order" + (newIds.length===1?"":"s") +
         ". Open Orders to accept and start preparation.",
-      duration:15000,important:true,
+      duration:15000,
       icon:<Bell className="text-primary animate-bounce"/>,
       action:{label:"VIEW ORDERS",onClick:()=>{stop();setActiveTab("orders");}},
       onDismiss:stop,onAutoClose:stop,
