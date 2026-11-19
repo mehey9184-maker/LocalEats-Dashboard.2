@@ -27,7 +27,7 @@ export function mapApiOrder(order:unknown):Row{
  if(typeof row.total_price!=="number" || !Number.isFinite(row.total_price) || row.total_price<0)throw new Error("The API returned an invalid pickup total.");
  if(!Array.isArray(row.items) || !row.items.length || row.items.length>50)
   throw new Error("Pickup item details are unavailable. Refresh before preparing the order.");
- const items=row.items.map((item:unknown)=>{
+ const items:Row[]=row.items.map((item:unknown):Row=>{
   const line=asRow(item);
   if(!line || typeof line.name!=="string" || !Number.isSafeInteger(line.quantity) || Number(line.quantity)<1 ||
    typeof line.unit_price!=="number" || !Number.isFinite(line.unit_price) || line.unit_price<0 ||
