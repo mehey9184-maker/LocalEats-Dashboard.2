@@ -2,7 +2,7 @@ name: L3-N7B4 Merchant strict ESLint cleanup (read-only)
 on:
   pull_request:
     branches:
-      - review/l3-n7b4-merchant-eslint-cleanup
+      - review/l3-n7b3-merchant-final-types
     paths:
       - 'src/**'
       - 'tests/l3-n7b4/**'
