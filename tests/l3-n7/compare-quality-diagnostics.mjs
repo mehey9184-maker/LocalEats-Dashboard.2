@@ -7,11 +7,12 @@ const args=process.argv.slice(2);
 if(args.length!==6){console.error('Usage: node compare.mjs base-tsc next-tsc base-eslint next-eslint base-directory next-directory');process.exit(2);}
 const [baseTsFile,nextTsFile,baseLintFile,nextLintFile,baseDir,nextDir]=args;
 const read=(p)=>readFileSync(p,'utf8');
-const normalizedTsc=(p)=>{
+const normalizedTsc=(p,folder)=>{
+  const canonical=(message)=>message.replaceAll(resolve(folder),'<PROJECT>');
   const result=[];
   for(const line of read(p).split(/\r?\n/)){
     const match=/^(.+?)\((\d+),(\d+)\): error TS(\d+): (.+)$/.exec(line);
-    if(match)result.push(match[1].replaceAll('\\','/')+' TS'+match[4]+': '+match[5]);
+    if(match)result.push(match[1].replaceAll('\\','/')+' TS'+match[4]+': '+canonical(match[5]));
   }
   return result;
 };
@@ -37,7 +38,7 @@ const diff=(a,b)=>{
   }
   return added;
 };
-const baseTs=normalizedTsc(baseTsFile),newTs=normalizedTsc(nextTsFile);
+const baseTs=normalizedTsc(baseTsFile,baseDir),newTs=normalizedTsc(nextTsFile,nextDir);
 const baseLint=normalizedLint(baseLintFile,baseDir),newLint=normalizedLint(nextLintFile,nextDir);
 const addedTs=diff(baseTs,newTs),addedLint=diff(baseLint,newLint);
 const stats={baseline_ts_errors:baseTs.length,current_ts_errors:newTs.length,new_ts_errors:addedTs.length,
