@@ -190,7 +190,7 @@ try {
    try{
     await expectStatus(page,"pending / unpaid");
     await clickAccessible(page,"Accept → Preparing",390);
-    await page.getByRole("alert").waitFor({timeout:8000});
+    await page.getByRole("alert").waitFor({timeout:23000}); // Actual Merchant command deadline is 15s
     await expectStatus(page,"pending / unpaid"); // The browser never invents success
     assert.equal(state.order.status,"preparing"); // But the fixture did commit
     assert.equal(state.receipts.size,1);
