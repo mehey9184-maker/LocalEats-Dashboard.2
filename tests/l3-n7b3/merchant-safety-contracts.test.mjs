@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-const source=(file)=>readFileSync(new URL('../'+file,import.meta.url),'utf8');
+const source=(file)=>readFileSync(new URL('../../'+file,import.meta.url),'utf8');
 
 test('Legacy profile bridge refuses false success without an approved server save',()=>{
  const adapter=source('src/lib/supabase.ts');
