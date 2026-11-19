@@ -1,4 +1,4 @@
-import {Router} from 'express';
+import {Router,type Response} from 'express';
 import {getFirebaseBearerToken,type AuthenticatedRequest} from '../middleware/authenticateFirebase.js';
 import {authAdmin} from '../lib/firebaseAdmin.js';
 import {supabaseAdmin} from '../lib/supabaseAdmin.js';
@@ -15,7 +15,7 @@ router.use(async(req:AuthenticatedRequest,res,next)=>{
   req.authUser={uid:decoded.uid,email:decoded.email??null,isAnonymous:false};next();
  }catch{res.status(401).json({success:false,code:'UNAUTHORIZED'});}
 });
-function errorResponse(res:any,error:unknown){
+function errorResponse(res:Response,error:unknown){
  const known=error instanceof OrderContractError;
  res.status(known?error.status:503).json({success:false,code:known?error.code:'ACCEPTANCE_UNAVAILABLE'});
 }
