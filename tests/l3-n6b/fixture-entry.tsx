@@ -1,18 +1,19 @@
 import React,{useEffect,useRef,useState} from "react";
 import {createRoot} from "react-dom/client";
 import {OrdersManagement} from "../../src/components/OrdersManagement";
-import {MerchantApi} from "../../src/services/MerchantApi";
+import {MerchantApi,type VerifiedMerchantShop} from "../../src/services/MerchantApi";
+import type {Order,Shop} from "../../src/types";
 import {auth,setFixtureUid} from "../l3-n6/fixture-auth";
 
 function Fixture(){
  const [owner,setOwner]=useState("merchant-a");
- const [shop,setShop]=useState<any>(null);
- const [orders,setOrders]=useState<any[]>([]);
+ const [shop,setShop]=useState<VerifiedMerchantShop|null>(null);
+ const [orders,setOrders]=useState<Record<string,unknown>[]>([]);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
  const [refreshes,setRefreshes]=useState(0);
  const [misfires,setMisfires]=useState(0);
- const [tab,setTab]=useState("orders");
+ const [,setTab]=useState("orders");
  const [kitchenMode,setKitchenMode]=useState(false);
  const [soundAlerts,setSoundAlerts]=useState(false);
  const sequence=useRef(0);
@@ -63,10 +64,11 @@ function Fixture(){
    {error&&<p role="alert" data-testid="fixture-error">{error}</p>}
    {loading&&<p role="status" data-testid="fixture-loading">Verifying shop and orders…</p>}
    {shop&&<section data-testid="real-orders-page" aria-label="Merchant Orders page">
+     {/* Only the isolated browser fixture adapts synthetic API rows to the existing UI prop types. */}
      <OrdersManagement
-       orders={orders as any}
+       orders={orders as unknown as Order[]}
        loading={loading}
-       currentShop={shop as any}
+       currentShop={shop as unknown as Shop}
        onUpdateStatus={rejectMutation}
        onDeleteAllOrders={rejectMutation}
        onRefresh={refresh}
