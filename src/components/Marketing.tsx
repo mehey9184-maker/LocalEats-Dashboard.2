@@ -117,7 +117,9 @@ export const Marketing: React.FC<MarketingProps> = ({
       // Persisted Order contract: trust the API shop ID, customer UID and price.
       // Missing identities are unique by order ID, never invented by name.
       const key = ord.user_id?.trim() || ord.phone?.trim() || ord.id;
-      const amount = Number.isFinite(ord.total_price) && ord.total_price >= 0
+      // An accepted/collected order is not proof that payment was received.
+      const amount = ord.payment_status === "paid" &&
+        Number.isFinite(ord.total_price) && ord.total_price >= 0
         ? ord.total_price
         : 0;
       totalRevenue += amount;
