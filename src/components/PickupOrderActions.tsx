@@ -19,7 +19,7 @@ export function PickupOrderActions({order,onSimulate,compact=false}:{order:Order
  try{status=pickupState(order);}catch{return <p role="alert" className="text-xs text-amber-700">Pickup state unavailable. Required schema is not installed; no action was saved.</p>;}
  const actions=status==="pending" ? ["Accept → Preparing","Reject"] : status==="preparing" ? ["Mark Ready"] : status==="ready_for_pickup" ?
   order.payment_status==="paid" ? ["Food handed over → Collected"] : ["Confirm cash received","Confirm card-machine payment"] : [];
- const pending=simulated ? false : MerchantApi.hasPendingPickupCommand(order);
+ const pending=simulated ? false : MerchantApi.hasPendingPickupCommand(order as unknown as Record<string,unknown>);
  const canAct=simulated || pickupOrderingEnabled();
  const act=async(label:string)=>{
   if(busy || !canAct)return;
@@ -43,7 +43,7 @@ export function PickupOrderActions({order,onSimulate,compact=false}:{order:Order
     // No MerchantApi call, no server confirmation event, no payment or real-order mutation.
     await onSimulate!(action,extra);
    } else {
-    await MerchantApi.transitionPickupOrder(order,action,extra);
+    await MerchantApi.transitionPickupOrder(order as unknown as Record<string,unknown>,action,extra);
     window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));
    }
   }
