@@ -30,8 +30,11 @@ if (projectId && clientEmail && privateKey) {
   console.warn("Missing Firebase Admin configuration. Ensure FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY are set.");
 }
 
-export const authAdmin = getApps().length ? getAuth() : {
+// The server needs only the revocation-checking token verifier. A missing
+// Firebase Admin configuration must always fail closed.
+export const authAdmin: Pick<ReturnType<typeof getAuth>,"verifyIdToken"> =
+ getApps().length ? getAuth() : {
   verifyIdToken: async () => {
     throw new Error("Firebase Admin not initialized due to missing credentials");
   }
-} as any;
+ };
