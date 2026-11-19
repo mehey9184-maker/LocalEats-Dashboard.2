@@ -2,11 +2,12 @@ import React,{useEffect,useRef,useState} from "react";
 import {createRoot} from "react-dom/client";
 import {PickupOrderActions} from "../../src/components/PickupOrderActions";
 import {MerchantApi} from "../../src/services/MerchantApi";
+import type {Order} from "../../src/types";
 import {auth,setFixtureUid} from "./fixture-auth";
 
 function Fixture(){
  const [uid,setUid]=useState("merchant-a");
- const [order,setOrder]=useState<any>(null);
+ const [order,setOrder]=useState<Record<string,unknown>|null>(null);
  const [error,setError]=useState("");
  const generation=useRef(0);
  const load=async()=>{
@@ -44,7 +45,7 @@ function Fixture(){
   {order && <section data-testid="pickup-card" key={uid}>
    <h2>Pickup order • synthetic</h2>
    <p data-testid="fixture-status">Persisted fixture state: {String(order.pickup_status??order.status)} / {String(order.payment_status)}</p>
-   <PickupOrderActions order={order}/>
+   <PickupOrderActions order={order as unknown as Order}/>
   </section>}
   {!order && !error && <p data-testid="empty">No pickup order for the current merchant.</p>}
  </main>;
