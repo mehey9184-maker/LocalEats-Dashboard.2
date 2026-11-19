@@ -1,7 +1,7 @@
 import {createMerchantPickupRecovery} from "./merchantPickupRecovery";
 import {validateMerchantMenu} from "./merchantMenuPolicy";
 import {auth} from "../lib/firebase";
-import {isPickupOrder,mapApiOrder,requireOwnedShop,pickupCommand,pickupMutationsDisabled,pickupOrderingEnabled,type PickupAction} from "./merchantPickupPolicy";
+import {mapApiOrder,requireOwnedShop,pickupCommand,pickupMutationsDisabled,pickupOrderingEnabled,type PickupAction} from "./merchantPickupPolicy";
 import { getApiAuthHeaders } from "../lib/apiAuth";
 
 export type VerifiedMerchantShop = {
