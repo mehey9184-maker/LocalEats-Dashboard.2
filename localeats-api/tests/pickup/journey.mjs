@@ -140,7 +140,7 @@ try {
    error=>error.code==="PRIVATE_TEST_ONLY" && error.status===422);
  await assert.rejects(()=>customer.create({...privateIntent,
    consent:{currency:"ZAR",total_minor:2500,pricing_fingerprint:"a".repeat(64)}}),
-   error=>error.code==="PICKUP_TEST_NOT_ALLOWED" && error.status===403);
+   error=>error.code==="PRIVATE_TEST_ONLY" && error.status===422);
  assert.equal(Number(jsonSql("select count(*) from public.orders")),initialOrderCount,
    "The private test shop must never create an order even in the disposable lab");
  const shops=await customer.shops({lat:-26,lng:28});
