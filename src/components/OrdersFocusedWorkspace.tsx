@@ -39,7 +39,6 @@ interface OrdersFocusedWorkspaceProps {
   setEndDate: (value: string) => void;
 }
 
-const PAGE_SIZE=12;
 function readBoardStyle(key:string):OrderBoardStyle{
   if(typeof window==="undefined")return "compact";
   try{return window.localStorage.getItem(key)==="expediter"?"expediter":"compact";}catch{return "compact";}
@@ -61,8 +60,6 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const [stage,setStage]=useState<Stage>("all");
   const [sort,setSort]=useState<SortMode>("priority");
   const [search,setSearch]=useState("");
-  const [page,setPage]=useState(1);
-  const [,setExpanded]=useState<string|null>(null);
   const [showSearch,setShowSearch]=useState(false);
   const isTestPreview=isMerchantPreviewSimulatorEnabled();
   const [boardStyle,setBoardStyle]=useState<OrderBoardStyle>(()=>readBoardStyle(styleStorageKey));
@@ -107,14 +104,10 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
       return pa-pb||dateValue(b)-dateValue(a);
     });
   },[realOrders,activeFake,viewMode,stage,search,sort]);
-  const pages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
-  const safePage=Math.min(page,pages);
-  // Pagination calculations are retained for the existing view; no order state is derived from this unused slice.
-  useEffect(()=>setPage(1),[viewMode,stage,sort,search]);
 
-  const enterView=(mode:ViewMode)=>{setStage("all");setExpanded(null);onViewModeChange(mode);};
-  const testArrival=()=>{setStage("all");onViewModeChange("active");setPage(1);onSimulate();};
-  const testBatch=()=>{setStage("all");onViewModeChange("active");setPage(1);onSimulateBatch();};
+  const enterView=(mode:ViewMode)=>{setStage("all");onViewModeChange(mode);};
+  const testArrival=()=>{setStage("all");onViewModeChange("active");onSimulate();};
+  const testBatch=()=>{setStage("all");onViewModeChange("active");onSimulateBatch();};
   const realActive=realOrders.length;
   const fakeActive=activeFake.length;
   const commonFocus="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -227,7 +220,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
           {viewMode==="active"?<div role="group" aria-label="Queue status" className="flex min-w-0 overflow-x-auto gap-1.5 pb-1">
             {([{key:"all",label:"All"},{key:"pending",label:"New"},{key:"preparing",label:"Preparing"},{key:"ready",label:"Ready"}] as const).map(item=>(
               <button key={item.key} type="button" aria-pressed={stage===item.key}
-                onClick={()=>{setStage(item.key);setPage(1);}}
+                onClick={()=>{setStage(item.key);}}
                 className={`shrink-0 min-h-9 rounded-full px-3 text-xs font-bold border transition-colors ${stage===item.key?"bg-primary text-on-primary border-primary":"bg-surface-container-low text-on-surface-variant border-transparent"} ${commonFocus}`}>
                 {item.label} <span className={`ml-1 ${stage===item.key?"opacity-80":"opacity-60"}`}>{stageCounts[item.key]}</span>
               </button>
