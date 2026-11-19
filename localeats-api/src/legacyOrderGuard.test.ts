@@ -10,7 +10,7 @@ test("obsolete aliases and generic mutations cannot reach a writer; pickup and R
  const app=express();let calls=0;app.use(legacyOrderGuard);
  app.use((_req,res)=>{calls++;res.json({success:true});});
  const server=app.listen(0,"127.0.0.1");await once(server,"listening");
- const call=(method:string,path:string):Promise<{status:number;body:any}>=>(new Promise((resolve,reject)=>{
+ const call=(method:string,path:string):Promise<{status:number;body:Record<string,unknown>}>=>(new Promise((resolve,reject)=>{
   const req=request({host:"127.0.0.1",port:(server.address() as AddressInfo).port,method,path},res=>{
    let data="";res.on("data",chunk=>data+=chunk);res.on("end",()=>resolve({status:res.statusCode!,body:JSON.parse(data)}));
   });req.on("error",reject);req.end();

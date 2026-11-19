@@ -59,6 +59,8 @@ export const isShopOwnedByUser = (shop: Shop, user: User | null): boolean => {
 };
 
 export const getOwnedShopIds = async (user: User | null, _currentShops: Shop[]): Promise<(number | string)[]> => {
+  // Never derive ownership from caller-provided cached shop objects.
+  void _currentShops;
   if (!user) return [];
   
   // If we have API-verified shops for this user, return them.

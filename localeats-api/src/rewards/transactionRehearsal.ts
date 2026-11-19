@@ -1,3 +1,4 @@
+import {containsAsciiControl} from "../security/asciiControls.js";
 /**
  * R2.6 INERT transaction-integration rehearsal.
  *
@@ -51,7 +52,7 @@ export interface RewardsTransactionalStore {
 const fail = (code: string): never => {throw Error("REWARDS_"+code);};
 const id = (value: unknown): value is string =>
   typeof value==="string" && value.length>0 && value.length<=160 &&
-  value.trim()===value && !/[\x00-\x1f\x7f]/.test(value);
+  value.trim()===value && !containsAsciiControl(value);
 const eq = (a: unknown,b: unknown): boolean => a===b;
 
 /**

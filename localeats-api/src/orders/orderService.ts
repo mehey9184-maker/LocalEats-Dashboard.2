@@ -312,7 +312,7 @@ export class SupabaseOrderRepository implements OrderRepository {
       .eq("id", shopId)
       .maybeSingle();
     if (error) throwDatabaseError("shop lookup", error);
-    return data ? effectiveShop(data as any) as ShopForOrder : null;
+    return data ? effectiveShop(data as unknown as Record<string,unknown>) as unknown as ShopForOrder : null;
   }
 
   async findMenuItems(shopId: string, itemIds: string[]): Promise<MenuItemForOrder[]> {

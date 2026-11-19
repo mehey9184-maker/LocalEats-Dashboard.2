@@ -11,6 +11,7 @@ import {PRIVATE_MY_KOTA_SHOP_ID} from "../orders/privateMyKotaSafety.js";
 import {draftTransition,type DraftPickupState,type DraftPickupCommand} from "../contracts/pickupDraft.js";
 import type {OrderRepository} from "../orders/orderService.js";
 import type {RpcClient} from "../orders/pickupService.js";
+import {OrderContractError} from "../orders/orderContract.js";
 
 const origin="https://localeats-customer-staging-r52d-audit.vercel.app";
 const uid="l3n4_private_allowed_uid_0123456789";
@@ -25,7 +26,8 @@ const config={
 };
 const radians=(km:number)=>km*180/(Math.PI*6371);
 const point={lat:-25.9830322643032,lng:28.2074831464466};
-const readJSON=async(res:Response)=>res.json() as Promise<any>;
+type FixtureBody={eligible:boolean;simulated_location:boolean;preview_only:boolean;can_submit:boolean;success:boolean;code:string;shop:{id:string;distance_km:number};menu_items:Array<{test_only:boolean;name:string}>;shops:Array<{id:string}>};
+const readJSON=async(res:Response)=>res.json() as Promise<FixtureBody>;
 const syntheticVerify=async(token:string)=>{
  if(token==="revoked")throw Error("revoked");
  return {uid:token==="owner"?uid:"wrong_uid_01234567890",
@@ -58,7 +60,7 @@ test("L3-N4: simulated sample and real 3.9/4.1 km boundaries; access expiry fail
   assert.equal(sample.simulated_location,true);
   assert.equal(sample.preview_only,true);
   assert.equal(sample.can_submit,false);
-  assert.ok(sample.menu_items.every((x:any)=>x.test_only===true&&/SAMPLE/.test(x.name)));
+  assert.ok(sample.menu_items.every((x:{test_only:boolean;name:string})=>x.test_only===true&&/SAMPLE/.test(x.name)));
   for(const [km,code] of [[3.9,200],[4.1,422]]){
    const lat=point.lat+radians(km);
    const res=await privateReq(base,`/shop?mode=real&lat=${lat}&lng=${point.lng}`);
@@ -83,11 +85,11 @@ test("L3-N4: simulated sample and real 3.9/4.1 km boundaries; access expiry fail
 
 test("L3-N4: reserved private shop cannot leak via public catalog, even if mistakenly present in repository",async()=>{
  const tables:string[]=[];
- const fakeDb:any={from(table:string){
+ const fakeDb={from(table:string){
   tables.push(table);
-  const query:any={
+  const query: {select:()=>unknown;eq:()=>unknown;is:()=>unknown;then:(resolve:(v:{data:unknown;error:null})=>void,reject:(e:unknown)=>void)=>Promise<void>;maybeSingle:()=>Promise<{data:{id:string};error:null}>}={
    select:()=>query,eq:()=>query,is:()=>query,
-   then:(resolve:(value:any)=>void,reject:(error:unknown)=>void)=>Promise.resolve({data:[
+   then:(resolve:(value:{data:unknown;error:null})=>void,reject:(error:unknown)=>void)=>Promise.resolve({data:[
     {id:PRIVATE_MY_KOTA_SHOP_ID,name:"PRIVATE SAMPLE",is_active:true,effective_is_active:true,availability_revision:0,approval_status:"approved",archived_at:null,lat:point.lat,lng:point.lng},
     {id:"approved-real-staging",name:"PUBLIC SHOP",is_active:true,effective_is_active:true,availability_revision:0,approval_status:"approved",archived_at:null,lat:point.lat,lng:point.lng}
    ],error:null}).then(resolve,reject),
@@ -105,7 +107,7 @@ test("L3-N4: reserved private shop cannot leak via public catalog, even if mista
  const app=express();app.use("/api/v1/catalog",makeCatalogRouter(repo));
  await serve(app,async base=>{
   const publicList=await readJSON(await fetch(base+"/api/v1/catalog/shops"));
-  assert.equal(publicList.shops.some((x:any)=>x.id===PRIVATE_MY_KOTA_SHOP_ID),false);
+  assert.equal(publicList.shops.some((x:{id:string})=>x.id===PRIVATE_MY_KOTA_SHOP_ID),false);
   for(const path of [`/shops/${PRIVATE_MY_KOTA_SHOP_ID}`,`/shops/${PRIVATE_MY_KOTA_SHOP_ID}/menu`]){
    const res=await fetch(base+"/api/v1/catalog"+path);
    assert.equal(res.status,404);
@@ -122,17 +124,17 @@ test("L3-N4: sample ID rejected before checkout price lookup, replay, DB or RPC"
  };
  for(const creating of [false,true]){
   const payload=creating?{...input,consent:{currency:"ZAR",total_minor:2500,pricing_fingerprint:"a".repeat(64)}}:input;
-  assert.throws(()=>parsePickupInput(payload,creating),(e:any)=>e.code==="PRIVATE_TEST_ONLY"&&e.status===422);
+  assert.throws(()=>parsePickupInput(payload,creating),(e:unknown)=>e instanceof OrderContractError && e.code==="PRIVATE_TEST_ONLY"&&e.status===422);
  }
  let reads=0,writes=0;
- const repository:any={
+ const repository:Partial<OrderRepository>={
   findShop:async()=>{reads++;throw Error("must never read sample shop");},
   findOrderByIdempotencyKey:async()=>{reads++;throw Error("must not query sample replay");}
  } satisfies Partial<OrderRepository>;
  const rpc={rpc:async()=>{writes++;throw Error("must never reach RPC");}} as unknown as RpcClient;
- const guardedInput:any={input:{shop_id:PRIVATE_MY_KOTA_SHOP_ID},location:point};
- await assert.rejects(()=>pickupPricing(repository,"customer",guardedInput),(e:any)=>e.code==="PRIVATE_TEST_ONLY");
- await assert.rejects(()=>createPickup(rpc,repository,"customer",guardedInput),(e:any)=>e.code==="PRIVATE_TEST_ONLY");
+ const guardedInput={input:{shop_id:PRIVATE_MY_KOTA_SHOP_ID},location:point} as unknown as Parameters<typeof pickupPricing>[2];
+ await assert.rejects(()=>pickupPricing(repository as OrderRepository,"customer",guardedInput),(e:unknown)=>e instanceof OrderContractError && e.code==="PRIVATE_TEST_ONLY");
+ await assert.rejects(()=>createPickup(rpc,repository as OrderRepository,"customer",guardedInput),(e:unknown)=>e instanceof OrderContractError && e.code==="PRIVATE_TEST_ONLY");
  assert.equal(reads,0);assert.equal(writes,0);
 });
 

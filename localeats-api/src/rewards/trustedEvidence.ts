@@ -1,3 +1,4 @@
+import {containsAsciiControl} from "../security/asciiControls.js";
 /**
  * R2.4: INERT reward-evidence guard. No router imports this file, and no database
  * implementation or payout is provided. Never call with browser-supplied facts.
@@ -30,7 +31,7 @@ const object = (value: unknown, code: string): Record<string, unknown> => {
 };
 const id = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= 160 &&
-  value.trim() === value && !/[\x00-\x1f\x7f]/.test(value);
+  value.trim() === value && !containsAsciiControl(value);
 const int = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 const notBefore = (a: unknown,b: unknown): boolean => {

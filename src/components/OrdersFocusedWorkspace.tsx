@@ -39,31 +39,14 @@ interface OrdersFocusedWorkspaceProps {
   setEndDate: (value: string) => void;
 }
 
-const PAGE_SIZE=12;
 function readBoardStyle(key:string):OrderBoardStyle{
   if(typeof window==="undefined")return "compact";
   try{return window.localStorage.getItem(key)==="expediter"?"expediter":"compact";}catch{return "compact";}
 }
 const priority: Record<string,number>={pending:0,accepted:1,preparing:1,ready:2,completed:3,cancelled:4};
-const statusText: Record<string,string>={
-  pending:"New",accepted:"Preparing",preparing:"Preparing",ready:"Ready",
-  completed:"Completed",cancelled:"Cancelled"
-};
-const statusClass:Record<string,string>={
-  pending:"bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/30 dark:text-amber-200",
-  accepted:"bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-200",
-  preparing:"bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-200",
-  ready:"bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-200",
-  completed:"bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-200",
-  cancelled:"bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-200"
-};
 const entryStatus=(entry:Entry)=>entry.order.status;
 const dateValue=(entry:Entry)=>Date.parse(entry.order.created_at||"")||0;
 const priceValue=(entry:Entry)=>Number(entry.order.total_price)||0;
-const currency=(value:unknown)=> {
-  const number=Number(value);
-  return Number.isFinite(number) && number>=0 ? `R ${number.toFixed(2)}` : "Amount unavailable";
-};
 const stageMatches=(stage:Stage,status:string)=>
   stage==="all" || (stage==="preparing"?status==="accepted"||status==="preparing":status===stage);
 
@@ -77,8 +60,6 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const [stage,setStage]=useState<Stage>("all");
   const [sort,setSort]=useState<SortMode>("priority");
   const [search,setSearch]=useState("");
-  const [page,setPage]=useState(1);
-  const [expanded,setExpanded]=useState<string|null>(null);
   const [showSearch,setShowSearch]=useState(false);
   const isTestPreview=isMerchantPreviewSimulatorEnabled();
   const [boardStyle,setBoardStyle]=useState<OrderBoardStyle>(()=>readBoardStyle(styleStorageKey));
@@ -86,7 +67,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const chooseBoardStyle=(choice:OrderBoardStyle)=>{
     setBoardStyle(choice);
     // Only a harmless style enum is stored; no order, customer, payment or login data.
-    if(typeof window!=="undefined")try{window.localStorage.setItem(styleStorageKey,choice);}catch{}
+    if(typeof window!=="undefined")try{window.localStorage.setItem(styleStorageKey,choice);}catch{ /* Board style preference is optional; never affects order state. */ }
   };
 
 
@@ -123,14 +104,10 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
       return pa-pb||dateValue(b)-dateValue(a);
     });
   },[realOrders,activeFake,viewMode,stage,search,sort]);
-  const pages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
-  const safePage=Math.min(page,pages);
-  const visible=filtered.slice((safePage-1)*PAGE_SIZE,safePage*PAGE_SIZE);
-  useEffect(()=>setPage(1),[viewMode,stage,sort,search]);
 
-  const enterView=(mode:ViewMode)=>{setStage("all");setExpanded(null);onViewModeChange(mode);};
-  const testArrival=()=>{setStage("all");onViewModeChange("active");setPage(1);onSimulate();};
-  const testBatch=()=>{setStage("all");onViewModeChange("active");setPage(1);onSimulateBatch();};
+  const enterView=(mode:ViewMode)=>{setStage("all");onViewModeChange(mode);};
+  const testArrival=()=>{setStage("all");onViewModeChange("active");onSimulate();};
+  const testBatch=()=>{setStage("all");onViewModeChange("active");onSimulateBatch();};
   const realActive=realOrders.length;
   const fakeActive=activeFake.length;
   const commonFocus="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -243,7 +220,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
           {viewMode==="active"?<div role="group" aria-label="Queue status" className="flex min-w-0 overflow-x-auto gap-1.5 pb-1">
             {([{key:"all",label:"All"},{key:"pending",label:"New"},{key:"preparing",label:"Preparing"},{key:"ready",label:"Ready"}] as const).map(item=>(
               <button key={item.key} type="button" aria-pressed={stage===item.key}
-                onClick={()=>{setStage(item.key);setPage(1);}}
+                onClick={()=>{setStage(item.key);}}
                 className={`shrink-0 min-h-9 rounded-full px-3 text-xs font-bold border transition-colors ${stage===item.key?"bg-primary text-on-primary border-primary":"bg-surface-container-low text-on-surface-variant border-transparent"} ${commonFocus}`}>
                 {item.label} <span className={`ml-1 ${stage===item.key?"opacity-80":"opacity-60"}`}>{stageCounts[item.key]}</span>
               </button>

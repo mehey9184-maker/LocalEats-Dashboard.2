@@ -80,7 +80,7 @@ export const OrderService = {
   /**
    * Send a chat message for an order
    */
-  sendChatMessage: async (message: any) => {
+  sendChatMessage: async (message: Record<string,unknown>) => {
     const { error } = await supabase.from("chat_messages").insert(message);
     if (error) throw error;
   },
@@ -100,7 +100,7 @@ export const OrderService = {
   /**
    * Create a new manual order (POS / Walk-in)
    */
-  createOrder: async (orderPayload: any) => {
+  createOrder: async (orderPayload: Record<string,unknown>) => {
     const { data, error } = await supabase
       .from("orders")
       .insert(orderPayload)

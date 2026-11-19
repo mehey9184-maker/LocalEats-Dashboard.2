@@ -9,26 +9,30 @@ const PUBLIC_SHOP_FIELDS = "effective_is_active,availability_revision,availabili
 const PUBLIC_MENU_FIELDS = "id,shop_id,name,price,description,image_url,category,is_available,popularity_score,customizations,created_at";
 
 export interface CatalogRepository {
-  getApprovedShops(): Promise<any[]>;
-  getApprovedShopById(shopId: string): Promise<any | null>;
-  getMenuByShopId(shopId: string): Promise<any[]>;
+  getApprovedShops(): Promise<Record<string,unknown>[]>;
+  getApprovedShopById(shopId: string): Promise<Record<string,unknown> | null>;
+  getMenuByShopId(shopId: string): Promise<Record<string,unknown>[]>;
 }
 
 export class SupabaseCatalogRepository implements CatalogRepository {
-  private supabase: any;
-  constructor(supabase: any) {
-    this.supabase = supabase;
+  private readonly supabase: Pick<typeof supabaseAdmin,"from">;
+  constructor(supabase: unknown) {
+    // Only the trusted server client or a controlled disposable test double
+    // can supply the catalog adapter. Never derive it from a request body.
+    if (!supabase || typeof supabase!=="object" || !("from" in supabase) || typeof supabase.from!=="function")
+      throw new Error("CATALOG_REPOSITORY_UNAVAILABLE");
+    this.supabase=supabase as Pick<typeof supabaseAdmin,"from">;
   }
-  async getApprovedShops(): Promise<any[]> {
+  async getApprovedShops(): Promise<Record<string,unknown>[]> {
     const { data, error } = await this.supabase
       .from("shops_with_availability")
       .select(PUBLIC_SHOP_FIELDS)
       .eq("approval_status", "approved")
       .is("archived_at", null);
     if (error) throw error;
-    return (data || []).filter((shop:any)=>!isPrivateMyKotaFixtureId(shop?.id)).map(effectiveShop);
+    return (data || []).filter((shop:Record<string,unknown>)=>!isPrivateMyKotaFixtureId(shop.id)).map(effectiveShop);
   }
-  async getApprovedShopById(shopId: string): Promise<any | null> {
+  async getApprovedShopById(shopId: string): Promise<Record<string,unknown> | null> {
     if(isPrivateMyKotaFixtureId(shopId))return null;
     const { data, error } = await this.supabase
       .from("shops_with_availability")
@@ -40,7 +44,7 @@ export class SupabaseCatalogRepository implements CatalogRepository {
     if (error) throw error;
     return data ? effectiveShop(data) : null;
   }
-  async getMenuByShopId(shopId: string): Promise<any[]> {
+  async getMenuByShopId(shopId: string): Promise<Record<string,unknown>[]> {
     if(isPrivateMyKotaFixtureId(shopId))return [];
     const { data, error } = await this.supabase
       .from("menu_items")

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import type {LucideIcon} from "lucide-react";
 import {
   LayoutDashboard,
   UtensilsCrossed,
@@ -27,7 +28,7 @@ interface TourStep {
   badge: string;
   description: string;
   highlightText: string;
-  icon: any;
+  icon: LucideIcon;
   color: string;
 }
 

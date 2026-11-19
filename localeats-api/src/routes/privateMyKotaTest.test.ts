@@ -79,7 +79,7 @@ test("approved Firebase UID sees only sample shop and sample menu in private no-
   assert.equal(payload.can_submit,false);
   assert.equal(payload.preview_only,true);
   assert.equal(payload.menu_items.length,2);
-  assert.ok(payload.menu_items.every((x:any)=>/SAMPLE/.test(x.name)&&x.test_only===true));
+  assert.ok(payload.menu_items.every((x:{name:string;test_only:boolean})=>/SAMPLE/.test(x.name)&&x.test_only===true));
  });
 });
 test("unknown, anonymous, unsigned, wrong-origin accounts never receive fixture or menu",async()=>{

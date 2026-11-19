@@ -1,3 +1,4 @@
+import {containsAsciiControlOrWhitespace} from "../security/asciiControls.js";
 /**
  * R2.6 TEST-ONLY FINANCIAL AUTH GATE. This module is NOT mounted in Express.
  * The verifier argument must be wired to Firebase Admin verifyIdToken(token, true)
@@ -30,7 +31,7 @@ export async function verifyFinancialActor(
   const details=decoded as Record<string,unknown>;
   const firebase=details.firebase;
   if(typeof details.uid!=="string" || !details.uid || details.uid.length>160 ||
-     details.uid.trim()!==details.uid || /[\x00-\x1f\x7f\s]/.test(details.uid) ||
+     details.uid.trim()!==details.uid || containsAsciiControlOrWhitespace(details.uid) ||
      !firebase || typeof firebase!=="object" || Array.isArray(firebase) ||
      typeof (firebase as Record<string,unknown>).sign_in_provider!=="string" ||
      !(firebase as Record<string,unknown>).sign_in_provider ||
