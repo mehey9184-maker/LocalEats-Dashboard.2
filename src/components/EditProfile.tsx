@@ -1,19 +1,14 @@
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import {
   ArrowLeft,
-  RefreshCw,
-  Edit2,
   Bell,
   Moon,
   Check,
   Loader2,
   CheckCircle2,
-  Upload,
   User as UserIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import imageCompression from "browser-image-compression";
-import { uploadImageToFirebaseStorage } from "../lib/firebase";
 import { formatSAPhone } from "../utils";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -62,7 +57,6 @@ export const EditProfile: React.FC<EditProfileProps> = ({
   onBack,
   onSave,
   initialData,
-  userId,
   isSaving = false,
   isSuccess = false,
 }) => {
@@ -73,57 +67,13 @@ export const EditProfile: React.FC<EditProfileProps> = ({
     avatarUrl: initialData?.avatarUrl || "",
   });
 
-  const [uploading, setUploading] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const [preferences, setPreferences] = useState({
     marketing: initialData?.marketing ?? true,
     darkMode: initialData?.darkMode ?? false,
   });
 
-  const uploadAvatarPhoto = async (file: File) => {
-    const validation = validateImageFile(file);
-    if (!validation.isValid) {
-      toast.error(validation.error || "Invalid image file");
-      return;
-    }
-
-    try {
-      setUploading(true);
-
-      const options = {
-        maxSizeMB: 0.2,
-        maxWidthOrHeight: 1024,
-        useWebWorker: true,
-      };
-      const compressedFile = await imageCompression(file, options);
-
-      const fileExt = compressedFile.name.split(".").pop() || "jpg";
-      const fileName = `${userId}-${Date.now()}.${fileExt}`;
-
-      const publicUrl = await uploadImageToFirebaseStorage(compressedFile, "avatars", fileName);
-
-      setFormData((prev) => ({ ...prev, avatarUrl: publicUrl }));
-
-      toast.success("Profile photo uploaded successfully!");
-    } catch (error: unknown) {
-      console.error("Upload Error:", error);
-      toast.error(
-        "Failed to upload photo. Please check your storage connection.",
-      );
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    await uploadAvatarPhoto(file);
-    e.target.value = "";
-  };
-
+  // Avatar writes are disabled until the same server-authorized profile save
+  // can atomically confirm ownership and the saved photo reference.
   const handleSave = () => {
     if (formData.phone) {
       const phoneCleaned = formData.phone.replace(/[\s-]/g, "");
@@ -159,74 +109,23 @@ export const EditProfile: React.FC<EditProfileProps> = ({
 
       <main className="pt-24 px-6 max-w-2xl mx-auto space-y-10">
         <section className="flex flex-col items-center">
-          <div
-            className={cn(
-              "relative group rounded-full p-1.5 transition-all duration-300",
-              isDragOver ? "ring-4 ring-primary ring-offset-4 dark:ring-offset-zinc-950 scale-105 bg-primary/10" : ""
-            )}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragOver(true);
-            }}
-            onDragLeave={() => setIsDragOver(false)}
-            onDrop={async (e) => {
-              e.preventDefault();
-              setIsDragOver(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file) {
-                await uploadAvatarPhoto(file);
-              }
-            }}
-          >
-            <div className="w-32 h-32 rounded-full overflow-hidden ring-4 ring-surface-container-lowest shadow-lg bg-surface-container-low flex items-center justify-center relative">
-              {uploading ? (
-                <RefreshCw className="animate-spin text-primary" size={32} />
-              ) : formData.avatarUrl ? (
-                <img
-                  alt="Profile"
-                  className="w-full h-full object-cover"
-                  src={formData.avatarUrl}
-                />
+          <div className="relative rounded-full p-1.5">
+            <div className="w-32 h-32 rounded-full overflow-hidden ring-4 ring-surface-container-lowest shadow-lg bg-surface-container-low flex items-center justify-center">
+              {formData.avatarUrl ? (
+                <img alt="Profile" className="w-full h-full object-cover" src={formData.avatarUrl} />
               ) : (
                 <div
                   className="w-full h-full flex items-center justify-center bg-primary"
-                  style={{
-                    background:
-                      "radial-gradient(circle at 30% 30%, #ff9d4d 0%, #f58220 100%)",
-                  }}
+                  style={{ background: "radial-gradient(circle at 30% 30%, #ff9d4d 0%, #f58220 100%)" }}
                 >
-                  <UserIcon
-                    size={64}
-                    className="text-white drop-shadow-md"
-                    strokeWidth={1.5}
-                  />
-                </div>
-              )}
-              {isDragOver && (
-                <div className="absolute inset-0 bg-primary/80 flex flex-col items-center justify-center text-white text-[10px] font-bold text-center p-2 backdrop-blur-xs">
-                  <Upload size={20} className="mb-1 animate-bounce" />
-                  Drop to upload
+                  <UserIcon size={64} className="text-white drop-shadow-md" strokeWidth={1.5} />
                 </div>
               )}
             </div>
-            <input
-              type="file"
-              ref={fileInputRef}
-              className="hidden"
-              accept="image/*"
-              onChange={handleFileChange}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="absolute bottom-1 right-1 bg-gradient-to-br from-primary to-primary-container p-2.5 rounded-full text-on-primary shadow-lg active:scale-95 transition-transform disabled:opacity-50 cursor-pointer"
-            >
-              <Edit2 size={16} />
-            </button>
           </div>
-          <p className="mt-4 font-headline font-bold text-on-surface-variant tracking-tight text-xs flex items-center gap-1.5">
-            {isDragOver ? "Drop image now" : "Change Photo (Drag & Drop or Click)"}
+          <p data-testid="merchant-avatar-upload-unavailable" role="note"
+            className="mt-4 max-w-sm text-center text-xs font-medium text-on-surface-variant">
+            Profile photo changes are unavailable until secure profile saving is enabled.
           </p>
         </section>
 
