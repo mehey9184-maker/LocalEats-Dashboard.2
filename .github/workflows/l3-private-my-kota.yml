@@ -32,7 +32,7 @@ jobs:
           node --input-type=module <<'NODE'
           import assert from "node:assert/strict";
           const base="https://localeats-api-staging-r52d-git-54267e-mehey9184-makers-projects.vercel.app";
-          const origin="https://localeats-customer-staging-r52d-ixtklio5c.vercel.app";
+          const origin="https://localeats-customer-staging-r52d-lfig4xefi.vercel.app";
           const health=await fetch(base+"/health",{headers:{Origin:origin}});
           if(health.status!==200)console.log("L3_STAGE_CORS_HEALTH_FAILURE",health.status,health.headers.get("content-type"),(await health.clone().text()).slice(0,240));
           assert.equal(health.status,200,"Protected staging API must be accessible to the signed-in Customer browser");
