@@ -3218,79 +3218,32 @@ function App() {
                       <h3 className="text-sm font-bold text-on-surface uppercase tracking-wider">Direct Terminal Integration</h3>
                     </div>
 
+                    <p role="note" className="text-xs text-on-surface-variant">
+                      Card-terminal integration is not enabled in this pickup pilot. Customers pay
+                      at the shop; payment confirmation must be recorded through the separately
+                      approved, server-authoritative pickup flow. These fields are view-only.
+                    </p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="flex flex-col space-y-2">
-                         <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                            Require Card Linking
-                         </label>
-                         <label className="flex items-center gap-3 mt-2 cursor-pointer bg-surface-container-high p-3 rounded-xl border border-outline-variant/5">
-                           <input
-                             type="checkbox"
-                             checked={currentShop?.require_terminal_sync || false}
-                             onChange={async (e) => {
-                               const newValue = e.target.checked;
-                               setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, require_terminal_sync: newValue } : s));
-                               try {
-                                 const { error } = await supabase.from("shops").update({ require_terminal_sync: newValue }).eq("id", currentShop?.id);
-                                 if (error) throw error;
-                                 toast.success(newValue ? "Terminal sync now required for card payments" : "Terminal sync requirement disabled");
-                               } catch {
-                                 toast.error("Failed to update terminal sync requirement");
-                                 setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, require_terminal_sync: !newValue } : s));
-                               }
-                             }}
-                             className="w-5 h-5 rounded accent-primary border-outline-variant/30 text-primary focus:ring-primary focus:ring-offset-surface-container-high"
-                           />
-                           <span className="text-sm font-bold text-on-surface select-none">Require Card Number Match</span>
-                         </label>
+                        <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">Require Card Linking</label>
+                        <label className="flex items-center gap-3 mt-2 bg-surface-container-high p-3 rounded-xl border border-outline-variant/5 opacity-60">
+                          <input type="checkbox" checked={false} disabled
+                            className="w-5 h-5 rounded accent-primary border-outline-variant/30 text-primary" />
+                          <span className="text-sm font-bold text-on-surface select-none">Require Card Number Match</span>
+                        </label>
                       </div>
-
                       <div className="flex flex-col space-y-2">
-                         <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                            Terminal Provider
-                         </label>
-                         <select
-                           value={currentShop?.terminal_provider || ""}
-                           onChange={async (e) => {
-                             const newValue = e.target.value;
-                             setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, terminal_provider: newValue } : s));
-                             try {
-                               await supabase.from("shops").update({ terminal_provider: newValue }).eq("id", currentShop?.id);
-                             } catch (error) {
-                               console.error(error);
-                             }
-                           }}
-                           className="bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50"
-                         >
-                           <option value="" disabled>Select Provider...</option>
-                           <option value="Yoco">Yoco</option>
-                           <option value="Adyen">Adyen</option>
-                           <option value="Peach Payments">Peach Payments</option>
-                         </select>
+                        <label htmlFor="disabled-terminal-provider" className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">Terminal Provider</label>
+                        <select id="disabled-terminal-provider" value="" disabled
+                          className="bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-3 text-sm font-bold opacity-60">
+                          <option value="">Not connected</option>
+                        </select>
                       </div>
-
                       <div className="flex flex-col space-y-2 md:col-span-2">
-                         <label className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">
-                            Terminal Serial Number
-                         </label>
-                         <input
-                           type="text"
-                           placeholder="e.g. SN-12345678"
-                           value={currentShop?.terminal_serial || ""}
-                           onChange={(e) => {
-                             const newValue = e.target.value;
-                             setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, terminal_serial: newValue } : s));
-                           }}
-                           onBlur={async (e) => {
-                             const newValue = e.target.value;
-                             try {
-                               await supabase.from("shops").update({ terminal_serial: newValue }).eq("id", currentShop?.id);
-                             } catch (error) {
-                               console.error(error);
-                             }
-                           }}
-                           className="bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50"
-                         />
+                        <label htmlFor="disabled-terminal-serial" className="text-xs font-black uppercase tracking-wider text-on-surface-variant/70">Terminal Serial Number</label>
+                        <input id="disabled-terminal-serial" type="text" value=""
+                          placeholder="Unavailable until approved integration" disabled
+                          className="bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-3 text-sm font-bold opacity-60" />
                       </div>
                     </div>
 
