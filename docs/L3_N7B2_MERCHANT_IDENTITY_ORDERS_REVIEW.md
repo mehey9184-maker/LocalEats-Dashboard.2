@@ -15,7 +15,7 @@
 ## Evidence
 
 - [Independent CI quality comparison (run #44618674716)](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/44618674716): baseline **41 TS errors / 194 ESLint errors** vs updated **19 TS / 192 ESLint**, **0 newly introduced** TypeScript or lint errors after typed adapter and safety fixes. This is the full repository comparison, with no ESLint/TypeScript rule suppression.
-- [CI rerun with actual interactive Orders layout test #44618903149](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/44618903149): full browser acceptance **pending at report creation**. Do **not** claim its result passed unless job completes successfully.
+- [CI rerun with actual interactive Orders layout test #44618903149](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/44618903149): **both jobs completed successfully**, tested source revision `14ddd9ce41d6af8bceb01afbc3b18784e57f75fe`. The original full Orders component passed the 320/390/1280px read-only browser journey, cross-merchant owner guards, synthetic failed-refresh recovery and a new 390px mobile layout Switch → List → Kanban test. 34 full Orders browser assertions passed.
 - Original full Orders-page Chromium test confirmed in first L3-N7B2 run #44618227650, while its initial diagnostic comparison failed on three newly introduced findings; those were corrected and final comparison is green.
 - `tests/merchant-n7b2-contracts.test.mjs` validates Firebase UID/account switching, narrowed adapter errors, original layout default, functional switch wiring and fail-closed legacy bulk deletion.
 
@@ -26,4 +26,4 @@
 - The connected hosted Profile Staging project still lacks the approved pickup foundation/acceptance objects, and no scheduler/hosted migration has been activated.
 - This PR #177 and upstream drafts #176/#175/#173/#171/#118/#115 remain **DRAFT / UNMERGED**, with Production, real order/payment, rider dispatch, FCM sends, cron and hosted databases unchanged.
 
-**Next safe step:** complete the new full-page browser CI gate, then tackle remaining baseline errors in small independent tested commits. Obtain owner UI acceptance before any merge or real-order activation.
+**Next safe step:** the full-page browser CI gate has passed. Tackle remaining baseline errors in small independent tested commits, then obtain real signed-in Merchant owner UI acceptance. Obtain owner UI acceptance before any merge or real-order activation.
