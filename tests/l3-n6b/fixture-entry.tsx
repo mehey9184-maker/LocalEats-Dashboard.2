@@ -19,7 +19,9 @@ function Fixture(){
  const load=async()=>{
    const mySeq=++sequence.current;
    const uid=auth.currentUser?.uid;
-   setLoading(true);setError("");
+   // The fixture must not unmount the genuine Orders page on same-account
+   // refresh: the previous verified view stays visible until the API replies.
+   setLoading(!shop || shop.owner_id!==uid);setError("");
    try{
      const verified=await MerchantApi.getMerchantShop();
      if(!verified||verified.owner_id!==uid||verified.approval_status!=="approved")
