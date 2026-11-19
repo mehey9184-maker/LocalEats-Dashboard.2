@@ -21,7 +21,7 @@ export function PickupOrderActions({order,onSimulate,compact=false}:{order:any;o
  const canAct=simulated || pickupOrderingEnabled();
  const act=async(label:string)=>{
   if(busy || !canAct)return;
-  let action:PickupAction=label.startsWith("Accept") ? "accept" : label==="Reject" ? "reject" : label==="Mark Ready" ? "ready" : label.startsWith("Food") ? "collect" : "confirm_payment";
+  const action:PickupAction=label.startsWith("Accept") ? "accept" : label==="Reject" ? "reject" : label==="Mark Ready" ? "ready" : label.startsWith("Food") ? "collect" : "confirm_payment";
   const extra:Record<string,unknown>={};
   if(action==="reject"){
    const reason=window.prompt(simulated ? "TEST ONLY: Why would this sample order be rejected?" : "Why is this order rejected?");
