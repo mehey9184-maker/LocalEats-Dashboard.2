@@ -9,17 +9,17 @@ import {effectiveShop} from "../orders/shopAvailability.js";
 test("availability requires Firebase, server activation, ownership, revision and confirmed persistence",async()=>{
  const verify=authAdmin.verifyIdToken,rpc=supabaseAdmin.rpc,old=process.env.MERCHANT_AVAILABILITY_WRITES_ENABLED;
  let calls=0,mode="ok";
- (authAdmin as any).verifyIdToken=async(token:string)=>{if(token==="expired")throw Error("expired");return {uid:token};};
- (supabaseAdmin as any).rpc=async(name:string,args:any)=>{calls++;assert.equal(name,"merchant_set_availability");assert.equal(args.p_uid,"merchant");
+ Reflect.set(authAdmin,"verifyIdToken",async(token:string)=>{if(token==="expired")throw Error("expired");return {uid:token};});
+ Reflect.set(supabaseAdmin,"rpc",async(name:string,args:Record<string,unknown>)=>{calls++;assert.equal(name,"merchant_set_availability");assert.equal(args.p_uid,"merchant");
   if(args.p_shop_id!=="owned")return {error:{message:"FORBIDDEN"}};
   if(mode==="failure")return {error:{message:"offline"}};
   if(mode==="null")return {data:null,error:null};
   if(mode==="conflict")return {error:{message:"AVAILABILITY_CHANGED"}};
   if(mode==="confirm")return {error:{message:"OUTSIDE_HOURS_CONFIRMATION_REQUIRED"}};
-  return {data:{id:"owned",owner_id:"merchant",is_active:args.p_open,effective_is_active:args.p_open,availability_revision:1},error:null};};
+  return {data:{id:"owned",owner_id:"merchant",is_active:args.p_open,effective_is_active:args.p_open,availability_revision:1},error:null};});
  const app=express();app.use(express.json());app.use("/merchant",merchant);
- const server=app.listen(0,"127.0.0.1");await once(server,"listening");const base=`http://127.0.0.1:${(server.address() as any).port}/merchant/shop/availability`;
- const call=async(uid:string|undefined,body:any={shop_id:"owned",open:false,confirm_outside_hours:false,expected_revision:0})=>{const r=await fetch(base,{method:"PATCH",headers:{"content-type":"application/json",...(uid?{authorization:`Bearer fb-${uid}`}:{})},body:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
+ const server=app.listen(0,"127.0.0.1");await once(server,"listening");const base=`http://127.0.0.1:${(server.address() as {port:number}).port}/merchant/shop/availability`;
+ const call=async(uid:string|undefined,body:Record<string,unknown>={shop_id:"owned",open:false,confirm_outside_hours:false,expected_revision:0})=>{const r=await fetch(base,{method:"PATCH",headers:{"content-type":"application/json",...(uid?{authorization:`Bearer fb-${uid}`}:{})},body:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
  try{
   process.env.MERCHANT_AVAILABILITY_WRITES_ENABLED="false";
   assert.equal((await call(undefined)).status,401);assert.equal((await call("expired")).status,401);
