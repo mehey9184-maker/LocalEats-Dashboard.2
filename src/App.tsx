@@ -145,7 +145,6 @@ import {
   deleteFailedPrint,
 } from "./utils/escPosEngine";
 import {
-  isValidUUID,
   isShopOwnedByUser,
   getOwnedShopIds,
   registerVerifiedShopId,
@@ -214,23 +213,6 @@ function App() {
   const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isSaveSuccess, setIsSaveSuccess] = useState<boolean>(false);
-  const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    confirmText?: string;
-    onConfirm: () => void;
-  }>({
-    isOpen: false,
-    title: "",
-    message: "",
-    onConfirm: () => {},
-  });
-
-  const confirmAction = (title: string, message: string, onConfirm: () => void, confirmText = "Delete") => {
-    setConfirmDialog({ isOpen: true, title, message, onConfirm, confirmText });
-  };
-
   const { activeTab, setActiveTab } = useAppNavigation("dashboard");
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -1905,14 +1887,6 @@ function App() {
         </div>
       )}
 
-      <ConfirmModal
-        isOpen={confirmDialog.isOpen}
-        title={confirmDialog.title}
-        message={confirmDialog.message}
-        confirmText={confirmDialog.confirmText}
-        onConfirm={confirmDialog.onConfirm}
-        onCancel={() => setConfirmDialog(p => ({...p, isOpen: false}))}
-      />
         {/* Existing Toaster */}
         <Toaster
           position="top-center"
