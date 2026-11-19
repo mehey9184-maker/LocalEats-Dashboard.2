@@ -1,0 +1,55 @@
+name: L3-N7B3 Merchant final baseline diagnostics (read-only)
+on:
+  pull_request:
+    branches:
+      - review/l3-n7b2-merchant-auth-orders-types
+    paths:
+      - 'src/**'
+      - 'tests/l3-n7b3/**'
+      - '.github/workflows/l3-n7b3-merchant-types.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory-current-merchant-quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_WORKER_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_PUSH_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install exact locked dependencies without postinstall
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Inventory TypeScript and lint without hiding errors
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/tsc -p tsconfig.json --noEmit >/tmp/n7b3-tsc.txt 2>&1 || true
+          ./node_modules/.bin/eslint . --format json --output-file /tmp/n7b3-eslint.json >/dev/null 2>&1 || true
+          node tests/l3-n7b/report-baseline.mjs /tmp/n7b3-tsc.txt /tmp/n7b3-eslint.json
+      - name: Merchant build and pickup contract
+        run: |
+          npm run test:merchant-pickup
+          node --experimental-strip-types --test tests/merchant-command-recovery.test.mjs
+          node --experimental-strip-types --test tests/merchant-n7b2-contracts.test.mjs
+          npm run build
+      - name: No Production credentials or unsafe activation
+        run: |
+          test "$VITE_PICKUP_ORDERING_ENABLED" = false
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$PICKUP_ACCEPTANCE_ENABLED" = false
+          test "$PICKUP_ACCEPTANCE_WORKER_ENABLED" = false
+          test "$PICKUP_ACCEPTANCE_PUSH_ENABLED" = false
+          test -z "${DATABASE_URL:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${SUPABASE_SECRET_KEY:-}"
+          echo 'L3_N7B3_NO_HOSTED_MUTATIONS'
