@@ -9,7 +9,7 @@ export type VerifiedMerchantShop = {
   owner_id: string;
   name?: string;
   is_active?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 export type MerchantShopCreateInput = {
@@ -206,7 +206,7 @@ export class MerchantApi {
     return data.orders.map(mapApiOrder);
   }
 
-  static hasPendingPickupCommand(order:any):boolean {
+  static hasPendingPickupCommand(order:{id?:unknown}):boolean {
     const uid=auth.currentUser?.uid;
     try{return !!uid && !!sessionStorage.getItem(`pickup-command:${uid}:${order.id}`);}catch{return false;}
   }
