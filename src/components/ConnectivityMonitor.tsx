@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { SupabaseClient } from "@supabase/supabase-js";
+import {supabase as merchantDataAdapter} from "../lib/supabase";
 import { Wifi, WifiOff, RefreshCw, Layers, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
@@ -8,7 +8,7 @@ import { getQueuedMutations } from "../utils/offlineSyncQueue";
 import { logNetworkError } from "../utils/errorHandler";
 
 interface ConnectivityMonitorProps {
-  supabase: SupabaseClient;
+  supabase: Pick<typeof merchantDataAdapter,'from'|'removeChannel'>;
   onOpenDiagnostics?: () => void;
   className?: string;
 }
@@ -117,7 +117,7 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
   useEffect(() => {
     if (!isOnline) return;
 
-    let wsChannel: ReturnType<typeof supabase.channel>;
+    let wsChannel: ReturnType<typeof getFreshChannel>|undefined;
 
     try {
       wsChannel = getFreshChannel("system_connectivity_monitor");
