@@ -1,0 +1,149 @@
+name: L3-N7 Acceptance Release Boundary Audit (no hosted changes)
+on:
+  pull_request:
+    branches:
+      - feature/pickup-acceptance-deadline
+    paths:
+      - '.github/workflows/l3-n7-acceptance-audit.yml'
+      - 'tests/l3-n7/**'
+      - 'docs/pickup-acceptance/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  current-l3-plus-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: l3-n7-synthetic-ci-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres
+      PGPASSWORD: l3-n7-synthetic-ci-only
+      PGSSLMODE: disable
+      PICKUP_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_WORKER_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_PUSH_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - name: Checkout acceptance audit candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: review/l3-n7-acceptance-release-audit
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout CURRENT L3 API base independently
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: review/l3-my-kota-private-test-api
+          path: current-l3
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Merge latest L3 base in temporary runner (NEVER pushes/merges on GitHub)
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -euo pipefail
+          test -z "${SUPABASE_URL:-}${DATABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${SUPABASE_SECRET_KEY:-}"
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$PICKUP_ACCEPTANCE_ENABLED" = false
+          git fetch --no-tags ../current-l3 HEAD
+          git -c user.name='LocalEats CI Audit' -c user.email='audit@users.noreply.github.com' merge --no-commit --no-ff FETCH_HEAD || {
+            echo 'L3_N7_BASE_MERGE_CONFLICT: reconciliation REQUIRED before release'
+            git diff --name-only --diff-filter=U
+            exit 24
+          }
+          echo 'L3_N7_CURRENT_L3_MERGE_CLEAN'
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Test authoritative pickup API and acceptance with current L3 source
+        working-directory: candidate/localeats-api
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+          npm run test:acceptance
+      - name: Disposable PostgreSQL 17 acceptance SQL, 2500 orders and concurrent lock boundary
+        working-directory: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PGHOST" = 127.0.0.1
+          test "$PGDATABASE" = postgres
+          for file in localeats-api/tests/pickup/schema.sql supabase/drafts/pickup_launch_foundation.sql supabase/drafts/pickup_zero_fee.sql supabase/drafts/merchant_availability.sql supabase/drafts/pickup_acceptance.sql localeats-api/tests/pickup/acceptance.sql localeats-api/tests/pickup/acceptance-volume.sql localeats-api/tests/pickup/acceptance-race-setup.sql; do
+            psql -X -v ON_ERROR_STOP=1 -f "$file" > /dev/null
+          done
+          psql -X -v ON_ERROR_STOP=1 -f localeats-api/tests/pickup/acceptance-race-lock.sql >/tmp/acceptance-lock.log &
+          holder=$!
+          locked=false
+          for attempt in $(seq 1 100); do
+            if [ "$(psql -X -At -c "select exists(select 1 from pg_stat_activity where application_name='acceptance-lock-holder' and wait_event='PgSleep')")" = t ]; then locked=true;break;fi
+            sleep 0.05
+          done
+          test "$locked" = true
+          psql -X -v ON_ERROR_STOP=1 -f localeats-api/tests/pickup/acceptance-race-accept.sql > /dev/null
+          wait "$holder"
+          echo 'L3_N7_LATEST_L3_ACCEPTANCE_SQL_2500_ORDER_PASS'
+      - name: Ensure no activation or hosted environment was used
+        working-directory: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$PICKUP_ACCEPTANCE_ENABLED" = false
+          test "$PICKUP_ACCEPTANCE_WORKER_ENABLED" = false
+          test "$PICKUP_ACCEPTANCE_PUSH_ENABLED" = false
+          test -z "${DATABASE_URL:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${SUPABASE_SECRET_KEY:-}"
+          echo 'L3_N7_NO_HOSTED_ORDER_PAYMENT_PUSH_WRITES'
+
+  merchant-release-quality-delta:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout audit candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: review/l3-n7-acceptance-release-audit
+          path: candidate
+          persist-credentials: false
+      - name: Checkout latest L3 base
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: review/l3-my-kota-private-test-api
+          path: current-l3
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Install same existing Merchant dependencies in two isolated checkouts
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund --prefix candidate
+          npm ci --ignore-scripts --no-audit --no-fund --prefix current-l3
+      - name: Capture complete lint/TypeScript diagnostics (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd current-l3
+          ./node_modules/.bin/tsc --noEmit --project tsconfig.json > /tmp/l3-base-tsc.log 2>&1 || true
+          ./node_modules/.bin/eslint . --format json --output-file /tmp/l3-base-eslint.json >/dev/null 2>&1 || true
+          cd ../candidate
+          ./node_modules/.bin/tsc --noEmit --project tsconfig.json > /tmp/l3-feature-tsc.log 2>&1 || true
+          ./node_modules/.bin/eslint . --format json --output-file /tmp/l3-feature-eslint.json >/dev/null 2>&1 || true
+          node tests/l3-n7/compare-quality-diagnostics.mjs /tmp/l3-base-tsc.log /tmp/l3-feature-tsc.log /tmp/l3-base-eslint.json /tmp/l3-feature-eslint.json "$GITHUB_WORKSPACE/current-l3" "$GITHUB_WORKSPACE/candidate"
+      - name: Separate unchanged Merchant build is still required
+        working-directory: candidate
+        run: npm run build
