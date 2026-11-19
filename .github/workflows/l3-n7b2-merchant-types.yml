@@ -1,0 +1,97 @@
+name: L3-N7B2 Merchant auth-adapter and Orders controls (isolated)
+on:
+  pull_request:
+    branches:
+      - review/l3-n7b-merchant-baseline-quality
+    paths:
+      - 'src/App.tsx'
+      - 'src/lib/supabase.ts'
+      - 'src/hooks/useAppInitializer.ts'
+      - 'src/components/Marketing.tsx'
+      - 'src/components/ConnectivityMonitor.tsx'
+      - 'src/components/OrdersManagement.tsx'
+      - 'src/services/merchantAdapterError.ts'
+      - 'src/services/merchantSessionScope.ts'
+      - 'tests/merchant-n7b2-contracts.test.mjs'
+      - '.github/workflows/l3-n7b2-merchant-types.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-runtime-and-full-orders-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      VITE_MERCHANT_PREVIEW_READ_ONLY: 'true'
+      VITE_MERCHANT_FAKE_ORDERS_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Fail closed; no hosted credentials
+        run: |
+          test "$VITE_PICKUP_ORDERING_ENABLED" = false
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$RIDER_ACTIVATION_ENABLED" = false
+          test "$VITE_MERCHANT_PREVIEW_READ_ONLY" = true
+          test -z "${DATABASE_URL:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${SUPABASE_SECRET_KEY:-}"
+      - name: Install exact existing Merchant dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Tests for active-Firebase-only sessions, no legacy deletions and real layout switch
+        run: |
+          node --experimental-strip-types --test tests/merchant-n7b2-contracts.test.mjs
+          npm run test:merchant-pickup
+          node --experimental-strip-types --test tests/merchant-command-recovery.test.mjs
+      - name: Build original Merchant application with pickup OFF
+        run: npm run build
+      - name: Isolated original OrdersManagement browser acceptance
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+          node tests/l3-n6b/run-orders-page.mjs
+      - name: Final no-activation check
+        run: |
+          test "$VITE_PICKUP_ORDERING_ENABLED" = false
+          test "$PICKUP_WRITES_ENABLED" = false
+          test -z "${DATABASE_URL:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}"
+          echo 'L3_N7B2_NO_HOSTED_ORDER_OR_PAYMENT_WRITES'
+  compare-merchant-types-and-lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout untouched L3-N7B baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: review/l3-n7b-merchant-baseline-quality
+          path: baseline
+          persist-credentials: false
+      - name: Checkout L3-N7B2 candidate independently
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: review/l3-n7b2-merchant-auth-orders-types
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Install both locked trees independently
+        run: |
+          npm ci --prefix baseline --ignore-scripts --no-audit --no-fund
+          npm ci --prefix candidate --ignore-scripts --no-audit --no-fund
+      - name: Root TypeScript and ESLint diagnostics delta (no suppression)
+        run: |
+          cd baseline
+          ./node_modules/.bin/tsc -p tsconfig.json --noEmit > /tmp/baseline-ts.log 2>&1 || true
+          ./node_modules/.bin/eslint . --format json --output-file /tmp/baseline-eslint.json >/dev/null 2>&1 || true
+          cd ../candidate
+          ./node_modules/.bin/tsc -p tsconfig.json --noEmit > /tmp/candidate-ts.log 2>&1 || true
+          ./node_modules/.bin/eslint . --format json --output-file /tmp/candidate-eslint.json >/dev/null 2>&1 || true
+          node tests/l3-n7b/compare-quality-diagnostics.mjs /tmp/baseline-ts.log /tmp/candidate-ts.log /tmp/baseline-eslint.json /tmp/candidate-eslint.json "$GITHUB_WORKSPACE/baseline" "$GITHUB_WORKSPACE/candidate"
+          echo 'L3_N7B2_ZERO_NEW_DIAGNOSTICS'
