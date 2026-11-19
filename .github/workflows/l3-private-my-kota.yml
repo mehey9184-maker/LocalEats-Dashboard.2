@@ -27,3 +27,27 @@ jobs:
       - run: npm run build
       - name: Verify Firebase UID isolation, test radius, no public leakage and no-write semantics
         run: node --test dist/routes/privateMyKotaTest.test.js dist/routes/catalog.test.js dist/corsOrigins.test.js
+      - name: Verify deployed private staging API has exact Customer CORS and still denies anonymous access
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          const base="https://localeats-api-staging-r52d-git-54267e-mehey9184-makers-projects.vercel.app";
+          const origin="https://localeats-customer-staging-r52d-cgyq9d4k8.vercel.app";
+          const health=await fetch(base+"/health",{headers:{Origin:origin}});
+          assert.equal(health.status,200,"Protected staging API must be accessible to the signed-in Customer browser");
+          assert.equal(health.headers.get("access-control-allow-origin"),origin,"Only exact Customer origin gets CORS");
+          const preflight=await fetch(base+"/api/v1/private-test/my-kota/status",{method:"OPTIONS",headers:{
+            Origin:origin,"Access-Control-Request-Method":"GET",
+            "Access-Control-Request-Headers":"Authorization"
+          }});
+          assert.equal(preflight.status,204,"Valid browser preflight must succeed");
+          assert.equal(preflight.headers.get("access-control-allow-origin"),origin);
+          const anonymous=await fetch(base+"/api/v1/private-test/my-kota/status",{headers:{Origin:origin}});
+          assert.equal(anonymous.status,404,"Private shop must reject unsigned GET with uniform 404");
+          assert.equal(anonymous.headers.get("access-control-allow-origin"),origin);
+          const payload=await anonymous.json();
+          assert.deepEqual(payload,{success:false,code:"NOT_FOUND"});
+          const cross=await fetch(base+"/api/v1/private-test/my-kota/status",{headers:{Origin:"https://untrusted.vercel.app"}});
+          assert.equal(cross.status,403,"Unapproved browser origin must be rejected before any private route");
+          console.log("L3_MYKOTA_STAGING_NETWORK_OK exact CORS, preflight, anonymous denial, unapproved denial");
+          NODE
