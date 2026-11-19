@@ -129,7 +129,7 @@ test("L3-N4: sample ID rejected before checkout price lookup, replay, DB or RPC"
   findShop:async()=>{reads++;throw Error("must never read sample shop");},
   findOrderByIdempotencyKey:async()=>{reads++;throw Error("must not query sample replay");}
  } satisfies Partial<OrderRepository>;
- const rpc:any={rpc:async()=>{writes++;throw Error("must never reach RPC");}} satisfies Partial<RpcClient>;
+ const rpc={rpc:async()=>{writes++;throw Error("must never reach RPC");}} as unknown as RpcClient;
  const guardedInput:any={input:{shop_id:PRIVATE_MY_KOTA_SHOP_ID},location:point};
  await assert.rejects(()=>pickupPricing(repository,"customer",guardedInput),(e:any)=>e.code==="PRIVATE_TEST_ONLY");
  await assert.rejects(()=>createPickup(rpc,repository,"customer",guardedInput),(e:any)=>e.code==="PRIVATE_TEST_ONLY");
