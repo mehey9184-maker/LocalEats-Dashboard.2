@@ -17,28 +17,28 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
   const originalFrom=supabaseAdmin.from,originalRpc=supabaseAdmin.rpc,originalVerify=authAdmin.verifyIdToken;
   const reads:Array<{table:string;filters:Array<[string,unknown]>}>=[],rpcCalls:Array<[string,Record<string,unknown>]> = [];
   let persisted=false,unavailable=false,orderShop="shop-my-kota-ivory-park",orderCustomer="customer",subscription:Record<string,unknown>|undefined;
-  (authAdmin as any).verifyIdToken=async(token:string)=>{if(token==="expired") throw Error("expired");return {uid:token};};
-  (supabaseAdmin as any).rpc=async(name:string,args:Record<string,unknown>)=>{
+  Reflect.set(authAdmin,"verifyIdToken",async(token:string)=>{if(token==="expired") throw Error("expired");return {uid:token};});
+  Reflect.set(supabaseAdmin,"rpc",async(name:string,args:Record<string,unknown>)=>{
     rpcCalls.push([name,args]);
     if(unavailable) return {data:null,error:{message:"offline"}};
     if(args.p_uid==="other") return {data:null,error:{message:"FORBIDDEN"}};
     return {data:{order:{id,user_id:"customer",shop_id:"shop-my-kota-ivory-park",status:"pending",payment_status:"unpaid",create_intent_hash:"a".repeat(64)},replayed:false},error:null};
-  };
-  (supabaseAdmin as any).from=(table:string)=>{
+  });
+  Reflect.set(supabaseAdmin,"from",(table:string)=>{
     const filters:Array<[string,unknown]>=[];reads.push({table,filters});
     const result=()=>({data:["shops","shops_with_availability"].includes(table) ? {id:"shop-my-kota-ivory-park",owner_id:"merchant",name:"Shop",location:"Tembisa",is_active:true,effective_is_active:true,availability_revision:0,approval_status:"approved",archived_at:null,lat:-26,lng:28} :
       table==="menu_items" ? [{id:"item",shop_id:"shop-my-kota-ivory-park",name:"Meal",price:25,is_available:true}] :
       table==="pickup_order_events" ? [] : persisted ? {id,shop_id:orderShop,user_id:orderCustomer,delivery_type:"collection",create_intent_hash:"a".repeat(64)} : null,error:null});
-    const query:any={select:()=>query,eq:(key:string,value:unknown)=>{filters.push([key,value]);return query;},
+    const query: {select:()=>unknown;eq:(key:string,value:unknown)=>unknown;in:()=>unknown;order:()=>unknown;limit:()=>unknown;is:()=>unknown;neq:()=>unknown;maybeSingle:()=>Promise<{data:unknown;error:null}>;then:(resolve:(value:{data:unknown;error:null})=>void,reject:(e:unknown)=>void)=>Promise<void>;upsert:(record:Record<string,unknown>)=>unknown;update:()=>unknown}={select:()=>query,eq:(key:string,value:unknown)=>{filters.push([key,value]);return query;},
       in:()=>query,order:()=>query,limit:()=>query,is:()=>query,neq:()=>query,
-      maybeSingle:async()=>result(),then:(resolve:any,reject:any)=>Promise.resolve(result()).then(resolve,reject),
+      maybeSingle:async()=>result(),then:(resolve:(value:{data:unknown;error:null})=>void,reject:(e:unknown)=>void)=>Promise.resolve(result()).then(resolve,reject),
       upsert:(record:Record<string,unknown>)=>{subscription=record;return query;},update:()=>query};
     return query;
-  };
+  });
   const app=express();configureApiCacheSafety(app);app.use(legacyOrderGuard);app.use(express.json());
   app.use("/api/v1",pickupNotificationRoutes);app.use("/api/v1/orders",customerOrderRoutes);app.use("/api/v1/merchant/orders",merchantOrderRoutes);
   const server=app.listen(0,"127.0.0.1");await once(server,"listening");
-  const call=(path:string,uid?:string,body?:unknown,method="POST"):Promise<{status:number;body:any;cache:unknown}>=>new Promise((resolve,reject)=>{
+  const call=(path:string,uid?:string,body?:unknown,method="POST"):Promise<{status:number;body:{success?:boolean;code?:string;quote:{total_minor:number;can_submit:boolean;pricing_fingerprint:string};order:{create_intent_hash?:string}};cache:unknown}>=>new Promise((resolve,reject)=>{
     const req=httpRequest({host:"127.0.0.1",port:(server.address() as AddressInfo).port,path,method,headers:{"Content-Type":"application/json",...(uid ? {Authorization:`Bearer fb-${uid}`} : {})}},res=>{
       let text="";res.on("data",chunk=>{text+=chunk;});res.on("end",()=>resolve({status:res.statusCode!,body:JSON.parse(text),cache:res.headers["cache-control"]}));
     });req.on("error",reject);req.end(body ? JSON.stringify(body) : undefined);
@@ -101,7 +101,7 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
       assert.equal(rpcCalls.length,before);
       orderShop=input.shop_id;orderCustomer="customer";
     }
-    orderShop="other-shop";let before=rpcCalls.length;
+    orderShop="other-shop";const before=rpcCalls.length;
     assert.equal((await call(`/api/v1/orders/${id}/cancel`,"customer",{command_id:id,expected_revision:0,reason:"Fixture reason"})).status,403);
     assert.equal(rpcCalls.length,before);orderShop=input.shop_id;
     assert.equal((await call(`/api/v1/merchant/orders/${id}/payment-confirmation`,"merchant",{command_id:id,expected_revision:2})).status,400);
