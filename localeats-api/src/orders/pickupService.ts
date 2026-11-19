@@ -4,6 +4,7 @@ import { draftAssertConsent, draftHash, draftReplayCreation, DraftContractError 
 import { assertShopCanAcceptOrder, calculateAuthoritativePrice, calculateDistanceKm, OrderContractError,
   parseCreateOrderInput, type CreateOrderInput, type AuthoritativePrice } from "./orderContract.js";
 import type { OrderRepository, StoredOrder } from "./orderService.js";
+import {assertPickupReception} from './acceptancePolicy.js';
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export type PickupAction = "accept" | "ready" | "reject" | "cancel" | "confirm_payment" | "collect";
@@ -55,6 +56,7 @@ export async function pickupPricing(repository: OrderRepository, uid: string, re
   if (!uid) return fail(401,"UNAUTHORIZED");
   const shop = await repository.findShop(request.input.shop_id);
   if (!shop) return fail(404,"SHOP_NOT_FOUND");
+  assertPickupReception(shop);
   assertShopCanAcceptOrder(shop,request.input);
   const lat=shop.lat ?? shop.latitude, lng=shop.lng ?? shop.longitude;
   if (typeof lat!=="number" || !Number.isFinite(lat) || Math.abs(lat)>90 || typeof lng!=="number" || !Number.isFinite(lng) || Math.abs(lng)>180)
@@ -70,7 +72,8 @@ export function pickupQuote(pricing: AuthoritativePrice) {
   return {...snapshot,pricing_fingerprint:draftHash(snapshot)};
 }
 const conflicts = new Set(["IDEMPOTENCY_CONFLICT","ORDER_STATE_CHANGED","INVALID_ORDER_TRANSITION","INVALID_PAYMENT_TRANSITION",
-  "PICKUP_CONTRACT_REQUIRED","PRICE_CHANGED","SHOP_UNAVAILABLE","MENU_ITEM_UNAVAILABLE","PICKUP_INITIAL_STATE_INVALID","SHOP_LOCATION_UNAVAILABLE"]);
+  "PICKUP_CONTRACT_REQUIRED","PRICE_CHANGED","SHOP_UNAVAILABLE","MENU_ITEM_UNAVAILABLE","PICKUP_INITIAL_STATE_INVALID","SHOP_LOCATION_UNAVAILABLE",
+  "SHOP_RECEPTION_PAUSED","ORDER_ACCEPTANCE_EXPIRED","RECEPTION_STATE_CHANGED"]);
 export async function pickupRpc(client: RpcClient, name: string, args: Record<string, unknown>): Promise<unknown> {
   const {data,error}=await client.rpc(name,args);
   if (error) {

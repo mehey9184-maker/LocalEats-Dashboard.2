@@ -1,5 +1,6 @@
 import {legacyOrderGuard} from "./legacyOrderGuard.js";
 import {pickupNotificationRoutes} from "./routes/pickupNotifications.js";
+import acceptanceRoutes from './routes/acceptance.js';
 import {pickupWriteGate} from "./middleware/pickupWriteGate.js";
 import { previewReadOnlyGate } from "./middleware/previewReadOnlyGate.js";
 import express, { Request, Response, NextFunction } from "express";
@@ -65,6 +66,7 @@ app.use("/api/v1/catalog", catalogRoutes);
 app.use("/api/v1/private-test/my-kota", privateMyKotaTestRoutes);
 app.use("/api/v1/profiles", customerProfilesRouter);
 app.use("/api/v1", pickupNotificationRoutes);
+app.use("/api/v1", acceptanceRoutes);
 
 // 404 Handler
 app.use((req: Request, res: Response) => {

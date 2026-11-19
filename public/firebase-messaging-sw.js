@@ -10,6 +10,8 @@ self.addEventListener('notificationclick', event => {
     if(existing){
       await existing.focus();
       if(event.notification.data?.type==='pickup_new_order') existing.postMessage({type:'merchant-pickup-order-push'});
+      const type=event.notification.data?.type || event.notification.data?.FCM_MSG?.data?.type;
+      if(type==='pickup_acceptance')existing.postMessage({type:'merchant-pickup-acceptance-push'});
       return;
     }
     await clients.openWindow(destination);
