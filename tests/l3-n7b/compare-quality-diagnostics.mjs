@@ -27,8 +27,8 @@ const normalizedLint=(path,folder)=>{
         String(issue.message).replaceAll(resolve(folder),'<PROJECT>')
           // React Hooks includes a source excerpt with changing line numbers.
           // Keep the original code and rule text; normalize only those locations.
-          .replace(/:\\d+:\\d+/g,':<line>:<col>')
-          .replace(/(^|\\n)([ >]*)\\d+(\\s*\\|)/g,'$1$2<line>$3'));
+          .replace(/:\d+:\d+/g,':<line>:<col>')
+          .replace(/(^|\n)([ >]*)\d+(\s*\|)/g,'$1$2<line>$3'));
   }
   return rows;
 };
