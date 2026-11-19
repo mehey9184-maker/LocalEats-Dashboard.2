@@ -49,6 +49,9 @@ docker exec --user postgres "$pg_container" pg_dump --version
 docker exec --user postgres "$pg_container" pg_dump --format=custom --no-owner --dbname=local_pickup_qa >"$tmp/pickup-synthetic-only.dump"
 PGDATABASE=postgres createdb local_pickup_qa_restore
 PGDATABASE=local_pickup_qa_restore psql -X -q -v ON_ERROR_STOP=1 -c 'drop schema if exists public cascade;' >"$tmp/drop.log"
+# pg_dump omits CREATE SCHEMA for PostgreSQL's implicit public schema;
+# recreate it in the empty recovery database before restoring objects.
+PGDATABASE=local_pickup_qa_restore psql -X -q -v ON_ERROR_STOP=1 -c 'create schema public;' >"$tmp/create.log"
 docker exec -i --user postgres "$pg_container" pg_restore --no-owner --exit-on-error --dbname=local_pickup_qa_restore <"$tmp/pickup-synthetic-only.dump" >"$tmp/restore.log" 2>"$tmp/restore.err" || {
   # Do not print rows or SQL containing fabricated customer information.
   echo "L3_N5_DISPOSABLE_RESTORE_FAILED" >&2
