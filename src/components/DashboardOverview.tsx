@@ -5,7 +5,6 @@ import { isPlaceholderImage } from "../constants";
 import { updateFirestoreShop } from "../lib/firebase";
 import { syncShopAvailability } from "../utils/availabilityChecker";
 import { Skeleton } from "../components/ui/Skeleton";
-import { getSupportedCity } from "../utils";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { RiderConnection } from "../types";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
@@ -18,14 +17,12 @@ import {
   Cell
 } from "recharts";
 import {
-  Lock,
   Radio,
   ChevronLeft,
   Database,
   Loader2,
   Navigation,
   Pizza,
-  Landmark,
   Rocket,
   CheckCircle,
   CreditCard,
@@ -35,7 +32,7 @@ import {
   UtensilsCrossed
 } from "lucide-react";
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
@@ -48,7 +45,6 @@ import {
   Store,
   ChevronRight,
   Bike,
-  Plus,
   RefreshCw,
   Check,
   X,
