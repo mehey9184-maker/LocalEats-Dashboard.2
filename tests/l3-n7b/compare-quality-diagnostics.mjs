@@ -23,7 +23,12 @@ const normalizedLint=(path,folder)=>{
   for(const file of output){
     const filename=relative(resolve(folder),resolve(file.filePath)).replaceAll('\\','/');
     for(const issue of file.messages||[])if(issue.severity===2)
-      rows.push(filename+' ['+(issue.ruleId||'parser')+'] '+String(issue.message).replaceAll(resolve(folder),'<PROJECT>'));
+      rows.push(filename+' ['+(issue.ruleId||'parser')+'] '+
+        String(issue.message).replaceAll(resolve(folder),'<PROJECT>')
+          // React Hooks includes a source excerpt with changing line numbers.
+          // Keep the original code and rule text; normalize only those locations.
+          .replace(/:\\d+:\\d+/g,':<line>:<col>')
+          .replace(/(^|\\n)([ >]*)\\d+(\\s*\\|)/g,'$1$2<line>$3'));
   }
   return rows;
 };
