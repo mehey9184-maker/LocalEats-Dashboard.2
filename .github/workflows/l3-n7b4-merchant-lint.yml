@@ -46,6 +46,7 @@ jobs:
           node --experimental-strip-types --test tests/merchant-command-recovery.test.mjs
           node --experimental-strip-types --test tests/merchant-n7b2-contracts.test.mjs
           node --experimental-strip-types --test tests/l3-n7b3/merchant-safety-contracts.test.mjs
+          node --experimental-strip-types --test tests/l3-n7b4/ascii-controls.test.mjs
           npm run build
       - name: Original Merchant Orders page Chromium regression, read-only and mobile layout
         run: |
