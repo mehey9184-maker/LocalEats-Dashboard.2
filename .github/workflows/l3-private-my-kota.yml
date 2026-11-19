@@ -32,7 +32,7 @@ jobs:
           node --input-type=module <<'NODE'
           import assert from "node:assert/strict";
           const base="https://localeats-api-staging-r52d-git-54267e-mehey9184-makers-projects.vercel.app";
-          const origin="https://localeats-customer-staging-r52d-cgyq9d4k8.vercel.app";
+          const origin="https://localeats-customer-staging-r52d-ixtklio5c.vercel.app";
           const health=await fetch(base+"/health",{headers:{Origin:origin}});
           assert.equal(health.status,200,"Protected staging API must be accessible to the signed-in Customer browser");
           assert.equal(health.headers.get("access-control-allow-origin"),origin,"Only exact Customer origin gets CORS");
