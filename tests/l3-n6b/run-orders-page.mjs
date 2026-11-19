@@ -114,11 +114,9 @@ try {
     const bounds=await refreshButton.boundingBox();
     assert(bounds,"Refresh must have a visible bounding rectangle");
     const x=bounds.x+bounds.width/2,y=bounds.y+bounds.height/2;
-    const tappable=await page.evaluate(({x,y})=>{
-      const target=document.querySelector('[title="Refresh Queue"]');
-      const root=target&&getComputedStyle(target).display!=="none" ? target : [...document.querySelectorAll("button")].find(n=>n.textContent?.trim()==="Refresh");
+    const tappable=await refreshButton.evaluate((root,{x,y})=>{
       const hit=document.elementFromPoint(x,y);
-      return !!root && (root===hit || root.contains(hit));
+      return !!hit && (root===hit || root.contains(hit));
     },{x,y});
     assert(tappable,"Refresh button is visually obstructed or outside hit target at "+width+"px");
     // Execute actual React handler, but avoid Playwright click's auto-wait
