@@ -23,7 +23,7 @@ const normalizedLint=(path,folder)=>{
   for(const file of output){
     const filename=relative(resolve(folder),resolve(file.filePath)).replaceAll('\\','/');
     for(const issue of file.messages||[])if(issue.severity===2)
-      rows.push(filename+' ['+(issue.ruleId||'parser')+'] '+issue.message);
+      rows.push(filename+' ['+(issue.ruleId||'parser')+'] '+String(issue.message).replaceAll(resolve(folder),'<PROJECT>'));
   }
   return rows;
 };
