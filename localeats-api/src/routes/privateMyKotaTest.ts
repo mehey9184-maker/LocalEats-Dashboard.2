@@ -75,18 +75,24 @@ export function makePrivateMyKotaRouter(verify:VerifyUid=token=>authAdmin.verify
     res.set("Cache-Control","private, no-store, max-age=0");
     res.set("Vary","Authorization, Origin");
     const config=privateMyKotaConfig(env,now());
-    if(!config.enabled || req.headers.origin!==config.origin){
-      res.status(404).json({success:false,code:"NOT_FOUND"});return;
-    }
+    // No account identifiers, request tokens, emails or source locations in logs.
+    // These coarse reasons distinguish browser and Firebase setup failures while
+    // keeping the external 404 response indistinguishable for all rejected users.
+    const deny=(reason:"disabled"|"wrong_origin"|"missing_bearer"|"wrong_uid_or_anonymous"|"token_verification_failed")=>{
+      console.info("[L3_PRIVATE_MYKOTA_ACCESS]",reason);
+      res.status(404).json({success:false,code:"NOT_FOUND"});
+    };
+    if(!config.enabled){deny("disabled");return;}
+    if(req.headers.origin!==config.origin){deny("wrong_origin");return;}
     const token=getFirebaseBearerToken(req.headers.authorization);
-    if(!token){res.status(404).json({success:false,code:"NOT_FOUND"});return;}
+    if(!token){deny("missing_bearer");return;}
     try{
       const user=await verify(token);
       if(user.uid!==config.uid||user.firebase?.sign_in_provider==="anonymous"){
-        res.status(404).json({success:false,code:"NOT_FOUND"});return;
+        deny("wrong_uid_or_anonymous");return;
       }
       next();
-    }catch{res.status(404).json({success:false,code:"NOT_FOUND"});}
+    }catch{deny("token_verification_failed");}
   });
   router.get("/status",(_req,res)=>res.json({success:true,eligible:true,
     mode:"PRIVATE_TEST_ONLY",maximum_distance_km:4}));
