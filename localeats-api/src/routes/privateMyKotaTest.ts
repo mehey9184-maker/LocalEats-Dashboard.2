@@ -2,11 +2,13 @@ import {Router, type Request, type Response} from "express";
 import {authAdmin} from "../lib/firebaseAdmin.js";
 import {getFirebaseBearerToken} from "../middleware/authenticateFirebase.js";
 import {calculateDistanceKm} from "../orders/orderContract.js";
+import {PRIVATE_MY_KOTA_SHOP_ID} from "../orders/privateMyKotaSafety.js";
+export {PRIVATE_MY_KOTA_SHOP_ID} from "../orders/privateMyKotaSafety.js";
 
 /** Preview-only virtual shop. Never insert into Production/staging shops,
  * expose via public catalog routes, or allow its ID to reach real checkout.
  */
-export const PRIVATE_MY_KOTA_SHOP_ID="private-test-my-kota-preview";
+
 const MY_KOTA_POINT={lat:-25.9830322643032,lng:28.2074831464466};
 const DEMO_SHOP={
   id:PRIVATE_MY_KOTA_SHOP_ID,name:"My-Kota — PRIVATE TEST",
