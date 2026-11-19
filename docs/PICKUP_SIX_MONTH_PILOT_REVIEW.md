@@ -61,22 +61,25 @@ The fallback Pending, Preparing and Ready board lanes used legacy action control
 
 Customer receipt tests cover authenticated transport, payment-method changes, missing proof, invalid amounts and cross-account/order/shop/revision rejection. Merchant tests cover the paid Ready state, disabled activation and receipt-validated replay after lost response.
 
-- Customer regression suite passed all 133 tests. Customer TypeScript passed.
-- Merchant root regression suite passed all 139 tests.
-- Complete API regression suite passed all 229 tests with localhost access.
+- Customer regression suite passed all 136 tests after the history follow-up. Customer TypeScript passed.
+- Merchant root regression suite passed all 141 tests after the unpaid follow-up.
+- Complete API regression suite passed all 231 tests with localhost access.
 - The 90-day, 180-day and 2,500-order volume tests all passed.
 - Customer and Merchant production-style builds passed with pickup ordering disabled.
 - The real PostgreSQL journey passed the cash and card-machine receipt assertions, duplicate-order protection, cross-account checks, independent payment and handover, refresh and history.
 - The component browser journey passed at 320 and 390 px, including receipt retry, keyboard expansion, original-command handover recovery and absence of horizontal overflow.
+- A separate history browser journey loaded all 101 orders, retried a failed page, rejected a foreign-account page and discarded a pending response after switching accounts.
 
 Merchant TypeScript still reports the same 50 diagnostics as its base after normalizing workspace paths and moved line numbers. Merchant ESLint reports 191 errors and 22 warnings, compared with 192 errors and 22 warnings on the base. A green Vite build does not establish clean typechecking.
 
 Browser screenshots preserve the fixture receipt and the two Merchant states. [Customer receipt](pickup-pilot-evidence/customer-receipt-320.png), [paid and awaiting handover](pickup-pilot-evidence/merchant-paid-320.png), [unconfirmed handover recovery](pickup-pilot-evidence/merchant-retry-320.png).
 
+The follow-up screenshots show [the oldest history card after paging](pickup-pilot-evidence/older-history-320.png) and [the expanded unpaid pickup guidance](pickup-pilot-evidence/merchant-follow-up-320.png).
+
 ## Further improvements
 
-1. Add paginated Customer history. The API currently returns the latest 50 orders. The pilot produces 100 per fictional Customer, so older receipts need an explicit supported history path. The memory simulation can inspect all its stored records and does not validate that UI capability.
-2. Add a dedicated unpaid Ready follow-up workflow with a clear owner decision. Keep aging advisory. The 125 simulated no-shows must not become automatic paid, collected or cancelled records.
+1. Customer history pagination is implemented in the follow-up changes. Load older orders reads authenticated 50-row pages using timestamp and ID. HTTP tests cover 101 owned orders, identical timestamps, a newer order arriving during paging, invalid cursors and foreign accounts. The endpoint filters to collection orders before applying its limit. The Customer retains the cursor from its unfiltered recent feed, so a recent feed containing delivery records can still reach older pickups. The browser covers 49 recent pickups with a legacy row, a recent feed containing only legacy rows, failed reads, retry, duplicate prevention and switching accounts while a page is pending. The history API must deploy before the updated Customer, otherwise older-history reads offer recovery.
+2. Unpaid Ready follow-up is implemented in the follow-up changes. Compact and expanded tickets expose the 30-minute last-update advisory and optional check-then-call guidance. Paid, collected, fake and missing-time orders cannot trigger that advisory. Calls are offered only for validated phone values on actual collection orders. Follow-up guidance is advisory while payment and collection remain server-confirmed actions.
 3. Consider an optional Customer receipt acknowledgment for disputes. Merchant handover remains the current authoritative completion action. This pilot does not add a mandatory Customer confirmation.
 4. Verify genuine staging authentication, session restoration, device-token ownership and minimized-Chrome notification delivery before a physical shop pilot. Real Firebase delivery and till reconciliation require separate evidence.
 5. Run a separately scoped peak-load test if needed. Twenty-two daily orders distributed across 25 shops is a resilience scenario, not peak kitchen throughput.

@@ -78,3 +78,40 @@ test('after a lost handover response, the retry replays the exact saved command 
  assert.doesNotMatch(render(PickupOrderActions,collected),/Retry handover confirmation/);
  assert.equal(render(PickupOrderActions,collected,true,true),'');
 });
+
+test('unpaid Ready follow-up stays visible in compact and expanded tickets without changing business state',async(t)=>{
+ const {PickupOrderActions,MerchantApi}=await loadActions('false');
+ t.mock.method(MerchantApi,'transitionPickupOrder',()=>{throw Error('follow-up must never write');});
+ const unpaid={...order,payment_status:'unpaid',updated_at:new Date(Date.now()-45*60_000).toISOString(),phone:'+27 (82) 123-4567'};
+ for(const compact of [true,false]){
+  const markup=render(PickupOrderActions,unpaid,compact);
+  assert.match(markup,/Ready · unpaid · 30\+ min since last status update/);
+  assert.match(markup,/<details[^>]*><summary[^>]*>Follow up on unpaid pickup<\/summary>/);
+  assert.doesNotMatch(markup,/<details[^>]*\sopen(?:=|>)/);
+  assert.ok(markup.indexOf('Refresh the order and check the counter')<markup.indexOf('href="tel:+27821234567"'));
+  assert.match(markup,/Call customer/);
+  assert.match(markup,/Waiting for the customer keeps this order Ready and unpaid/);
+  assert.match(markup,/timer measures time since the last status update/);
+  assert.doesNotMatch(markup,/Paid · Awaiting handover|aria-label="Confirm handover"/);
+ }
+ assert.equal(MerchantApi.transitionPickupOrder.mock.calls.length,0);
+ assert.equal(unpaid.payment_status,'unpaid');
+ assert.equal(unpaid.pickup_status,'ready_for_pickup');
+});
+
+test('follow-up cannot offer calls for sample or invalid-phone orders and never invents an aging time',async()=>{
+ const {PickupOrderActions}=await loadActions();
+ const unpaid={...order,payment_status:'unpaid',updated_at:new Date(Date.now()-45*60_000).toISOString()};
+ for(const phone of [undefined,'','++27821234567','customer@example.com','123','tel:+27821234567','+27 82 ext 3']){
+  const markup=render(PickupOrderActions,{...unpaid,phone});
+  assert.doesNotMatch(markup,/href="tel:/);
+  assert.match(markup,/No valid customer phone is available/);
+ }
+ assert.doesNotMatch(render(PickupOrderActions,{...unpaid,id:'FAKE-L1C3-1',phone:'+27821234567'}),/href="tel:|Follow up on unpaid pickup/);
+ for(const updated_at of [undefined,'invalid',new Date(Date.now()+60*60_000).toISOString(),new Date(Date.now()-5*60_000).toISOString()]){
+  assert.doesNotMatch(render(PickupOrderActions,{...unpaid,updated_at}),/Follow up on unpaid pickup|30\+ min/);
+ }
+ for(const extra of [{payment_status:'paid'},{pickup_status:'collected'},{pickup_status:'preparing'}]){
+  assert.doesNotMatch(render(PickupOrderActions,{...unpaid,...extra}),/Follow up on unpaid pickup|30\+ min/);
+ }
+});

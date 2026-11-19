@@ -8,6 +8,14 @@ import {pickupNeedsUncollectedAttention,pickupUnpaidWaitingMinutes} from "../ser
 
 type SimulatedTransition = (action: PickupAction, extra: Record<string,unknown>) => Promise<void> | void;
 
+// Format an order's phone for dialing; malformed text must not become a different number.
+function customerCallHref(order:{delivery_type?:unknown;id?:unknown;phone?:unknown}):string|null {
+ if(order.delivery_type!=="collection" || !order.id || String(order.id).startsWith("FAKE-") ||
+   typeof order.phone!=="string" || !/^\+?[\d\s().-]+$/.test(order.phone.trim()))return null;
+ const phone=order.phone.trim().replace(/[\s().-]/g,"");
+ return /^\+?\d{7,15}$/.test(phone)?`tel:${phone}`:null;
+}
+
 export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=false}:{order:any;onSimulate?:SimulatedTransition;compact?:boolean;recoveryOnly?:boolean}){
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
  // ONLY fake order IDs on the guarded no-write Preview may bypass the real pickup write gate.
@@ -16,6 +24,9 @@ export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=
  let status:string;
  try{status=pickupState(order);}catch{return <p role="alert" className="text-xs text-amber-700">Pickup state unavailable. Required schema is not installed; no action was saved.</p>;}
  const awaitingHandover=status==="ready_for_pickup" && order.payment_status==="paid";
+ const needsFollowUp=!simulated && order.delivery_type==="collection" && !!order.id &&
+   !String(order.id).startsWith("FAKE-") && pickupNeedsUncollectedAttention(order);
+ const callHref=simulated?null:customerCallHref(order);
  const actions=status==="pending" ? ["Accept → Preparing","Reject"] : status==="preparing" ? ["Mark Ready"] : status==="ready_for_pickup" ?
   awaitingHandover ? ["Confirm handover"] : ["Confirm cash received","Confirm card-machine payment"] : [];
  const pendingPath=simulated ? null : MerchantApi.getPendingPickupCommandPath(order);
@@ -75,15 +86,25 @@ export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=
   {!compact && !awaitingHandover && <p className="text-[11px] leading-4 font-semibold text-slate-700 dark:text-zinc-200">Pickup · {status==="collected" ? "Collected" : status==="ready_for_pickup" ? "Ready" : status} · {pickupPaymentLabel(order)}</p>}
   {awaitingHandover && <p role="status" className="text-xs font-bold text-slate-800 dark:text-slate-100">Paid · Awaiting handover</p>}
   {!compact && <p className="text-xs">{pickupAmountLabel(order)}</p>}
-  {!compact && status==="ready_for_pickup" && order.payment_status==="unpaid" && (
+  {!recoveryOnly && needsFollowUp ? <div className="text-xs text-amber-800 dark:text-amber-200 space-y-1">
+    <p role="status" className="font-semibold">Ready · unpaid · 30+ min since last status update</p>
+    <details>
+      <summary className="min-h-11 content-center cursor-pointer font-bold underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Follow up on unpaid pickup</summary>
+      <ol className="list-decimal pl-5 space-y-2 leading-5">
+        <li>Refresh the order and check the counter before contacting the customer. The timer measures time since the last status update.</li>
+        <li>Ask whether the customer still plans to collect.
+          {callHref ? <a className="block min-h-11 content-center underline font-bold" href={callHref}>Call customer</a> : <p>No valid customer phone is available on this order.</p>}
+        </li>
+      </ol>
+      <p className="leading-5">Waiting for the customer keeps this order Ready and unpaid. Confirm payment only after receiving it, then confirm handover only after giving them the food.</p>
+    </details>
+  </div> : !compact && status==="ready_for_pickup" && order.payment_status==="unpaid" && (
     <p role="status" className="text-xs font-semibold text-amber-700 dark:text-amber-200">
-      {pickupNeedsUncollectedAttention(order)
-        ? "Ready 30+ minutes · still unpaid. Check the order and contact the customer if appropriate. Never mark Paid or Collected before payment and handover."
-        : "Ready · awaiting actual payment at the counter. Do not mark Collected or count this as revenue until payment and food handover are confirmed."}
+      Ready · awaiting actual payment at the counter. Do not mark Collected or count this as revenue until payment and food handover are confirmed.
       {pickupUnpaidWaitingMinutes(order)!==null && " · "+pickupUnpaidWaitingMinutes(order)+" min since last status update"}
     </p>
   )}
-  {!recoveryOnly && !simulated && order.phone && <a className="text-xs underline" href={`tel:${String(order.phone).replace(/[^+0-9]/g,"")}`}>Optional call: {order.phone}</a>}
+  {!recoveryOnly && !needsFollowUp && callHref && <a className="text-xs underline" href={callHref}>Optional call: {order.phone}</a>}
   {!handoverPending && actions.length>0 && <div role="group" aria-label="Pickup order actions" className="flex w-full items-center gap-2 min-w-0">
     {actions.map(label=>{
       const reject=label==="Reject";
