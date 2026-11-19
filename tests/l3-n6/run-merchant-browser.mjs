@@ -115,7 +115,7 @@ try {
  try{
   const widths=[320,390,1280];
   let checks=0;
-  async function newPage(width,disabled=false){
+  async function newPage(width,disabled=false,dropCommittedReply=false){
    const context=await browser.newContext({viewport:{width,height:850},serviceWorkers:"block"});
    await context.route("**/*",async route=>{
     const url=route.request().url();
@@ -123,6 +123,24 @@ try {
     await route.continue();
    });
    const page=await context.newPage();
+   if(dropCommittedReply){
+    // Browser-only fault injection: send to loopback, let synthetic API
+    // persist the command, then discard the acknowledgement in the caller.
+    // A destroyed TCP socket can hang instead of rejecting on Chromium.
+    await page.addInitScript(()=>{
+     const realFetch=window.fetch.bind(window);
+     let dropOnce=true;
+     window.fetch=async(...args)=>{
+      const url=String(args[0]);
+      if(dropOnce&&url.includes("/api/v1/merchant/orders/")&&url.endsWith("/accept")&&args[1]?.method==="POST"){
+       dropOnce=false;
+       await realFetch(...args); // the local synthetic order was committed
+       throw new TypeError("Synthetic acknowledgement lost after local commit");
+      }
+      return realFetch(...args);
+     };
+    });
+   }
    page.on("dialog",d=>{void d.accept();});
    const errors=[];page.on("pageerror",e=>errors.push(e.message));
    await page.goto(base+(disabled?"/?mode=disabled":"/"),{waitUntil:"networkidle"});
@@ -185,12 +203,11 @@ try {
   // Simulate committing an order transition but losing its HTTP response:
   // UI cannot mark it successful locally, exact persisted command is retried.
   reset();{
-   faultMode="drop-after-commit-once";
-   const {page,context,errors}=await newPage(390);
+   const {page,context,errors}=await newPage(390,false,true);
    try{
     await expectStatus(page,"pending / unpaid");
     await clickAccessible(page,"Accept → Preparing",390);
-    await page.getByRole("alert").waitFor({timeout:23000}); // Actual Merchant command deadline is 15s
+    await page.getByRole("alert").waitFor({timeout:8000}); // deterministic post-commit browser rejection
     await expectStatus(page,"pending / unpaid"); // The browser never invents success
     assert.equal(state.order.status,"preparing"); // But the fixture did commit
     assert.equal(state.receipts.size,1);
