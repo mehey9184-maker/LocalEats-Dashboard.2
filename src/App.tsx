@@ -25,9 +25,7 @@ import {
   Settings,
   HelpCircle,
   Check,
-  Zap,
   ShieldCheck,
-  Sliders,
   MapPin,
   AlertTriangle,
   Sun,
@@ -45,17 +43,14 @@ import {
   Copy,
   Wallet,
   Ticket,
-  Info,
   Rocket,
   Bell,
   BellRing,
   CalendarClock,
   UserRound,
-  Clock3,
   BellOff,
   UtensilsCrossed,
   ReceiptText,
-  Printer,
   User as UserIcon,
   LayoutDashboard,
   PauseCircle,
@@ -75,9 +70,7 @@ import {
   firebaseSignOutUser,
   formatFirebaseUserSession,
   onAuthStateChanged,
-  getFirestoreOrders,
   updateFirestoreShop,
-  getFirestoreMenuItems,
 } from "./lib/firebase";
 import { useKitchenAlerter } from "./hooks/useKitchenAlerter";
 import { useAuthGuard } from "./hooks/useAuthGuard";
@@ -135,8 +128,6 @@ import {
   cleanLocalStorageCache,
 } from "./utils/storageCleanup";
 import {
-} from "./utils/timeSync";
-import {
   QueuedPrintJob,
   generateReceiptBytes,
   getFailedPrints,
@@ -145,13 +136,11 @@ import {
 } from "./utils/escPosEngine";
 import {
   isShopOwnedByUser,
-  getOwnedShopIds,
   registerVerifiedShopId,
   clearVerifiedShopOwnership,
 } from "./utils/shopOwnership";
 import { MerchantApi, MerchantApiError } from "./services/MerchantApi";
 import { createMerchantOrderReadCoordinator } from "./services/merchantOrderRecovery";
-import { fetchWithRetry } from "./utils/fetchWithRetry";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -201,7 +190,7 @@ L.Icon.Default.mergeOptions({
 
 function App() {
   console.log("[App] App component function executing");
-  const { subscribeWithAuthGuard } = useAuthGuard();
+  useAuthGuard();
   const [isSessionChecking, setIsSessionChecking] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
@@ -618,7 +607,7 @@ function App() {
     try {
       const cachedOrders = localStorage.getItem("le_orders");
       if (cachedOrders) {
-        const parsed = JSON.parse(cachedOrders);
+        JSON.parse(cachedOrders);
         // Cached orders cannot establish API pickup authority; load them only from authenticated reads.
       }
     } catch (e) {
@@ -804,7 +793,7 @@ function App() {
       toast.error("Sign in as the registered merchant first.");return;
     }
     let installation:string|null=null;
-    try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch{}
+    try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch{ /* Browser storage can be unavailable. */ }
     if(!installation){
       setPushTestStatus("Register push notifications first.");
       toast.error("Register push notifications first.");return;
@@ -1117,7 +1106,7 @@ function App() {
       }
     });
 
-    let combinedOrders = Array.from(orderMap.values());
+    const combinedOrders = Array.from(orderMap.values());
 
     // Sort by created_at descending
     combinedOrders.sort((a, b) => {
@@ -1526,7 +1515,7 @@ function App() {
     const uid=firebaseAuth.currentUser?.uid;
     if(uid && typeof navigator!=="undefined" && navigator.onLine){
       let installation:string|null=null;
-      try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch{}
+      try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch{ /* Browser storage can be unavailable. */ }
       if(installation){
         await Promise.race([
           MerchantApi.revokePushDevice(installation).catch(()=>false),
@@ -2807,7 +2796,7 @@ function App() {
                                  if (!currentShop) return;
                                  const newStatus = !currentShop.is_active; // If we're toggling, newStatus is the opposite of currentShop.is_active
 
-                                 const { success, error } = await syncShopAvailability({shopId:currentShop.id,isOpen:newStatus});
+                                 const { success } = await syncShopAvailability({shopId:currentShop.id,isOpen:newStatus});
 
                                  if (success) {
                                    toast.success(
