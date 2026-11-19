@@ -1,5 +1,12 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N7B5C — typed Merchant pickup recovery and availability adapters (review only)
+
+On top of the verified L3-N7B5B draft, the pickup recovery helper now treats saved commands and API receipts as untrusted `unknown` records, narrowing fields before use. The original account identity, UUID, command revision, owner/receipt, replay, confirmation and no-write protections remain. The authenticated Merchant API command argument is inferred from the validated command creator. Two ignored, legacy browser-side availability-adapter arguments were removed from the existing Home status handlers; the availability helper already delegates to the authenticated Merchant API. No original UI layout or order lifecycle has been intentionally changed.
+
+This work is draft-only and subject to independent TypeScript/ESLint delta, pickup/command recovery tests, Merchant Orders Chromium browser checks and synthetic API/Postgres acceptance. The remaining lint inventory must be reported; old unmounted Overview components and React effect-state patterns will be handled separately rather than removed broadly. Profile save, real FCM device receipt, hosted backup/schema, scheduler, and physical owner acceptance remain blocked. No Production, live-order, hosted data, payment or push changes were authorized or performed.
+
+
 ## L3-N7B5B — isolated typed synthetic fixtures (review only)
 
 The first L3-N7B5B cleanup removes remaining unsafe `any` typing from three **offline test fixtures only**: `tests/l3-n6b/fixture-supabase.ts`, `tests/l3-n6b/fixture-entry.tsx` and `tests/l3-n6/fixture-entry.tsx`. Their behavior stays the same: the Supabase stand-in is a promise-like, in-memory empty query with no remote transport, browser Orders fixtures render only synthetic API records, and identity changes, ownership checks, failed refresh and no-write boundaries remain. Typed fixture-only assertions bridge the API records to the original Merchant view contracts without altering application-level `Order`/`Shop` models.

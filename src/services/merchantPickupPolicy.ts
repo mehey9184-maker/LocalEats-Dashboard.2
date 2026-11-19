@@ -53,7 +53,7 @@ export function pickupCommand(order:unknown,action:PickupAction,extra:Record<str
  if(action==="confirm_payment" && !["cash","card_machine"].includes(String(extra.payment_method)))throw new Error("Confirm actual cash or physical-card payment at the shop.");
  if(action==="collect" && extra.handover_confirmed!==true)throw new Error("Confirm actual food handover before marking Collected.");
  return {path:action==="confirm_payment" ? "payment-confirmation" : action,
-  body:{command_id:crypto.randomUUID(),expected_revision:row?.revision,...extra}};
+  body:{command_id:crypto.randomUUID(),expected_revision:Number(row?.revision),...extra}};
 }
 export function pickupOrderingEnabled():boolean { return import.meta.env?.VITE_PICKUP_ORDERING_ENABLED === "true"; }
 export function pickupMutationsDisabled():void {

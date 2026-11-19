@@ -1,18 +1,25 @@
-type Order=Record<string,any>;
+type Order=Record<string,unknown>;
+const asRecord=(value:unknown):Record<string,unknown>|null=>
+ value!==null && typeof value==='object' && !Array.isArray(value) ? value as Record<string,unknown> : null;
 type Command={path:string;body:{command_id:string;expected_revision:number;[key:string]:unknown}};
 type Options={identity:()=>string|undefined;enabled:()=>boolean;storage:Pick<Storage,'getItem'|'setItem'|'removeItem'>;
- transport:(order:Order,command:Command,signal:AbortSignal,uid:string)=>Promise<{status:number;data:any}>;
- mapOrder:(order:any)=>Order;timeoutMs?:number};
+ transport:(order:Order,command:Command,signal:AbortSignal,uid:string)=>Promise<{status:number;data:Record<string,unknown>}>;
+ mapOrder:(order:unknown)=>Order;timeoutMs?:number};
 const kinds:Record<string,string>={accept:'accepted',ready:'ready',reject:'merchant_rejected','payment-confirmation':'payment_confirmed',collect:'collected'};
 const states:Record<string,string[]>={accept:['preparing','ready_for_pickup','collected'],ready:['ready_for_pickup','collected'],reject:['cancelled'],'payment-confirmation':['ready_for_pickup','collected'],collect:['collected']};
-function validCommand(value:any):value is Command {
- if(!value || !Object.hasOwn(kinds,value.path) || !value.body || typeof value.body!=='object' || Array.isArray(value.body) ||
-  !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.body.command_id) ||
-  !Number.isSafeInteger(value.body.expected_revision) || value.body.expected_revision<0 || value.body.expected_revision>=Number.MAX_SAFE_INTEGER)return false;
- const extra=value.path==='reject' ? 'reason' : value.path==='collect' ? 'handover_confirmed' : value.path==='payment-confirmation' ? 'payment_method' : null;
- if(Object.keys(value).some(key=>!['path','body'].includes(key)) || Object.keys(value.body).some(key=>!['command_id','expected_revision',extra].includes(key)))return false;
- return value.path==='reject' ? typeof value.body.reason==='string' && !!value.body.reason.trim() && value.body.reason.length<=500 :
-  value.path==='collect' ? value.body.handover_confirmed===true : value.path==='payment-confirmation' ? ['cash','card_machine'].includes(value.body.payment_method) : true;
+function validCommand(value:unknown):value is Command {
+ const row=asRecord(value),body=asRecord(row?.body);
+ if(!row || typeof row.path!=='string' || !Object.hasOwn(kinds,row.path) || !body ||
+  typeof body.command_id!=='string' ||
+  !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.command_id) ||
+  typeof body.expected_revision!=='number' || !Number.isSafeInteger(body.expected_revision) ||
+  body.expected_revision<0 || body.expected_revision>=Number.MAX_SAFE_INTEGER)return false;
+ const extra=row.path==='reject' ? 'reason' : row.path==='collect' ? 'handover_confirmed' : row.path==='payment-confirmation' ? 'payment_method' : null;
+ if(Object.keys(row).some(key=>!['path','body'].includes(key)) ||
+    Object.keys(body).some(key=>!['command_id','expected_revision',extra].includes(key)))return false;
+ return row.path==='reject' ? typeof body.reason==='string' && !!body.reason.trim() && body.reason.length<=500 :
+  row.path==='collect' ? body.handover_confirmed===true :
+  row.path==='payment-confirmation' ? typeof body.payment_method==='string' && ['cash','card_machine'].includes(body.payment_method) : true;
 }
 export function createMerchantPickupRecovery(options:Options){
  const running=new Map<string,Promise<Order>>();
@@ -40,17 +47,20 @@ export function createMerchantPickupRecovery(options:Options){
      if([400,403,404,409,422].includes(status))options.storage.removeItem(key);
      throw Error(typeof data?.error==='string' ? data.error : 'The API did not confirm persistence. Retry previous action.');
     }
-    if(!data.order || typeof data.order!=='object')throw Error('The API did not confirm persistence. Retry previous action.');
-    const confirmed=options.mapOrder(data.order),receipt=data.command_receipt,revision=exact.body.expected_revision+1;
+    const responseOrder=asRecord(data.order);
+    if(!responseOrder)throw Error('The API did not confirm persistence. Retry previous action.');
+    const confirmed=options.mapOrder(responseOrder),receipt=asRecord(data.command_receipt),revision=exact.body.expected_revision+1;
     const state=confirmed.pickup_status ?? confirmed.status;
-    if(confirmed.id!==order.id || String(confirmed.shop_id)!==String(order.shop_id) ||
+    const confirmedRevision=confirmed.revision;
+    if(typeof state!=='string' || typeof confirmedRevision!=='number' || !Number.isSafeInteger(confirmedRevision) ||
+     confirmed.id!==order.id || String(confirmed.shop_id)!==String(order.shop_id) ||
      !receipt || receipt.command_id!==exact.body.command_id || receipt.order_id!==order.id || receipt.actor_uid!==uid ||
-     receipt.kind!==kinds[exact.path] || receipt.revision!==revision || confirmed.revision<revision ||
+     receipt.kind!==kinds[exact.path] || receipt.revision!==revision || confirmedRevision<revision ||
      !states[exact.path].includes(state) ||
-     (confirmed.revision>revision && data.replayed!==true) ||
+     (confirmedRevision>revision && data.replayed!==true) ||
      (exact.path==='payment-confirmation' && (confirmed.payment_status!=='paid' || confirmed.payment_method!==exact.body.payment_method)) ||
-     (confirmed.revision===revision && exact.path==='ready' && confirmed.payment_status!=='unpaid') ||
-     (confirmed.revision===revision && state!==states[exact.path][0]))
+     (confirmedRevision===revision && exact.path==='ready' && confirmed.payment_status!=='unpaid') ||
+     (confirmedRevision===revision && state!==states[exact.path][0]))
      throw Error('The API did not confirm this action. Retry previous action or refresh.');
     if(!unchanged())throw Error('Your session or pending action changed. Refresh before retrying.');
     options.storage.removeItem(key);return confirmed;
