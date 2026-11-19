@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {isPrivateMyKotaFixtureId} from "./privateMyKotaSafety.js";
 import { draftAssertConsent, draftHash, draftReplayCreation, DraftContractError } from "../contracts/pickupDraft.js";
 import { assertShopCanAcceptOrder, calculateAuthoritativePrice, calculateDistanceKm, OrderContractError,
   parseCreateOrderInput, type CreateOrderInput, type AuthoritativePrice } from "./orderContract.js";
@@ -26,6 +27,8 @@ export function parsePickupInput(raw: unknown, creating: boolean): PickupInput {
   onlyKeys(body,["contract_version","idempotency_key","shop_id","items","delivery_type","delivery_schedule_mode",
     "tip_amount","payment_method","customer_details","launch_location",...(creating ? ["consent"] : [])]);
   const input = parseCreateOrderInput(body);
+  // Defense in depth: the Preview sample is never a checkout target.
+  if(isPrivateMyKotaFixtureId(input.shop_id))return fail(422,"PRIVATE_TEST_ONLY");
   input.idempotency_key=input.idempotency_key.toLowerCase();
   onlyKeys(object(body.customer_details),["name","phone","email","address","city","delivery_instructions"]);
   if (input.delivery_type !== "collection" || input.tip_amount !== 0 || !["cash","card_machine"].includes(input.payment_method))
@@ -48,6 +51,7 @@ export const creationHash = (uid: string, request: PickupInput): string => draft
   version:"pickup-v1", uid, input:request.input, location:request.location, consent:request.consent,
 }));
 export async function pickupPricing(repository: OrderRepository, uid: string, request: PickupInput): Promise<AuthoritativePrice> {
+  if(isPrivateMyKotaFixtureId(request.input.shop_id))return fail(422,"PRIVATE_TEST_ONLY");
   if (!uid) return fail(401,"UNAUTHORIZED");
   const shop = await repository.findShop(request.input.shop_id);
   if (!shop) return fail(404,"SHOP_NOT_FOUND");
@@ -98,6 +102,7 @@ export function merchantCommandReceipt(result:{order:StoredOrder;event?:unknown}
   return {command_id:event.command_id,order_id:event.order_id,actor_uid:event.actor_uid,kind:event.kind,revision:event.revision};
 }
 export async function createPickup(client: RpcClient, repository: OrderRepository, uid:string, request:PickupInput) {
+  if(isPrivateMyKotaFixtureId(request.input.shop_id))return fail(422,"PRIVATE_TEST_ONLY");
   if (!uid) return fail(401,"UNAUTHORIZED");
   const hash=creationHash(uid,request);
   // Replay precedes all catalog/price/availability checks. The immutable hash survives actual method changes.
