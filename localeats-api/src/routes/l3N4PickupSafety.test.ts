@@ -88,8 +88,8 @@ test("L3-N4: reserved private shop cannot leak via public catalog, even if mista
   const query:any={
    select:()=>query,eq:()=>query,is:()=>query,
    then:(resolve:(value:any)=>void,reject:(error:unknown)=>void)=>Promise.resolve({data:[
-    {id:PRIVATE_MY_KOTA_SHOP_ID,name:"PRIVATE SAMPLE",is_active:true,approval_status:"approved",archived_at:null,lat:point.lat,lng:point.lng},
-    {id:"approved-real-staging",name:"PUBLIC SHOP",is_active:true,approval_status:"approved",archived_at:null,lat:point.lat,lng:point.lng}
+    {id:PRIVATE_MY_KOTA_SHOP_ID,name:"PRIVATE SAMPLE",is_active:true,effective_is_active:true,availability_revision:0,approval_status:"approved",archived_at:null,lat:point.lat,lng:point.lng},
+    {id:"approved-real-staging",name:"PUBLIC SHOP",is_active:true,effective_is_active:true,availability_revision:0,approval_status:"approved",archived_at:null,lat:point.lat,lng:point.lng}
    ],error:null}).then(resolve,reject),
    maybeSingle:async()=>({data:{id:PRIVATE_MY_KOTA_SHOP_ID},error:null})
   };
