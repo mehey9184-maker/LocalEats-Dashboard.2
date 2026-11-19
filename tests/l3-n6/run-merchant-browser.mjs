@@ -129,7 +129,7 @@ try {
    return {page,context,errors};
   }
   async function expectStatus(page,status){
-   await page.getByTestId("fixture-status").getByText("Persisted fixture state: "+status,{exact:false}).waitFor({timeout:6000});
+   await page.getByTestId("fixture-status").filter({hasText:"Persisted fixture state: "+status}).waitFor({timeout:6000});
    checks++;
   }
   async function clickAccessible(page,name,width){
@@ -198,7 +198,7 @@ try {
     assert(keys.some(k=>k.startsWith("pickup-command:merchant-a:")));
     // Wrong account never sees earlier owner's order or recovery button.
     await page.getByTestId("switch-merchant").click();
-    await page.getByTestId("fixture-account").getByText("merchant-b",{exact:false}).waitFor();
+    await page.getByTestId("fixture-account").filter({hasText:"merchant-b"}).waitFor();
     await page.getByTestId("empty").waitFor();
     assert.equal(await page.getByTestId("pickup-card").count(),0);
     assert.equal(await page.getByRole("button",{name:"Retry previous action"}).count(),0);
@@ -222,7 +222,7 @@ try {
     await clickAccessible(page,"Mark Ready",390);await expectStatus(page,"ready_for_pickup / unpaid");
     faultMode="reject-once";
     await clickAccessible(page,"Confirm cash received",390);
-    await page.getByRole("alert").getByText(/Synthetic transport outage/i).waitFor();
+    await page.getByRole("alert").filter({hasText:/Synthetic transport outage/i}).waitFor();
     await expectStatus(page,"ready_for_pickup / unpaid");
     assert.equal(state.order.payment_status,"unpaid");
     assert.equal(await page.getByRole("button",{name:"Food handed over → Collected"}).count(),0);
