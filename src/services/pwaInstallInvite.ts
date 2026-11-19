@@ -36,7 +36,7 @@ if (typeof window !== "undefined") {
     // A fresh native offer may indicate an app was uninstalled since the marker
     // was stored. Never allow that old marker to suppress the new offer.
     installedThisSession = false;
-    try { window.localStorage.removeItem(installedMarker); } catch {}
+    try { window.localStorage.removeItem(installedMarker); } catch { /* Storage unavailable; native install offer remains authoritative. */ }
     publish();
   });
   window.addEventListener("appinstalled", () => {
