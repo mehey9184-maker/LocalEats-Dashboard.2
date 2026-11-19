@@ -75,7 +75,6 @@ import {
   firebaseSignOutUser,
   formatFirebaseUserSession,
   onAuthStateChanged,
-  getFirestoreShopById,
   getFirestoreOrders,
   updateFirestoreShop,
   getFirestoreMenuItems,
