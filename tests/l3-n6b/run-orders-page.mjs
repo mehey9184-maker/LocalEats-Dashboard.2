@@ -41,9 +41,9 @@ const server=http.createServer((req,res)=>{
   if(!["merchant-a","merchant-b"].includes(uid))return json(res,401,{error:"Unauthorized",code:"UNAUTHORIZED"});
   if(url.pathname==="/api/v1/merchant/shop"){
    if(nextFault==="wrong-owner"&&uid==="merchant-b"){
-    nextFault=null;return json(res,200,{success:true,shop:{id:"test-owned-shop",owner_id:"merchant-a",approval_status:"approved",name:"Synthetic Kota Shop"}});
+    nextFault=null;return json(res,200,{success:true,shop:{id:"test-owned-shop",owner_id:"merchant-a",approval_status:"approved",name:"Fixture Merchant Shop"}});
    }
-   return json(res,200,{success:true,shop:{id:uid==="merchant-a"?"test-owned-shop":"other-test-shop",owner_id:uid,approval_status:"approved",name:"Synthetic Kota Shop",phone:"+27700000000"}});
+   return json(res,200,{success:true,shop:{id:uid==="merchant-a"?"test-owned-shop":"other-test-shop",owner_id:uid,approval_status:"approved",name:"Fixture Merchant Shop",phone:"+27700000000"}});
   }
   if(url.pathname==="/api/v1/merchant/orders"){
    if(nextFault==="fail-read"){nextFault=null;return json(res,503,{success:false,error:"Synthetic order read unavailable"});}
