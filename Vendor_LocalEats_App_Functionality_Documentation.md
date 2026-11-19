@@ -1,5 +1,12 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N7B5A — profile-photo write gate and bounded Merchant types (review only)
+
+The profile editor no longer presents an active browser-to-Firebase avatar upload action while `src/lib/supabase.ts` intentionally rejects profile persistence. The original avatar display and full-name/phone/preferences UI remain. A clear in-page note explains that profile photo changes are unavailable. No new avatar can be uploaded merely by selecting or dropping a file. This is a conservative, review-only UI gate; a separately designed authenticated profile API and staging-only owner acceptance are still required before enabling profile changes.
+
+`src/services/MerchantApi.ts` replaces the open-ended `VerifiedMerchantShop` index `any` with `unknown` and types the pending pickup command lookup as an order with optional ID. Existing merchant identity and pickup mutation rules remain unchanged. This branch is stacked on draft PR #179; both #179 and #180 remain separate, unmerged drafts. CI must demonstrate no new TypeScript diagnostics, zero newly introduced ESLint errors, and pickup/browser/acceptance no-write checks before this branch is accepted. Real orders, payments, FCM sends, scheduler, hosted SQL, Production and Rider activation remain off.
+
+
 ## Isolated Firebase staging configuration — 2026-11-05
 
 The Dashboard previously preferred bundled Firebase values even when staging environment values were supplied. Staging builds now explicitly select `VITE_FIREBASE_CONFIG_SOURCE=environment` and provide all six Firebase app values. Incomplete environment configurations fail before Firebase initializes. The Firestore database is selected with `VITE_FIREBASE_FIRESTORE_DATABASE_ID`, defaulting to `(default)` in that mode. Existing deployments continue using their bundled configuration unless opted in. This does not activate ordering or deploy security rules. `tests/firebase-environment.test.mjs` captures the Firebase SDK initialization arguments to verify both staging isolation and existing-build compatibility.
