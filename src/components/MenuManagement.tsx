@@ -21,10 +21,8 @@ import { toast } from "sonner";
 import { MenuItem, Shop, User } from "../types";
 import { supabase } from "../lib/supabase";
 import {
-  getFirestoreMenuItems,
   createFirestoreMenuItem,
   updateFirestoreMenuItem,
-  subscribeToMenuItemsFirestore,
 } from "../lib/firebase";
 import { useAuthGuard } from "../hooks/useAuthGuard";
 import { cn } from "../lib/utils";
@@ -136,7 +134,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   user,
 }) => {
 
-  const { subscribeWithAuthGuard } = useAuthGuard();
+  useAuthGuard();
   const userOwnedShops = useMemo(
     () => shops.filter((s) => isShopOwnedByUser(s, user)),
     [shops, user]
@@ -316,7 +314,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
   }, [items]);
 
   const menuRequest = React.useRef(0);
-  const fetchMenu = useCallback(async (_showLoadingSpinner = true) => {
+  const fetchMenu = useCallback(async () => {
     const request = ++menuRequest.current;
     setItems([]);
     setMenuError(null);
@@ -485,7 +483,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
       }
       setImageFile(null);
       setImagePreview(null);
-      void fetchMenu(false);
+      void fetchMenu();
       setActiveMenuSection("list");
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -1163,7 +1161,7 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         isOpen={isAiScannerOpen}
         onClose={() => setIsAiScannerOpen(false)}
         selectedShopId={typeof selectedShopId === "number" ? selectedShopId : selectedShopId ? Number(selectedShopId) : null}
-        onRefreshMenu={() => void fetchMenu(true)}
+        onRefreshMenu={() => void fetchMenu()}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         supabase={supabase as any}
         defaultCategories={categories}
