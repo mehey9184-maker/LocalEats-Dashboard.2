@@ -1,4 +1,5 @@
 import {projectCachedMerchantSession} from "./merchantSessionMetadata";
+import type {User as MerchantUser} from "../types";
 import {legacyOrderWriteError} from "./legacyOrderWrite";
 /**
  * Firestore Compatibility & Migration Bridge
@@ -541,7 +542,7 @@ export const supabase = {
       return { data: { user: null }, error: null };
     },
 
-    onAuthStateChange(callback: (event: string, session: unknown) => void) {
+    onAuthStateChange(callback: (event: string, session: {user:MerchantUser;access_token:string}|null) => void) {
       const unsub = auth.onAuthStateChanged((fbUser) => {
         if (fbUser) {
           const session = {

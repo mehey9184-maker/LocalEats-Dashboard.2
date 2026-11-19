@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { SupabaseClient } from "@supabase/supabase-js";
+import {supabase as merchantDataAdapter} from "../lib/supabase";
 import { Wifi, WifiOff, RefreshCw, Layers, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
@@ -8,7 +8,7 @@ import { getQueuedMutations } from "../utils/offlineSyncQueue";
 import { logNetworkError } from "../utils/errorHandler";
 
 interface ConnectivityMonitorProps {
-  supabase: SupabaseClient;
+  supabase: Pick<typeof merchantDataAdapter,'from'|'removeChannel'>;
   onOpenDiagnostics?: () => void;
   className?: string;
 }
@@ -117,17 +117,18 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
   useEffect(() => {
     if (!isOnline) return;
 
-    let wsChannel: ReturnType<typeof supabase.channel>;
+    let wsChannel: ReturnType<typeof getFreshChannel>|undefined;
 
     try {
       wsChannel = getFreshChannel("system_connectivity_monitor");
-      wsChannel.subscribe((status, err) => {
-        setWsStatus(status);
+      wsChannel.subscribe((status) => {
+        if (status==="SUBSCRIBED" || status==="CONNECTING" || status==="CLOSED" || status==="CHANNEL_ERROR" || status==="TIMED_OUT") setWsStatus(status);
+        else setWsStatus("CHANNEL_ERROR");
         if (status === "SUBSCRIBED") {
           setHealthStatus((prev) => (prev === "offline" ? "degraded" : "connected"));
         } else if (status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           setHealthStatus("degraded");
-          logNetworkError("supabase_websocket_closed", err || `WebSocket channel status: ${status}`, {
+          logNetworkError("supabase_websocket_closed", `WebSocket channel status: ${status}`, {
             type: "websocket",
             closeCode: status === "TIMED_OUT" ? 4004 : 1006,
             closeReason: `Channel state transition to ${status}`,

@@ -322,6 +322,8 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 }) => {
   const { subscribeWithAuthGuard } = useAuthGuard();
   const [viewMode, setViewMode] = useState<"active" | "history">("active");
+  // Retain original Kanban default; the existing Switch now changes the grid layout.
+  const [layoutMode,setLayoutMode]=useState<"kanban"|"list">("kanban");
   
   const [printerDiagStatus, setPrinterDiagStatus] = useState<{
     bt: PrinterDiagnosticResult;
@@ -2916,10 +2918,10 @@ Notes: "${order.notes || "None"}"
                     <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
                       <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
                         <LayoutGrid size={14} />
-                        Layout: {true ? "Kanban Board" : "List View"}
+                        Layout: {layoutMode==="kanban" ? "Kanban Board" : "List View"}
                       </span>
                       <button
-                        onClick={() => setLayoutMode(true ? "list" : "kanban")}
+                        onClick={() => setLayoutMode(current => current==="kanban" ? "list" : "kanban")}
                         className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-primary text-on-primary cursor-pointer"
                       >
                         Switch
@@ -4141,9 +4143,11 @@ Notes: "${order.notes || "None"}"
               <div
                 className={cn(
                   "grid gap-4 sm:gap-6 w-full min-w-0",
-                  kitchenMode
-                    ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
-                    : "grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3"
+                  layoutMode==="list"
+                    ? "grid-cols-1"
+                    : kitchenMode
+                      ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+                      : "grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3"
                 )}
               >
                 <AnimatePresence mode="popLayout">

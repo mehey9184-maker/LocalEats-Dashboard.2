@@ -128,6 +128,19 @@ try {
     }
     await page.waitForFunction(()=>Number(document.querySelector('[data-testid="fixture-refreshes"]')?.textContent?.match(/\d+/)?.[0])>0);
     await page.getByTestId("fixture-loading").waitFor({state:"hidden"});
+    if(width===390){
+      // Exercise the actual previously broken mobile Orders layout switch.
+      // The default board keeps its original design; tapping Switch must
+      // select and restore the single-column alternative without a runtime error.
+      await page.getByTitle("Toggle Extra Tools").evaluate(button=>button.click());
+      await page.getByText("Layout: Kanban Board").waitFor();
+      const layoutSwitch=page.getByRole("button",{name:"Switch",exact:true});
+      await layoutSwitch.evaluate(button=>button.click());
+      await page.getByText("Layout: List View").waitFor();
+      await layoutSwitch.evaluate(button=>button.click());
+      await page.getByText("Layout: Kanban Board").waitFor();
+      console.log("L3_N7B2_ORIGINAL_ORDERS_LAYOUT_SWITCH_PASS");
+    }
     assert(apiReads>before,"Refresh must issue verified API reads");
     assert.equal(apiWrites,0);
     assert.deepEqual(errors,[],"No React/runtime page exceptions");

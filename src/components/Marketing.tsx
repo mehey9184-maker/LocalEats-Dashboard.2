@@ -26,9 +26,8 @@ import {
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import QRCodeLib from "qrcode";
-import { Shop, MenuItem, Order } from "../types";
+import type {Shop,MenuItem,Order,User} from "../types";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
-import type { User } from "@supabase/supabase-js";
 import { CampaignBuilder } from "./CampaignBuilder";
 import { CustomerReEngagement } from "./marketing/CustomerReEngagement";
 import { FlashDealsStudio } from "./marketing/FlashDealsStudio";
