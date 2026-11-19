@@ -1,4 +1,6 @@
 import React,{useState} from "react";
+import type {Order} from "../types";
+import type {PreviewTestPickupOrder} from "./PreviewFakeOrders";
 import {Check, X} from "lucide-react";
 import {MerchantApi} from "../services/MerchantApi";
 import {pickupOrderingEnabled,type PickupAction} from "../services/merchantPickupPolicy";
@@ -8,7 +10,7 @@ import {pickupNeedsUncollectedAttention,pickupUnpaidWaitingMinutes} from "../ser
 
 type SimulatedTransition = (action: PickupAction, extra: Record<string,unknown>) => Promise<void> | void;
 
-export function PickupOrderActions({order,onSimulate,compact=false}:{order:Record<string,unknown>;onSimulate?:SimulatedTransition;compact?:boolean}){
+export function PickupOrderActions({order,onSimulate,compact=false}:{order:Order|PreviewTestPickupOrder;onSimulate?:SimulatedTransition;compact?:boolean}){
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
  // ONLY fake order IDs on the guarded no-write Preview may bypass the real pickup write gate.
  const simulated=!!onSimulate && isMerchantPreviewSimulatorEnabled() &&
@@ -65,7 +67,7 @@ export function PickupOrderActions({order,onSimulate,compact=false}:{order:Recor
       Paid · still awaiting physical handover. Mark Collected only after the customer receives the food.
     </p>
   )}
-  {!simulated && order.phone && <a className="text-xs underline" href={`tel:${String(order.phone).replace(/[^+0-9]/g,"")}`}>Optional call: {order.phone}</a>}
+  {!simulated && "phone" in order && order.phone && <a className="text-xs underline" href={`tel:${String(order.phone).replace(/[^+0-9]/g,"")}`}>Optional call: {order.phone}</a>}
   <div role="group" aria-label="Pickup order actions" className="flex w-full items-center gap-2 min-w-0">
     {actions.map(label=>{
       const reject=label==="Reject";
