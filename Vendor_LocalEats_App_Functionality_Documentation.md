@@ -1,5 +1,12 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N7B5B — isolated typed synthetic fixtures (review only)
+
+The first L3-N7B5B cleanup removes remaining unsafe `any` typing from three **offline test fixtures only**: `tests/l3-n6b/fixture-supabase.ts`, `tests/l3-n6b/fixture-entry.tsx` and `tests/l3-n6/fixture-entry.tsx`. Their behavior stays the same: the Supabase stand-in is a promise-like, in-memory empty query with no remote transport, browser Orders fixtures render only synthetic API records, and identity changes, ownership checks, failed refresh and no-write boundaries remain. Typed fixture-only assertions bridge the API records to the original Merchant view contracts without altering application-level `Order`/`Shop` models.
+
+This branch is stacked on draft PR #181, itself stacked on #179. It must independently pass the PR #181 TypeScript/ESLint baseline delta, no-write tests, original 320/390/1280px Orders browser checks, and disposable PostgreSQL/API acceptance before this batch can be treated as verified. No lint rules, feature flags, hosted data, original Merchant UI, live orders, payments, FCM, scheduler, Rider, deployment, or merge is changed. Real signed-in Merchant Settings/profile saving is still blocked.
+
+
 ## L3-N7B5A — profile-photo write gate and bounded Merchant types (review only)
 
 The profile editor no longer presents an active browser-to-Firebase avatar upload action while `src/lib/supabase.ts` intentionally rejects profile persistence. The original avatar display and full-name/phone/preferences UI remain. A clear in-page note explains that profile photo changes are unavailable. No new avatar can be uploaded merely by selecting or dropping a file. This is a conservative, review-only UI gate; a separately designed authenticated profile API and staging-only owner acceptance are still required before enabling profile changes.
