@@ -1,0 +1,58 @@
+name: L3 private My-Kota staging catalog security
+on:
+  pull_request:
+    paths:
+      - 'localeats-api/src/routes/privateMyKotaTest*'
+      - 'localeats-api/src/routes/l3N4PickupSafety.test.ts'
+      - 'localeats-api/src/orders/pickupService.ts'
+      - 'localeats-api/src/orders/privateMyKotaSafety.ts'
+      - 'localeats-api/src/routes/catalog.ts'
+      - 'localeats-api/src/server.ts'
+      - 'localeats-api/src/corsOrigins.ts'
+      - 'localeats-api/package.json'
+      - '.github/workflows/l3-private-my-kota.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-private-visibility:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: localeats-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Verify Firebase UID isolation, test radius, no public leakage and no-write semantics
+        run: node --test dist/routes/privateMyKotaTest.test.js dist/routes/l3N4PickupSafety.test.js dist/routes/catalog.test.js dist/corsOrigins.test.js dist/orders/pickupService.test.js dist/contracts/pickupDraft.test.js dist/middleware/pickupWriteGate.test.js
+      - name: Verify deployed private staging API has exact Customer CORS and still denies anonymous access
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          const base="https://localeats-api-staging-r52d-git-54267e-mehey9184-makers-projects.vercel.app";
+          const origin="https://localeats-customer-staging-r52d-7tc5xg9rb.vercel.app";
+          const health=await fetch(base+"/health",{headers:{Origin:origin}});
+          if(health.status!==200)console.log("L3_STAGE_CORS_HEALTH_FAILURE",health.status,health.headers.get("content-type"),(await health.clone().text()).slice(0,240));
+          assert.equal(health.status,200,"Protected staging API must be accessible to the signed-in Customer browser");
+          assert.equal(health.headers.get("access-control-allow-origin"),origin,"Only exact Customer origin gets CORS");
+          const preflight=await fetch(base+"/api/v1/private-test/my-kota/status",{method:"OPTIONS",headers:{
+            Origin:origin,"Access-Control-Request-Method":"GET",
+            "Access-Control-Request-Headers":"Authorization"
+          }});
+          assert.equal(preflight.status,204,"Valid browser preflight must succeed");
+          assert.equal(preflight.headers.get("access-control-allow-origin"),origin);
+          const anonymous=await fetch(base+"/api/v1/private-test/my-kota/status",{headers:{Origin:origin}});
+          assert.equal(anonymous.status,404,"Private shop must reject unsigned GET with uniform 404");
+          assert.equal(anonymous.headers.get("access-control-allow-origin"),origin);
+          const payload=await anonymous.json();
+          assert.deepEqual(payload,{success:false,code:"NOT_FOUND"});
+          const cross=await fetch(base+"/api/v1/private-test/my-kota/status",{headers:{Origin:"https://untrusted.vercel.app"}});
+          assert.equal(cross.status,403,"Unapproved browser origin must be rejected before any private route");
+          console.log("L3_MYKOTA_STAGING_NETWORK_OK exact CORS, preflight, anonymous denial, unapproved denial");
+          NODE

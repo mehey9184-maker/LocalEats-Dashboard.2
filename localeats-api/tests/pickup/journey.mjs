@@ -130,6 +130,19 @@ const intent=()=>({contract_version:"pickup-v1",idempotency_key:crypto.randomUUI
  payment_method:"cash",customer_details:{name:"Fixture customer",phone:"+27712345678"},launch_location:{lat:-26,lng:28}});
 const readyBody=command(1);
 try {
+ // L3-N5: even in this disposable process, where the real pickup SQL RPCs
+ // are deliberately enabled, the PRIVATE TEST shop cannot reach creation.
+ // This also proves the guard fires before lookup in a real HTTP request.
+ const initialOrderCount=Number(jsonSql("select count(*) from public.orders"));
+ const privateIntent={...intent(),shop_id:"private-test-my-kota-preview",
+   items:[{menu_item_id:"private-mykota-demo-kota",quantity:1}]};
+ await assert.rejects(()=>customer.quote(privateIntent),
+   error=>error.code==="PRIVATE_TEST_ONLY" && error.status===422);
+ await assert.rejects(()=>customer.create({...privateIntent,
+   consent:{currency:"ZAR",total_minor:2500,pricing_fingerprint:"a".repeat(64)}}),
+   error=>error.code==="PRIVATE_TEST_ONLY" && error.status===422);
+ assert.equal(Number(jsonSql("select count(*) from public.orders")),initialOrderCount,
+   "The private test shop must never create an order even in the disposable lab");
  const shops=await customer.shops({lat:-26,lng:28});
  assert(shops.shops.some(s=>s.id==="shop-my-kota-ivory-park"));
  assert(!shops.shops.some(s=>s.id==="far"));

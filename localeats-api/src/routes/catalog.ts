@@ -1,6 +1,7 @@
 import {effectiveShop} from "../orders/shopAvailability.js";
 import { Router, Request, Response } from "express";
 import {calculateDistanceKm} from "../orders/orderContract.js";
+import {isPrivateMyKotaFixtureId} from "../orders/privateMyKotaSafety.js";
 
 import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 
@@ -25,9 +26,10 @@ export class SupabaseCatalogRepository implements CatalogRepository {
       .eq("approval_status", "approved")
       .is("archived_at", null);
     if (error) throw error;
-    return (data || []).map(effectiveShop);
+    return (data || []).filter((shop:any)=>!isPrivateMyKotaFixtureId(shop?.id)).map(effectiveShop);
   }
   async getApprovedShopById(shopId: string): Promise<any | null> {
+    if(isPrivateMyKotaFixtureId(shopId))return null;
     const { data, error } = await this.supabase
       .from("shops_with_availability")
       .select(PUBLIC_SHOP_FIELDS)
@@ -39,6 +41,7 @@ export class SupabaseCatalogRepository implements CatalogRepository {
     return data ? effectiveShop(data) : null;
   }
   async getMenuByShopId(shopId: string): Promise<any[]> {
+    if(isPrivateMyKotaFixtureId(shopId))return [];
     const { data, error } = await this.supabase
       .from("menu_items")
       .select(PUBLIC_MENU_FIELDS)

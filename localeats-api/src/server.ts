@@ -10,6 +10,7 @@ import healthRoutes from "./routes/health.js";
 import merchantRoutes from "./routes/merchant.js";
 import adminRoutes from "./routes/admin.js";
 import catalogRoutes from "./routes/catalog.js";
+import privateMyKotaTestRoutes from "./routes/privateMyKotaTest.js";
 import { customerOrderRoutes, merchantOrderRoutes } from "./routes/orders.js";
 import riderOrderRoutes from "./routes/riderOrders.js";
 import { riderRouter, merchantRiderRouter } from "./routes/riderAccess.js";
@@ -60,6 +61,8 @@ app.use("/api/v1/rider", riderRouter);
 app.use("/api/v1/merchant/riders", merchantRiderRouter);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/catalog", catalogRoutes);
+// Isolated authenticated test fixture; never part of public catalog or orders.
+app.use("/api/v1/private-test/my-kota", privateMyKotaTestRoutes);
 app.use("/api/v1/profiles", customerProfilesRouter);
 app.use("/api/v1", pickupNotificationRoutes);
 

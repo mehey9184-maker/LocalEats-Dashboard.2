@@ -1,0 +1,71 @@
+name: L3-N6 Merchant Pickup UI — Offline Chromium Acceptance
+on:
+  pull_request:
+    branches:
+      - review/l3-n3-customer-push-preview-admission
+    paths:
+      - 'tests/l3-n6/**'
+      - 'src/components/PickupOrderActions.tsx'
+      - 'src/services/MerchantApi.ts'
+      - 'src/services/merchantPickupRecovery.ts'
+      - 'src/services/merchantPickupPolicy.ts'
+      - 'src/services/merchantPreviewSimulator.ts'
+      - 'src/components/OrdersManagement.tsx'
+      - '.github/workflows/l3-n6-merchant-browser.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-real-component-offline-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # Actual source/hosted app continues to disable pickup writes.
+      # The isolated esbuild fixture compiles a separate in-memory
+      # bundle with enabled controls against ONLY a 127.0.0.1 test API.
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+      VITE_MERCHANT_PREVIEW_READ_ONLY: 'true'
+      VITE_MERCHANT_FAKE_ORDERS_ENABLED: 'false'
+    steps:
+      - name: Checkout draft Merchant source without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Verify no hosted service URLs or payment/order activation in workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$VITE_PICKUP_ORDERING_ENABLED" = 'false'
+          test "$PICKUP_WRITES_ENABLED" = 'false'
+          test "$RIDER_ACTIVATION_ENABLED" = 'false'
+          test -z "${DATABASE_URL:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${SUPABASE_SECRET_KEY:-}"
+          ! grep -En 'https://|supabase\\.co|firebaseapp\\.com|--prod|vercel deploy' tests/l3-n6/*.mjs tests/l3-n6/*.ts tests/l3-n6/*.tsx
+      - name: Install reviewed Merchant dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Pickup policy and recovery contract regression
+        run: |
+          npm run test:merchant-pickup
+          node --experimental-strip-types --test tests/merchant-command-recovery.test.mjs
+      - name: Build unchanged shipping Merchant app (ordering OFF)
+        run: npm run build
+      - name: Install Chromium-only local browser runner
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Test real pickup component and recovery only against loopback stub API
+        run: node tests/l3-n6/run-merchant-browser.mjs
+      - name: Verify no activation or fixture artifacts were committed
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$VITE_PICKUP_ORDERING_ENABLED" = 'false'
+          test "$PICKUP_WRITES_ENABLED" = 'false'
+          test ! -e .env.local
+          git diff --exit-code -- src/components/PickupOrderActions.tsx src/components/OrdersManagement.tsx src/services/MerchantApi.ts
+          echo "L3_N6_HOSTED_WRITE_FLAGS_OFF"
