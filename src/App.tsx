@@ -1189,15 +1189,15 @@ function App() {
   useEffect(()=>{
     if(!orderReadScope)return;
     let active=true;
-    let unsubscribe: (()=>void)|void;
+    let unsubscribe: (()=>void)|undefined;
     void onForegroundMessage(payload=>{
       if(!active)return;
       if(payload.data?.type==="pickup_new_order")void fetchOrders();
       if(payload.data?.type==="merchant_push_test")
         toast.success("Test push reached this open dashboard. Background alerts still need a Windows check.");
     }).then(fn=>{
-      if(!active)fn?.();
-      else unsubscribe=fn;
+      if(!active){if(typeof fn==="function")fn();}
+      else unsubscribe=typeof fn==="function"?fn:undefined;
     });
     const fromWorker=(event:MessageEvent)=>{
       if(event.data?.type==="merchant-pickup-order-push")void fetchOrders();
@@ -3683,7 +3683,7 @@ function App() {
                       disabled={pushBusy}
                       onClick={() => {
                         if (!pushEnabled) {
-                          void requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
+                          void requestPushPermissions(user?.id, 'merchant');
                         } else {
                           void disablePushNotifications();
                         }
