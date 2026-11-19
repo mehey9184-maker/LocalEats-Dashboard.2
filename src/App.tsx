@@ -1207,6 +1207,10 @@ function App() {
     void onForegroundMessage(payload=>{
       if(!active)return;
       if(payload.data?.type==="pickup_new_order")void fetchOrders();
+      if(payload.data?.type==="pickup_acceptance"){
+        void fetchOrders();window.dispatchEvent(new Event('localeats-reception-update'));
+        toast.info('Pickup order update. Check your orders and reception status.');
+      }
       if(payload.data?.type==="merchant_push_test")
         toast.success("Test push reached this open dashboard. Background alerts still need a Windows check.");
     }).then(fn=>{
@@ -1215,6 +1219,9 @@ function App() {
     });
     const fromWorker=(event:MessageEvent)=>{
       if(event.data?.type==="merchant-pickup-order-push")void fetchOrders();
+      if(event.data?.type==="merchant-pickup-acceptance-push"){
+        void fetchOrders();window.dispatchEvent(new Event('localeats-reception-update'));
+      }
     };
     navigator.serviceWorker?.addEventListener("message",fromWorker);
     return()=>{

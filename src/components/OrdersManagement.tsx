@@ -1,4 +1,5 @@
 import {receiptText} from "../utils/receiptText";
+import {PickupReception} from './PickupReception';
 import {PickupOrderActions} from "./PickupOrderActions";
 import {PreviewFakeOrderCard,PreviewFakeOrderTrigger,usePreviewFakeOrders} from "./PreviewFakeOrders";
 import {OrdersFocusedWorkspace} from "./OrdersFocusedWorkspace";
@@ -2714,7 +2715,7 @@ Notes: "${order.notes || "None"}"
   // This only changes presentation; it never activates real pickup or payment writes.
   if (isMerchantOrdersFocusedEnabled()) {
     return (
-      <OrdersFocusedWorkspace
+      <><PickupReception shopId={currentShop?.id} ownerId={currentShop?.owner_id}/><OrdersFocusedWorkspace
         realOrders={displayedOrders}
         fakeOrders={fakeOrders}
         completedRealOrders={fulfilledOrdersToday}
@@ -2740,12 +2741,13 @@ Notes: "${order.notes || "None"}"
         endDate={endDate}
         setStartDate={setStartDate}
         setEndDate={setEndDate}
-      />
+      /></>
     );
   }
 
   return (
     <div className="space-y-3 md:space-y-4">
+      <PickupReception shopId={currentShop?.id} ownerId={currentShop?.owner_id}/>
       <p role="status" className="text-xs text-on-surface-variant rounded-lg bg-surface-container-low/50 px-3 py-2">{pickupOrderingEnabled() ? "Pickup actions are API-authorized. Confirm actual payment before food handover and Collected. Historical delivery records remain available." : "Pickup order, payment and collection changes are disabled pending separately approved database activation. Existing management and historical delivery records remain available."}</p>
       <section className="flex flex-col gap-2 md:gap-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
