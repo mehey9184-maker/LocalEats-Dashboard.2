@@ -89,3 +89,22 @@ test('pickup payable display uses server total and fee without deriving tax or p
  assert.match(pickupAmountLabel({...persisted,service_fee:undefined}),/unavailable/);
  assert.throws(()=>pickupAmountLabel({...persisted,total_price:NaN}));
 });
+
+test('L3-N7B unknown API payloads cannot create a valid pickup state by inference',()=>{
+ for(const row of [null,undefined,[],true,'fake',{...order,revision:'0'},{
+   ...order,payment_status:'paid'
+ }]){
+   assert.throws(()=>pickupState(row));
+ }
+ for(const items of [
+  [{name:'Kota',quantity:2,unit_price:12.5,line_total:24}],
+  [{name:'Kota',quantity:2,unit_price:-1,line_total:-2}],
+  [{name:'Kota',quantity:2,unit_price:12.5,line_total:25,notes:'x'.repeat(501)}],
+  [null],
+ ]){
+   assert.throws(()=>mapApiOrder({...order,items}));
+ }
+ assert.throws(()=>requireOwnedShop({id:'test-shop',name:'My Kota',owner_id:'different-merchant'},'merchant'));
+ assert.equal(isPickupOrder(null),false);
+ assert.equal(pickupPaymentLabel(null),'Payment status unavailable');
+});
