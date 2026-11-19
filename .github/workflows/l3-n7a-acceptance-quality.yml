@@ -7,6 +7,7 @@ on:
       - 'localeats-api/src/orders/acceptance*'
       - 'localeats-api/src/routes/acceptance*'
       - 'localeats-api/tests/pickup/ci-l3-n7a-acceptance-restore.sh'
+      - 'tests/l3-n7a/**'
       - '.github/workflows/l3-n7a-acceptance-quality.yml'
   workflow_dispatch:
 permissions:
@@ -117,3 +118,57 @@ jobs:
           test "$PICKUP_ACCEPTANCE_PUSH_ENABLED" = 'false'
           test -z "${DATABASE_URL:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${SUPABASE_SECRET_KEY:-}"
           echo 'L3_N7A_NO_PRODUCTION_OR_SHARED_STAGING_CHANGES'
+
+  latest-l3-release-quality-delta:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout typed acceptance candidate to temporary runner
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: review/l3-n7a-acceptance-typed-cleanup
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout current L3 baseline independently
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: review/l3-my-kota-private-test-api
+          path: current-l3
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Dry-run latest L3 merge, never pushing or updating a GitHub branch
+        working-directory: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags ../current-l3 HEAD
+          git -c user.name='LocalEats CI Audit' -c user.email='audit@users.noreply.github.com' merge --no-commit --no-ff FETCH_HEAD
+          echo 'L3_N7A_COMBINED_LATEST_L3_MERGE_CLEAN'
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Install both independent Merchant dependency trees
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund --prefix current-l3
+          npm ci --ignore-scripts --no-audit --no-fund --prefix candidate
+      - name: Compare complete lint and TypeScript diagnostics, fail for new problems
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd current-l3
+          ./node_modules/.bin/tsc --noEmit --project tsconfig.json > /tmp/n7a-l3-tsc.log 2>&1 || true
+          ./node_modules/.bin/eslint . --format json --output-file /tmp/n7a-l3-eslint.json >/dev/null 2>&1 || true
+          cd ../candidate
+          ./node_modules/.bin/tsc --noEmit --project tsconfig.json > /tmp/n7a-feature-tsc.log 2>&1 || true
+          ./node_modules/.bin/eslint . --format json --output-file /tmp/n7a-feature-eslint.json >/dev/null 2>&1 || true
+          node tests/l3-n7a/compare-quality-diagnostics.mjs /tmp/n7a-l3-tsc.log /tmp/n7a-feature-tsc.log /tmp/n7a-l3-eslint.json /tmp/n7a-feature-eslint.json "$GITHUB_WORKSPACE/current-l3" "$GITHUB_WORKSPACE/candidate"
+          echo 'L3_N7A_NO_NEW_LINT_OR_TYPESCRIPT_IN_LATEST_L3_COMBINATION'
+      - name: Build only the combined preview source, not a deployment
+        working-directory: candidate
+        env:
+          VITE_PICKUP_ORDERING_ENABLED: 'false'
+          PICKUP_WRITES_ENABLED: 'false'
+          PICKUP_ACCEPTANCE_WORKER_ENABLED: 'false'
+          PICKUP_ACCEPTANCE_PUSH_ENABLED: 'false'
+        run: npm run build
