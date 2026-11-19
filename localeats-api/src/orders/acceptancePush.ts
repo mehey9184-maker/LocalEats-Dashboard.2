@@ -22,7 +22,10 @@ export async function drainAcceptancePush(client:RpcClient,sender?:Sender):Promi
    await pickupRpc(client,'pickup_finish_acceptance_push',{...args,p_sent:false,p_permanent:true});return;
   }
   let sent=false,permanent=false;
-  try{await (sender??send)(job);sent=true;}catch(error){permanent=['messaging/registration-token-not-registered','messaging/invalid-registration-token'].includes((error as any)?.code);}
+  try{await (sender??send)(job);sent=true;}catch(error){
+   const code=error&&typeof error==='object'&&'code' in error&&typeof error.code==='string'?error.code:null;
+   permanent=code!==null&&['messaging/registration-token-not-registered','messaging/invalid-registration-token'].includes(code);
+  }
   await pickupRpc(client,'pickup_finish_acceptance_push',{...args,p_sent:sent,p_permanent:permanent});
  }catch{/* Durable inbox is authoritative. No tokens or provider messages are logged. */}
 }

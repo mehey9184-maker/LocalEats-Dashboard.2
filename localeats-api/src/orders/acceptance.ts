@@ -25,7 +25,9 @@ export async function resumeReception(client:RpcClient,uid:string,input:unknown)
  const body=input as Record<string,unknown>;
  if(Object.keys(body).some(k=>!['shop_id','expected_revision'].includes(k))||typeof body.shop_id!=='string'||!body.shop_id.trim()
   ||!Number.isSafeInteger(body.expected_revision)||Number(body.expected_revision)<0)return fail(400,'INVALID_REQUEST');
- const data=await pickupRpc(client,'pickup_resume_reception',{p_uid:uid,p_shop:body.shop_id,p_revision:body.expected_revision}) as any;
- if(data?.shop_id!==body.shop_id||data.paused!==false||!Number.isSafeInteger(data.revision))return fail(503,'RECEPTION_UNCONFIRMED');
- return data;
+ const data=await pickupRpc(client,'pickup_resume_reception',{p_uid:uid,p_shop:body.shop_id,p_revision:body.expected_revision});
+ if(!data||typeof data!=='object'||Array.isArray(data))return fail(503,'RECEPTION_UNCONFIRMED');
+ const reception=data as Record<string,unknown>;
+ if(reception.shop_id!==body.shop_id||reception.paused!==false||!Number.isSafeInteger(reception.revision))return fail(503,'RECEPTION_UNCONFIRMED');
+ return {shop_id:reception.shop_id,paused:false,revision:reception.revision};
 }
