@@ -3310,7 +3310,8 @@ Notes: "${order.notes || "None"}"
                         transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         key={order.id}
                         draggable={true}
-                        onDragStart={(e: any) => {
+                        onDragStart={(event: unknown) => {
+                           const e=event as {dataTransfer?:DataTransfer};
                           setDraggedPendingId(order.id);
                           if (e.dataTransfer) {
                             e.dataTransfer.setData("text/plain", order.id);
