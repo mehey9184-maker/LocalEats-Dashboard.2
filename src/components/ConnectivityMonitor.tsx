@@ -121,13 +121,14 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
 
     try {
       wsChannel = getFreshChannel("system_connectivity_monitor");
-      wsChannel.subscribe((status, err) => {
-        setWsStatus(status);
+      wsChannel.subscribe((status) => {
+        if (status==="SUBSCRIBED" || status==="CONNECTING" || status==="CLOSED" || status==="CHANNEL_ERROR" || status==="TIMED_OUT") setWsStatus(status);
+        else setWsStatus("CHANNEL_ERROR");
         if (status === "SUBSCRIBED") {
           setHealthStatus((prev) => (prev === "offline" ? "degraded" : "connected"));
         } else if (status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           setHealthStatus("degraded");
-          logNetworkError("supabase_websocket_closed", err || `WebSocket channel status: ${status}`, {
+          logNetworkError("supabase_websocket_closed", `WebSocket channel status: ${status}`, {
             type: "websocket",
             closeCode: status === "TIMED_OUT" ? 4004 : 1006,
             closeReason: `Channel state transition to ${status}`,
