@@ -110,12 +110,23 @@ try {
     assert.equal(apiWrites,0);assert.equal(unknownRequests,0);
     // Actual Orders page refresh buttons must call the parent callback.
     const before=apiReads;
-    if(width<768){
-      await page.getByTitle("Refresh Queue").click();
-    }else{
-      await page.getByRole("button",{name:"Refresh",exact:true}).first().click();
-      await page.getByRole("button",{name:"Order History",exact:true}).click();
-      await page.getByRole("button",{name:"Current Orders",exact:true}).click();
+    const refreshButton=width<768 ? page.getByTitle("Refresh Queue") : page.getByRole("button",{name:"Refresh",exact:true}).first();
+    const bounds=await refreshButton.boundingBox();
+    assert(bounds,"Refresh must have a visible bounding rectangle");
+    const x=bounds.x+bounds.width/2,y=bounds.y+bounds.height/2;
+    const tappable=await page.evaluate(({x,y})=>{
+      const target=document.querySelector('[title="Refresh Queue"]');
+      const root=target&&getComputedStyle(target).display!=="none" ? target : [...document.querySelectorAll("button")].find(n=>n.textContent?.trim()==="Refresh");
+      const hit=document.elementFromPoint(x,y);
+      return !!root && (root===hit || root.contains(hit));
+    },{x,y});
+    assert(tappable,"Refresh button is visually obstructed or outside hit target at "+width+"px");
+    // Execute actual React handler, but avoid Playwright click's auto-wait
+    // attaching to the fixture's rapidly refreshed component tree.
+    await refreshButton.evaluate((node)=>node.click());
+    if(width>=768){
+      await page.getByRole("button",{name:"Order History",exact:true}).evaluate(node=>node.click());
+      await page.getByRole("button",{name:"Current Orders",exact:true}).evaluate(node=>node.click());
     }
     await page.waitForFunction(()=>Number(document.querySelector('[data-testid="fixture-refreshes"]')?.textContent?.match(/\d+/)?.[0])>0);
     await page.getByTestId("fixture-loading").waitFor({state:"hidden"});
