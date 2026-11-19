@@ -596,8 +596,19 @@ export const supabase = {
       }
     },
 
-    async updateUser(attributes?: Record<string, unknown>) {
-      return { data: { user: auth.currentUser, ...attributes }, error: null };
+    async updateUser(_attributes?: Record<string, unknown>): Promise<{
+      data: {user: import("../types").User | null};
+      error: Error | null;
+    }> {
+      // This is a Firestore compatibility bridge, not Supabase Auth.
+      // The old implementation returned the current Firebase user unchanged,
+      // which falsely told profile/schedule screens that a save succeeded.
+      // Only a separately reviewed server-authoritative profile API may persist.
+      void _attributes;
+      return {
+        data: {user: null},
+        error: new Error("Merchant profile changes are unavailable until secure profile saving is enabled. No changes were saved."),
+      };
     },
 
     async verifyOtp() {
