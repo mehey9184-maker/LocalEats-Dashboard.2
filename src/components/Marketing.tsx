@@ -104,12 +104,9 @@ export const Marketing: React.FC<MarketingProps> = ({
 
   // High-Level Diner Analytics for Dashboard Summary
   const shopOrders = useMemo(() => {
-    if (!activeShop) return orders;
-    return orders.filter(
-      (o) =>
-        String(o.shop_id) === String(activeShop.id) ||
-        (activeShop.name && o.shop_name?.toLowerCase() === activeShop.name.toLowerCase())
-    );
+    // Never include orders from an unverified shop or match by a display name.
+    if (!activeShop) return [];
+    return orders.filter((o) => String(o.shop_id) === String(activeShop.id));
   }, [orders, activeShop]);
 
   const dinerStats = useMemo(() => {
@@ -117,10 +114,12 @@ export const Marketing: React.FC<MarketingProps> = ({
     let totalRevenue = 0;
 
     shopOrders.forEach((ord) => {
-      const phone = ord.customer_phone || ord.phone || "";
-      const name = ord.customer_name || ord.customer || "Diner";
-      const key = phone.trim() || name.trim();
-      const amount = typeof ord.total === "number" ? ord.total : parseFloat(String(ord.total || 0)) || 0;
+      // Persisted Order contract: trust the API shop ID, customer UID and price.
+      // Missing identities are unique by order ID, never invented by name.
+      const key = ord.user_id?.trim() || ord.phone?.trim() || ord.id;
+      const amount = Number.isFinite(ord.total_price) && ord.total_price >= 0
+        ? ord.total_price
+        : 0;
       totalRevenue += amount;
 
       if (!customerMap.has(key)) {
