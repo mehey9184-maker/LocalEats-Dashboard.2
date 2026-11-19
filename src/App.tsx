@@ -2146,9 +2146,6 @@ function App() {
                     const { success, error, freshShop } = await syncShopAvailability({
                       shopId: currentShop.id,
                       isOpen: newStatus,
-                      supabase,
-                      updateFirestoreShop,
-                      getFirestoreShopById,
                     });
 
                     if (success) {
@@ -2283,9 +2280,6 @@ function App() {
                 const { success, error, freshShop } = await syncShopAvailability({
                   shopId: currentShop.id,
                   isOpen: newStatus,
-                  supabase,
-                  updateFirestoreShop,
-                  getFirestoreShopById,
                 });
                 if (success) {
                   toast.success("Shop is now Open and accepting customer orders!");
@@ -2726,9 +2720,6 @@ function App() {
                                    void syncShopAvailability({
                                      shopId: currentShop.id,
                                      isOpen: isActive,
-                                     supabase,
-                                     updateFirestoreShop,
-                                     getFirestoreShopById,
                                      onSuccess: async (freshShop) => {
                                        setStoreStatus(statusOption);
                                        toast.success(`Shop is now ${statusOption === "open" ? "OPEN" : statusOption === "busy" ? "BUSY" : "CLOSED"}`);
@@ -4115,14 +4106,7 @@ function App() {
                         className={cn("inline-flex",secondaryMobileNavItems.some(item=>navAttention[item.id as keyof typeof navAttention])&&"localeats-nav-notice-wiggle")}>
                         <MoreHorizontal size={20} className={cn(isMoreActive ? "stroke-[2.5px]" : "stroke-[1.5px]")}/>
                       </span>
-                      {secondaryMobileNavItems.some(item => item.badge) && (
-                        <span className={cn(
-                          "absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-black border-2 border-white animate-pulse",
-                          isMoreActive ? "bg-white text-primary" : "bg-primary text-white"
-                        )}>
-                          {secondaryMobileNavItems.reduce((acc, curr) => acc + (typeof curr.badge === 'number' ? curr.badge : curr.badge ? 1 : 0), 0)}
-                        </span>
-                      )}
+
                     </div>
                     <span className={cn(
                       "text-[8px] uppercase tracking-widest font-black mt-1.5",
