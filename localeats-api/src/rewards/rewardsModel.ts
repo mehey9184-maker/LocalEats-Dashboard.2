@@ -1,3 +1,4 @@
+import {containsAsciiControl} from "../security/asciiControls.js";
 /**
  * R2 OFFLINE REHEARSAL MODEL. There are no routes, migrations or production reward writes.
  * Production integration MUST read real paid/collected orders and merchant/admin identities
@@ -33,7 +34,7 @@ const thresholds: Record<Tier,number> = {bronze:4, silver:20, gold:40};
 const caps: Record<Tier,number> = {bronze:2500, silver:12500, gold:20000};
 const next: Record<Tier,Rank> = {bronze:"silver",silver:"gold",gold:"platinum"};
 const goodId = (s:string) => typeof s==="string" && s.length>0 && s.length<=160 &&
-  !/[\x00-\x1f\x7f]/.test(s) && s.trim()===s;
+  !containsAsciiControl(s) && s.trim()===s;
 const positive = (n:number) => Number.isSafeInteger(n) && n>0;
 const fail = (code:string): never => {throw Error(code);};
 const check = (ok:boolean,code:string): void => {if(!ok)fail(code);};
