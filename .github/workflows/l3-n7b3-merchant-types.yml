@@ -45,6 +45,11 @@ jobs:
           node --experimental-strip-types --test tests/merchant-n7b2-contracts.test.mjs
           node --experimental-strip-types --test tests/l3-n7b3/merchant-safety-contracts.test.mjs
           npm run build
+      - name: Original Merchant Orders page Chromium regression, read-only and mobile layout
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+          node tests/l3-n6b/run-orders-page.mjs
       - name: No Production credentials or unsafe activation
         run: |
           test "$VITE_PICKUP_ORDERING_ENABLED" = false
