@@ -68,6 +68,8 @@ import {
   Download
 } from "lucide-react";
 import { supabase, isSupabaseMocked } from "./lib/supabase";
+import {matchesActiveFirebaseUid} from "./services/merchantSessionScope";
+import {getAdapterErrorCode,getAdapterErrorMessage} from "./services/merchantAdapterError";
 import {
   auth as firebaseAuth,
   firebaseSignOutUser,
@@ -528,6 +530,8 @@ function App() {
   // --- Persistent Auth Session Sync ---
   useEffect(() => {
     const syncUserSession = (u: User) => {
+      // Display state is never restored from another Firebase UID or a stale cache.
+      if(!matchesActiveFirebaseUid(u,firebaseAuth.currentUser?.uid))return;
       setUser(u);
       try {
         localStorage.setItem("localeats_user_session", JSON.stringify(u));
@@ -600,10 +604,10 @@ function App() {
           .eq("id", currentShop.id);
 
         if (error) {
-          if (error.code === '42703' || error.message?.includes('column "updated_at" of relation "shops" does not exist')) {
-            console.warn("Telemetry warning: updated_at column is not yet provisioned in your shops table.", error.message);
+          if (getAdapterErrorCode(error) === '42703' || getAdapterErrorMessage(error).includes('column "updated_at" of relation "shops" does not exist')) {
+            console.warn("Telemetry warning: updated_at column is not yet provisioned in your shops table.", getAdapterErrorMessage(error));
           } else {
-            console.warn("Telemetry warning: Failed to push storefront heartbeat.", error.message);
+            console.warn("Telemetry warning: Failed to push storefront heartbeat.", getAdapterErrorMessage(error));
           }
         } else {
           // Update local state smoothly
@@ -1276,7 +1280,6 @@ function App() {
     fetchOrders,
     fetchShops,
     fetchAllMenuItems,
-    supabase,
     authReady: isAuthReady,
     initializeShops: false,
     operationalReady: merchantShopGate.status === "ready" && Boolean(currentShop),
@@ -1303,60 +1306,11 @@ function App() {
     };
   }, [orderReadScope,fetchOrders]);
 
+  // Legacy direct-client deletion is NOT owner-authoritative. Keep the existing
+  // Orders control fail-closed until a server-verified, separately approved
+  // retention/deletion policy exists. Never send a Firestore/Supabase delete.
   const deleteAllOrders = async () => {
-    if (!user) return;
-
-    confirmAction(
-      "Confirm Delete All",
-      "Are you sure you want to delete ALL orders? This action cannot be undone.",
-      async () => {
-        setConfirmDialog(p => ({...p, isOpen: false}));
-
-        if (!isValidUUID(user.id)) {
-          if (!isSupabaseMocked()) {
-            console.warn("Skipping confirmDeleteAll - user ID is not a valid UUID:", user.id);
-          }
-          toast.info("No orders to delete.");
-          return;
-        }
-
-        // First, get the shops owned by this user
-        const { data: ownedShops, error: shopsError } = await supabase
-          .from("shops")
-          .select("id")
-          .eq("owner_id", user.id);
-
-        if (shopsError) {
-          if (!isSupabaseMocked()) {
-            console.warn("Notice fetching owned shops for deletion:", shopsError.message || shopsError);
-          }
-          return;
-        }
-
-        const ownedShopIds = ownedShops?.map((s) => s.id) || [];
-
-        if (ownedShopIds.length === 0) {
-          toast.info("No orders to delete.");
-          return;
-        }
-
-        // Delete only orders belonging to these shops
-        let error = null;
-        try {
-          await OrderService.deleteAllOrdersForShops(ownedShopIds);
-        } catch (err) {
-          error = err;
-        }
-
-        if (error) {
-          console.error("Delete All Orders Error:", error);
-          toast.error("We couldn't delete these orders right now. Please try again.");
-        } else {
-
-          fetchOrders();
-        }
-      }
-    );
+    toast.warning("Deleting orders is unavailable until a server-authorized retention policy is approved. No orders were deleted.");
   };
 
   const { updateOrderStatus, requestRider, dispatchOrderToRider, convertOrderToPickup, unassignRider } = useOrderWorkflow({
@@ -1412,9 +1366,9 @@ function App() {
         const { error } = await supabase.from("shops").select("id").limit(1);
         if (error) {
           const isFetchError =
-            error.message?.includes("Failed to fetch") ||
-            error.message?.includes("NetworkError") ||
-            error.message?.includes("network");
+            getAdapterErrorMessage(error).includes("Failed to fetch") ||
+            getAdapterErrorMessage(error).includes("NetworkError") ||
+            getAdapterErrorMessage(error).includes("network");
           if (isFetchError) {
             setIsHeartbeatFailed(true);
           } else {
@@ -1550,7 +1504,7 @@ function App() {
     try {
       const bytes = new Uint8Array(job.binaryData);
       // Attempt Web Bluetooth or Web USB fallback
-      if (navigator.bluetooth) {
+      if ("bluetooth" in navigator) {
         toast.info("Attempting print retry over Bluetooth...");
         await printViaBluetooth(bytes);
       } else {
@@ -1772,7 +1726,7 @@ function App() {
             email: user?.email || signupEmail,
             phone: user?.user_metadata?.phone || "",
             avatarUrl: user?.user_metadata?.avatar_url || "",
-            marketing: user?.user_metadata?.marketing_preferences ?? true,
+            marketing: typeof user?.user_metadata?.marketing_preferences==="boolean" ? user.user_metadata.marketing_preferences : true,
             darkMode: user?.user_metadata?.dark_mode ?? darkMode,
           }}
         />
@@ -3250,8 +3204,8 @@ function App() {
                               })
                               .eq("id", currentShop.id);
 
-                            if (error && error.code !== "42703") {
-                              console.warn("Supabase delivery settings update warning:", error.message);
+                            if (error && getAdapterErrorCode(error) !== "42703") {
+                              console.warn("Supabase delivery settings update warning:", getAdapterErrorMessage(error));
                             }
 
                             setShops((prev) => {
