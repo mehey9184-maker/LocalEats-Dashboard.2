@@ -210,7 +210,7 @@ export class MerchantApi {
     const uid=auth.currentUser?.uid;
     try{return !!uid && !!sessionStorage.getItem(`pickup-command:${uid}:${order.id}`);}catch{return false;}
   }
-  private static async sendPickupCommand(order:Record<string,unknown>,command:any) {
+  private static async sendPickupCommand(order:Record<string,unknown>,command:ReturnType<typeof pickupCommand>) {
     pickupMutationsDisabled();
     return pickupRecovery.send(order,command);
   }
