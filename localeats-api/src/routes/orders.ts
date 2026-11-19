@@ -40,6 +40,8 @@ const withoutDeliveryProofState = (
     delivery_pin_locked_until: _pinLockedUntil,
     ...safeOrder
   } = order;
+  // Explicitly consume the stripped private fields: never send them to customers.
+  void _intentHash; void _pinHash; void _qrHash; void _pinAttempts; void _pinLockedUntil;
   return safeOrder;
 };
 
