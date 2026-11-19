@@ -11,7 +11,9 @@ if [[ "${PICKUP_TEST_ISOLATED:-}" != "1" ||
       -n "${SUPABASE_URL:-}" ||
       -n "${DATABASE_URL:-}" ||
       -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ||
-      -n "${SUPABASE_SECRET_KEY:-}" ]]; then
+      -n "${SUPABASE_SECRET_KEY:-}" ||
+      "${GITHUB_ACTIONS:-}" != "true" ||
+      -n "${DOCKER_HOST:-}" ]]; then
   echo "L3_N5_REFUSED_NON_DISPOSABLE_DATABASE" >&2
   exit 18
 fi
@@ -35,10 +37,19 @@ test "$(scalar local_pickup_qa "select count(*)>0 from public.pickup_push_outbox
 
 # This archive is never published as an artifact. Clone only to a new loopback
 # DB inside the same disposable GitHub Actions Postgres service.
-pg_dump --format=custom --no-owner --file="$tmp/pickup-synthetic-only.dump" --dbname=local_pickup_qa
+# The Ubuntu runner may ship PostgreSQL 16 client tools while the CI service
+# runs PostgreSQL 17. Use the trusted local postgres:17-alpine service's own
+# matching client tools; NEVER connect to a hosted database.
+pg_container="$(docker ps --filter 'ancestor=postgres:17-alpine' --format '{{.ID}}')"
+if [[ ! "$pg_container" =~ ^[a-f0-9]{12,64}$ ]];then
+  echo "L3_N5_REFUSED_MISSING_SINGLE_DISPOSABLE_PG17_CONTAINER" >&2
+  exit 30
+fi
+docker exec --user postgres "$pg_container" pg_dump --version
+docker exec --user postgres "$pg_container" pg_dump --format=custom --no-owner --dbname=local_pickup_qa >"$tmp/pickup-synthetic-only.dump"
 PGDATABASE=postgres createdb local_pickup_qa_restore
 PGDATABASE=local_pickup_qa_restore psql -X -q -v ON_ERROR_STOP=1 -c 'drop schema if exists public cascade;' >"$tmp/drop.log"
-PGDATABASE=local_pickup_qa_restore pg_restore --no-owner --exit-on-error --dbname=local_pickup_qa_restore "$tmp/pickup-synthetic-only.dump" >"$tmp/restore.log" 2>"$tmp/restore.err" || {
+docker exec -i --user postgres "$pg_container" pg_restore --no-owner --exit-on-error --dbname=local_pickup_qa_restore <"$tmp/pickup-synthetic-only.dump" >"$tmp/restore.log" 2>"$tmp/restore.err" || {
   # Do not print rows or SQL containing fabricated customer information.
   echo "L3_N5_DISPOSABLE_RESTORE_FAILED" >&2
   exit 31
