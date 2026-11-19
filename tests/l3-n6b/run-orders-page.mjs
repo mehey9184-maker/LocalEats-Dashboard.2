@@ -162,7 +162,7 @@ try {
    try {
     await page.getByTestId("real-orders-page").waitFor();
     nextFault="fail-read";
-    await page.getByTestId("test-refresh").click();
+    await page.getByTestId("test-refresh").evaluate(node=>node.click());
     await page.getByTestId("fixture-error").filter({hasText:/Synthetic order read unavailable/i}).waitFor();
     assert(await page.getByText("Synthetic Kota",{exact:false}).count()>0,
       "Old same-account verified order not erased after read failure");
