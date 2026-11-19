@@ -8,7 +8,7 @@ import {pickupNeedsUncollectedAttention,pickupUnpaidWaitingMinutes} from "../ser
 
 type SimulatedTransition = (action: PickupAction, extra: Record<string,unknown>) => Promise<void> | void;
 
-export function PickupOrderActions({order,onSimulate,compact=false}:{order:any;onSimulate?:SimulatedTransition;compact?:boolean}){
+export function PickupOrderActions({order,onSimulate,compact=false}:{order:Record<string,unknown>;onSimulate?:SimulatedTransition;compact?:boolean}){
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
  // ONLY fake order IDs on the guarded no-write Preview may bypass the real pickup write gate.
  const simulated=!!onSimulate && isMerchantPreviewSimulatorEnabled() &&
