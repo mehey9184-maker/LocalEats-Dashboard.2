@@ -83,7 +83,7 @@ test("L1C-3: actual pickup buttons are shared; simulated actions cannot invoke M
   assert.match(actions, /const simulated=!!onSimulate && isMerchantPreviewSimulatorEnabled\(\)/);
   assert.match(actions, /FAKE-L1C3-/);
   assert.match(actions, /const canAct=simulated \|\| pickupOrderingEnabled\(\)/);
-  assert.match(actions, /const pending=simulated \? false : MerchantApi\.hasPendingPickupCommand\(order\)/);
+  assert.match(actions, /const pendingPath=simulated \? null : MerchantApi\.getPendingPickupCommandPath\(order\)/);
   assert.match(actions, /if\(simulated\) \{/);
   assert.match(actions, /await onSimulate!\(action,extra\)/);
   assert.match(actions, /\} else \{\s*await MerchantApi\.transitionPickupOrder\(order,action,extra\)/);

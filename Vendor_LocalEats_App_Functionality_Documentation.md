@@ -1,5 +1,7 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+The Customer history API provides authenticated 50-row pages with a timestamp/ID cursor and a has_more flag. The original recent feed retains its 50-row limit and now uses the same deterministic timestamp/ID ordering. Each query filters to the Firebase UID before paging.
+
 ## Isolated Firebase staging configuration — 2026-11-05
 
 The Dashboard previously preferred bundled Firebase values even when staging environment values were supplied. Staging builds now explicitly select `VITE_FIREBASE_CONFIG_SOURCE=environment` and provide all six Firebase app values. Incomplete environment configurations fail before Firebase initializes. The Firestore database is selected with `VITE_FIREBASE_FIRESTORE_DATABASE_ID`, defaulting to `(default)` in that mode. Existing deployments continue using their bundled configuration unless opted in. This does not activate ordering or deploy security rules. `tests/firebase-environment.test.mjs` captures the Firebase SDK initialization arguments to verify both staging isolation and existing-build compatibility.
@@ -649,3 +651,13 @@ Merchant owners asked for clearer Settings icons after the four-section simplifi
 - Icons are decorative beside visible labels and use `aria-hidden`. Section buttons preserve `aria-current`, focus-visible outlines and minimum 44px targets. No continuous motion is introduced and no new images or font assets are bundled.
 
 Changes are restricted to `src/App.tsx`, `src/components/SimpleOpeningHours.tsx`, Settings regressions, and this documentation. Verify the exact-commit Merchant Preview and GitHub release gates. No merge, real-order activation, payment activation, database writes or Production environment changes without separate owner approval.
+
+## Merchant pickup pilot handover
+
+Both Orders ticket styles and the fallback kitchen board use `PickupOrderActions` for persisted collection orders. A verified Ready order with payment recorded shows **Paid · Awaiting handover** and the primary **Confirm handover** action. Confirm payment and confirm physical handover remain separate. The handover prompt is about food actually given to the customer. The existing authenticated pickup-write gate and server revision checks still apply.
+
+If the handover result is unconfirmed and the original command is retained, **Retry handover confirmation** resends that exact account/order-scoped command, including after refresh. It requires a matching server command receipt before clearing recovery. Session storage only identifies the pending action; it cannot confirm handover, collection or payment. A test-only simulator retains its existing no-write boundary.
+
+Unpaid Ready collection orders with at least 30 minutes since `updated_at` now show a concise advisory in both compact and expanded tickets. The time is explicitly **since the last status update**, not proof of how long food has been Ready or that a customer is a no-show. A native keyboard-accessible **Follow up on unpaid pickup** disclosure guides the merchant to check the latest order and the counter before calling. A call link is available only for a real collection order with a valid formatted phone number; missing or malformed numbers show an explanation. Fake orders cannot offer this follow-up or a real call.
+
+This is local guidance only: expanding it or calling records no follow-up, sends no notification, and confirms no payment, cancellation or collection. Waiting leaves the authoritative order Ready and unpaid. Actual payment and actual food handover still require their separate server-confirmed actions. Rendered-component regressions in `tests/merchant-handover.test.mjs` cover both ticket densities, gate-disabled guidance, disclosure semantics, safe call links, absent/invalid/future timestamps, sample exclusion and payment/status separation; `tests/merchant-unpaid-ready-aging.test.mjs` retains detector boundary coverage.

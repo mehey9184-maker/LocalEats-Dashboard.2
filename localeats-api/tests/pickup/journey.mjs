@@ -168,15 +168,32 @@ try {
  await merchant.command(id,"payment-confirmation",command(2,{payment_method:"card_machine"}));
  assert.equal((await customer.order(id)).order.status,"ready_for_pickup");
  assert.equal((await customer.order(id)).order.payment_status,"paid");
+ await assert.rejects(()=>merchant.command(id,"collect",command(3)));
  await merchant.command(id,"collect",command(3,{handover_confirmed:true}));
  const advancedReplay=await merchant.command(id,"ready",readyBody);
  assert.equal(advancedReplay.order.status,"collected");assert.equal(advancedReplay.order.revision,4);
  assert.deepEqual(advancedReplay.command_receipt,readyReceipt);
  const afterRefresh=customerClient(base,async()=>"customer");
  assert.equal((await afterRefresh.orders()).orders.find(o=>o.id===id).status,"collected");
- assert.equal((await afterRefresh.order(id)).events.length,5);
+ const receipt=await afterRefresh.order(id);
+ assert.equal(receipt.events.length,5);
+ assert.deepEqual(receipt.events.find(event=>event.kind==="payment_confirmed")?.details,
+   {amount:60,currency:"ZAR",method:"card_machine"});
+ assert.equal(receipt.order.payment_method,"card_machine");
+ assert.ok(Number.isFinite(Date.parse(receipt.events.find(event=>event.kind==="collected")?.occurred_at)));
  await assert.rejects(()=>other.order(id),/Order not found/);
  await assert.rejects(()=>merchant.command(id,"accept",command(4)),/INVALID_ORDER_TRANSITION/);
+ const cash=intent(),cashPrice=(await customer.quote(cash)).quote;
+ const cashOrder=(await customer.create({...cash,consent:{currency:"ZAR",total_minor:cashPrice.total_minor,
+   pricing_fingerprint:cashPrice.pricing_fingerprint}})).order;
+ await merchant.command(cashOrder.id,"accept",command(0));
+ await merchant.command(cashOrder.id,"ready",command(1));
+ await merchant.command(cashOrder.id,"payment-confirmation",command(2,{payment_method:"cash"}));
+ await merchant.command(cashOrder.id,"collect",command(3,{handover_confirmed:true}));
+ const cashReceipt=await customer.order(cashOrder.id);
+ assert.equal(cashReceipt.order.status,"collected");
+ assert.deepEqual(cashReceipt.events.find(event=>event.kind==="payment_confirmed")?.details,
+   {amount:60,currency:"ZAR",method:"cash"});
  for(const action of ["cancel","reject"]) {
   const pending=intent(),price=await customer.quote(pending);
   const result=await customer.create({...pending,consent:{currency:"ZAR",total_minor:price.quote.total_minor,pricing_fingerprint:price.quote.pricing_fingerprint}});
@@ -195,5 +212,6 @@ try {
  const expired=customerClient(base,async()=>"expired");
  await assert.rejects(()=>expired.orders());
  console.log("PICKUP_TWO_CLIENT_HTTP_POSTGRES_JOURNEY_PASSED");
+ console.log("Verified customer receipts for cash and card terminal with server payment evidence and collection timestamp.");
  console.log("Verified: fixture auth; approved 4km discovery; real menu/quote; lost-response recovery; merchant ownership/contact; Preparing; Ready inbox dedupe/isolation; independent payment and handover; refresh/history; cancellation/rejection; failure guards; no Rider assignment.");
 }finally{server.close();await once(server,"close");}

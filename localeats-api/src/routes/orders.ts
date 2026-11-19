@@ -19,6 +19,7 @@ import { drainPickupPush } from "../orders/pickupPush.js";
 import {tryMerchantPickupPush} from "../orders/merchantPush.js";
 import { readCompleteMerchantInbox, MERCHANT_UNFINISHED_FILTER, MERCHANT_INBOX_RECENT_LIMIT } from "../orders/merchantInboxRead.js";
 import { deriveDeliveryProof } from "../orders/deliveryProof.js";
+import { customerHistoryBefore, CUSTOMER_HISTORY_PAGE_SIZE } from "../orders/customerHistory.js";
 
 const router = Router();
 const repository = new SupabaseOrderRepository(supabaseAdmin);
@@ -131,11 +132,33 @@ router.get("/", authenticateFirebase, async (req: AuthenticatedRequest, res: Res
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(50);
     if (error) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Orders could not be loaded.");
     res.status(200).json({
       success: true,
       orders: (data ?? []).map((order) => customerOrderResponse(order as StoredOrder)),
+    });
+  } catch (error) {
+    sendOrderError(res, error);
+  }
+});
+
+router.get("/history", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.authUser?.uid;
+    if (!userId) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
+    const before = customerHistoryBefore(req.query);
+    let query = supabaseAdmin.from("orders").select("*").eq("user_id", userId).eq("delivery_type", "collection");
+    if (before) query = query.or(before);
+    const { data, error } = await query
+      .order("created_at", { ascending: false }).order("id", { ascending: false })
+      .limit(CUSTOMER_HISTORY_PAGE_SIZE + 1);
+    if (error || !Array.isArray(data)) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Older orders could not be loaded.");
+    res.json({
+      success: true,
+      orders: data.slice(0, CUSTOMER_HISTORY_PAGE_SIZE).map(order => customerOrderResponse(order as StoredOrder)),
+      has_more: data.length > CUSTOMER_HISTORY_PAGE_SIZE,
     });
   } catch (error) {
     sendOrderError(res, error);

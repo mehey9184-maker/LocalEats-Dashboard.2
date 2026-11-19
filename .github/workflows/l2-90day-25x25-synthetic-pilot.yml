@@ -1,4 +1,4 @@
-name: L2 synthetic 90-day 25-merchant 25-customer pilot
+name: L2 synthetic pickup pilots through 2,500 orders
 on:
   pull_request:
     branches: [main]
