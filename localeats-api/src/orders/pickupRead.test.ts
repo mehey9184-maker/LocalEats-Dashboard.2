@@ -1,18 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {pickupReadQuote,type PickupReadRepository} from "./pickupRead.js";
+import {OrderContractError} from "./orderContract.js";
 const request=()=>({contract_version:"pickup-v1",idempotency_key:"11111111-1111-4111-8111-111111111111",shop_id:"s",
  items:[{menu_item_id:"m",quantity:2}],delivery_type:"collection",delivery_schedule_mode:"standard",payment_method:"cash",tip_amount:0,
  customer_details:{name:"Test",phone:"0712345678"},launch_location:{lat:-25.98,lng:28.2}});
 const repository=()=>({findShop:async()=>({id:"s",name:"Shop",location:"Ivory Park",archived_at:null,is_active:true,approval_status:"approved",lat:-25.98,lng:28.2,latitude:null,longitude:null}),
  findMenuItems:async()=>[{id:"m",shop_id:"s",name:"Kota",price:32.5,is_available:true}]});
-const code=(expected:string)=>(error:any)=>error.code===expected;
+const code=(expected:string)=>(error:unknown)=>error instanceof OrderContractError && error.code===expected;
 test("pickup quote matches tested minor-unit/fingerprint contract using reads only",async()=>{
  const repo=repository();let reads=0;
- const q=await pickupReadQuote({findShop:async id=>{reads++;return repo.findShop();},findMenuItems:async()=>{reads++;return repo.findMenuItems();}},"test-uid",request());
+ const q=await pickupReadQuote({findShop:async()=>{reads++;return repo.findShop();},findMenuItems:async()=>{reads++;return repo.findMenuItems();}},"test-uid",request());
  assert.equal(reads,2);assert.equal(q.total_minor,6500);assert.equal(q.service_fee_minor,0);assert.equal(q.delivery_fee_minor,0);
  assert.match(q.pricing_fingerprint,/^[0-9a-f]{64}$/);
- assert.equal((q as any).order,undefined);
+ assert.equal((q as unknown as Record<string,unknown>).order,undefined);
 });
 test("missing identity, old contracts and client prices fail before catalog reads",async()=>{
  const repo:PickupReadRepository={findShop:async()=>{throw new Error("must not read");},findMenuItems:async()=>{throw new Error("must not read");}};
