@@ -1,5 +1,14 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N7B4 Merchant lint cleanup (review only, 2026-11-20)
+
+Draft PR #180 is stacked on draft #178, with no GitHub merge or hosted changes. The first bounded L3-N7B4 source batch removes unused App imports/bindings while preserving the auth guard and malformed-cache check; legacy Firestore source-document spreads use `Record<string,unknown>` instead of `any`, and disabled legacy order writers remain fail-closed. The original Merchant UI and Orders Kanban/List controls are unchanged. No production pickup, payments, riders, scheduler or real FCM notifications are enabled.
+
+[CI #44632942335](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/44632942335): independent unchanged-L3-N7B3 comparison verified **0 TypeScript errors, 191→161 ESLint errors, zero newly introduced diagnostics**, all three CI jobs green, 16 pickup + 7 recovery + 4 owner/layout + 5 safety tests green, original Merchant build green, 34 original Orders Chromium assertions at 320/390/1280px, and clean isolated acceptance PR #175 / 247 API + 8 acceptance / PG17 2,500 synthetic-order tests. No cloud database or production writes.
+
+**Release still BLOCKED:** 161 root ESLint failures and owner/manual Settings profile saving and card-terminal disabled UI review; approved hosted pickup schema, push receipt and scheduler are pending. Full report: `docs/L3_N7B4_MERCHANT_ESLINT_BATCH.md`.
+
+
 ## Isolated Firebase staging configuration — 2026-11-05
 
 The Dashboard previously preferred bundled Firebase values even when staging environment values were supplied. Staging builds now explicitly select `VITE_FIREBASE_CONFIG_SOURCE=environment` and provide all six Firebase app values. Incomplete environment configurations fail before Firebase initializes. The Firestore database is selected with `VITE_FIREBASE_FIRESTORE_DATABASE_ID`, defaulting to `(default)` in that mode. Existing deployments continue using their bundled configuration unless opted in. This does not activate ordering or deploy security rules. `tests/firebase-environment.test.mjs` captures the Firebase SDK initialization arguments to verify both staging isolation and existing-build compatibility.
