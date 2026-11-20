@@ -68,7 +68,7 @@ test("N8L public projection cannot include attacker-controlled nested fields or 
 });
 
 test("N8L every existing catalog route must use a public projection",()=>{
-  const src=readFileSync(new URL("./catalog.ts",import.meta.url),"utf8");
+  const src=readFileSync(new URL("../../src/routes/catalog.ts",import.meta.url),"utf8");
   assert.match(src,/projectPublicCatalogShop\(shop\)/);
   assert.match(src,/getApprovedShops\(\)\)\.map\(projectPublicCatalogShop\)/);
   assert.match(src,/menuItems\.map\(projectPublicCatalogMenuItem\)/);
@@ -78,7 +78,7 @@ test("N8L every existing catalog route must use a public projection",()=>{
 });
 
 test("N8L safe public catalog remains GET-only and keeps inactive approved shops visible",()=>{
-  const src=readFileSync(new URL("./catalog.ts",import.meta.url),"utf8");
+  const src=readFileSync(new URL("../../src/routes/catalog.ts",import.meta.url),"utf8");
   assert.ok(!/router\.(post|put|patch|delete)\(/.test(src));
   assert.match(src,/router\.get\("\/pickup-shops"/);
   assert.match(src,/router\.get\("\/shops"/);
