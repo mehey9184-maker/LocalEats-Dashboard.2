@@ -1,0 +1,65 @@
+name: L3-N8M dormant Customer community contracts and ownership security
+on:
+  pull_request:
+    branches:
+      - review/l3-n8l-customer-public-read-projection
+    paths:
+      - 'localeats-api/src/routes/customerCommunityReadOnlyContract*'
+      - 'docs/L3_N8M_CUSTOMER_COMMUNITY_CONTRACTS.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/l3-n8m-customer-community-contracts.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  community-owner-isolation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Ensure no hosted Firebase, SQL, Vercel or push credentials
+        run: |
+          test -z "${FIREBASE_PRIVATE_KEY:-}${FIREBASE_CLIENT_EMAIL:-}${GOOGLE_APPLICATION_CREDENTIALS:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${VERCEL_TOKEN:-}${FIREBASE_TOKEN:-}"
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$PROFILE_WRITES_ENABLED" = false
+      - name: Build existing API dependency lockfile
+        run: |
+          npm ci --prefix localeats-api --ignore-scripts --no-audit --no-fund
+          npm run build --prefix localeats-api
+      - name: Synthetic read-only HTTP authorization, cross-account privacy, write-off
+        run: node --test localeats-api/dist/routes/customerCommunityReadOnlyContract.test.js
+      - name: Inherited strict Firebase authenticator, catalog, profile, pickup regressions
+        # Tests establish their own Preview gate and mocked Firebase state.
+        # Do not globally force the Preview flag here or existing 401 tests turn into 503.
+        run: npm test --prefix localeats-api
+      - name: Dormant router may NOT be mounted by active API
+        run: |
+          ! grep -q 'customerCommunityReadOnlyContract' localeats-api/src/server.ts
+          ! grep -q 'app.use("/api/v1/community"' localeats-api/src/server.ts
+          echo L3_N8M_SYNTHETIC_CONTRACT_NO_HOSTED_WRITES_OR_ROUTER_ACTIVATION
+  original-merchant-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Preserve original Merchant UI, TypeScript, ESLint and pickup
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          ./node_modules/.bin/tsc --project tsconfig.json --noEmit
+          npm run lint
+          npm run test:merchant-pickup
