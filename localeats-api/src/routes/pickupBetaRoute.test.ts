@@ -21,7 +21,7 @@ const id="550e8400-e29b-41d4-a716-446655440001";
 const orderId="550e8400-e29b-41d4-a716-446655440002";
 const shop={
   id:shopId, owner_id:owner, name:"Synthetic Kota Shop",
-  approval_status:"approved", is_active:true,effective_is_active:true,
+  approval_status:"approved", is_active:true,effective_is_active:true,availability_revision:0,
   archived_at:null,location:"Ivory Park",lat:-26.0,lng:28.0,latitude:-26.0,longitude:28.0
 };
 const item={id:itemId,shop_id:shopId,name:"Synthetic meal",price:25,is_available:true};
