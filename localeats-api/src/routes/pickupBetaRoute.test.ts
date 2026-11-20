@@ -173,7 +173,7 @@ test("mounted pickup beta accepts only invited customer, enforces owner, and ful
       ["collect","collect",3,{handover_confirmed:true},"collected"],
     ] as const){
       const response=await call(`/api/v1/merchant/orders/${orderId}/${path}`,owner,
-        {command_id:"550e8400-e29b-41d4-a716-446655440003",expected_revision:revision,...extra});
+        {command_id:`550e8400-e29b-41d4-a716-44665544000${revision+3}`,expected_revision:revision,...extra});
       assert.equal(response.status,200,`${action}: ${JSON.stringify(response.body)}`);
       assert.equal(response.body.command_receipt.kind,kind);
     }
