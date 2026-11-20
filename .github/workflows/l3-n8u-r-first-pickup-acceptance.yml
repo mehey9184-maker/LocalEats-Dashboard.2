@@ -3,6 +3,7 @@ on:
   pull_request:
     branches:
       - review/l3-n8u-q-controlled-production-beta-eligibility
+      - main
     paths:
       - 'localeats-api/src/routes/pickupBetaRoute.test.ts'
       - 'docs/L3_N8U_R_PRODUCTION_IDENTITY_FIRST_PICKUP_ACCEPTANCE.md'
