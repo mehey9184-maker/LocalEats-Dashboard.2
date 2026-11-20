@@ -17,7 +17,7 @@ Existing Merchant staging mutation guards in `src/lib/merchantStagingNoWrite.ts`
 
 L3-N8S adds the exact recognized Firebase project ID `localeats-staging` as a **third independent fail-closed condition**, preventing direct browser mutation into this project even when both flags are absent/false. Production project `localeats-5e26e` remains unchanged when the stage markers are absent. A deliberately isolated staging test cannot authorize any write through this browser guard; such a test must use a separately reviewed server-authorized API and the final published rules.
 
-Offline regression file `tests/l3-n8s/merchant-staging-identity-guard.test.mjs` asserts project-ID fail closed, backward-compatible marker fallback, Producton identity unaffected, checks that signup/Google-auth/new account/password reset/profile/storage SDK side effects are guarded, and preserves existing-user email sign-in for a later consented test.
+Offline regression file `tests/l3-n8s/merchant-staging-identity-guard.test.mjs` asserts project-ID fail closed, backward-compatible marker fallback, Production identity unaffected, checks that signup/Google-auth/new account/password reset/profile/storage SDK side effects are guarded, and preserves existing-user email sign-in for a later consented test.
 
 **Important:** This fix is on an **unmerged source branch**, not the currently deployed Merchant staging binary. Do **not** treat it as a verified browser fix or a completed hosted login acceptance. The CI workflow operates entirely on GitHub source, with **no hosted credentials**.
 
