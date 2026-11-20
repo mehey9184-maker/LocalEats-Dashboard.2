@@ -42,7 +42,7 @@ jobs:
       - name: Install pinned Merchant dependencies without scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Stage-only browser no-write guard tests (no SDK network calls)
-        run: node --test tests/l3-n8i/merchant-direct-write-containment.test.mjs
+        run: node --test tests/l3-n8i/*.test.mjs
       - name: Legacy isolation and stage configuration tests
         run: |
           node --test tests/l3-n8e/staging-readiness.test.mjs
