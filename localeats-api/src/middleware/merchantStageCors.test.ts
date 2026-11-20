@@ -38,7 +38,7 @@ test("L3-N8G CORS never permits a new staging Origin in Production",()=>{
   }
 });
 test("L3-N8G no Production Firebase/Supabase or flag activation may borrow staging CORS",()=>{
-  const mutations:Array<[keyof NodeJS.ProcessEnv,string|undefined]>=[
+  const mutations:Array<[string,string|undefined]>=[
     ["FIREBASE_PROJECT_ID","gen-lang-client-0863469023"],
     ["SUPABASE_URL","https://phdjumtqkooyppxozqsi.supabase.co"],
     ["LOCALEATS_STAGING_ONLY","false"],
