@@ -1,5 +1,21 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N7B5I — Home UI and dormant Rider dependency audit (read-only draft)
+
+This stage intentionally **does not change any `src/` application code** or suppress the four remaining root ESLint findings. The approved Merchant Home contains current pickup-only KPI cards and navigation, but also retains historical Rider Fleet navigation. The four unused declarations in `src/components/DashboardOverview.tsx` are scoped as follows:
+
+- `ConnectionsSlider`: a large **unmounted** panel defining demo connection checks, an auto-accept localStorage toggle and optimistic success messages. It is not used in the pickup Home render tree and its text should **not** be treated as an actual connectivity, realtime or auto-accept guarantee.
+- `DeliveryDispatchSuburbTrends`: a large **unmounted** analytics panel based on delivery/suburb records. It is not a source of verified pickup revenue, performance or dispatch statistics.
+- `fetchRiders`: an **uninvoked** callback within Home, but its body still contains legacy direct rider_connections Supabase reads, retrying numeric shop IDs, full-record logging, per-shop browser caches and fallback. Do **not** activate it merely to satisfy lint; it conflicts with the pickup-first server-authoritative read-only launch boundary.
+- `driverAvailability`: an **unused** memo based on `connectedRidersCount`, which itself derives from `connections` state. Removing just this memo exposes another dependent unused declaration. No Rider availability status is currently verified by the pickup Home UI.
+
+The current visible Home still offers a Rider Fleet quick-navigation item. This review preserves the exact approved UI rather than silently changing navigation. Its presence **does not authorize Rider service or real delivery operations**.
+
+**Verification design:** an isolated original-component Chromium fixture renders verified pickup, failed Orders read, unverified owner, loading, different shop, advanced layout and compact layout at 320/390/1280px against synthetic fixtures. The runner checks that `src/components/DashboardOverview.tsx` matches the PR #189 parent byte-for-byte, builds the actual parent and candidate source, compares their responsive viewport screenshots and Home DOM in all seven states, verifies no horizontal overflow, and blocks all non-fixture network and writes. A TypeScript AST dependency test independently verifies the four unused declarations, their non-rendering, their dependent Rider variables, the protected pickup scope and retained original navigation. This is **baseline preservation**, not an authenticated production Home test or approval to delete dormant code. Only mock fixtures, tests, CI and documentation belong in this draft.
+
+**Safety:** no Production, live orders, payment capture, Rider activation, hosted DB, FCM send, scheduler, merge or release flag change. Strict TypeScript/ESLint comparison against untouched PR #189 and previous browser, owner isolation, pickup security and disposable PostgreSQL17 2,500 synthetic-order acceptance remain required. The full root lint is expected to remain 4 findings until a separate owner-reviewed reversible cleanup. Launch blockers are authenticated Settings and server-authorized profile persistence, hosted schema/backups, actual push receipt and final owner sign-off.
+
+
 ## L3-N7B5H — synthetic pickup fixture first-read lifecycle (draft review only)
 
 This small change is **test-only**: `tests/l3-n6/fixture-entry.tsx` defers the initial fake Merchant order read until a cancellable zero-delay timer after React effect setup, instead of initiating a synchronous `setError` from the effect. Cleanup cancels that timer, invalidates the existing request generation and removes the local confirmation-event listener; account switching still clears old merchant state and reloads through the same mock API. It makes no change to production Merchant components, pickup transitions, payment capture, notifications, service workers, or any hosted data. A new offline-only browser exercise must verify initial read, account switching with an unresolved stale A read, manual refresh, synthetic confirmation event, original read-only action button, and zero real network or writes at 320/390/1280px.
