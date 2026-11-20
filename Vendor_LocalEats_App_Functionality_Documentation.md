@@ -1,5 +1,9 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N8R — Provider roles, low egress and portable infrastructure (2026-11-20)
+See [the dated provider-boundaries and migration handoff](docs/LOCALEATS_PROVIDER_BOUNDARIES_PORTABILITY_HANDOFF_20261120.md) for current/legacy-vs-target distinctions. The owner wants independent migration/upgrade of Firebase, Supabase, images and API hosting without rebuilding the app or creating avoidable Supabase egress. Firebase Authentication is used by **both** Customer and Merchant; Supabase staging holds SQL shops/menu/order tables, not merely customer accounts. Existing Production Firebase `localeats-5e26e` has a named Firestore DB; the owner showed existing Firestore data and enabled FCM HTTP v1. Cloudinary is the observed media provider; Cloudflare R2 is a **future option**. Keep server-authoritative order pricing/ownership and versioned APIs. Production/staging ordering remains OFF, and no Firestore rules or Production resources are changed by this report. Other older passages describing exclusively Firestore-backed operations are historical until reverified against current deployments.
+
+
 The Customer history API provides authenticated 50-row pages with a timestamp/ID cursor and a has_more flag. The original recent feed retains its 50-row limit and now uses the same deterministic timestamp/ID ordering. Each query filters to the Firebase UID before paging.
 
 ## Isolated Firebase staging configuration — 2026-11-05
