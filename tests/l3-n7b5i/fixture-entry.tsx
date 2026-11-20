@@ -45,7 +45,7 @@ function Fixture(){
  const [layout,setLayout]=useState<"compact"|"advanced">("compact");
  const [navigation,setNavigation]=useState("none");
  const [refreshes,setRefreshes]=useState(0);
- const [riskActions,setRiskActions]=useState(0);
+ const riskActions=0;
  const user=scenario==="unverified"?null:currentUser;
  const currentShop=scenario==="unverified"?undefined:scenario==="other-shop"?shopB:shopA;
  const ordersState=scenario==="fresh"||scenario==="other-shop"?"fresh":scenario==="failed"?"failed":"unverified";
