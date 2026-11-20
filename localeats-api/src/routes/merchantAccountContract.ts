@@ -143,7 +143,7 @@ export function makeReviewOnlyMerchantAccountRouter(deps: MerchantAccountContrac
     }
     const uid = claims?.uid;
     if (typeof uid !== "string" || uid.length === 0 || uid.length > 128 ||
-        /[\/\\\x00-\x1f]/.test(uid) ||
+        [...uid].some(ch => ch === "/" || ch === "\\" || ch.charCodeAt(0) < 32) ||
         typeof claims.firebase?.sign_in_provider !== "string" ||
         claims.firebase.sign_in_provider === "anonymous") {
       res.status(401).json({success:false,code:"REGISTERED_MERCHANT_REQUIRED"});
