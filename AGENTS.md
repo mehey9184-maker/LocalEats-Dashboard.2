@@ -1,5 +1,9 @@
 # LocalEats Platform - Persistent System Instructions
 
+## Canonical provider-boundaries handoff — 2026-11-20
+**READ FIRST for Firebase/Supabase/media/provider moves:** [LocalEats provider boundaries, portability and migration handoff](docs/LOCALEATS_PROVIDER_BOUNDARIES_PORTABILITY_HANDOFF_20261120.md). Both Customer and Merchant source use Firebase Auth; Production Firebase is `localeats-5e26e` with a **named** Firestore DB, while stage is `localeats-staging/(default)`. Supabase PostgreSQL is not "customer accounts only": staging contains shops, menus and order/event tables. Cloudinary media is in active code; Cloudflare R2 is a candidate migration, not installed. The owner requires low egress and provider replaceability without bypassing the LocalEats API. Treat older Firebase-only/Firestore-only and local-cache-as-truth descriptions below as historical unless current source and runtime support them. Documentation only: Production and staging pickup writes remain OFF.
+
+
 ## Active Merchant pickup-only Codex policy — 2026-11-05
 
 Isolated Firebase staging builds must explicitly set `VITE_FIREBASE_CONFIG_SOURCE=environment` and supply the complete staging app configuration. That mode selects `VITE_FIREBASE_FIRESTORE_DATABASE_ID` (defaulting to `(default)`) without reusing bundled production values. Existing deployments retain their bundled configuration until opted in.
