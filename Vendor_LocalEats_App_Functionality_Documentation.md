@@ -1,5 +1,9 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N8U-P — Production launch readiness and controlled beta (2026-11-20)
+See [the Production Pickup Launch Gate report](docs/L3_N8U_P_PRODUCTION_PICKUP_LAUNCH_GATE.md) for Vercel Production aliases/SHAs, read-only Production Supabase SQL inventory, Firebase auth revocation gap, current single-shop/UID API hard gate, FCM/PWA proof requirements, narrowly scoped 2–3 shop/10–20 customer beta criteria and rollback. **Current Production pickup writes remain OFF.** The document records one existing Production pickup order and five events; do not treat them as disposable. This branch only backports a reviewed Firebase revoked/disabled-account verification source fix to a draft; no Production deploy, live orders or notifications have been authorized. 
+
+
 The Customer history API provides authenticated 50-row pages with a timestamp/ID cursor and a has_more flag. The original recent feed retains its 50-row limit and now uses the same deterministic timestamp/ID ordering. Each query filters to the Firebase UID before paging.
 
 ## Isolated Firebase staging configuration — 2026-11-05
