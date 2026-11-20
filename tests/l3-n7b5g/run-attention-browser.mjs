@@ -41,7 +41,15 @@ try{
   page.on("pageerror",error=>errors.push(error.message));
   const pulse=async id=>page.getByTestId("pulse-"+id).textContent();
   const quiet=async id=>{assert.equal(await pulse(id),"quiet",id+" should not animate at "+width+"px");assertions++;};
-  const active=async id=>{assert.notEqual(await pulse(id),"quiet",id+" should animate at "+width+"px");assertions++;};
+  const active=async id=>{
+   // A verified data change is consumed by a post-commit React effect.
+   // Wait briefly, but fail when no actual visual cue is produced.
+   await page.waitForFunction(target=>{
+    const value=document.querySelector(`[data-testid="pulse-${target}"]`)?.textContent;
+    return value!==undefined && value!=="quiet";
+   },id,{timeout:950});
+   assert.notEqual(await pulse(id),"quiet",id+" should animate at "+width+"px");assertions++;
+  };
   try{
    await page.goto(origin+"/",{waitUntil:"domcontentloaded"});
    await page.getByTestId("attention-hook").waitFor({timeout:15000});
