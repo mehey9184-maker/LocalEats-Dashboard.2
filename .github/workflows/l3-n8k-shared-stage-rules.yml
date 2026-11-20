@@ -1,0 +1,102 @@
+name: L3-N8K shared Firebase staging rules Customer/Merchant compatibility gate
+on:
+  pull_request:
+    branches:
+      - review/l3-n8j-firestore-emulator-multishop
+    paths:
+      - 'tests/l3-n8k/**'
+      - 'tests/l3-n8j/customer-shared-compatibility.test.mjs'
+      - 'localeats-api/scripts/l3-n8k-read-staging-rules.mjs'
+      - 'docs/L3_N8K_SHARED_FIREBASE_COMPATIBILITY_ROLLBACK.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/l3-n8k-shared-stage-rules.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  shared-firestore-permission-emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      FIREBASE_PROJECT_ID: demo-l3-n8j-firestore
+      GOOGLE_CLOUD_PROJECT: demo-l3-n8j-firestore
+      GCLOUD_PROJECT: demo-l3-n8j-firestore
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Fail if ANY hosted credentials are available
+        run: |
+          test "$FIREBASE_PROJECT_ID" = demo-l3-n8j-firestore
+          test "$GOOGLE_CLOUD_PROJECT" = demo-l3-n8j-firestore
+          test -z "${FIREBASE_TOKEN:-}${FIREBASE_PRIVATE_KEY:-}${FIREBASE_CLIENT_EMAIL:-}${GOOGLE_APPLICATION_CREDENTIALS:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${VERCEL_TOKEN:-}"
+          ! grep -q 'firebase deploy' tests/l3-n8k/firestore.shared-staging-review.rules
+      - name: Install pinned only-for-emulator dependencies
+        run: npm install --prefix tests/l3-n8j --ignore-scripts --no-audit --no-fund --no-package-lock
+      - name: Run N8J baseline + new N8K Customer and Merchant compatibility tests
+        run: |
+          ./tests/l3-n8j/node_modules/.bin/firebase emulators:exec \
+            --only firestore \
+            --project demo-l3-n8j-firestore \
+            --config tests/l3-n8j/firebase.json \
+            "node --test tests/l3-n8j/firestore.rules.emulator.test.mjs && node --test tests/l3-n8j/customer-shared-compatibility.test.mjs"
+      - name: Emulators only; no deployed Firebase rules changed
+        run: echo 'L3_N8K_LOCAL_SHARED_STAGE_RULES_TEST_ONLY_NOT_PUBLISHED'
+  release-and-read-only-safeguards:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Stage rules release MUST remain blocked on actual known evidence
+        run: node --test tests/l3-n8k/shared-rules-release-gate.test.mjs
+      - name: Read-only fingerprint tool is NOT executed with hosted credentials
+        run: |
+          test -z "${FIREBASE_TOKEN:-}${FIREBASE_PRIVATE_KEY:-}${GOOGLE_APPLICATION_CREDENTIALS:-}${GOOGLE_CLOUD_PROJECT:-}"
+          ! grep -q 'firebase deploy' .github/workflows/l3-n8k-shared-stage-rules.yml
+          ! grep -q 'releaseFirestoreRuleset(' localeats-api/scripts/l3-n8k-read-staging-rules.mjs
+          echo L3_N8K_DEPLOYED_FIREBASE_RULESET_UNVERIFIED_NO_ROLLOUT
+  inherited-Merchant-API:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Existing API security/owner/full regressions
+        run: |
+          npm ci --prefix localeats-api --ignore-scripts --no-audit --no-fund
+          npm run build --prefix localeats-api
+          node --test localeats-api/dist/accounts/merchantProfileStore.test.js
+          npm test --prefix localeats-api
+      - name: Preserve Merchant UI and original pickup tests
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          ./node_modules/.bin/tsc --project tsconfig.json --noEmit
+          npm run lint
+          npm run test:merchant-pickup
+      - name: Absolutely no live Merchant account saving
+        run: |
+          ! grep -q merchantAccountDormantApi localeats-api/src/server.ts
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          test "$PICKUP_WRITES_ENABLED" = false
