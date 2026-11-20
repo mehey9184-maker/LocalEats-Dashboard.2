@@ -1,5 +1,14 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N7B5F — connectivity monitor lifecycle and conservative diagnostics (review-only)
+
+This isolated draft on PR #186 guards legacy ConnectivityMonitor state from late IndexedDB queue reads and backend read probes. Initial probes run on a zero-delay timer with proper cancellation; a generation counter drops results from earlier requests, offline transitions and component cleanup. Browser reconnection resets the indicator to *Connecting* until a new read completes; a delayed success cannot turn it green after a newer offline transition. A legacy channel adapter's locally synthesized `SUBSCRIBED` callback is **not** treated as proof of backend health. Failed channel status remains degraded until an explicit reconnect/reverification. The diagnostics tooltip now explicitly says **Channel adapter / Legacy read (not pickup API proof)** rather than claiming a verified real-time API gateway. These statuses remain legacy diagnostics, not a promise that the authenticated pickup API, FCM delivery or real checkout is available.
+
+Legacy offline records are still review-only. The pending count only reads IndexedDB; the UI never replays or deletes a queued mutation, and a click only explains why review is required. All original layout/copy and real pickup/payment protections remain. This is review-only: no hosted DB, live orders, real notifications, scheduler, payments, settings/profile save, Rider or production writes.
+
+This branch requires isolated network-blocked Chromium for offline/reconnect, stale request rejection, fake channel callbacks, queue count review-only action and teardown, plus strict TypeScript/ESLint delta, original Orders and presentation Chromium checks, and test-only PostgreSQL17 2,500 synthetic-order acceptance. Remaining attention hook, older fixture effect and dormant Overview lint are separate. No merges or live activation.
+
+
 ## L3-N7B5E — Orders Kanban pagination scope (read-only draft)
 
 This isolated review branch follows PR #185. The existing Orders Kanban previously used two synchronous effect-state resets for `visibleByLane` and `visibleHistory` whenever the selected ticket style, active/history view or stage filter changed. The new scope-keyed presentation cursor adjusts safely during render and exposes the same per-lane +6 and history +24 controls. It preserves the mounted ticket component tree, existing mobile lane preference, original cards/labels/markup and read-only pickup/payment authority. Every style/view/filter transition, including switching back to a previous selection, resets pagination to six per lane or 24 history entries, without carrying hidden old counters.

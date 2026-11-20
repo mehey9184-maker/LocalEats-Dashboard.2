@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {supabase as merchantDataAdapter} from "../lib/supabase";
 import { Wifi, WifiOff, RefreshCw, Layers, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -21,42 +21,61 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
   const [wsStatus, setWsStatus] = useState<"SUBSCRIBED" | "CONNECTING" | "CLOSED" | "CHANNEL_ERROR" | "TIMED_OUT">("CONNECTING");
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [pendingSyncs, setPendingSyncs] = useState<number>(0);
+  const pendingProbe = useRef(0);
+  const healthProbe = useRef(0);
+  const channelFailed = useRef(false);
 
   // 1. Fetch & poll queued offline mutations count
   const updatePendingCount = useCallback(async () => {
+    const request = ++pendingProbe.current;
     try {
       const items = await getQueuedMutations();
-      setPendingSyncs(items.length);
+      // An older IndexedDB result (or one completing after unmount) cannot
+      // replace a newer pending-review count. This never replays mutations.
+      if (request === pendingProbe.current) setPendingSyncs(items.length);
     } catch {
-      // ignore IndexedDB read error
+      // Ignore an IndexedDB diagnostic read error; never replay a mutation.
     }
   }, []);
 
   useEffect(() => {
-    updatePendingCount();
-
-    const handleQueueUpdated = () => updatePendingCount();
+    // Schedule the first async IndexedDB read after effect setup. Cancelling
+    // the timer and invalidating its generation prevents late state writes.
+    const firstRead = window.setTimeout(() => { void updatePendingCount(); }, 0);
+    const handleQueueUpdated = () => { void updatePendingCount(); };
     window.addEventListener("offline_queue_updated", handleQueueUpdated);
-    window.addEventListener("online", updatePendingCount);
+    window.addEventListener("online", handleQueueUpdated);
 
-    const interval = setInterval(updatePendingCount, 5000);
+    const interval = window.setInterval(handleQueueUpdated, 5000);
 
     return () => {
+      ++pendingProbe.current;
+      window.clearTimeout(firstRead);
       window.removeEventListener("offline_queue_updated", handleQueueUpdated);
-      window.removeEventListener("online", updatePendingCount);
-      clearInterval(interval);
+      window.removeEventListener("online", handleQueueUpdated);
+      window.clearInterval(interval);
     };
   }, [updatePendingCount]);
 
   // 2. Track network online/offline listeners
   useEffect(() => {
     const handleOnline = () => {
+      // A browser online event proves neither API nor realtime availability.
+      // Require a NEW diagnostic read before displaying a healthy status.
+      ++healthProbe.current;
+      channelFailed.current = false;
+      setHealthStatus("connecting");
+      setWsStatus("CONNECTING");
+      setLatencyMs(null);
       setIsOnline(true);
       // App re-reads authoritative data on reconnect; no Firestore replay.
     };
     const handleOffline = () => {
+      ++healthProbe.current;
       setIsOnline(false);
       setHealthStatus("offline");
+      setLatencyMs(null);
+      setWsStatus("CLOSED");
       logNetworkError("connectivity_monitor", "Browser entered offline state", {
         type: "api_gateway",
         code: "BROWSER_OFFLINE",
@@ -74,6 +93,7 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
 
   // 3. Perform real-time Supabase API Gateway & WebSocket Health Check
   const checkHealth = useCallback(async () => {
+    const request = ++healthProbe.current;
     if (!navigator.onLine) {
       setHealthStatus("offline");
       setLatencyMs(null);
@@ -84,6 +104,7 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
     try {
       // API Gateway Latency Ping
       const { error } = await supabase.from("shops").select("id").limit(1);
+      if (request !== healthProbe.current || !navigator.onLine) return;
       const endTime = performance.now();
       const latency = Math.round(endTime - startTime);
       setLatencyMs(latency);
@@ -95,13 +116,12 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
         });
         setHealthStatus("degraded");
       } else {
-        if (latency > 800) {
-          setHealthStatus("degraded");
-        } else {
-          setHealthStatus("connected");
-        }
+        // The channel adapter's SUBSCRIBED callback is not proof of a
+        // working realtime backend. Never use it to override a failed read.
+        setHealthStatus(latency > 800 || channelFailed.current ? "degraded" : "connected");
       }
     } catch (err: unknown) {
+      if (request !== healthProbe.current || !navigator.onLine) return;
       const endTime = performance.now();
       const latency = Math.round(endTime - startTime);
       setLatencyMs(latency);
@@ -117,34 +137,42 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
   useEffect(() => {
     if (!isOnline) return;
 
+    let active = true;
     let wsChannel: ReturnType<typeof getFreshChannel>|undefined;
 
     try {
       wsChannel = getFreshChannel("system_connectivity_monitor");
       wsChannel.subscribe((status) => {
+        // The legacy adapter may invoke SUBSCRIBED after channel teardown.
+        if (!active || !navigator.onLine) return;
         if (status==="SUBSCRIBED" || status==="CONNECTING" || status==="CLOSED" || status==="CHANNEL_ERROR" || status==="TIMED_OUT") setWsStatus(status);
         else setWsStatus("CHANNEL_ERROR");
-        if (status === "SUBSCRIBED") {
-          setHealthStatus((prev) => (prev === "offline" ? "degraded" : "connected"));
-        } else if (status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          setHealthStatus("degraded");
+        if (status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          channelFailed.current = true;
+          setHealthStatus((previous) => previous === "offline" ? "offline" : "degraded");
           logNetworkError("supabase_websocket_closed", `WebSocket channel status: ${status}`, {
             type: "websocket",
             closeCode: status === "TIMED_OUT" ? 4004 : 1006,
             closeReason: `Channel state transition to ${status}`,
           });
         }
+        // SUBSCRIBED is a compatibility-adapter callback, not confirmed
+        // backend connectivity; the diagnostic read owns healthy status.
       });
     } catch (err) {
+      channelFailed.current = true;
       logNetworkError("supabase_websocket_init_error", err, { type: "websocket" });
     }
 
-    // Ping check every 60 seconds (relaxed to prevent pool exhaustion)
-    checkHealth();
-    const interval = setInterval(checkHealth, 60000);
+    // Kick off an async read after effect setup, then poll every 60 seconds.
+    const firstRead = window.setTimeout(() => { if (active) void checkHealth(); }, 0);
+    const interval = window.setInterval(() => { if (active) void checkHealth(); }, 60000);
 
     return () => {
-      clearInterval(interval);
+      active = false;
+      ++healthProbe.current;
+      window.clearTimeout(firstRead);
+      window.clearInterval(interval);
       if (wsChannel) {
         supabase.removeChannel(wsChannel);
       }
@@ -198,7 +226,7 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
           "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all border cursor-pointer select-none shadow-xs active:scale-95",
           getBadgeStyles()
         )}
-        title={`Realtime WS: ${wsStatus} | Gateway: ${latencyMs ?? 0}ms (Click for Diagnostics)`}
+        title={`Channel adapter: ${wsStatus} | Legacy read: ${latencyMs === null ? "unverified" : `${latencyMs}ms`} (not pickup API proof; click for Diagnostics)`}
       >
         <div className={cn("w-2 h-2 rounded-full shrink-0", getDotStyles())} />
 
