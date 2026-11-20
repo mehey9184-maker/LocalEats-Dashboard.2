@@ -91,3 +91,15 @@ The current two-draft PR chain is code-prepared only; do **not** equate a green 
 - Revert verified immutable API/frontend deployments and review stored receipts; don't rollback database or published Firebase rules blindly.
 
 **Today's decision:** first selected shop known; Production Firebase published named-database rules, owner/customer identity pairing and hosted real order/FCM flow are pending; **public Production pickup remains OFF.**
+
+
+## L3-N8U-R CI evidence — verified, 2026-11-21 (South Africa)
+
+GitHub Actions `L3-N8U-R first pickup journey acceptance (synthetic only)` ran on immutable source commit `5d8b6332ea4156f272070f1a3eb38d82a51652ad`, [workflow run #44832407909](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/44832407909), and **PASSED**. Specifically:
+- Node 22 and `npm ci --ignore-scripts`: passed; no Production Firebase, Supabase, Vercel or cohort credentials supplied.
+- API TypeScript compilation: passed.
+- Local mounted synthetic HTTP quote-to-order-to-collection scenario, including cross-owner denial, R0.01 price-consent tamper rejection, idempotent duplicate and continuing an order after a new-admission pause: **1/1 passed**.
+- Existing revoked-token verification, controlled beta eligibility and pickup route regressions: **20/20 passed**.
+- First test attempts failed because synthetic shop mock omitted `availability_revision` and fixture expiry included fractional seconds; both **test fixture** errors were corrected. Production API fail-closed availability/expiry validation was not weakened.
+
+**Critical limitation:** The GitHub Actions test uses **mock Firebase authentication and mock Supabase RPC**, with a locally hosted Express app. It is **not** a real My-Kota customer purchase, hosted Firebase login, live notification, Production database write or merchant device acceptance. The separate dedicated Merchant staging Vercel check on draft Production branches is unrelated to these API tests and may show failure if it is configured to build branches lacking `build:merchant-staging`. Do not merge until all release checks and owner authorization are reviewed.
