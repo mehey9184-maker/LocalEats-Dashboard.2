@@ -1,4 +1,4 @@
-import React,{useEffect,useMemo,useState} from "react";
+import React,{useMemo,useState} from "react";
 import {ChevronDown, ChevronUp, ShoppingBag} from "lucide-react";
 import type {Order} from "../types";
 import {isPickupOrder,pickupPaymentLabel} from "../services/merchantPickupPolicy";
@@ -68,6 +68,11 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
  </article>;
 }
 
+const freshPagination=(scope:string)=>({
+ scope,
+ byLane:{pending:6,preparing:6,ready:6,fulfilled:6} as Record<Stage,number>,
+ history:24
+});
 export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onDemoAction,renderRealOrder,stageFilter}:{
  entries:BoardEntry[];completedEntries?:BoardEntry[];style:OrderBoardStyle;
  viewMode:"active"|"history";onDemoAction:PreviewTestPickupAction;
@@ -75,10 +80,22 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
  stageFilter:"all"|"pending"|"preparing"|"ready";
 }){
  const [mobileStage,setMobileStage]=useState<Stage>("pending");
- const [visibleByLane,setVisibleByLane]=useState<Record<Stage,number>>({pending:6,preparing:6,ready:6,fulfilled:6});
- const [visibleHistory,setVisibleHistory]=useState(24);
- useEffect(()=>setVisibleByLane({pending:6,preparing:6,ready:6,fulfilled:6}),[style,viewMode,stageFilter]);
- useEffect(()=>setVisibleHistory(24),[style,viewMode,stageFilter]);
+ // Presentation-only cursors reset when the style/view/filter scope changes.
+ // React's guarded render adjustment avoids cascading effect updates and keeps
+ // the existing ticket component tree (including expanded details) mounted.
+ const scope=`${style}:${viewMode}:${stageFilter}`;
+ const [pagination,setPagination]=useState(()=>freshPagination(scope));
+ if(pagination.scope!==scope)setPagination(freshPagination(scope));
+ const visibleByLane=pagination.scope===scope?pagination.byLane:freshPagination(scope).byLane;
+ const visibleHistory=pagination.scope===scope?pagination.history:24;
+ const showMoreHistory=()=>setPagination(previous=>{
+   const current=previous.scope===scope?previous:freshPagination(scope);
+   return {...current,history:current.history+24};
+ });
+ const showMoreLane=(lane:Stage)=>setPagination(previous=>{
+   const current=previous.scope===scope?previous:freshPagination(scope);
+   return {...current,byLane:{...current.byLane,[lane]:current.byLane[lane]+6}};
+ });
  const roomy=style==="expediter";
  const compact=style==="compact";
  const allEntries=useMemo(()=>{
@@ -109,7 +126,7 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
      </div>
      {allEntries.length>shown.length&&<button
        type="button"
-       onClick={()=>setVisibleHistory(count=>count+24)}
+       onClick={showMoreHistory}
        className="min-h-11 w-full rounded-xl border border-outline-variant/20 bg-surface-container-lowest text-xs font-bold text-primary"
      >
        Show 24 more history orders · {allEntries.length-shown.length} remaining
@@ -151,7 +168,7 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
              {lane.key==="pending"?"No new orders":lane.key==="preparing"?"Nothing preparing":lane.key==="ready"?"Nothing ready":"No fulfilled orders here"}
            </p>:limited.map(renderEntry)}
          </div>
-         {stageEntries.length>limited.length&&<button type="button" onClick={()=>setVisibleByLane(old=>({...old,[lane.key]:old[lane.key]+6}))}
+         {stageEntries.length>limited.length&&<button type="button" onClick={()=>showMoreLane(lane.key)}
            className="min-h-10 mt-3 rounded-lg bg-surface-container-lowest dark:bg-zinc-800 text-xs font-bold text-primary border border-outline-variant/15">
            Show 6 more · {stageEntries.length-limited.length} remaining
          </button>}
