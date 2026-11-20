@@ -120,7 +120,9 @@ test("N8G no staging-only feature silently writes to Firestore or API",()=>{
   const manifest=readFileSync(new URL("../../package.json",import.meta.url),"utf8");
   const app=readFileSync(new URL("../../src/App.tsx",import.meta.url),"utf8");
   const firebase=readFileSync(new URL("../../src/lib/firebase.ts",import.meta.url),"utf8");
-  assert.match(vite,/if \(mode === 'merchant-staging'\) assertMerchantStagingBuild/);
+  assert.match(vite,/mode === 'merchant-staging'/);
+  assert.match(vite,/env.LOCALEATS_STAGING_ONLY === 'true'/);
+  assert.match(vite,/assertMerchantStagingBuild\(mode, env, process.env\)/);
   assert.match(manifest,/"build:merchant-staging": "vite build --mode merchant-staging"/);
   assert.match(app,/VITE_MERCHANT_PREVIEW_READ_ONLY === "true"/);
   assert.match(firebase,/VITE_FIREBASE_CONFIG_SOURCE === "environment"/);
