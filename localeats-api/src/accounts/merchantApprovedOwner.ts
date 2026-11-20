@@ -24,15 +24,21 @@ export function createApprovedMerchantOwnershipLookup(
     const data=await findCurrentShops(uid);
     if (!Array.isArray(data)) throw Error("MERCHANT_OWNERSHIP_RESULT_INVALID");
     if (data.length === 0) return false;
-    // Never assume which shop is current if more than one is mapped.
-    if (data.length !== 1) return false;
-    const row=data[0] as MerchantShopOwnershipRecord | null;
-    if (!row || typeof row !== "object" || Array.isArray(row)) return false;
-    return (typeof row.id === "string" && row.id.length > 0 ||
-            typeof row.id === "number" && Number.isFinite(row.id)) &&
-      row.owner_id === uid &&
-      row.approval_status === "approved" &&
-      row.archived_at === null;
+    // Profile admission is an owner-level YES/NO, not selection of the
+    // "current shop". An approved owner may legitimately own several shops.
+    // Never infer permission to operate a particular shop from this result:
+    // every shop mutation must independently check verified owner + shop ID.
+    // The server-side adapter below filters to approved, nonarchived shops
+    // and requests one qualifying row to avoid an unbounded profile read.
+    return data.every(candidate => {
+      const row=candidate as MerchantShopOwnershipRecord | null;
+      if (!row || typeof row !== "object" || Array.isArray(row)) return false;
+      return (typeof row.id === "string" && row.id.length > 0 ||
+              typeof row.id === "number" && Number.isFinite(row.id)) &&
+        row.owner_id === uid &&
+        row.approval_status === "approved" &&
+        row.archived_at === null;
+    });
   };
 }
 
@@ -45,8 +51,9 @@ export function createSupabaseMerchantOwnershipLookup(
     const {data,error}=await db.from("shops_with_availability")
       .select("id,owner_id,approval_status,archived_at")
       .eq("owner_id",uid)
+      .eq("approval_status","approved")
       .is("archived_at",null)
-      .limit(2);
+      .limit(1);
     if (error) throw Error("MERCHANT_OWNERSHIP_DB_UNAVAILABLE");
     return data;
   });

@@ -1,0 +1,110 @@
+name: L3-N8J staged Firestore Rules emulator and multi-shop owner gate
+on:
+  pull_request:
+    branches:
+      - review/l3-n8i-merchant-client-write-containment
+    paths:
+      - 'tests/l3-n8j/**'
+      - 'localeats-api/src/accounts/merchantApprovedOwner.ts'
+      - 'localeats-api/src/accounts/merchantProfileStore.test.ts'
+      - 'docs/L3_N8J_FIRESTORE_RULES_AND_MULTISHOP_REVIEW.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/l3-n8j-firestore-multishop.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-firestore-emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      FIREBASE_PROJECT_ID: demo-l3-n8j-firestore
+      GCLOUD_PROJECT: demo-l3-n8j-firestore
+      GOOGLE_CLOUD_PROJECT: demo-l3-n8j-firestore
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Require isolated demo emulator and no hosted credentials
+        run: |
+          test "$FIREBASE_PROJECT_ID" = demo-l3-n8j-firestore
+          test "$GOOGLE_CLOUD_PROJECT" = demo-l3-n8j-firestore
+          test -z "${FIREBASE_TOKEN:-}${GOOGLE_APPLICATION_CREDENTIALS:-}${FIREBASE_PRIVATE_KEY:-}${FIREBASE_CLIENT_EMAIL:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${VERCEL_TOKEN:-}"
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$PROFILE_WRITES_ENABLED" = false
+      - name: Install exact emulator-only dependencies (no root dependency change)
+        run: npm install --prefix tests/l3-n8j --ignore-scripts --no-audit --no-fund --no-package-lock
+      - name: Run Firebase Firestore Rules emulator (demo project ONLY)
+        run: |
+          ./tests/l3-n8j/node_modules/.bin/firebase emulators:exec \
+            --only firestore \
+            --project demo-l3-n8j-firestore \
+            --config tests/l3-n8j/firebase.json \
+            "node --test tests/l3-n8j/firestore.rules.emulator.test.mjs"
+      - name: Confirm no Rules deployment happened
+        run: |
+          ! grep -q 'firebase deploy' .github/workflows/l3-n8j-firestore-multishop.yml
+          echo 'L3_N8J_LOCAL_RULES_EMULATOR_ONLY_NO_FIREBASE_DEPLOY'
+  merchant-profile-owner-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+      MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: API locked install + build
+        run: |
+          npm ci --prefix localeats-api --ignore-scripts --no-audit --no-fund
+          npm run build --prefix localeats-api
+      - name: Multi-shop owner profile contract tests (synthetic)
+        run: |
+          node --test localeats-api/dist/accounts/merchantProfileStore.test.js
+          node --test localeats-api/dist/accounts/merchantAccountDormantApi.test.js
+          node --test localeats-api/dist/routes/merchantAccountContract.test.js
+      - name: Full API pickup/security regressions
+        run: npm test --prefix localeats-api
+      - name: Active account/profile route must remain unmounted
+        run: |
+          ! grep -q 'merchantAccountDormantApi' localeats-api/src/server.ts
+          ! grep -q 'merchantAccountContract' localeats-api/src/server.ts
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          echo 'L3_N8J_MULTISHOP_REVIEW_ONLY_NO_PROFILE_ACTIVATION'
+  original-merchant-quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Merchant locked install, TypeScript, ESLint and pickup regressions
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          ./node_modules/.bin/tsc --project tsconfig.json --noEmit
+          npm run lint
+          npm run test:merchant-pickup
+      - name: No hosted account or database mutation
+        run: echo 'L3_N8J_ONLY_OFFLINE_TESTS_NO_LIVE_MERCHANT_OPERATIONS'

@@ -124,7 +124,7 @@ test("read-back is required: silent no-op Firestore update never yields HTTP suc
     assert.equal(f.rows.get("owner-A")?.full_name,"Legacy Person");
   }finally{server.close();}
 });
-test("ownership lookup requires precisely one approved, unarchived, matching shop",async()=>{
+test("profile owner lookup accepts several approved owned shops without selecting any shop",async()=>{
   const samples:Array<{rows:unknown;approved:boolean}>= [
     {rows:[{id:"shop1",owner_id:"owner-A",approval_status:"approved",archived_at:null}],approved:true},
     {rows:[],approved:false},
@@ -132,7 +132,11 @@ test("ownership lookup requires precisely one approved, unarchived, matching sho
     {rows:[{id:"shop1",owner_id:"owner-A",approval_status:"pending",archived_at:null}],approved:false},
     {rows:[{id:"shop1",owner_id:"owner-A",approval_status:"approved",archived_at:"yesterday"}],approved:false},
     {rows:[{id:"shop1",owner_id:"owner-A",approval_status:"approved",archived_at:null},
-           {id:"shop2",owner_id:"owner-A",approval_status:"approved",archived_at:null}],approved:false},
+           {id:"shop2",owner_id:"owner-A",approval_status:"approved",archived_at:null}],approved:true},
+    {rows:[{id:"shop1",owner_id:"owner-A",approval_status:"approved",archived_at:null},
+           {id:"shop2",owner_id:"owner-B",approval_status:"approved",archived_at:null}],approved:false},
+    {rows:[{id:"shop1",owner_id:"owner-A",approval_status:"approved",archived_at:null},
+           {id:"shop2",owner_id:"owner-A",approval_status:"pending",archived_at:null}],approved:false},
     {rows:[{owner_id:"owner-A",approval_status:"approved",archived_at:null}],approved:false},
     {rows:null,approved:false},
   ];
@@ -151,15 +155,15 @@ test("service-role lookup applies owner+archive filters and rejects failed datab
       calls.push("from:"+name);
       return {select(cols:string){
         calls.push("select:"+cols);
-        return {eq(k:string,v:string){
-          calls.push("eq:"+k+"="+v);
-          return {is(k:string,v:null){
-            calls.push("is:"+k+"="+v);
-            return {limit(n:number){calls.push("limit:"+n);
-              return Promise.resolve({data:[{id:7,owner_id:"owner-A",approval_status:"approved",archived_at:null}],error:null});
-            }};
-          }};
-        }};
+        const chain={
+          eq(k:string,v:string){calls.push("eq:"+k+"="+v);return chain;},
+          is(k:string,v:null){calls.push("is:"+k+"="+v);return chain;},
+          limit(n:number){calls.push("limit:"+n);return Promise.resolve({
+            data:[{id:7,owner_id:"owner-A",approval_status:"approved",archived_at:null}],
+            error:null,
+          });},
+        };
+        return chain;
       }};
     },
   };
@@ -168,7 +172,7 @@ test("service-role lookup applies owner+archive filters and rejects failed datab
   assert.deepEqual(calls,[
     "from:shops_with_availability",
     "select:id,owner_id,approval_status,archived_at",
-    "eq:owner_id=owner-A","is:archived_at=null","limit:2",
+    "eq:owner_id=owner-A","eq:approval_status=approved","is:archived_at=null","limit:1",
   ]);
 });
 test("Firebase Auth email is authoritative; Firestore wins editable name & phone",()=>{

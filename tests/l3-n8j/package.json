@@ -1,0 +1,13 @@
+{
+  "name": "localeats-l3-n8j-firestore-emulator-tests",
+  "private": true,
+  "type": "module",
+  "description": "Disposable, unconnected Firebase Emulator tests only",
+  "dependencies": {
+    "@firebase/rules-unit-testing": "6.0.0",
+    "firebase": "13.4.0"
+  },
+  "devDependencies": {
+    "firebase-tools": "15.37.0"
+  }
+}
