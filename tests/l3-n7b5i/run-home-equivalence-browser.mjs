@@ -109,7 +109,17 @@ try{
    assert.deepEqual(state.candidate.headings,state.baseline.headings,"Home headings changed "+scenario+" "+width);assertions++;
    assert.deepEqual(state.candidate.buttons,state.baseline.buttons,"Home controls changed "+scenario+" "+width);assertions++;
    assert.deepEqual(state.candidate.classes,state.baseline.classes,"Home button styles changed "+scenario+" "+width);assertions++;
-   assert.equal(state.candidate.html,state.baseline.html,"Home DOM changed "+scenario+" "+width);assertions++;
+   if(state.candidate.html!==state.baseline.html){
+    let first=0;
+    while(first<Math.min(state.baseline.html.length,state.candidate.html.length) &&
+      state.baseline.html[first]===state.candidate.html[first])first++;
+    throw Error("Home DOM changed "+scenario+" "+width+
+      " at character "+first+
+      " baseline="+JSON.stringify(state.baseline.html.slice(Math.max(0,first-150),first+250))+
+      " candidate="+JSON.stringify(state.candidate.html.slice(Math.max(0,first-150),first+250))+
+      " lengths="+state.baseline.html.length+"/"+state.candidate.html.length);
+   }
+   assertions++;
    assert(state.candidate.screenshot.equals(state.baseline.screenshot),
     "Original Home screenshot changed "+scenario+" "+width);assertions++;
    console.log(`L3_N7B5I_HOME_EQUIVALENT width=${width} scenario=${scenario} screenshots-identical`);
