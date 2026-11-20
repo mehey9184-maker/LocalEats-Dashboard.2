@@ -10,12 +10,12 @@ const source=readFileSync('src/App.tsx','utf8');
 const tree=ts.createSourceFile('App.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
 const declarations=new Map();let auth;
 function visit(node){
- if(ts.isVariableDeclaration(node) && ['merchantShopRequest','verifiedMerchantUid','acceptAuthoritativeMerchantShop','resolveMerchantShop'].includes(node.name.getText(tree)))
+ if(ts.isVariableDeclaration(node) && ['merchantShopRequest','verifiedMerchantUid','verifiedMerchantScope','menuReadRequest','acceptAuthoritativeMerchantShop','resolveMerchantShop'].includes(node.name.getText(tree)))
   declarations.set(node.name.getText(tree),node.parent.parent.getText(tree));
  if(ts.isCallExpression(node) && node.expression.getText(tree)==='onAuthStateChanged')auth=node.arguments[1].getText(tree);
  ts.forEachChild(node,visit);
 }visit(tree);
-assert.equal(declarations.size,4);assert.ok(auth);
+assert.equal(declarations.size,6);assert.ok(auth);
 const compiled=transformSync([...declarations.values(),`const authCallback=${auth};`,`export {authCallback,resolveMerchantShop};`].join('\n'),{loader:'tsx',format:'cjs',target:'es2022'}).code;
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
 function fixture(){
