@@ -1,4 +1,5 @@
 import {privateMyKotaCorsAllowed} from "./routes/privateMyKotaTest.js";
+import {isPairedCustomerOrigin} from "./middleware/pairedCustomerCors.js";
 import {isIsolatedCustomerPushCorsOrigin} from "./middleware/customerPushPreviewAdmission.js";
 import {isVerifiedMerchantStagingOrigin} from "./middleware/merchantStageCors.js";
 interface CorsOriginEnvironment {
@@ -43,6 +44,7 @@ export const isAllowedOrigin = (
   environment: CorsOriginEnvironment = process.env
 ): boolean => {
   if (origin === undefined) return true;
+  if (isPairedCustomerOrigin(origin,environment as NodeJS.ProcessEnv)) return true;
   // Exact isolated Preview origin only when server-side test UID/expiry gates pass.
   if (privateMyKotaCorsAllowed(origin,environment as NodeJS.ProcessEnv)) return true;
   // Only the exact dedicated Merchant Preview, on the separately configured
@@ -96,3 +98,4 @@ export const isAllowedOrigin = (
     return false;
   }
 };
+

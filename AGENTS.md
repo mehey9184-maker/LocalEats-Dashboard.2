@@ -63,3 +63,8 @@ The quote response adds can_submit for the verified customer and requested shop,
 
 ## Merchant Firestore signup metadata
 Merchant signup saves contact fields without a role. Session formatting and legacy cache hydration project only contact and display preferences. Shop ownership and administrator authority continue to come from verified API records.
+
+
+## L3-N8N — 20 November 2026
+
+L3-N8N pilot preparation: the owner chose ONE server-designated approved shop per merchant, not a shop chooser. See docs/L3_N8N_DESIGNATED_PILOT_PAIRING.md. New code is opt-in on isolated read-only Preview; the draft branch is deployment-disabled. No actual designation or hosted cutover is authorized by this source.
