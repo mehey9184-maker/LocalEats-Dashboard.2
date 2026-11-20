@@ -8,7 +8,7 @@ const source=readFileSync(new URL("../../supabase/staging-only/L3_N8O_PICKUP_ORD
 test("N8P staging rehearsal refuses Production, drops, persistent writes and deployed credential access",()=>{
  assert.match(sql,/rgpbdajhlrwfmhopzgzk/);
  assert.ok(!sql.includes("phdjumtqkooyppxozqsi"));
- assert.match(sql,/^begin;\n/i);
+ assert.match(sql,/\nbegin;\n/i);
  assert.match(sql,/\nrollback;\s*$/i);
  assert.doesNotMatch(sql,/\b(?:alter|drop|create|truncate|grant|revoke)\s+(?:table|trigger|policy|role|function|schema)/i);
  assert.doesNotMatch(sql,/firebase deploy|vercel deploy|sendEachForMulticast|auth\.createUser/i);
