@@ -7,6 +7,7 @@ on:
       - 'src/lib/merchantStagingNoWrite.ts'
       - 'scripts/merchant-staging-guard.mjs'
       - 'tests/l3-n8g/merchant-staging-build.test.mjs'
+      - 'tests/l3-n8t/merchant-stage-api-cors-contract.test.mjs'
       - 'src/lib/firebase.ts'
       - 'tests/l3-n8s/**'
       - 'docs/L3_N8S_STAGING_AUTH_AND_PAIRING_PREP.md'
@@ -32,5 +33,7 @@ jobs:
         run: node --experimental-strip-types --test tests/l3-n8s/merchant-staging-identity-guard.test.mjs
       - name: Verify reviewed exact N8O staging API build guard (including negative cases)
         run: node --test tests/l3-n8g/merchant-staging-build.test.mjs
+      - name: Confirm isolated API CORS and revocation guard contracts without network or secrets
+        run: node --experimental-strip-types --test tests/l3-n8t/merchant-stage-api-cors-contract.test.mjs
       - name: No Firebase, Supabase or Vercel changes executed
         run: echo L3_N8S_SOURCE_ONLY_STAGING_WRITE_GUARD_DOES_NOT_PUBLISH_RULES_OR_ENABLE_ORDERS
