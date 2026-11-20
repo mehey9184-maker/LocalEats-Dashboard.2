@@ -1,0 +1,68 @@
+name: L3-N8E Merchant hosted staging readiness — offline-only proof
+on:
+  pull_request:
+    branches:
+      - review/l3-n8d-auth-profile-api-gates
+    paths:
+      - 'tests/l3-n8e/**'
+      - 'docs/L3_N8E_HOSTED_CONFIG_READINESS.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/l3-n8e-staging-isolation-readiness.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+      MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Reject any hosted Firebase or Supabase access and writes
+        run: |
+          test -z "${FIREBASE_PROJECT_ID:-}${FIREBASE_CLIENT_EMAIL:-}${FIREBASE_PRIVATE_KEY:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${VERCEL_TOKEN:-}"
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$PROFILE_WRITES_ENABLED" = false
+          ! grep -q 'merchantAccountDormantApi' localeats-api/src/server.ts
+          ! grep -q 'merchantAccountContract' localeats-api/src/server.ts
+      - name: Offline-only staging eligibility, shared-preview and account tests
+        run: node --test tests/l3-n8e/staging-readiness.test.mjs
+      - name: Verified result scope is NOT real Firebase authentication
+        run: |
+          grep -q 'realFirebaseAuthenticationVerified:false' tests/l3-n8e/staging-readiness.mjs
+          grep -q 'isolatedStagingVerified:false' tests/l3-n8e/staging-readiness.mjs
+          echo 'L3_N8E_STAGING_NOT_ATTESTED_NO_HOSTED_AUTH'
+  inherited-api-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: API dependencies and TypeScript build
+        run: |
+          npm ci --prefix localeats-api --ignore-scripts --no-audit --no-fund
+          npm run build --prefix localeats-api
+      - name: Existing API security and pickup regression suite
+        run: npm test --prefix localeats-api
+      - name: Dashboard TypeScript and ESLint unchanged
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          ./node_modules/.bin/tsc --project tsconfig.json --noEmit
+          npm run lint
