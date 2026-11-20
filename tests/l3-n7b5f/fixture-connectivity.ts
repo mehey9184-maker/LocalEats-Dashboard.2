@@ -33,7 +33,8 @@ export const syntheticAdapter={
  removeChannel(channel:SyntheticChannel){channel.unsubscribe();}
 };
 export const supabase=syntheticAdapter;
-export const getFreshChannel=(_name:string)=>{
+export const getFreshChannel=(channelName:string)=>{
+ void channelName;
  const channel=new SyntheticChannel();
  syntheticState.activeChannels.add(channel);
  syntheticState.everyChannel.push(channel);
