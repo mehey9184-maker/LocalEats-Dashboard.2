@@ -47,7 +47,7 @@ function AttentionHarness(){
   <p data-testid="callback-invocations">{calls}</p>
   {showHook&&<RenderAttention scope={scope} ordersFresh={ordersFresh} orderIds={orderIds}
    menuFresh={menuFresh} lowIds={lowIds} activeTab={activeTab}
-   holdCallback={heldCallback} capture={epoch} onInvoke={()=>setCalls(v=>v+1)}/>}
+   captureCallback={callback=>{heldCallback.current=callback;}} capture={epoch} onInvoke={()=>setCalls(v=>v+1)}/>}
   <button data-testid="invoke-old-callback" onClick={()=>{heldCallback.current?.("new_order");setCalls(v=>v+1);}}>Invoke captured previous merchant callback</button>
   <p data-testid="topic-new-order">{pageForMerchantNotice("new_order")}</p>
   <p data-testid="topic-inventory">{pageForMerchantNotice("inventory_low")}</p>
@@ -55,10 +55,10 @@ function AttentionHarness(){
  </main>;
 }
 
-function RenderAttention({scope,ordersFresh,orderIds,menuFresh,lowIds,activeTab,holdCallback,capture,onInvoke}:{
+function RenderAttention({scope,ordersFresh,orderIds,menuFresh,lowIds,activeTab,captureCallback,capture,onInvoke}:{
  scope:string|null;ordersFresh:boolean;orderIds:string[];
  menuFresh:boolean;lowIds:string[];activeTab:string;
- holdCallback:React.MutableRefObject<((topic:MerchantNoticeTopic)=>void)|null>;
+ captureCallback:(callback:(topic:MerchantNoticeTopic)=>void)=>void;
  capture:number;onInvoke:()=>void;
 }){
  const {pulses,pulseForTopic}=usePageNotificationAttention({
@@ -66,7 +66,7 @@ function RenderAttention({scope,ordersFresh,orderIds,menuFresh,lowIds,activeTab,
   menuFresh,menuItems:lowIds.map(id=>menuStock(id,2)),activeTab
  });
  // Capture the old owner's callback ONLY from a direct test button click.
- const snapshotCallback=()=>{void capture;holdCallback.current=pulseForTopic;};
+ const snapshotCallback=()=>{void capture;captureCallback(pulseForTopic);};
  return <section data-testid="attention-hook">
   <output data-testid="pulse-orders">{pulses.orders??"quiet"}</output>
   <output data-testid="pulse-menu">{pulses.menu??"quiet"}</output>
