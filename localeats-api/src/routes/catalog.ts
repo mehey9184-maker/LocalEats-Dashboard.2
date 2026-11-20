@@ -1,4 +1,5 @@
 import {effectiveShop} from "../orders/shopAvailability.js";
+import {projectPublicCatalogShop,projectPublicCatalogMenuItem} from "./publicCatalogProjection.js";
 import { Router, Request, Response } from "express";
 import {calculateDistanceKm} from "../orders/orderContract.js";
 import {isPrivateMyKotaFixtureId} from "../orders/privateMyKotaSafety.js";
@@ -73,7 +74,7 @@ export const makeCatalogRouter = (repository: CatalogRepository): Router => {
         if(typeof shop.is_active!=="boolean" || typeof lat!=="number" ||
           !Number.isFinite(lat) || Math.abs(lat)>90 || typeof lng!=="number" || !Number.isFinite(lng) || Math.abs(lng)>180)return [];
         const distance_km=calculateDistanceKm(Number(rawLat),Number(rawLng),lat,lng);
-        return distance_km<=4 ? [{...shop,distance_km}] : [];
+        return distance_km<=4 ? [{...projectPublicCatalogShop(shop),distance_km}] : [];
       }).sort((a,b)=>a.distance_km-b.distance_km);
       res.json({success:true,shops});
     }catch {res.status(503).json({success:false,error:"Pickup shops could not be loaded."});}
@@ -81,7 +82,7 @@ export const makeCatalogRouter = (repository: CatalogRepository): Router => {
 
   router.get("/shops", async (req: Request, res: Response): Promise<void> => {
     try {
-      const shops = await repository.getApprovedShops();
+      const shops = (await repository.getApprovedShops()).map(projectPublicCatalogShop);
       res.status(200).json({
         success: true,
         shops,
@@ -115,7 +116,7 @@ export const makeCatalogRouter = (repository: CatalogRepository): Router => {
 
       res.status(200).json({
         success: true,
-        shop,
+        shop:projectPublicCatalogShop(shop),
       });
     } catch (err) {
       console.error("Error fetching catalog shop detail:", err);
@@ -149,7 +150,7 @@ export const makeCatalogRouter = (repository: CatalogRepository): Router => {
 
       res.status(200).json({
         success: true,
-        menu_items: menuItems,
+        menu_items: menuItems.map(projectPublicCatalogMenuItem),
       });
     } catch (err) {
       console.error("Error fetching catalog menu items:", err);
