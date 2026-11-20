@@ -1,0 +1,119 @@
+name: L3-N8G isolated Merchant staging build and stage-only Firebase API auth
+on:
+  pull_request:
+    branches:
+      - review/l3-n8f-verified-existing-staging
+    paths:
+      - 'scripts/merchant-staging-guard.mjs'
+      - 'tests/l3-n8g/**'
+      - 'vite.config.ts'
+      - 'package.json'
+      - 'localeats-api/src/corsOrigins.ts'
+      - 'localeats-api/src/middleware/merchantStageCors*'
+      - 'localeats-api/src/middleware/authenticateFirebase.ts'
+      - 'localeats-api/src/server.ts'
+      - 'docs/L3_N8G_MERCHANT_STAGING_CUTOVER.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/l3-n8g-merchant-stage-build.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-stage-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+      MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Must not possess hosted Vercel, Firebase or Supabase secrets
+        run: |
+          test -z "${VERCEL_TOKEN:-}${FIREBASE_CLIENT_EMAIL:-}${FIREBASE_PRIVATE_KEY:-}${SUPABASE_URL:-}${SUPABASE_SECRET_KEY:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}"
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$PROFILE_WRITES_ENABLED" = false
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          ! grep -q 'merchantAccountDormantApi' localeats-api/src/server.ts
+      - name: No-network Merchant stage build guard tests
+        run: node --test tests/l3-n8g/merchant-staging-build.test.mjs
+      - name: Existing stage identity isolation tests
+        run: |
+          node --test tests/l3-n8e/staging-readiness.test.mjs
+          node --test tests/l3-n8f/staging-resources.test.mjs
+      - name: Install locked Merchant dependencies with no install scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Synthetic Merchant staging preview build only (no real Firebase calls)
+        env:
+          VERCEL_ENV: preview
+          LOCALEATS_STAGING_ONLY: 'true'
+          VITE_MERCHANT_STAGING_ONLY: 'true'
+          VITE_FIREBASE_CONFIG_SOURCE: environment
+          VITE_FIREBASE_PROJECT_ID: localeats-staging
+          VITE_FIREBASE_FIRESTORE_DATABASE_ID: (default)
+          VITE_LOCALEATS_API_URL: https://localeats-merchant-api-stage-r52d-mehey9184-makers-projects.vercel.app
+          VITE_FIREBASE_API_KEY: synthetic-not-real
+          VITE_FIREBASE_AUTH_DOMAIN: localeats-staging.firebaseapp.com
+          VITE_FIREBASE_APP_ID: 1:123456789:web:synthetic
+          VITE_FIREBASE_MESSAGING_SENDER_ID: '123456789'
+          VITE_FIREBASE_STORAGE_BUCKET: localeats-staging.firebasestorage.app
+          VITE_PICKUP_ORDERING_ENABLED: 'false'
+          VITE_PICKUP_PAYMENT_SETTINGS_ENABLED: 'false'
+          VITE_PAYMENTS_PLAN_DEMO_ENABLED: 'false'
+          VITE_MERCHANT_FAKE_ORDERS_ENABLED: 'false'
+          VITE_REWARDS_ENABLED: 'false'
+          VITE_LOCALPAY_ENABLED: 'false'
+          VITE_MERCHANT_PREVIEW_READ_ONLY: 'true'
+        run: npm run build:merchant-staging
+      - name: Merchant TypeScript, ESLint and pickup regressions
+        run: |
+          ./node_modules/.bin/tsc --project tsconfig.json --noEmit
+          npm run lint
+          npm run test:merchant-pickup
+      - name: Confirm no real accounts or write endpoint were activated
+        run: |
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          test "$PROFILE_WRITES_ENABLED" = false
+          test "$PICKUP_WRITES_ENABLED" = false
+          ! grep -q 'merchantAccountContract' localeats-api/src/server.ts
+          echo L3_N8G_SYNTHETIC_BUILD_ONLY_HOSTED_MERCHANT_STAGE_PENDING
+  stage-api-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+      MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Install exact API dependencies and compile
+        run: |
+          npm ci --prefix localeats-api --ignore-scripts --no-audit --no-fund
+          npm run build --prefix localeats-api
+      - name: Verify exact-only read-only stage Merchant API CORS
+        run: node --test localeats-api/dist/middleware/merchantStageCors.test.js
+      - name: Verify strict revoked/disabled Firebase sessions
+        run: node --test localeats-api/dist/middleware/authenticateFirebase.n8d.test.js
+      - name: Verify full API regression tests
+        run: npm test --prefix localeats-api
+      - name: Verify no staged profile routes or actual writes
+        run: |
+          ! grep -q 'merchantAccountDormantApi' localeats-api/src/server.ts
+          ! grep -q 'merchantAccountContract' localeats-api/src/server.ts
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          test "$PICKUP_WRITES_ENABLED" = false
+          echo L3_N8G_STAGE_API_AUTH_REVIEW_ONLY_NO_DEPLOY
