@@ -6,6 +6,8 @@ import {ConnectivityMonitor} from "../../src/components/ConnectivityMonitor";
 import {syntheticAdapter,syntheticState,resolveOldestRead,emitChannel,setSyntheticOnline} from "./fixture-connectivity";
 import type {supabase as MerchantAdapter} from "../../src/lib/supabase";
 const adapter=syntheticAdapter as unknown as Pick<typeof MerchantAdapter,"from"|"removeChannel">;
+// Expose only in-memory test counters to the isolated Chromium harness.
+Object.assign(window,{l3n7b5fSynthetic:syntheticState});
 function Fixture(){
  const [visible,setVisible]=useState(true);
  const [shop,setShop]=useState("fixture-merchant-a");
