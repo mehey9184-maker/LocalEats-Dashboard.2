@@ -1,5 +1,5 @@
 /**
- * L3-N8G Merchant-staging build guard. Pure, offline and credential-free.
+ * L3-N8G/N8T Merchant-staging build guard. Pure, offline and credential-free.
  *
  * Only invoked by Vite when --mode merchant-staging. Does not authorize
  * deployment, Firebase sign-in, write requests or a production build.
@@ -7,7 +7,7 @@
  * Dedicated Merchant staging Vercel project was created for N8H Preview; this code never permits Production.
  */
 export const MERCHANT_STAGING_API_ORIGIN =
-  "https://localeats-merchant-api-stage-r52d-mehey9184-makers-projects.vercel.app";
+  "https://localeats-api-n8o-r52d-mehey9184-makers-projects.vercel.app";
 export const MERCHANT_STAGING_FIREBASE_PROJECT = "localeats-staging";
 export const MERCHANT_STAGING_FIRESTORE_DATABASE = "(default)";
 
@@ -38,8 +38,10 @@ export function inspectMerchantStagingBuild(mode,env,systemEnv={}){
     blockers.push("Merchant Firebase project must be the isolated localeats-staging project.");
   if(env.VITE_FIREBASE_FIRESTORE_DATABASE_ID!==MERCHANT_STAGING_FIRESTORE_DATABASE)
     blockers.push("Merchant Firestore database must be explicitly (default) in localeats-staging.");
+  // N8T: the exact reviewed N8O Customer/API staging alias replaces the
+  // original N8G Merchant-specific alias. Never match a suffix/wildcard.
   if(env.VITE_LOCALEATS_API_URL!==MERCHANT_STAGING_API_ORIGIN)
-    blockers.push("Merchant must use the verified dedicated staging API domain.");
+    blockers.push("Merchant must use the exact reviewed N8O staging API domain.");
   for(const key of requiredFirebaseWebKeys){
     if(!safeValue(env[key]))blockers.push("Missing complete staging Firebase web setting: "+key);
   }

@@ -11,17 +11,20 @@ export const MERCHANT_STAGING_WRITE_DISABLED =
 export type MerchantStageFlagEnvironment = {
   VITE_MERCHANT_STAGING_ONLY?: unknown;
   VITE_MERCHANT_PREVIEW_READ_ONLY?: unknown;
+  VITE_FIREBASE_PROJECT_ID?: unknown;
 };
 
 /**
- * Either staging marker blocks writes. This fails closed even if one flag is
- * accidentally omitted during a staged build after the other is set.
+ * Staging is locked by Firebase project identity as well as either explicit
+ * staging marker. A mis-scoped Preview flag must not enable client writes
+ * into localeats-staging/(default). Production remains unchanged.
  */
 export function isMerchantClientMutationBlocked(env:unknown):boolean {
   // Vite's ImportMetaEnv interface does not declare these optional stage keys.
-  // Accept unknown, narrow safely, then check only the two literal markers.
+  // Accept unknown, narrow safely, then check the fixed project and stage flags.
   const flags:MerchantStageFlagEnvironment = env && typeof env === "object" ? env : {};
-  return flags.VITE_MERCHANT_STAGING_ONLY === "true" ||
+  return flags.VITE_FIREBASE_PROJECT_ID === "localeats-staging" ||
+         flags.VITE_MERCHANT_STAGING_ONLY === "true" ||
          flags.VITE_MERCHANT_PREVIEW_READ_ONLY === "true";
 }
 
