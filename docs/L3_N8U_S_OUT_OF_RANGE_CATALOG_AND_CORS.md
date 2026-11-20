@@ -46,3 +46,7 @@ GitHub Actions [L3-N8U-S CORS gate, run #44836907376](https://github.com/mehey91
 | `https://localeatssa.co.za` to `/api/v1/catalog/shops` | 403 | 403 | No allow-origin header |
 
 **This confirms the exact apex CORS bug on the hosted Production API**, not just a source hypothesis. The browser screenshot omitted the URL, so it does not confirm this was that session's root cause. A second read-only synthetic-coordinate `GET /api/v1/catalog/pickup-shops` probe was added to run separately, without placing any order. The source fix **remains draft and is NOT deployed**. No sensitive response bodies, account tokens or user location were printed.
+
+## Real pickup-shops endpoint observed (21 Nov 2026)
+
+Token-free GitHub Actions [run #44837403758](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/44837403758) confirmed the actual live `/api/v1/catalog/pickup-shops` route (with an **artificial fixed coordinate in a public GET, not a real person's GPS and not an order**) behaves as follows: exact WWW Customer `OPTIONS 204` and `GET 200`; exact apex Customer `OPTIONS 403` and `GET 403`. The route and underlying public Production database are reachable from WWW. A remote user getting **Shops unavailable** on WWW may still have a separate browser-side CORS/cache/configuration/network problem: the original screenshot did not show domain or developer-network status. The single-origin code fix still needs explicit Production merge/deploy authorization; this draft has not affected current API responses.
