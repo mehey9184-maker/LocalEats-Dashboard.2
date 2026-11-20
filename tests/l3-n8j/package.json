@@ -5,7 +5,7 @@
   "description": "Disposable, unconnected Firebase Emulator tests only",
   "dependencies": {
     "@firebase/rules-unit-testing": "6.0.0",
-    "firebase": "12.16.0"
+    "firebase": "13.4.0"
   },
   "devDependencies": {
     "firebase-tools": "15.37.0"
