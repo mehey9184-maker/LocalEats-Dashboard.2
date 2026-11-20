@@ -26,6 +26,7 @@ import {
   Unsubscribe
 } from "firebase/firestore";
 import { db, auth, firebaseSignIn, firebaseSignUp, firebaseSignOutUser, firebaseResetPassword } from "./firebase";
+import {isMerchantClientMutationBlocked, MERCHANT_STAGING_WRITE_DISABLED} from "./merchantStagingNoWrite";
 
 export const DASHBOARD_URL = typeof window !== 'undefined' ? window.location.origin : 'https://localeats.co.za';
 
@@ -251,6 +252,13 @@ class FirestoreQueryBuilder {
   private async execute(): Promise<{ data: unknown; error: unknown; count?: number }> {
     if(this.collectionName === "orders" && (this.insertData !== undefined || this.updateData !== undefined || this.isDelete)) {
       return {data:null,error:legacyOrderWriteError()};
+    }
+    // This Supabase-compatible bridge actually writes directly to the browser
+    // Firestore SDK. Block every INSERT/UPSERT/UPDATE/DELETE in read-only stage
+    // before collection references, transaction reads, or network calls.
+    if ((this.insertData !== undefined || this.updateData !== undefined || this.isDelete) &&
+        isMerchantClientMutationBlocked(import.meta.env)) {
+      return {data:null,error:new Error(MERCHANT_STAGING_WRITE_DISABLED)};
     }
     try {
       const collRef = collection(db, this.collectionName);

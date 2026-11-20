@@ -1,4 +1,5 @@
 import {projectMerchantSessionMetadata} from "./merchantSessionMetadata";
+import {ensureMerchantClientMutationAllowed, isMerchantClientMutationBlocked, MERCHANT_STAGING_WRITE_DISABLED} from "./merchantStagingNoWrite";
 import {legacyOrderWriteError} from "./legacyOrderWrite";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
@@ -151,6 +152,7 @@ export async function uploadImageToFirebaseStorage(
   folder: "avatars" | "shop-assets" | "menu-items", 
   fileName?: string
 ): Promise<string> {
+  ensureMerchantClientMutationAllowed();
   const ext = file instanceof File ? (file.name.split(".").pop() || "jpg") : "jpg";
   const name = fileName || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
   const fileRef = storageRef(storage, `${folder}/${name}`);
@@ -209,6 +211,8 @@ export async function firebaseSignIn(email: string, password: string): Promise<U
 }
 
 export async function firebaseSignInWithGoogle(): Promise<User> {
+  // First-time Google sign-in can create a Firebase Auth user.
+  ensureMerchantClientMutationAllowed();
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
   const credential = await signInWithPopup(auth, provider);
@@ -222,6 +226,8 @@ export async function firebaseSignUp(
   password: string, 
   userData: { full_name?: string; phone?: string }
 ): Promise<User> {
+  // Read-only staging must not create Firebase Auth accounts or profiles.
+  ensureMerchantClientMutationAllowed();
   const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
   
   if (userData.full_name) {
@@ -257,12 +263,14 @@ export async function firebaseSignOutUser(): Promise<void> {
 }
 
 export async function firebaseResetPassword(email: string): Promise<void> {
+  ensureMerchantClientMutationAllowed();
   await sendPasswordResetEmail(auth, email.trim());
 }
 
 export { onAuthStateChanged };
 
 export async function updateFirebaseUserProfile(updates: { full_name?: string; phone?: string }): Promise<void> {
+  ensureMerchantClientMutationAllowed();
   const currentUser = auth.currentUser;
   if (!currentUser) return;
 
@@ -377,6 +385,7 @@ export async function migrateDataToFirestore(params: {
   shops?: Shop[];
   shopId?: string | number;
 }): Promise<{ ordersMigrated: number; menuItemsMigrated: number; shopsMigrated: number }> {
+  ensureMerchantClientMutationAllowed();
   const { orders, menuItems, shops = [], shopId } = params;
   let ordersCount = 0;
   let menuCount = 0;
@@ -583,6 +592,7 @@ export async function getFirestoreShopById(shopId: string | number): Promise<Sho
  * Update shop details in Firestore
  */
 export async function updateFirestoreShop(shopId: string | number, updates: Partial<Shop>): Promise<{ error: Error | null }> {
+  if (isMerchantClientMutationBlocked(import.meta.env)) return {error:new Error(MERCHANT_STAGING_WRITE_DISABLED)};
   try {
     const sRef = doc(db, "shops", String(shopId));
     await setDoc(sRef, {
@@ -634,6 +644,7 @@ export async function getFirestoreMenuItems(shopId: string | number | (string | 
  * Update a Menu Item in Firestore
  */
 export async function updateFirestoreMenuItem(itemId: string | number, updates: Partial<MenuItem>): Promise<{ error: Error | null }> {
+  if (isMerchantClientMutationBlocked(import.meta.env)) return {error:new Error(MERCHANT_STAGING_WRITE_DISABLED)};
   try {
     const mRef = doc(db, "menu_items", String(itemId));
     await setDoc(mRef, {
@@ -651,6 +662,7 @@ export async function updateFirestoreMenuItem(itemId: string | number, updates: 
  * Create a Menu Item in Firestore
  */
 export async function createFirestoreMenuItem(item: Partial<MenuItem>): Promise<{ data: MenuItem | null; error: Error | null }> {
+  if (isMerchantClientMutationBlocked(import.meta.env)) return {data:null,error:new Error(MERCHANT_STAGING_WRITE_DISABLED)};
   try {
     const itemId = item.id ? String(item.id) : String(Date.now());
     const mRef = doc(db, "menu_items", itemId);
@@ -672,6 +684,7 @@ export async function createFirestoreMenuItem(item: Partial<MenuItem>): Promise<
  * Delete a Menu Item from Firestore
  */
 export async function deleteFirestoreMenuItem(itemId: string | number): Promise<{ error: Error | null }> {
+  if (isMerchantClientMutationBlocked(import.meta.env)) return {error:new Error(MERCHANT_STAGING_WRITE_DISABLED)};
   try {
     const mRef = doc(db, "menu_items", String(itemId));
     await deleteDoc(mRef);
