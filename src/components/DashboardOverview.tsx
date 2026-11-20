@@ -25,7 +25,7 @@ import {
   Download,
   UtensilsCrossed
 } from "lucide-react";
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { format } from "date-fns";
