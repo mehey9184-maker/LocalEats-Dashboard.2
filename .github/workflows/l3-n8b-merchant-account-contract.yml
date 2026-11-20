@@ -1,0 +1,56 @@
+name: L3-N8B Merchant account contract — isolated security checks
+on:
+  pull_request:
+    branches:
+      - review/l3-n7b5i-home-unused-audit
+    paths:
+      - 'localeats-api/src/routes/merchantAccountContract.ts'
+      - 'localeats-api/src/routes/merchantAccountContract.test.ts'
+      - 'localeats-api/src/server.ts'
+      - 'localeats-api/src/middleware/authenticateFirebase.ts'
+      - '.github/workflows/l3-n8b-merchant-account-contract.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-merchant-account:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_WORKER_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_PUSH_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: No connected Firebase/Supabase/production credentials or activation
+        run: |
+          test -z "${FIREBASE_PROJECT_ID:-}${FIREBASE_PRIVATE_KEY:-}${DATABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${SUPABASE_SECRET_KEY:-}"
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          test "$PROFILE_WRITES_ENABLED" = false
+          test "$PICKUP_ACCEPTANCE_ENABLED" = false
+      - name: Install exact API lockfile only
+        run: npm ci --prefix localeats-api --ignore-scripts --no-audit --no-fund
+      - name: Typecheck and compile the complete API
+        run: npm run build --prefix localeats-api
+      - name: Test unmounted Merchant profile HTTP security contract
+        run: node --test localeats-api/dist/routes/merchantAccountContract.test.js
+      - name: Run the complete original API regression suite
+        run: npm test --prefix localeats-api
+      - name: Confirm no live account route and no activation
+        run: |
+          ! grep -q 'merchantAccountContract' localeats-api/src/server.ts
+          ! grep -q 'merchant/account' localeats-api/src/server.ts
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          echo 'L3_N8B_REVIEW_ONLY_NO_HOSTED_ACCOUNT_WRITES'
