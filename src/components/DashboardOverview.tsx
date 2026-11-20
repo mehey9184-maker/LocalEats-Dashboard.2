@@ -612,7 +612,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     return (
       <div className="space-y-12">
         <section className="space-y-4">
-          <div className="flex justify-between items-start">
+          <div className="flex flex-wrap items-start justify-between gap-4 sm:flex-nowrap sm:gap-0">
             <div className="space-y-2">
               <Skeleton className="h-10 w-64 md:w-80 rounded-xl" />
               <Skeleton className="h-4 w-48 md:w-64" />

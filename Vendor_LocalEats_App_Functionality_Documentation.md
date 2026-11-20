@@ -1,5 +1,12 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N7B5J — Merchant Home loading skeleton narrow-screen overflow, isolated draft
+
+The untouched L3-N7B5I baseline proved an existing loading-only 84px overflow at 320px and 14px at 390px. The cause is the loading header's `flex justify-between items-start` row: a 256px heading placeholder and three icon/button placeholders compete for a width smaller than their combined intrinsic width. The fix changes **only this loading skeleton's header class** to `flex flex-wrap items-start justify-between gap-4 sm:flex-nowrap sm:gap-0`. On screens below Tailwind's 640px `sm` breakpoint, the controls wrap onto a second row instead of forcing the document wider. At desktop/tablet, `sm:flex-nowrap sm:gap-0` restores the prior single-row layout. No placeholder, loaded Home component, action, API, owner verification, pickup/payment boundary or visual branding is otherwise changed.
+
+Offline Chromium compares the untouched parent PR #191 Home and the candidate, using the same synthetic approved, empty/new-merchant and loading states, original built Merchant CSS, network-blocked browser and widths 320/390/1280. The gate requires loading no horizontal overflow and separately positioned header/controls at mobile sizes, with all original placeholders; exact DOM equivalence after reversing the single known class change; exact pixel/DOM/controls/sizing equivalence for **loaded Home** at all widths and **desktop loading**. It also reruns the existing Orders, subscription, Kanban, connectivity, notification and synthetic pickup regressions. Any failed gate blocks sign-off. All test data is fake, no hosted DB, no FCM sends, no real orders/payments and no Production deploy, merge or activation. Real device push receipt, authenticated Settings, profile-save authority, hosted schema/backup and scheduler remain separate release gates.
+
+
 ## L3-N7B5I — bounded unused Home Overview audit (draft, read-only)
 
 **Independent verified baseline UI issue:** the untouched PR #189 Home loading skeleton at 320px has 84px horizontal overflow in the isolated browser. This draft does not change its markup or conceal that issue. The differential browser gate now verifies that the candidate matches the original overflow *exactly* in each scenario, alongside exact DOM and pixel comparisons. Schedule a separate owner-approved Home responsiveness fix; do not conflate this inherited overflow with dead-code deletion.
