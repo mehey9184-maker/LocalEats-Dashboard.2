@@ -54,3 +54,20 @@ jobs:
           ! grep -q 'merchant/account' localeats-api/src/server.ts
           test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
           echo 'L3_N8B_REVIEW_ONLY_NO_HOSTED_ACCOUNT_WRITES'
+  independent-dashboard-quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked Dashboard dependencies without scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Require zero TypeScript errors under original rules
+        run: ./node_modules/.bin/tsc --project tsconfig.json --noEmit
+      - name: Require clean full-root ESLint under original rules
+        run: npm run lint
