@@ -143,11 +143,22 @@ test("mounted pickup beta accepts only invited customer, enforces owner, and ful
     const wrong=await call("/api/v1/orders","synthetic-cust-uninvited",{...input,consent});
     assert.equal(wrong.status,403);
     assert.equal(rpcCalls.length,before);
+    const priceTamper=await call("/api/v1/orders",customer,{
+      ...input,consent:{...consent,total_minor:1}
+    });
+    assert.equal(priceTamper.status,409,"Edited R0.01 consent must not be accepted");
+    assert.equal(rpcCalls.filter(x=>x.name==="pickup_create_order").length,0);
+
     const created=await call("/api/v1/orders",customer,{...input,consent});
     assert.equal(created.status,201);
     assert.equal(created.body.order.id,orderId);
     assert.equal(rpcCalls.filter(x=>x.name==="pickup_create_order").length,1);
     assert.equal(rpcCalls.find(x=>x.name==="pickup_create_order")?.uid,customer);
+    const replay=await call("/api/v1/orders",customer,{...input,consent});
+    assert.equal(replay.status,200,"Same intent retry must return existing order");
+    assert.equal(replay.body.replayed,true);
+    assert.equal(rpcCalls.filter(x=>x.name==="pickup_create_order").length,1,
+      "Idempotent replay must not invoke a second order insert");
 
     const rejected=await call(`/api/v1/merchant/orders/${orderId}/accept`,wrongOwner,
       {command_id:id,expected_revision:0});
