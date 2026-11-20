@@ -44,7 +44,6 @@ import {
   X,
   Zap,
   ShieldCheck,
-  MapPin,
   AlertTriangle,
   Activity,
   ReceiptText
