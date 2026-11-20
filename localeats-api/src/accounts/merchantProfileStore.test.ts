@@ -193,7 +193,7 @@ test("review-only Admin DB factory rejects missing or mismatched named database 
   }
 });
 test("future composition remains absent from active API and frontend",()=>{
-  const active=readFileSync(new URL("../server.ts",import.meta.url),"utf8");
+  const active=readFileSync(new URL("../../src/server.ts",import.meta.url),"utf8");
   for(const marker of ["merchantFirestoreAccountStore","merchantApprovedOwner",
     "merchantAdminFirestore","merchantAccountContract"]){
     assert.ok(!active.includes(marker),"review-only adapter unexpectedly mounted: "+marker);
