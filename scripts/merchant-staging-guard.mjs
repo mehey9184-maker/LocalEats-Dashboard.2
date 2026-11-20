@@ -4,10 +4,10 @@
  * Only invoked by Vite when --mode merchant-staging. Does not authorize
  * deployment, Firebase sign-in, write requests or a production build.
  * The staging Firebase public web values are required but NEVER logged.
- * A dedicated staging Vercel project is still required (not yet created).
+ * Dedicated Merchant staging Vercel project was created for N8H Preview; this code never permits Production.
  */
 export const MERCHANT_STAGING_API_ORIGIN =
-  "https://localeats-api-staging-r52d-mehey9184-makers-projects.vercel.app";
+  "https://localeats-merchant-api-stage-r52d-mehey9184-makers-projects.vercel.app";
 export const MERCHANT_STAGING_FIREBASE_PROJECT = "localeats-staging";
 export const MERCHANT_STAGING_FIRESTORE_DATABASE = "(default)";
 
