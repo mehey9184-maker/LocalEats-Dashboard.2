@@ -38,7 +38,7 @@ test("mounted pickup beta accepts only invited customer, enforces owner, and ful
   process.env.PICKUP_BETA_ADMISSION_ENABLED="true";
   process.env.PICKUP_BETA_SHOP_IDS=shopId;
   process.env.PICKUP_BETA_CUSTOMER_UIDS=customer;
-  process.env.PICKUP_BETA_EXPIRES_AT=new Date(Date.now()+7*24*60*60*1000).toISOString().replace(".000Z","Z");
+  process.env.PICKUP_BETA_EXPIRES_AT=new Date(Math.ceil((Date.now()+7*24*60*60*1000)/1000)*1000).toISOString().replace(".000Z","Z");
   let stored:Record<string,any>|null=null;
   const events:Array<{kind:string;revision:number;actor_uid:string}>=[];
   const rpcCalls:Array<{name:string;uid:unknown;action?:unknown}>=[];
