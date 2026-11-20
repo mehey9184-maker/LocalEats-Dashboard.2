@@ -3,7 +3,8 @@ type PilotShop = {id?:unknown;owner_id?:unknown;approval_status?:unknown;archive
 type Resolution<T> = {mode:'off'} | {mode:'selected';shop:T} |
  {mode:'denied';status:403|503;code:'PILOT_SHOP_UNAVAILABLE'|'PILOT_CONFIGURATION_INVALID'};
 const identifier=(value:unknown):value is string => typeof value==='string' &&
- value.length>0 && value.length<=128 && value.trim()===value && !/[\x00-\x1f/\\]/.test(value);
+ value.length>0 && value.length<=128 && value.trim()===value &&
+ ![...value].some(ch=>ch==='/' || ch==='\\' || ch.charCodeAt(0)<32);
 export function resolveDesignatedPilotShop<T extends PilotShop>(
  shops:readonly T[],uid:string,env:NodeJS.ProcessEnv=process.env,
 ):Resolution<T> {
