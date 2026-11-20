@@ -55,9 +55,9 @@ test("L3-N8G no Production Firebase/Supabase or flag activation may borrow stagi
   }
 });
 test("L3-N8G exact staging Origin remains constrained by live read-only middleware",()=>{
-  const source=readFileSync(new URL("../server.ts",import.meta.url),"utf8");
-  const middleware=readFileSync(new URL("../middleware/previewReadOnlyGate.ts",import.meta.url),"utf8");
-  const auth=readFileSync(new URL("../middleware/authenticateFirebase.ts",import.meta.url),"utf8");
+  const source=readFileSync(new URL("../../src/server.ts",import.meta.url),"utf8");
+  const middleware=readFileSync(new URL("../../src/middleware/previewReadOnlyGate.ts",import.meta.url),"utf8");
+  const auth=readFileSync(new URL("../../src/middleware/authenticateFirebase.ts",import.meta.url),"utf8");
   assert.match(source,/app\.use\(previewReadOnlyGate\)/);
   assert.match(middleware,/PREVIEW_READ_ONLY/);
   assert.match(middleware,/\["POST","PUT","PATCH","DELETE"\]/);
