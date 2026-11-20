@@ -1,0 +1,41 @@
+name: L3-N8U-R first pickup journey acceptance (synthetic only)
+on:
+  pull_request:
+    branches:
+      - review/l3-n8u-q-controlled-production-beta-eligibility
+    paths:
+      - 'localeats-api/src/routes/pickupBetaRoute.test.ts'
+      - 'docs/L3_N8U_R_PRODUCTION_IDENTITY_FIRST_PICKUP_ACCEPTANCE.md'
+      - '.github/workflows/l3-n8u-r-first-pickup-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-journey:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: localeats-api
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Prevent use of Production provider credentials
+        run: |
+          test -z "${FIREBASE_PRIVATE_KEY:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${VERCEL_TOKEN:-}${FIREBASE_TOKEN:-}${GOOGLE_APPLICATION_CREDENTIALS:-}${PICKUP_TEST_CUSTOMER_UID:-}${PICKUP_BETA_CUSTOMER_UIDS:-}${PICKUP_BETA_SHOP_IDS:-}"
+      - name: Install locked dependencies without scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compile API tests and source
+        run: npm run build
+      - name: Local mocked HTTP quote to collection, pause and owner denial
+        run: node --test dist/routes/pickupBetaRoute.test.js
+      - name: Existing beta, auth and pickup regression contract
+        run: node --test dist/middleware/controlledPickup.test.js dist/middleware/controlledPickupBeta.test.js dist/middleware/authenticateFirebase.test.js dist/routes/pickup.test.js
+      - name: Enforce no real Production action
+        run: echo L3_N8U_R_SYNTHETIC_ONLY_NO_REAL_FIREBASE_NO_SUPABASE_ORDER_NO_MERGE_NO_PUSH
