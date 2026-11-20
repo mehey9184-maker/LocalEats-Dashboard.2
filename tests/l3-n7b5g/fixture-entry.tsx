@@ -33,7 +33,7 @@ function AttentionHarness(){
   <button data-testid="hold-callback" onClick={()=>setEpoch(v=>v+1)}>Capture A callback {epoch}</button>
   <button data-testid="switch-b" onClick={startB}>Switch verified owner B</button>
   <button data-testid="switch-b-unverified" onClick={swapReady}>Switch B without fresh read</button>
-  <button data-testid="verify-b" onClick={()=>{setOrdersFresh(true);setOrderIds(["b-1"]);}}>Verify B baseline</button>
+  <button data-testid="verify-b" onClick={()=>{setOrdersFresh(true);setOrderIds(["b-1"]);setMenuFresh(true);setLowIds([]);}}>Verify B baseline</button>
   <button data-testid="new-b-order" onClick={()=>setOrderIds(["b-1","b-2"])}>Verified new B order</button>
   <button data-testid="stale-b-order" onClick={()=>{setOrdersFresh(false);setOrderIds(["b-1","b-2","b-3"]);}}>Unverified B order</button>
   <button data-testid="reverify-b" onClick={()=>setOrdersFresh(true)}>Reverify B</button>
