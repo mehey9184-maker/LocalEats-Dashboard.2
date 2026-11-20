@@ -62,9 +62,9 @@ test("N8L public projection cannot include attacker-controlled nested fields or 
     location:["secret"],
   });
   assert.deepEqual({...payload},{id:"shop",name:"Shop",is_active:true});
-  assert.deepEqual(publicCatalogShopFields.includes("owner_id"),false);
-  assert.deepEqual(publicCatalogShopFields.includes("phone"),false);
-  assert.deepEqual(publicCatalogMenuFields.includes("cost_price"),false);
+  assert.deepEqual((publicCatalogShopFields as readonly string[]).includes("owner_id"),false);
+  assert.deepEqual((publicCatalogShopFields as readonly string[]).includes("phone"),false);
+  assert.deepEqual((publicCatalogMenuFields as readonly string[]).includes("cost_price"),false);
 });
 
 test("N8L every existing catalog route must use a public projection",()=>{
