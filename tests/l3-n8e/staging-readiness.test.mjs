@@ -66,13 +66,25 @@ test("N8E explicit Firebase Admin service-account project must match client and 
   assert.equal(eligible(s).eligibleForReadOnlyAuthTest,false);
 });
 
-test("N8E named Firestore database mismatch or default fallback cannot qualify",()=>{
-  for(const value of ["(default)","wrong-firestore",undefined]){
+test("N8F explicit staging (default) Firestore is safe only with distinct matched Firebase project",()=>{
+  // A separate Firebase staging project's default DB is not Production's DB.
+  const dedicated=clone();
+  dedicated.api.firestoreDatabaseId="(default)";
+  dedicated.merchant.firestoreDatabaseId="(default)";
+  assert.equal(eligible(dedicated).eligibleForReadOnlyAuthTest,true);
+  const shared=clone();
+  shared.api.firestoreDatabaseId="(default)";
+  shared.merchant.firestoreDatabaseId="(default)";
+  shared.api.firebaseProjectId=production.firebaseProjectId;
+  shared.api.serviceAccountProjectId=production.firebaseProjectId;
+  shared.merchant.firebaseProjectId=production.firebaseProjectId;
+  assert.equal(eligible(shared).eligibleForReadOnlyAuthTest,false);
+  for(const value of ["wrong-firestore",undefined]){
     const s=clone();s.api.firestoreDatabaseId=value;
     assert.equal(eligible(s).eligibleForReadOnlyAuthTest,false);
   }
-  const s=clone();s.merchant.firestoreDatabaseId="(default)";
-  assert.equal(eligible(s).eligibleForReadOnlyAuthTest,false);
+  const mismatch=clone();mismatch.merchant.firestoreDatabaseId="(default)";
+  assert.equal(eligible(mismatch).eligibleForReadOnlyAuthTest,false);
 });
 
 test("N8E bundled Firebase settings cannot impersonate a staging environment",()=>{
