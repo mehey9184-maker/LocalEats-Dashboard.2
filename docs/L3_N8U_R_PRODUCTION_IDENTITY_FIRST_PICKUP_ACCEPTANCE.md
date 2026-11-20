@@ -15,7 +15,7 @@ Production Supabase project **`phdjumtqkooyppxozqsi`** contains **9 shops and 7 
 |---|---|---|---|---:|---:|
 | My-Kota | `shop-my-kota-ivory-park` | approved / true | Katlego Street, Ivory Park | 1 | 2 |
 
-*These are necessary conditions, not proof the shop is open at this instant or the owner can currently log in.* FCM records do not establish device delivery, browser permission or valid tokens.
+*These are necessary static conditions, not proof the shop is currently accepting an order or the owner can sign in.* A **second direct Production read-only query** against `public.shops_with_availability` showed `effective_is_active=false` for My-Kota at inspection time. The separate schedule function returned `within_shop_schedule=false`, with stored opening/closing hours `08:00–22:00` and no active override. Therefore the shop **cannot be assumed orderable at the instant of this audit**; the first real-system test must occur inside a verified open period with the owner's consent, or use a separately approved merchant availability change through the normal owner process. **Do not bypass or alter the availability constraint just to force a test.** FCM records do not establish device delivery, browser permission or valid tokens.
 
 The other eight records are **not candidates for the immediate first controlled order** because at least one condition fails. Specific examples:
 - **Food war** and **meat guy** are recorded as inactive, with **0 available menu items**, and their location is the ambiguous `ivory 2`, which does **not** satisfy the current Production SQL's exact Ivory Park/Tembisa location-pattern check.
@@ -23,7 +23,7 @@ The other eight records are **not candidates for the immediate first controlled 
 - The Alexandra, Braamfontein, Maboneng, and Soweto sample shops are outside the original SQL region and have no recorded owner UID; do not recruit these as live pilot merchants.
 - **LocalEats Production Test Shop** is inactive with no current location or menu.
 
-**Bottom line:** prepare the **first** acceptance with My-Kota and **one owned consenting test customer**; don't promise 2–3 eligible shops today. To expand to other shops later, review and verify their real owner login, location, approval, opening state and priced menu; any geographic expansion needs a separately reviewed database change.
+**Bottom line:** My-Kota is the **first static-data candidate**, not proven open currently. Prepare the first acceptance with My-Kota **during verified shop opening hours** and **one owned consenting test customer**; don't promise 2–3 orderable shops today. To expand to other shops later, review and verify their real owner login, location, approval, opening state and priced menu; any geographic expansion needs a separately reviewed database change.
 
 Production `pickup_create_order` SQL still enforces `OUTSIDE_PICKUP_PILOT` for locations not matching `tembisa|thembisa|ivory park`; API also enforces a 4 km launch-location distance. The first customer test must use a real, consented nearby device/location; never spoof geography or weaken the rule to force acceptance.
 
