@@ -1287,12 +1287,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     return menuItems.filter(item => item.is_available).length;
   }, [menuItems]);
 
-  const driverAvailability = useMemo(() => {
-    if (connectedRidersCount === 0) return { status: "Low", color: "text-amber-500 bg-amber-500/10 border-amber-500/20" };
-    if (connectedRidersCount <= 2) return { status: "Moderate", color: "text-blue-500 bg-blue-500/10 border-blue-500/20" };
-    return { status: "High", color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" };
-  }, [connectedRidersCount]);
-
   if (loading) {
     return (
       <div className="space-y-12">
