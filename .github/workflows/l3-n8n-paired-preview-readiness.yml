@@ -1,0 +1,67 @@
+name: L3-N8N Paired Customer/API Preview readiness — offline only
+on:
+  pull_request:
+    branches:
+      - review/l3-n8m-dormant-customer-community-contract
+    paths:
+      - 'tests/l3-n8n/**'
+      - 'docs/L3_N8N_PAIRED_CUSTOMER_API_PREVIEW_AND_MAIN_RECONCILIATION.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/l3-n8n-paired-preview-readiness.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  metadata-only-paired-release-block:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: No cloud credentials or deployment credentials in this workflow
+        run: |
+          test -z "${FIREBASE_TOKEN:-}${FIREBASE_PRIVATE_KEY:-}${FIREBASE_CLIENT_EMAIL:-}${GOOGLE_APPLICATION_CREDENTIALS:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${VERCEL_TOKEN:-}"
+      - name: No-network paired Customer/API SHA, Firebase, CORS and write-off gate
+        run: node --test tests/l3-n8n/paired-preview-readiness.test.mjs
+      - name: No hosted release or Firebase user/rules operation
+        run: |
+          ! grep -q 'firebase deploy' .github/workflows/l3-n8n-paired-preview-readiness.yml
+          ! grep -q 'vercel deploy' .github/workflows/l3-n8n-paired-preview-readiness.yml
+          echo L3_N8N_METADATA_ONLY_NO_PAIRED_HOSTED_ACCEPTANCE
+  existing-security-and-merchant-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 19
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Existing API compile, strict auth and full regressions
+        run: |
+          npm ci --prefix localeats-api --ignore-scripts --no-audit --no-fund
+          npm run build --prefix localeats-api
+          node --test localeats-api/dist/routes/customerCommunityReadOnlyContract.test.js
+          npm test --prefix localeats-api
+      - name: Merchant original UI quality and pickup
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          ./node_modules/.bin/tsc --project tsconfig.json --noEmit
+          npm run lint
+          npm run test:merchant-pickup
+      - name: No API account/community feature writes enabled or mounted
+        run: |
+          ! grep -q 'customerCommunityReadOnlyContract' localeats-api/src/server.ts
+          ! grep -q 'merchantAccountDormantApi' localeats-api/src/server.ts
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$PROFILE_WRITES_ENABLED" = false
