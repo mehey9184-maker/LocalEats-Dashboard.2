@@ -1,0 +1,43 @@
+name: L3-N8U-P Production API auth preflight (offline)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/src/middleware/authenticateFirebase.ts'
+      - 'localeats-api/src/middleware/authenticateFirebase.test.ts'
+      - 'localeats-api/src/middleware/pickupWriteGate.ts'
+      - 'localeats-api/src/middleware/controlledPickup.ts'
+      - 'docs/L3_N8U_P_PRODUCTION_PICKUP_LAUNCH_GATE.md'
+      - '.github/workflows/l3-n8u-p-production-auth-launch-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  authenticated-pickup-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: localeats-api
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Enforce no live Firebase/Supabase/Vercel credentials
+        run: |
+          test -z "${FIREBASE_PRIVATE_KEY:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${VERCEL_TOKEN:-}${FIREBASE_TOKEN:-}${GOOGLE_APPLICATION_CREDENTIALS:-}"
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compile API TypeScript
+        run: npm run build
+      - name: Offline revocation-aware auth, write gate and controlled-pickup regressions
+        run: node --test dist/middleware/authenticateFirebase.test.js dist/middleware/pickupWriteGate.test.js dist/middleware/controlledPickup.test.js
+      - name: Run complete existing API regression suite with no hosted credentials
+        run: npm test
+      - name: Confirm this job never activates Production
+        run: echo L3_N8U_P_OFFLINE_ONLY_NO_PRODUCTION_WRITE_NO_DEPLOY
