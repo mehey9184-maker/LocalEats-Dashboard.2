@@ -66,7 +66,7 @@ try {
    await page.getByTestId("orders-focused-workspace").waitFor();
    assert.equal(await page.getByRole("button",{name:"A · Expediter"}).getAttribute("aria-pressed"),"true"); assertions++;
    assert.equal(await page.getByRole("button",{name:"B · Compact"}).getAttribute("aria-pressed"),"false"); assertions++;
-   assert(await page.getByText("Free introductory period").isVisible()); assertions++;
+   assert(await page.getByText("Free introductory period",{exact:true}).isVisible()); assertions++;
    const clock=page.getByTestId("live-clock-probe").getByTestId("sample-plan-clock");
    const before=await clock.innerText();
    await page.waitForTimeout(1200);
