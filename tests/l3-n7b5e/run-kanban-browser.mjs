@@ -84,8 +84,10 @@ try {
    await assertCount(cards("preparing"),6,"Returning to all filter resets");
    await page.getByTestId("filter-preparing").click();
    await assertCount(cards("preparing"),6,"Returning to previous filter does not resurrect page");
+   // Restore the same All-stages context for desktop and mobile before
+   // checking Active-view counts after the History round trip.
+   await page.getByTestId("filter-all").click();
    if(width<768){
-    await page.getByTestId("filter-all").click();
     assert.equal(await page.getByRole("tab",{name:/^Preparing /}).getAttribute("aria-selected"),"true",
      "Filter transitions must retain mobile lane selection");checks++;
    }
