@@ -1,5 +1,10 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N8U-Q — Invite-only pickup beta contract (2026-11-20)
+
+The owner requested a fast real Production beta for roughly 2–3 shops and 10–20 customers, **without** general public ordering before the authentic order journey is proven. See [the detailed L3-N8U-Q controlled beta report](docs/L3_N8U_Q_CONTROLLED_BETA_ELIGIBILITY.md). Draft-only code adds exact server-private Firebase UID/shop allowlists (caps 20/3), independent admission pause, UTC expiry up to 30 days, default-deny malformed configuration, and preservation of authenticated payment/collection commands for already persisted pickups even if invitation membership changes. The legacy one-test-account gate is preserved unless beta is explicitly configured. Production PostgreSQL still limits order creation to Tembisa/Thembisa/Ivory Park and 4 km; this PR does **not** widen geography, deploy Firebase rules, change payment/provider systems, or activate Production ordering. Do not claim that the public beta is live.
+
+
 ## L3-N8U-P — Production launch readiness and controlled beta (2026-11-20)
 See [the Production Pickup Launch Gate report](docs/L3_N8U_P_PRODUCTION_PICKUP_LAUNCH_GATE.md) for Vercel Production aliases/SHAs, read-only Production Supabase SQL inventory, Firebase auth revocation gap, current single-shop/UID API hard gate, FCM/PWA proof requirements, narrowly scoped 2–3 shop/10–20 customer beta criteria and rollback. **Current Production pickup writes remain OFF.** The document records one existing Production pickup order and five events; do not treat them as disposable. This branch only backports a reviewed Firebase revoked/disabled-account verification source fix to a draft; no Production deploy, live orders or notifications have been authorized. 
 
