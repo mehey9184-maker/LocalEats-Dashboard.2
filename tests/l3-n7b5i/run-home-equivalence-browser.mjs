@@ -92,13 +92,19 @@ try{
      const headings=await page.locator("h1,h2,h3").allTextContents();
      const buttons=await page.locator("button").allTextContents();
      const classes=await page.locator("button").evaluateAll(nodes=>nodes.map(n=>n.getAttribute("class")));
-     state[variant]={html,screenshot,headings,buttons,classes};
+     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
+     state[variant]={html,screenshot,headings,buttons,classes,overflow};
      assert.deepEqual(external,[],"Attempted a hosted network request");assertions++;
      assert.deepEqual(writes,[],"Attempted mutation request");assertions++;
      assert.deepEqual(errors,[],"Runtime exception in "+variant+" "+scenario+" "+width);assertions++;
-     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
-     assert(overflow<=2,"Unexpected horizontal overflow in "+variant+" "+scenario+" "+width+": "+overflow);assertions++;
     }finally{await ctx.close();}
+   }
+   // Compare to the untouched Home rather than silently repairing or
+   // misattributing a pre-existing loading-skeleton overflow to this cleanup.
+   assert.equal(state.candidate.overflow,state.baseline.overflow,
+    "Home changed horizontal overflow "+scenario+" "+width);assertions++;
+   if(state.baseline.overflow>2){
+    console.log(`L3_N7B5I_EXISTING_BASELINE_OVERFLOW width=${width} scenario=${scenario} excess=${state.baseline.overflow}px candidate-identical`);
    }
    assert.deepEqual(state.candidate.headings,state.baseline.headings,"Home headings changed "+scenario+" "+width);assertions++;
    assert.deepEqual(state.candidate.buttons,state.baseline.buttons,"Home controls changed "+scenario+" "+width);assertions++;
