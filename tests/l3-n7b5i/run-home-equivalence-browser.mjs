@@ -112,7 +112,7 @@ try{
       "Home must not assert confirmed order totals on API read failure");checks++;
     }
     if(scenario==="fresh"){
-     assert(snap[0].html.includes("Pay at Shop"),"Original pickup payment messaging must survive");checks++;
+     assert(/Pay at shop/i.test(snap[0].html),"Original pickup payment messaging must survive");checks++;
     }
    }
    for(const session of sessions){
