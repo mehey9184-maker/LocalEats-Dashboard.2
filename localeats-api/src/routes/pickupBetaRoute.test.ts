@@ -188,8 +188,9 @@ test("mounted pickup beta accepts only invited customer, enforces owner, and ful
       assert.equal(response.status,200,`${action}: ${JSON.stringify(response.body)}`);
       assert.equal(response.body.command_receipt.kind,kind);
     }
-    assert.equal(stored?.status,"collected");
-    assert.equal(stored?.payment_status,"paid");
+    const finalSaved=stored as Record<string,any>|null;
+    assert.equal(finalSaved?.status,"collected");
+    assert.equal(finalSaved?.payment_status,"paid");
     assert.equal(events.map(e=>e.kind).join(","),"accepted,ready,payment_confirmed,collected");
     assert.ok(checks.length>=10);
     assert.ok(checks.every(Boolean),"Auth must enforce revoked-token verification on every tested route");
