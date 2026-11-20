@@ -1,5 +1,10 @@
 # LocalEats Platform - Persistent System Instructions
 
+## L3-N8U-Q — Controlled Production pickup beta (2026-11-20)
+
+Read [the invite-only beta admission and pause/fulfillment report](docs/L3_N8U_Q_CONTROLLED_BETA_ELIGIBILITY.md) before changing pickup flags, orders, identity, merchant ownership or Production. The current API supports a **draft-only** server-side 1–3 shop / 1–20 Firebase UID invitation policy with a mandatory expiry and a separate new-order admission switch. **It is not live.** It is stacked on draft Production auth PR #211 and must not be deployed or merged before real Production test acceptance and explicit owner signoff. Keep existing server-only price, idempotency, Firebase ownership, SQL RPC and region/radius limits. Once a real beta begins, pause only *new admission* when existing pickup orders still need completion. Production is still OFF.
+
+
 ## L3-N8U-P: Production pickup launch gate (2026-11-20)
 **READ BEFORE ACTIVATING PUBLIC ORDERS:** [L3-N8U-P Production pickup launch gate](docs/L3_N8U_P_PRODUCTION_PICKUP_LAUNCH_GATE.md). The live Production API at `main` SHA `a5168cc` uses non-revocation-aware Firebase token verification and a **single test shop/customer UID** pickup gate; turning flags ON would not launch an unrestricted safe public beta. Production API/Customer/Merchant pickup switches are OFF. Production SQL already contains **one existing pickup order and five events**—never delete these as fixtures. Draft-only revocation-aware middleware and offline tests are unmerged; Production Firestore named-DB rules, actual Firebase Admin identity and end-to-end pickup/FCM acceptance remain unverified. The recommended launch is a limited owner-approved beta only after the gates pass; no blind flag flip.
 
