@@ -57,9 +57,10 @@ try{
     if(url.pathname==="/")return route.fulfill({
      status:200,contentType:"text/html",
      headers:{"Content-Security-Policy":"default-src 'self'; connect-src 'none'; img-src 'self' data:; font-src 'self' data:"},
-     body:'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/merchant.css"></head><body><div id="root"></div><script src="/merchant.js"></script></body></html>'
+     body:'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/merchant.css"><link rel="stylesheet" href="/snapshot.css"></head><body><div id="root"></div><script src="/merchant.js"></script></body></html>'
     });
     if(url.pathname==="/merchant.css")return route.fulfill({status:200,contentType:"text/css",body:css});
+    if(url.pathname==="/snapshot.css")return route.fulfill({status:200,contentType:"text/css",body:"*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important}"});
     if(url.pathname==="/merchant.js")return route.fulfill({status:200,contentType:"application/javascript",body:output[variant]});
     return route.abort();
    });
@@ -67,7 +68,6 @@ try{
    page.on("pageerror",error=>errors.push(error.message));
    await page.goto(origin+"/",{waitUntil:"domcontentloaded"});
    await page.getByTestId("home-fixture").waitFor({timeout:15000});
-   await page.addStyleTag({content:"*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important}"});
    sessions.push({variant,context,page,external,writes,errors});
   }
   try{
