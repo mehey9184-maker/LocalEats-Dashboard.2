@@ -1,0 +1,99 @@
+name: L3-N8I Merchant staging Firestore/Auth/Storage write containment
+on:
+  pull_request:
+    branches:
+      - review/l3-n8g-merchant-staging-cutover
+    paths:
+      - 'src/lib/firebase.ts'
+      - 'src/lib/supabase.ts'
+      - 'src/lib/merchantStagingNoWrite.ts'
+      - 'tests/l3-n8i/**'
+      - 'docs/L3_N8I_MERCHANT_CLIENT_FIRESTORE_WRITE_AUDIT.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/l3-n8i-merchant-no-browser-writes.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-browser-no-write:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+      MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: No hosted credentials, no Production mutation or account route
+        run: |
+          test -z "${FIREBASE_PRIVATE_KEY:-}${FIREBASE_CLIENT_EMAIL:-}${FIREBASE_PROJECT_ID:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${SUPABASE_SECRET_KEY:-}${VERCEL_TOKEN:-}${DATABASE_URL:-}"
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          test "$PROFILE_WRITES_ENABLED" = false
+          test "$PICKUP_WRITES_ENABLED" = false
+          ! grep -q merchantAccountDormantApi localeats-api/src/server.ts
+      - name: Install pinned Merchant dependencies without scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Stage-only browser no-write guard tests (no SDK network calls)
+        run: node --test tests/l3-n8i/merchant-direct-write-containment.test.mjs
+      - name: Legacy isolation and stage configuration tests
+        run: |
+          node --test tests/l3-n8e/staging-readiness.test.mjs
+          node --test tests/l3-n8f/staging-resources.test.mjs
+          node --test tests/l3-n8g/merchant-staging-build.test.mjs
+      - name: Build staged Merchant UI with only synthetic Firebase PUBLIC configuration
+        env:
+          VERCEL_ENV: preview
+          LOCALEATS_STAGING_ONLY: 'true'
+          VITE_MERCHANT_STAGING_ONLY: 'true'
+          VITE_FIREBASE_CONFIG_SOURCE: environment
+          VITE_FIREBASE_PROJECT_ID: localeats-staging
+          VITE_FIREBASE_FIRESTORE_DATABASE_ID: (default)
+          VITE_LOCALEATS_API_URL: https://localeats-merchant-api-stage-r52d-mehey9184-makers-projects.vercel.app
+          VITE_FIREBASE_API_KEY: synthetic-no-real-firebase-key
+          VITE_FIREBASE_AUTH_DOMAIN: localeats-staging.firebaseapp.com
+          VITE_FIREBASE_APP_ID: 1:123456789:web:synthetic
+          VITE_FIREBASE_MESSAGING_SENDER_ID: '123456789'
+          VITE_FIREBASE_STORAGE_BUCKET: localeats-staging.firebasestorage.app
+          VITE_PICKUP_ORDERING_ENABLED: 'false'
+          VITE_PICKUP_PAYMENT_SETTINGS_ENABLED: 'false'
+          VITE_PAYMENTS_PLAN_DEMO_ENABLED: 'false'
+          VITE_MERCHANT_FAKE_ORDERS_ENABLED: 'false'
+          VITE_REWARDS_ENABLED: 'false'
+          VITE_LOCALPAY_ENABLED: 'false'
+          VITE_MERCHANT_PREVIEW_READ_ONLY: 'true'
+        run: npm run build:merchant-staging
+      - name: Preserve original Merchant TypeScript and lint checks
+        run: |
+          ./node_modules/.bin/tsc --project tsconfig.json --noEmit
+          npm run lint
+          npm run test:merchant-pickup
+      - name: Confirm no hosted write tests were attempted
+        run: echo 'L3_N8I_SYNTHETIC_CLIENT_CONTAINMENT_ONLY_FIREBASE_RULES_UNVERIFIED'
+  inherited-api-and-auth:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Install pinned API dependency lockfile and compile
+        run: |
+          npm ci --prefix localeats-api --ignore-scripts --no-audit --no-fund
+          npm run build --prefix localeats-api
+      - name: Check strict Firebase revocation and scoped staging CORS (synthetic)
+        run: |
+          node --test localeats-api/dist/middleware/authenticateFirebase.n8d.test.js
+          node --test localeats-api/dist/middleware/merchantStageCors.test.js
+      - name: Full existing API security and pickup regressions
+        run: npm test --prefix localeats-api
