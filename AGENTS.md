@@ -1,5 +1,9 @@
 # LocalEats Platform - Persistent System Instructions
 
+## L3-N8U-P: Production pickup launch gate (2026-11-20)
+**READ BEFORE ACTIVATING PUBLIC ORDERS:** [L3-N8U-P Production pickup launch gate](docs/L3_N8U_P_PRODUCTION_PICKUP_LAUNCH_GATE.md). The live Production API at `main` SHA `a5168cc` uses non-revocation-aware Firebase token verification and a **single test shop/customer UID** pickup gate; turning flags ON would not launch an unrestricted safe public beta. Production API/Customer/Merchant pickup switches are OFF. Production SQL already contains **one existing pickup order and five events**—never delete these as fixtures. Draft-only revocation-aware middleware and offline tests are unmerged; Production Firestore named-DB rules, actual Firebase Admin identity and end-to-end pickup/FCM acceptance remain unverified. The recommended launch is a limited owner-approved beta only after the gates pass; no blind flag flip.
+
+
 ## Active Merchant pickup-only Codex policy — 2026-11-05
 
 Isolated Firebase staging builds must explicitly set `VITE_FIREBASE_CONFIG_SOURCE=environment` and supply the complete staging app configuration. That mode selects `VITE_FIREBASE_FIRESTORE_DATABASE_ID` (defaulting to `(default)`) without reusing bundled production values. Existing deployments retain their bundled configuration until opted in.
