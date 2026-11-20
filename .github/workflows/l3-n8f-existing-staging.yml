@@ -1,0 +1,71 @@
+name: L3-N8F existing isolated staging and Merchant acceptance guards
+on:
+  pull_request:
+    branches:
+      - review/l3-n8e-staging-isolation-audit
+    paths:
+      - 'tests/l3-n8e/**'
+      - 'tests/l3-n8f/**'
+      - 'docs/L3_N8F_VERIFIED_STAGING_INVENTORY.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/l3-n8f-existing-staging.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  no-hosted-writes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+      MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Ensure NO connection to hosted staging or Production
+        run: |
+          test -z "${FIREBASE_PRIVATE_KEY:-}${FIREBASE_CLIENT_EMAIL:-}${FIREBASE_PROJECT_ID:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${SUPABASE_SECRET_KEY:-}${VERCEL_TOKEN:-}${DATABASE_URL:-}"
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$PROFILE_WRITES_ENABLED" = false
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          ! grep -q 'merchantAccountDormantApi' localeats-api/src/server.ts
+      - name: Corrected N8E staging Firestore DB preflight
+        run: node --test tests/l3-n8e/staging-readiness.test.mjs
+      - name: Independent N8F Customer/API and Merchant stage inventory
+        run: node --test tests/l3-n8f/staging-resources.test.mjs
+      - name: Explicitly preserve unverified acceptance status
+        run: |
+          grep -q 'realFirebaseAuthenticatedTwoMerchantTest:false' tests/l3-n8f/staging-resources.mjs
+          grep -q 'merchantProfileWritesActivated:false' tests/l3-n8f/staging-resources.mjs
+          echo 'L3_N8F_EXISTING_STAGE_VERIFIED_OFFLINE_MERCHANT_ACCEPTANCE_PENDING'
+  inherited-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked API dependencies and compile
+        run: |
+          npm ci --prefix localeats-api --ignore-scripts --no-audit --no-fund
+          npm run build --prefix localeats-api
+      - name: Existing API test suite
+        run: npm test --prefix localeats-api
+      - name: Locked Merchant dependencies + full quality
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          ./node_modules/.bin/tsc --project tsconfig.json --noEmit
+          npm run lint
+          npm run test:merchant-pickup
