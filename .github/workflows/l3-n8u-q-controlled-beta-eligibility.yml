@@ -1,0 +1,42 @@
+name: L3-N8U-Q bounded Production beta eligibility (offline)
+on:
+  pull_request:
+    branches:
+      - review/l3-n8u-p-production-pickup-launch-gate
+    paths:
+      - 'localeats-api/src/middleware/controlledPickup.ts'
+      - 'localeats-api/src/middleware/controlledPickupBeta.test.ts'
+      - 'localeats-api/src/routes/orders.ts'
+      - 'localeats-api/src/routes/pickupBetaRoute.test.ts'
+      - 'docs/L3_N8U_Q_CONTROLLED_BETA_ELIGIBILITY.md'
+      - '.github/workflows/l3-n8u-q-controlled-beta-eligibility.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scoped-beta-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: localeats-api
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Reject hosted-service credentials in offline runner
+        run: |
+          test -z "${FIREBASE_PRIVATE_KEY:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${VERCEL_TOKEN:-}${FIREBASE_TOKEN:-}${GOOGLE_APPLICATION_CREDENTIALS:-}${PICKUP_BETA_CUSTOMER_UIDS:-}${PICKUP_BETA_SHOP_IDS:-}"
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compile API
+        run: npm run build
+      - name: Run focused offline beta boundary tests
+        run: node --test dist/middleware/controlledPickup.test.js dist/middleware/controlledPickupBeta.test.js dist/middleware/pickupWriteGate.test.js dist/middleware/authenticateFirebase.test.js
+      - name: Run full existing API regression suite
+        run: npm test
+      - name: Ensure no public ordering is turned on
+        run: echo L3_N8U_Q_ONLY_SOURCE_AND_TESTS_NO_DEPLOY_NO_PRODUCTION_FLAGS_NO_PERSISTED_ORDERS
