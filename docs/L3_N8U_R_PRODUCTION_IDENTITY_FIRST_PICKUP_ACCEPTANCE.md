@@ -9,11 +9,13 @@ This work continues stacked draft [L3-N8U-P PR #211](https://github.com/mehey918
 
 Production Supabase project **`phdjumtqkooyppxozqsi`** contains **9 shops and 7 menu items**. A live read-only SQL inventory cross-checked each shop's approval, active/archived status, stored geographic pilot text, valid coordinates, owner UID presence, available and positive-price menu items, and non-revoked recorded push subscriptions. **No owner UID, customer UID, password or FCM token was exported.**
 
-**Exactly one shop passes all the static data prerequisites:**
+**Exactly one shop passes the static data prerequisites (not the live-open check):**
 
 | Shop | Production ID | Approval / active | Location | Priced available items | Non-revoked FCM records |
 |---|---|---|---|---:|---:|
 | My-Kota | `shop-my-kota-ivory-park` | approved / true | Katlego Street, Ivory Park | 1 | 2 |
+
+The current My-Kota menu item is recorded as **`cheeze, palone and meat` (R25, available)** in Production SQL. This is a read-only inventory value; the actual quoted total and fee at checkout must still be computed server-side and confirmed by the customer.
 
 *These are necessary static conditions, not proof the shop is currently accepting an order or the owner can sign in.* A **second direct Production read-only query** against `public.shops_with_availability` showed `effective_is_active=false` for My-Kota at inspection time. The separate schedule function returned `within_shop_schedule=false`, with stored opening/closing hours `08:00–22:00` and no active override. Therefore the shop **cannot be assumed orderable at the instant of this audit**; the first real-system test must occur inside a verified open period with the owner's consent, or use a separately approved merchant availability change through the normal owner process. **Do not bypass or alter the availability constraint just to force a test.** FCM records do not establish device delivery, browser permission or valid tokens.
 
@@ -35,6 +37,7 @@ Read-only aggregate Production SQL shows **1 existing pickup-contract order**, s
 
 - Production API Vercel public alias `localeats-api.vercel.app` is a READY deployment from `main` commit `a5168ccbbb37643a58ad4202c72b65dd43149c2e`. Connected read-only Vercel environment checks identified non-secret production `FIREBASE_PROJECT_ID=localeats-5e26e` and `SUPABASE_URL=https://phdjumtqkooyppxozqsi.supabase.co`. This is environment **project-ID alignment**, not proof the actual Admin credential works.
 - `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY` are stored as **sensitive** Vercel values and were not retrieved or printed. The Firebase Admin credential's genuine validity, live disabled/revoked-token enforcement, and the merchant owner's matching Firebase Auth UID are not verified against Production Firebase.
+- **Source files are divergent, not evidence of publication:** read-only comparison of `mehey9184-maker/LocalEats-app@main:firestore.rules` (blob `d168836960afec5afa705f320b6347495cc0e4cc`) and `mehey9184-maker/LocalEats-Dashboard.2@main:firestore.rules` (blob `d6b15ab961f4260c9d02814ed48023cd916c4eb4`) found the Merchant source permits certain owner-authenticated **Firestore shop creation** and **Firestore order updates**, whereas the Customer source denies client shop creation and all order updates. These source rules are not necessarily the live published rules for the named Production database. **Do not publish either file, widen writes, or assume either is current** without comparing the exact published Production Rules version, legacy data paths, API-authoritative pickup invariant and rollback policy.
 - Owner screenshots previously identified the **named Production Cloud Firestore database** `ai-studio-localeatsvendord-a61b068b-3029-4d93-ba41-626b03a23bbe`. Its **currently published Rules source/version was not inspected**. The independently verified deny-all `localeats-staging/(default)` Rules **do not establish Production named-DB permissions**.
 - Current Production Customer, Merchant, API pickup flags `VITE_PICKUP_ORDERING_ENABLED=false`, `VITE_PICKUP_ORDERING_ENABLED=false`, `PICKUP_WRITES_ENABLED=false`. PR #211 hardens revoked-account verification but is draft/unmerged. PR #212 adds bounded 1–3 shop and 1–20 invited customer beta gating and independently pausable **new** admission, but is also draft/unmerged. The code and live environment are NOT yet capable of publicly accepting orders via that new policy.
 
