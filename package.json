@@ -8,6 +8,8 @@
     "prebuild": "node scripts/generate-pwa-icons.mjs",
     "dev": "vite --port 3000 --host 0.0.0.0",
     "build": "vite build",
+    "prebuild:merchant-staging": "node scripts/generate-pwa-icons.mjs",
+    "build:merchant-staging": "vite build --mode merchant-staging",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:merchant-pickup": "node --experimental-strip-types --test tests/merchant-pickup.test.mjs tests/merchant-rewards-flyer.test.mjs"
