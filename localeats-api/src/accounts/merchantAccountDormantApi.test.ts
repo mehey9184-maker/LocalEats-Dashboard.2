@@ -44,18 +44,25 @@ function fixture(approved=true) {
       assert.equal(table,"shops_with_availability");
       return {select(columns:string){
         assert.equal(columns,"id,owner_id,approval_status,archived_at");
-        return {eq(field:string,uid:string){
-          assert.equal(field,"owner_id");queries++;
-          return {is(field2:string,value:null){
-            assert.equal(field2,"archived_at");assert.equal(value,null);
-            return {limit(n:number){
-              assert.equal(n,2);
-              const data=approved?[{id:"shop",owner_id:uid,
-                approval_status:"approved",archived_at:null}]:[];
-              return Promise.resolve({data,error:null});
-            }};
-          }};
-        }};
+        let verifiedOwnerUid="";
+        const filter={
+          eq(field:string,value:string){
+            if(field==="owner_id"){verifiedOwnerUid=value;queries++;}
+            else {assert.equal(field,"approval_status");assert.equal(value,"approved");}
+            return this;
+          },
+          is(field:string,value:null){
+            assert.equal(field,"archived_at");assert.equal(value,null);
+            return this;
+          },
+          limit(n:number){
+            assert.equal(n,1);
+            const data=approved?[{id:"shop",owner_id:verifiedOwnerUid,
+              approval_status:"approved",archived_at:null}]:[];
+            return Promise.resolve({data,error:null});
+          },
+        };
+        return filter;
       }};
     },
   } as unknown as Pick<SupabaseClient,"from">;
