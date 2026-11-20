@@ -5,6 +5,8 @@ on:
       - review/l3-n8p-staging-rollback-rehearsal
     paths:
       - 'src/lib/merchantStagingNoWrite.ts'
+      - 'scripts/merchant-staging-guard.mjs'
+      - 'tests/l3-n8g/merchant-staging-build.test.mjs'
       - 'src/lib/firebase.ts'
       - 'tests/l3-n8s/**'
       - 'docs/L3_N8S_STAGING_AUTH_AND_PAIRING_PREP.md'
@@ -28,5 +30,7 @@ jobs:
           test -z "${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${VERCEL_TOKEN:-}${FIREBASE_TOKEN:-}${GOOGLE_APPLICATION_CREDENTIALS:-}"
       - name: Verify staging Firebase project is a browser-write hard stop
         run: node --experimental-strip-types --test tests/l3-n8s/merchant-staging-identity-guard.test.mjs
+      - name: Verify reviewed exact N8O staging API build guard (including negative cases)
+        run: node --test tests/l3-n8g/merchant-staging-build.test.mjs
       - name: No Firebase, Supabase or Vercel changes executed
         run: echo L3_N8S_SOURCE_ONLY_STAGING_WRITE_GUARD_DOES_NOT_PUBLISH_RULES_OR_ENABLE_ORDERS
