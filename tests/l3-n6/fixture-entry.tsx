@@ -26,8 +26,14 @@ function Fixture(){
  useEffect(()=>{
   const handler=()=>{void load();};
   window.addEventListener("merchant-pickup-order-confirmed",handler);
-  void load();
-  return()=>{++generation.current;window.removeEventListener("merchant-pickup-order-confirmed",handler);};
+  // The initial synthetic API read runs after effect setup, not as a
+  // synchronous state update during React's effect lifecycle.
+  const initialRead=window.setTimeout(()=>{void load();},0);
+  return()=>{
+   window.clearTimeout(initialRead);
+   ++generation.current;
+   window.removeEventListener("merchant-pickup-order-confirmed",handler);
+  };
  },[]);
  const switchUser=()=>{
   const next=uid==="merchant-a"?"merchant-b":"merchant-a";
