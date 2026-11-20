@@ -1,5 +1,6 @@
 import {privateMyKotaCorsAllowed} from "./routes/privateMyKotaTest.js";
 import {isIsolatedCustomerPushCorsOrigin} from "./middleware/customerPushPreviewAdmission.js";
+import {isVerifiedMerchantStagingOrigin} from "./middleware/merchantStageCors.js";
 interface CorsOriginEnvironment {
   MERCHANT_DASHBOARD_ORIGIN?: string;
   MERCHANT_DASHBOARD_PREVIEW_HOST_PREFIX?: string;
@@ -44,6 +45,9 @@ export const isAllowedOrigin = (
   if (origin === undefined) return true;
   // Exact isolated Preview origin only when server-side test UID/expiry gates pass.
   if (privateMyKotaCorsAllowed(origin,environment as NodeJS.ProcessEnv)) return true;
+  // Only the exact dedicated Merchant Preview, on the separately configured
+  // read-only staging API with Firebase/Supabase production identities excluded.
+  if (isVerifiedMerchantStagingOrigin(origin,environment as NodeJS.ProcessEnv)) return true;
   // Canonical Customer Production origin only; Firebase still authorizes private reads/quotes.
   if (origin === "https://www.localeatssa.co.za") return true;
 
