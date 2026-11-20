@@ -19,7 +19,6 @@ jobs:
       PICKUP_WRITES_ENABLED: 'false'
       PROFILE_WRITES_ENABLED: 'false'
       MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
-      LOCALEATS_PREVIEW_READ_ONLY: 'true'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -39,6 +38,8 @@ jobs:
       - name: Synthetic read-only HTTP authorization, cross-account privacy, write-off
         run: node --test localeats-api/dist/routes/customerCommunityReadOnlyContract.test.js
       - name: Inherited strict Firebase authenticator, catalog, profile, pickup regressions
+        # Tests establish their own Preview gate and mocked Firebase state.
+        # Do not globally force the Preview flag here or existing 401 tests turn into 503.
         run: npm test --prefix localeats-api
       - name: Dormant router may NOT be mounted by active API
         run: |
