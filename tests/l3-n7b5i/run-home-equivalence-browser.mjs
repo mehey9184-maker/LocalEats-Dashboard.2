@@ -85,10 +85,13 @@ try{
     try{
      await page.goto(origin+"/?scenario="+scenario,{waitUntil:"domcontentloaded"});
      await page.getByTestId("home-fixture").waitFor({timeout:15000});
-     await page.waitForTimeout(280);
+     // Wait for Framer Motion's normal entrance transitions to complete.
+     // Sampling at 280ms captures non-semantic subpixel translateY variation
+     // (e.g. -0.108px vs -0.099px) between otherwise identical pages.
+     await page.waitForTimeout(1100);
      const rootNode=page.getByTestId("home-fixture");
-     const html=await rootNode.innerHTML();
      const screenshot=await rootNode.screenshot({animations:"disabled",caret:"hide",timeout:20000});
+     const html=await rootNode.innerHTML();
      const headings=await page.locator("h1,h2,h3").allTextContents();
      const buttons=await page.locator("button").allTextContents();
      const classes=await page.locator("button").evaluateAll(nodes=>nodes.map(n=>n.getAttribute("class")));
