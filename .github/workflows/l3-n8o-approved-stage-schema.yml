@@ -1,0 +1,35 @@
+name: L3-N8O approved staging schema source — hard-OFF acceptance
+on:
+  pull_request:
+    branches:
+      - review/l3-n8n-paired-preview-preflight
+    paths:
+      - 'supabase/staging-only/L3_N8O_PICKUP_*'
+      - 'tests/l3-n8o/**'
+      - 'docs/L3_N8O_STAGING_SCHEMA_AND_PAIRED_PREVIEW.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/l3-n8o-approved-stage-schema.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  staging-schema-security-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: No Production, staging database or Vercel credentials in CI
+        run: |
+          test -z "${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${VERCEL_TOKEN:-}${FIREBASE_TOKEN:-}${GOOGLE_APPLICATION_CREDENTIALS:-}"
+      - name: Additive private staging-only schema, hard-off triggers and FK checks
+        run: node --test tests/l3-n8o/staging-order-schema-hard-off.test.mjs
+      - name: No migrations or hosted rules/commands executed in CI
+        run: |
+          ! grep -q 'supabase db push' .github/workflows/l3-n8o-approved-stage-schema.yml
+          ! grep -q 'firebase deploy' .github/workflows/l3-n8o-approved-stage-schema.yml
+          echo L3_N8O_SQL_SOURCE_ONLY_ACTUAL_STAGE_MIGRATION_WAS_SEPARATELY_APPROVED_AND_VERIFIED
