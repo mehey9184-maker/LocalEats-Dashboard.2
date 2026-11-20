@@ -25,8 +25,8 @@ function Fixture(){
    <button data-testid="channel-subscribed" onClick={()=>emitChannel("SUBSCRIBED")}>Channel subscribed</button>
    <button data-testid="channel-closed" onClick={()=>emitChannel("CLOSED")}>Channel closed</button>
    <button data-testid="old-channel-subscribed" onClick={()=>emitChannel("SUBSCRIBED",true)}>Old callback</button>
-   <button data-testid="add-review" onClick={()=>{syntheticState.queuedCount=3;window.dispatchEvent(new Event("offline_queue_updated"));}}>Add 3 review records</button>
-   <button data-testid="clear-review" onClick={()=>{syntheticState.queuedCount=0;window.dispatchEvent(new Event("offline_queue_updated"));}}>Clear synthetic records</button>
+   <button data-testid="add-review" onClick={()=>{syntheticState.queuedCount=3;setTick(v=>v+1);window.dispatchEvent(new Event("offline_queue_updated"));}}>Add 3 review records</button>
+   <button data-testid="clear-review" onClick={()=>{syntheticState.queuedCount=0;setTick(v=>v+1);window.dispatchEvent(new Event("offline_queue_updated"));}}>Clear synthetic records</button>
    <button data-testid="toggle-monitor" onClick={()=>setVisible(v=>!v)}>Toggle monitor</button>
    <button data-testid="switch-synthetic-shop" onClick={()=>setShop(v=>v==="fixture-merchant-a"?"fixture-merchant-b":"fixture-merchant-a")}>Switch shop</button>
   </div>
