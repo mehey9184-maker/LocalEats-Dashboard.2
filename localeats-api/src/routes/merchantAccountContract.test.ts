@@ -92,7 +92,7 @@ async function request(url:string,token:string|null,method="GET",body?:unknown,p
 }
 
 test("N8B stays unmounted and writes disabled regardless of env toggles",async()=>{
-  const serverSource=readFileSync(new URL("../server.ts",import.meta.url),"utf8");
+  const serverSource=readFileSync(new URL("../../src/server.ts",import.meta.url),"utf8");
   assert.doesNotMatch(serverSource,/import\s+.*merchantAccountContract|app\.use\([^\n]*merchant\/account/);
   const old=process.env.MERCHANT_ACCOUNT_WRITES_ENABLED;
   process.env.MERCHANT_ACCOUNT_WRITES_ENABLED="true";
