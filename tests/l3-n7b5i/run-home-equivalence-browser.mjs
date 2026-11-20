@@ -75,7 +75,7 @@ try{
     for(const session of sessions){
      if(scenario!=="fresh")await session.page.getByTestId("home-"+scenario).click();
      await session.page.getByTestId("fixture-scope").waitFor();
-     await session.page.waitForTimeout(80);
+     await session.page.waitForTimeout(720);
     }
     const snap=await Promise.all(sessions.map(async x=>{
      const page=x.page;
@@ -95,7 +95,15 @@ try{
      return {html,image,scope};
     }));
     assert.equal(snap[0].scope,snap[1].scope,"Fixture modes disagree");checks++;
-    assert.equal(snap[0].html,snap[1].html,"Rendered original Home DOM changed: "+scenario+" "+width);checks++;
+    if(snap[0].html!==snap[1].html){
+     const n=Math.min(snap[0].html.length,snap[1].html.length);
+     let first=0;while(first<n&&snap[0].html[first]===snap[1].html[first])first++;
+     const context=90;
+     throw Error("Home DOM mismatch "+scenario+" "+width+" at char "+first+
+      " parent="+JSON.stringify(snap[0].html.slice(Math.max(0,first-context),first+context))+
+      " candidate="+JSON.stringify(snap[1].html.slice(Math.max(0,first-context),first+context)));
+    }
+    checks++;
     assert(snap[0].image.equals(snap[1].image),"Original Home screenshot changed: "+scenario+" "+width);checks++;
     const fingerprint=createHash("sha256").update(snap[0].image).digest("hex").slice(0,14);
     console.log(`L3_N7B5I_SCREENSHOT_EQUIVALENT width=${width} state=${scenario} sha256=${fingerprint}`);
