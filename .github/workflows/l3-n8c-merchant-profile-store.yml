@@ -1,0 +1,72 @@
+name: L3-N8C isolated Merchant profile storage and ownership (no hosted writes)
+on:
+  pull_request:
+    branches:
+      - review/l3-n8b-merchant-account-contract
+    paths:
+      - 'localeats-api/src/accounts/**'
+      - 'localeats-api/src/routes/merchantAccountContract*'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/l3-n8c-merchant-profile-store.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-profile-persistence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_PUSH_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_WORKER_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: No hosted credentials or active merchant writes
+        run: |
+          test -z "${FIREBASE_PROJECT_ID:-}${FIREBASE_PRIVATE_KEY:-}${SUPABASE_URL:-}${DATABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${SUPABASE_SECRET_KEY:-}"
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$PROFILE_WRITES_ENABLED" = false
+          ! grep -q 'merchantAccountContract' localeats-api/src/server.ts
+          ! grep -q 'merchantFirestoreAccountStore' localeats-api/src/server.ts
+          ! grep -q 'merchantApprovedOwner' localeats-api/src/server.ts
+      - name: Install pinned API dependency lockfile without scripts
+        run: npm ci --prefix localeats-api --ignore-scripts --no-audit --no-fund
+      - name: Compile complete API TypeScript
+        run: npm run build --prefix localeats-api
+      - name: Fake Firestore and fake owner-store integration tests only
+        run: node --test localeats-api/dist/accounts/merchantProfileStore.test.js localeats-api/dist/routes/merchantAccountContract.test.js
+      - name: Full existing API regression suite
+        run: npm test --prefix localeats-api
+      - name: Verify no hosted settings were altered
+        run: |
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          echo 'L3_N8C_UNMOUNTED_NO_HOSTED_PROFILE_WRITES'
+  independent-quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked Merchant dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Merchant TypeScript no errors
+        run: ./node_modules/.bin/tsc -p tsconfig.json --noEmit
+      - name: Full-root ESLint no errors, no rule suppression
+        run: npm run lint
