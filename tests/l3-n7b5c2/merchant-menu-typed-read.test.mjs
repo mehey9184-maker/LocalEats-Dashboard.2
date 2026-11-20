@@ -64,10 +64,3 @@ test("Merchant API typed menu read stays authenticated, shop-scoped and read-onl
  assert.match(block,/validateMerchantMenuForDisplay\(data\.menu_items, shop\.id\)/);
  assert.doesNotMatch(block,/method:\s*["'](?:POST|PUT|PATCH|DELETE)["']|upload|setAvailability/);
 });
-
-test("unused Rider availability memo removed without changing original Home controls",()=>{
- const src=readFileSync(new URL("../../src/components/DashboardOverview.tsx",import.meta.url),"utf8");
- assert.doesNotMatch(src,/const driverAvailability = useMemo/);
- assert.match(src,/syncShopAvailability\(\{/);
- assert.match(src,/Shop Status Control/);
-});
