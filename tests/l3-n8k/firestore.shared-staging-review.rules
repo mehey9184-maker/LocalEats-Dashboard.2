@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // L3-N8K: SHARED-STAGING REVIEW CANDIDATE ONLY for the isolated localeats-staging project.
+    // NEVER publish to Production, and do not publish to staging before
+    // reviewing Customer-staging read compatibility and exact deployed rules.
+    // All browser writes are denied; server/Admin operations bypass rules.
+    function signedIn() {
+      return request.auth != null && request.auth.uid is string;
+    }
+
+    function ownsShop(shopId) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/shops/$(shopId)) &&
+        get(/databases/$(database)/documents/shops/$(shopId)).data.owner_id == request.auth.uid;
+    }
+
+    match /users/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
+    // L3-N8K Customer compatibility: the Customer app reads its own legacy
+    // /profiles/{uid} mirror. Keep reads owner-scoped; all direct profile
+    // writes remain denied (API remains authoritative).
+    match /profiles/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
+    // IMPORTANT: NOT SAFE TO DEPLOY AS-IS TO SHARED STAGING.
+    // Actual Customer source uses public Firestore shops/menu listings,
+    // reviews, follows, messages and contact/push writes. This candidate
+    // deliberately still DENIES those paths; see N8K compatibility tests
+    // and the unblock plan. Do not open public reads of full private docs.
+
+    // Merchant read-only stage: no public storefront discovery through
+    // Firestore. Customer staging's existing browsing behavior may differ.
+    match /shops/{shopId} {
+      allow get, list: if signedIn() &&
+        resource.data.owner_id == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    match /menu_items/{itemId} {
+      allow get, list: if ownsShop(string(resource.data.shop_id));
+      allow create, update, delete: if false;
+    }
+
+    match /orders/{orderId} {
+      // No shared "finding_rider" pool, customer or private GPS leakage.
+      allow get, list: if signedIn() &&
+        (resource.data.user_id == request.auth.uid ||
+          ownsShop(string(resource.data.shop_id)));
+      allow create, update, delete: if false;
+    }
+
+    // Rider/delivery deferred for pickup launch. Privacy first.
+    match /rider_profiles/{riderId} {
+      allow read, write: if false;
+    }
+    match /rider_connections/{connId} {
+      allow read, write: if false;
+    }
+    match /chat_messages/{messageId} {
+      allow read, write: if false;
+    }
+    match /shop_followers/{followId} {
+      allow read, write: if false;
+    }
+    match /payments/{paymentId} {
+      allow read, write: if false;
+    }
+
+    // Any unreviewed collection or nested document remains inaccessible.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
