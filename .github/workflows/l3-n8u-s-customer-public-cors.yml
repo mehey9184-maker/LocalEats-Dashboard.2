@@ -5,6 +5,7 @@ on:
     paths:
       - 'localeats-api/src/corsOrigins.ts'
       - 'localeats-api/src/corsOrigins.test.ts'
+      - 'localeats-api/tests/l3-n8u-s-production-public-cors-observation.mjs'
       - 'docs/L3_N8U_S_OUT_OF_RANGE_CATALOG_AND_CORS.md'
       - '.github/workflows/l3-n8u-s-customer-public-cors.yml'
   workflow_dispatch:
@@ -33,5 +34,7 @@ jobs:
         run: npm run build && node --test dist/corsOrigins.test.js
       - name: Run full API regressions without external writes
         run: npm test
+      - name: Observe actual public Production CORS, GET and OPTIONS (no tokens or writes)
+        run: node tests/l3-n8u-s-production-public-cors-observation.mjs
       - name: No Production deployment
         run: echo L3_N8U_S_SOURCE_ONLY_NO_FLAGS_NO_DEPLOY_NO_PRODUCTION_ACTION
