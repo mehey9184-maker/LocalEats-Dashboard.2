@@ -9,16 +9,9 @@
 export const MERCHANT_STAGING_ORIGIN =
   "https://localeats-merchant-staging-r52d-mehey9184-makers-projects.vercel.app";
 
-type StageOriginEnv=Pick<NodeJS.ProcessEnv,
-  "VERCEL_ENV"|"LOCALEATS_STAGING_ONLY"|"FIREBASE_PROJECT_ID"|
-  "SUPABASE_URL"|"PICKUP_WRITES_ENABLED"|"PROFILE_WRITES_ENABLED"|
-  "MERCHANT_AVAILABILITY_WRITES_ENABLED"|"MERCHANT_ACCOUNT_WRITES_ENABLED"|
-  "MERCHANT_STAGING_ORIGIN"
->;
-
 export function isVerifiedMerchantStagingOrigin(
   origin:string|undefined,
-  env:StageOriginEnv=process.env,
+  env:NodeJS.ProcessEnv=process.env,
 ):boolean {
   if (!origin || origin!==MERCHANT_STAGING_ORIGIN ||
       env.MERCHANT_STAGING_ORIGIN!==MERCHANT_STAGING_ORIGIN) return false;
