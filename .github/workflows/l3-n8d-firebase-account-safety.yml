@@ -1,0 +1,88 @@
+name: L3-N8D Firebase revocation and dormant Merchant profile API security
+on:
+  pull_request:
+    branches:
+      - review/l3-n8c-merchant-profile-store
+    paths:
+      - 'localeats-api/src/middleware/authenticateFirebase.ts'
+      - 'localeats-api/src/middleware/authenticateFirebase.n8d.test.ts'
+      - 'localeats-api/src/accounts/merchantAccountDormantApi*'
+      - 'localeats-api/src/accounts/merchantApprovedOwner.ts'
+      - 'localeats-api/src/accounts/merchantAdminFirestore.ts'
+      - 'localeats-api/src/accounts/merchantFirestoreAccountStore.ts'
+      - 'localeats-api/src/routes/merchantAccountContract*'
+      - 'localeats-api/src/server.ts'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/l3-n8d-firebase-account-safety.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  api-auth-and-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_PUSH_ENABLED: 'false'
+      PICKUP_ACCEPTANCE_WORKER_ENABLED: 'false'
+      RIDER_ACTIVATION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: No hosted credentials and zero real profile/order activation
+        run: |
+          test -z "${FIREBASE_PROJECT_ID:-}${FIREBASE_PRIVATE_KEY:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${SUPABASE_SECRET_KEY:-}${DATABASE_URL:-}"
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$PROFILE_WRITES_ENABLED" = false
+          ! grep -q 'merchantAccountDormantApi' localeats-api/src/server.ts
+          ! grep -q 'merchantAccountContract' localeats-api/src/server.ts
+      - name: Install exact locked API dependencies
+        run: npm ci --prefix localeats-api --ignore-scripts --no-audit --no-fund
+      - name: API TypeScript build, unchanged strict rules
+        run: npm run build --prefix localeats-api
+      - name: Revoked token and dormant profile API synthetic tests
+        run: |
+          node --test localeats-api/dist/middleware/authenticateFirebase.n8d.test.js
+          node --test localeats-api/dist/accounts/merchantAccountDormantApi.test.js
+          node --test localeats-api/dist/accounts/merchantProfileStore.test.js localeats-api/dist/routes/merchantAccountContract.test.js
+      - name: All existing API regression tests
+        run: npm test --prefix localeats-api
+      - name: Explicit hard-off endpoint invariant
+        run: |
+          test "$MERCHANT_ACCOUNT_WRITES_ENABLED" = false
+          test "$PROFILE_WRITES_ENABLED" = false
+          test "$PICKUP_WRITES_ENABLED" = false
+          echo 'L3_N8D_REVOKED_TOKEN_GUARD_NO_PROFILE_ACTIVATION'
+  merchant-quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked Merchant dependencies without scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Require zero Merchant TypeScript errors
+        run: ./node_modules/.bin/tsc -p tsconfig.json --noEmit
+      - name: Require zero full-root ESLint errors
+        run: npm run lint
+      - name: Existing Merchant pickup safety tests
+        run: npm run test:merchant-pickup
+      - name: Merchant production build, flags still disabled
+        env:
+          VITE_PICKUP_ORDERING_ENABLED: 'false'
+        run: npm run build
