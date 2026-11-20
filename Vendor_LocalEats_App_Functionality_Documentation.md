@@ -1,5 +1,12 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N7B5E — Orders Kanban pagination scope (read-only draft)
+
+This isolated review branch follows PR #185. The existing Orders Kanban previously used two synchronous effect-state resets for `visibleByLane` and `visibleHistory` whenever the selected ticket style, active/history view or stage filter changed. The new scope-keyed presentation cursor adjusts safely during render and exposes the same per-lane +6 and history +24 controls. It preserves the mounted ticket component tree, existing mobile lane preference, original cards/labels/markup and read-only pickup/payment authority. Every style/view/filter transition, including switching back to a previous selection, resets pagination to six per lane or 24 history entries, without carrying hidden old counters.
+
+A new isolated browser fixture must exercise pending and preparing lane pagination, return transitions, mobile lane persistence, history pagination and reset, ownership-scoped presentation, original widths and no hosted/backend requests. Independent TypeScript/strict lint comparison against PR #185, original Merchant Orders Chromium regression and disposable PG17 simulated 2,500-order acceptance are required. Connectivity, real notification attention, Settings, hosted SQL, payments, real orders, FCM and scheduler remain unchanged. No merge, Production or activation.
+
+
 ## L3-N7B5D — scoped React presentation lifecycle (review-only)
 
 This isolated draft on top of PR #184 replaces three synchronous React effect-state resets without changing the Merchant page layout, labels or API behavior. The subscription countdown initializes from current time and schedules a next-paint refresh plus the original one-second tick; timer handles are cleaned up when the deadline changes. The illustrative subscription countdown now belongs to a `key`-scoped shop presentation subtree, so switching merchants resets the sample timer without an effect-side state write. The focused Orders workspace likewise remounts its local UI-only filters/style selection on a change of `styleStorageKey`, reading the corresponding shop's saved layout preference and avoiding stale prior-merchant search state. This remount changes no confirmed orders, shop availability, pickup receipts, payment status or persisted API facts.
