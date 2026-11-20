@@ -17,13 +17,16 @@ export type MerchantStageFlagEnvironment = {
  * Either staging marker blocks writes. This fails closed even if one flag is
  * accidentally omitted during a staged build after the other is set.
  */
-export function isMerchantClientMutationBlocked(env:MerchantStageFlagEnvironment):boolean {
-  return env.VITE_MERCHANT_STAGING_ONLY === "true" ||
-         env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true";
+export function isMerchantClientMutationBlocked(env:unknown):boolean {
+  // Vite's ImportMetaEnv interface does not declare these optional stage keys.
+  // Accept unknown, narrow safely, then check only the two literal markers.
+  const flags:MerchantStageFlagEnvironment = env && typeof env === "object" ? env : {};
+  return flags.VITE_MERCHANT_STAGING_ONLY === "true" ||
+         flags.VITE_MERCHANT_PREVIEW_READ_ONLY === "true";
 }
 
 export function assertMerchantClientMutationAllowed(
-  env:MerchantStageFlagEnvironment,
+  env:unknown,
 ):void {
   if (isMerchantClientMutationBlocked(env)) {
     throw new Error(MERCHANT_STAGING_WRITE_DISABLED);
