@@ -33,3 +33,16 @@ This draft makes **one exact-match API allowlist change only**: permit `https://
 5. **Release ordering** requires **separate explicit owner go/no-go** for the stacked beta API auth/allowlist drafts, a near-shop customer/merchant monitored test, authoritative quote/idempotency/ownership checks, valid FCM delivery, and pause/rollback. Both Customer and Merchant Production switches and API `PICKUP_WRITES_ENABLED` remain OFF until then.
 
 **Status:** This draft is a narrow CORS source fix only; out-of-range Preview already exists for acceptance; public pickup is NOT activated.
+
+## Independently observed live read-only CORS HTTP evidence (21 Nov 2026)
+
+GitHub Actions [L3-N8U-S CORS gate, run #44836907376](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/44836907376) **PASSED** (API build, precise CORS cases, full existing API regressions and read-only Production HTTP diagnostics). Its token-free requests to the current Production `https://localeats-api.vercel.app` returned:
+
+| Request (exact browser Origin) | OPTIONS | GET | Browser CORS response |
+|---|---:|---:|---|
+| `https://www.localeatssa.co.za` to `/health` | 204 | 200 | Allowed exact origin |
+| `https://localeatssa.co.za` to `/health` | 403 | 403 | No allow-origin header |
+| `https://www.localeatssa.co.za` to `/api/v1/catalog/shops` | 204 | 200 | Allowed exact origin |
+| `https://localeatssa.co.za` to `/api/v1/catalog/shops` | 403 | 403 | No allow-origin header |
+
+**This confirms the exact apex CORS bug on the hosted Production API**, not just a source hypothesis. The browser screenshot omitted the URL, so it does not confirm this was that session's root cause. A second read-only synthetic-coordinate `GET /api/v1/catalog/pickup-shops` probe was added to run separately, without placing any order. The source fix **remains draft and is NOT deployed**. No sensitive response bodies, account tokens or user location were printed.
