@@ -120,7 +120,12 @@ export function usePageNotificationAttention({
     }
   },[activeTab]);
 
-  useEffect(()=>()=>{for(const timer of timers.current.values())clearTimeout(timer);timers.current.clear();},[]);
+  useEffect(()=>()=>{
+    // An event handler retained before unmount must not schedule a late cue.
+    scopeRef.current=null;
+    for(const timer of timers.current.values())clearTimeout(timer);
+    timers.current.clear();
+  },[]);
 
   return {pulses,pulseForTopic};
 }
