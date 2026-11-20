@@ -1,5 +1,14 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N7B5C2 — validated Merchant menu read types and dormant calculation (review-only)
+
+The Merchant API now returns `Promise<MenuItem[]>` instead of `any[]`. The new `validateMerchantMenuForDisplay` runs the existing authoritative shop-ID/price/availability/deduplication checks, then narrows the remaining fields expected by Merchant presentation. Invalid item/date/field types fail closed rather than claiming a valid menu. Nullable/missing `image_url` becomes an empty image URL so the original no-photo placeholder still displays without inventing a product image. No menu prices, stock quantities, identity or shop ownership are guessed. The original generic `validateMerchantMenu` remains available for existing policy consumers.
+
+A disconnected, unused `driverAvailability` `useMemo` calculation was removed from Merchant Home; its appearance and active pickup controls are unchanged. Larger dormant rider/delivery components and ten React effect/state diagnostics are intentionally deferred until specific UI/lifecycle tests are available. This is **not** complete lint or go-live sign-off.
+
+This phase is stacked as an isolated draft on PR #183, with independent no-new-TypeScript/no-new-ESLint verification, Merchant pickup/recovery/no-write checks, original Orders 320/390/1280px Chromium fixture and disposable Postgres 2,500-order integration. Production, hosted database, schema, real payment/order, scheduler, FCM sends, live settings/profile save, Rider and merges remain blocked.
+
+
 ## L3-N7B5C — typed Merchant pickup recovery and availability adapters (review only)
 
 On top of the verified L3-N7B5B draft, the pickup recovery helper now treats saved commands and API receipts as untrusted `unknown` records, narrowing fields before use. The original account identity, UUID, command revision, owner/receipt, replay, confirmation and no-write protections remain. The authenticated Merchant API command argument is inferred from the validated command creator. Two ignored, legacy browser-side availability-adapter arguments were removed from the existing Home status handlers; the availability helper already delegates to the authenticated Merchant API. No original UI layout or order lifecycle has been intentionally changed.
