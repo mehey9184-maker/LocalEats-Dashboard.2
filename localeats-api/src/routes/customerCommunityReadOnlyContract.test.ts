@@ -188,8 +188,8 @@ test("N8M repository failures and unbounded returned rows cannot masquerade as e
 });
 test("N8M no hosted router mount or DB writes: source-level review release gate",async()=>{
  const {readFileSync}=await import("node:fs");
- const s=readFileSync(new URL("../server.ts",import.meta.url),"utf8");
- const contract=readFileSync(new URL("./customerCommunityReadOnlyContract.ts",import.meta.url),"utf8");
+ const s=readFileSync(new URL("../../src/server.ts",import.meta.url),"utf8");
+ const contract=readFileSync(new URL("../../src/routes/customerCommunityReadOnlyContract.ts",import.meta.url),"utf8");
  assert.ok(!s.includes("customerCommunityReadOnlyContract"));
  assert.ok(!s.includes("/api/v1/community"));
  assert.ok(!contract.includes(".insert(") && !contract.includes(".update(") &&
