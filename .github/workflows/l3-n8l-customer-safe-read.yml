@@ -1,0 +1,68 @@
+name: L3-N8L Customer safe public catalog API and Merchant regression
+on:
+  pull_request:
+    branches:
+      - review/l3-n8k-shared-firebase-rules-compatibility
+    paths:
+      - 'localeats-api/src/routes/catalog.ts'
+      - 'localeats-api/src/routes/publicCatalogProjection*'
+      - 'localeats-api/src/routes/publicCatalogResponse.test.ts'
+      - 'docs/L3_N8L_CUSTOMER_SAFE_READ_BRIDGE.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/l3-n8l-customer-safe-read.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-api-leakage-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 17
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_WRITES_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: No hosted Firebase or Supabase secrets
+        run: |
+          test -z "${FIREBASE_TOKEN:-}${FIREBASE_PRIVATE_KEY:-}${FIREBASE_CLIENT_EMAIL:-}${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${VERCEL_TOKEN:-}"
+          test "$PICKUP_WRITES_ENABLED" = false
+          test "$PROFILE_WRITES_ENABLED" = false
+      - name: Build exact existing API dependencies
+        run: |
+          npm ci --prefix localeats-api --ignore-scripts --no-audit --no-fund
+          npm run build --prefix localeats-api
+      - name: Public catalog projection pure and API HTTP leakage regressions
+        run: |
+          node --test localeats-api/dist/routes/publicCatalogProjection.test.js
+          node --test localeats-api/dist/routes/publicCatalogResponse.test.js
+          node --test localeats-api/dist/routes/catalog.test.js
+      - name: Complete existing API security and pickup regressions
+        run: npm test --prefix localeats-api
+      - name: No new public write endpoints
+        run: |
+          ! grep -q 'router.post' localeats-api/src/routes/catalog.ts
+          ! grep -q 'merchantAccountDormantApi' localeats-api/src/server.ts
+          echo L3_N8L_PUBLIC_GET_PROJECTION_ONLY_NO_PROD_OR_DATABASE_CHANGE
+  original-merchant-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Original Merchant quality gate
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          ./node_modules/.bin/tsc --project tsconfig.json --noEmit
+          npm run lint
+          npm run test:merchant-pickup
