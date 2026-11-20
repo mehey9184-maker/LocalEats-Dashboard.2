@@ -1,5 +1,10 @@
 # LocalEats Platform - Persistent System Instructions
 
+## L3-N8U-R — First real Production pickup preflight (2026-11-20)
+
+Read [the Production identity and first pickup acceptance report](docs/L3_N8U_R_PRODUCTION_IDENTITY_FIRST_PICKUP_ACCEPTANCE.md). Read-only Production SQL showed only **My-Kota / shop-my-kota-ivory-park** currently has approved active status, a positive-price available menu item, in-pilot location and a recorded owner UID; two active push-subscription records are **not proof of device delivery**. Production already holds 1 paid/collected pickup and 5 events—preserve them. New mounted-API tests in this review use fake IDs/mock providers; they are **not live orders**. Real Production named Firestore Rules, actual owner/customer Firebase identity, and tested FCM are still pending. Never enable public pickup, change Firebase rules or deploy on the basis of green synthetic tests.
+
+
 ## L3-N8U-Q — Controlled Production pickup beta (2026-11-20)
 
 Read [the invite-only beta admission and pause/fulfillment report](docs/L3_N8U_Q_CONTROLLED_BETA_ELIGIBILITY.md) before changing pickup flags, orders, identity, merchant ownership or Production. The current API supports a **draft-only** server-side 1–3 shop / 1–20 Firebase UID invitation policy with a mandatory expiry and a separate new-order admission switch. **It is not live.** It is stacked on draft Production auth PR #211 and must not be deployed or merged before real Production test acceptance and explicit owner signoff. Keep existing server-only price, idempotency, Firebase ownership, SQL RPC and region/radius limits. Once a real beta begins, pause only *new admission* when existing pickup orders still need completion. Production is still OFF.
