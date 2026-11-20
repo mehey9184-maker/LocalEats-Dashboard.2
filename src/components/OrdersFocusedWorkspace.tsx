@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from "react";
+import React, {useMemo, useState} from "react";
 import {Bell, ChevronDown, ClipboardList, Clock3, MoreHorizontal, RefreshCw, Search, ShieldCheck, X} from "lucide-react";
 import type {Order} from "../types";
 import {PreviewFakeOrderTrigger, type PreviewTestPickupOrder, type PreviewTestPickupAction} from "./PreviewFakeOrders";
@@ -51,6 +51,11 @@ const stageMatches=(stage:Stage,status:string)=>
   stage==="all" || (stage==="preparing"?status==="accepted"||status==="preparing":status===stage);
 
 export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
+  // A merchant-scoped style key also scopes the local search/queue controls.
+  // Remounting on key changes avoids showing the previous shop's UI state.
+  return <OrdersFocusedWorkspaceForShop key={props.styleStorageKey} {...props}/>;
+}
+function OrdersFocusedWorkspaceForShop(props:OrdersFocusedWorkspaceProps){
   const {
     realOrders,fakeOrders,onDemoAction,incoming,onSimulate,onSimulateBatch,onClear,styleStorageKey,completedRealOrders,viewMode,onViewModeChange,
     renderRealOrder,onRefresh,onExportCSV,onExportJSON,
@@ -63,7 +68,6 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const [showSearch,setShowSearch]=useState(false);
   const isTestPreview=isMerchantPreviewSimulatorEnabled();
   const [boardStyle,setBoardStyle]=useState<OrderBoardStyle>(()=>readBoardStyle(styleStorageKey));
-  useEffect(()=>setBoardStyle(readBoardStyle(styleStorageKey)),[styleStorageKey]);
   const chooseBoardStyle=(choice:OrderBoardStyle)=>{
     setBoardStyle(choice);
     // Only a harmless style enum is stored; no order, customer, payment or login data.

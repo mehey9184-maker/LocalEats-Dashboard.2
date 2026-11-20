@@ -1,5 +1,12 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N7B5D — scoped React presentation lifecycle (review-only)
+
+This isolated draft on top of PR #184 replaces three synchronous React effect-state resets without changing the Merchant page layout, labels or API behavior. The subscription countdown initializes from current time and schedules a next-paint refresh plus the original one-second tick; timer handles are cleaned up when the deadline changes. The illustrative subscription countdown now belongs to a `key`-scoped shop presentation subtree, so switching merchants resets the sample timer without an effect-side state write. The focused Orders workspace likewise remounts its local UI-only filters/style selection on a change of `styleStorageKey`, reading the corresponding shop's saved layout preference and avoiding stale prior-merchant search state. This remount changes no confirmed orders, shop availability, pickup receipts, payment status or persisted API facts.
+
+The original Orders page remains the protected default, and a dedicated isolated Chromium lifecycle fixture must demonstrate subscription sample reset, timer progress, Orders layout preference restoration across merchant switches, no network escape, and no real writes, alongside the original 320/390/1280px Orders/owner fixture, strict independent TypeScript/ESLint delta and disposable 2,500-order PostgreSQL acceptance. Dormant Overview, Connectivity and attention notification effect code are intentionally deferred to a separate behavior-tested batch. This is not full-root lint/Settings/FCM acceptance or Production authorization. No hosted DB, orders, payments, push, cron, Rider, deployment or merge is changed.
+
+
 ## L3-N7B5C2 — validated Merchant menu read types and dormant calculation (review-only)
 
 The Merchant API now returns `Promise<MenuItem[]>` instead of `any[]`. The new `validateMerchantMenuForDisplay` runs the existing authoritative shop-ID/price/availability/deduplication checks, then narrows the remaining fields expected by Merchant presentation. Invalid item/date/field types fail closed rather than claiming a valid menu. Nullable/missing `image_url` becomes an empty image URL so the original no-photo placeholder still displays without inventing a product image. No menu prices, stock quantities, identity or shop ownership are guessed. The original generic `validateMerchantMenu` remains available for existing policy consumers.

@@ -48,10 +48,12 @@ export function countdownParts(deadline:number,now:number){
 export function SubscriptionCountdown({deadline,sample=false}:{deadline:number|null;sample?:boolean}){
   const [now,setNow]=useState(()=>Date.now());
   useEffect(()=>{
-    setNow(Date.now());
     if(deadline===null)return;
+    // Refresh the visible countdown on the next paint rather than cascading a
+    // synchronous state update during effect setup. Keep the one-second clock.
+    const frame=window.requestAnimationFrame(()=>setNow(Date.now()));
     const interval=window.setInterval(()=>setNow(Date.now()),1000);
-    return ()=>window.clearInterval(interval);
+    return ()=>{window.cancelAnimationFrame(frame);window.clearInterval(interval);};
   },[deadline]);
   if(deadline===null)return <p data-testid="subscription-expiry-unverified" className="font-semibold text-on-surface text-sm">Expiry date awaiting confirmation</p>;
   const t=countdownParts(deadline,now);
@@ -75,10 +77,14 @@ function previewExampleAllowed(){
     import.meta.env.VITE_PAYMENTS_PLAN_DEMO_ENABLED==="true" &&
     /^local-eats-dashboard-2-6m8o-[a-z0-9]+-mehey9184-makers-projects\.vercel\.app$/.test(window.location.hostname);
 }
-export function MerchantSubscriptionPlans({shop,verified}:{shop?:Shop;verified:boolean}){
+export function MerchantSubscriptionPlans(props:{shop?:Shop;verified:boolean}){
+  // An owner/shop switch remounts only this presentation subtree, clearing its
+  // illustrative timer without ever copying a prior shop's UI state.
+  return <MerchantSubscriptionPlansForShop key={props.shop?.id??"unverified-shop"} {...props}/>;
+}
+function MerchantSubscriptionPlansForShop({shop,verified}:{shop?:Shop;verified:boolean}){
   const current=useMemo(()=>planFromVerifiedShop(verified?shop:undefined),[verified,shop]);
   const [sampleDeadline,setSampleDeadline]=useState<number|null>(null);
-  useEffect(()=>setSampleDeadline(null),[shop?.id]);
   const canDemo=previewExampleAllowed();
   return <div data-testid="payments-plan-preview" className="space-y-5">
     <section className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5">
