@@ -40,9 +40,11 @@ export function assessMerchantStagingIsolation(staging,production){
   if(!nonempty(api.firestoreDatabaseId) ||
       !nonempty(merchant.firestoreDatabaseId) ||
       api.firestoreDatabaseId!==merchant.firestoreDatabaseId)
-    blockers.push("The exact named Firestore database IDs do not match.");
-  if(api.firestoreDatabaseId==="(default)" || merchant.firestoreDatabaseId==="(default)")
-    blockers.push("A named Merchant staging Firestore database is required; default fallback is unsafe.");
+    blockers.push("The explicitly selected Firestore database IDs do not match.");
+  // An explicitly selected (default) database is safe inside a *different*
+  // staging Firebase project. Never silently fall back to Production's DB.
+  // Production/staging project separation and complete client config are
+  // mandatory independent checks above.
   if(!nonempty(api.supabaseUrl)||!nonempty(prod.supabaseUrl))
     blockers.push("Staging and Production Supabase identity is missing.");
   else if(api.supabaseUrl===prod.supabaseUrl)
