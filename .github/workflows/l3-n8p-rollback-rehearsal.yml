@@ -1,0 +1,33 @@
+name: L3-N8P approved staging rollback-only pickup safety rehearsal
+on:
+  pull_request:
+    branches:
+      - review/l3-n8o-approved-stage-order-schema
+    paths:
+      - 'tests/l3-n8p/**'
+      - 'docs/L3_N8P_APPROVED_STAGING_ROLLBACK_REHEARSAL.md'
+      - 'Vendor_LocalEats_App_Functionality_Documentation.md'
+      - '.github/workflows/l3-n8p-rollback-rehearsal.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  staging-rollback-contract-no-credentials:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Assert this CI contains no hosted DB, Firebase or Vercel credentials
+        run: |
+          test -z "${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${VERCEL_TOKEN:-}${FIREBASE_TOKEN:-}${GOOGLE_APPLICATION_CREDENTIALS:-}"
+      - name: Verify owner-approved single-transaction staging rollback-only SQL
+        run: node --test tests/l3-n8p/staging-rollback-only.test.mjs
+      - name: Verify inherited N8O hard-off schema source remains unchanged and safe
+        run: node --test tests/l3-n8o/staging-order-schema-hard-off.test.mjs
+      - name: Explicit no hosted stage re-execution and no Production deployment
+        run: echo L3_N8P_CI_READ_ONLY_APPROVED_DB_ROLLBACK_WAS_SEPARATELY_EXECUTED_VERIFIED
