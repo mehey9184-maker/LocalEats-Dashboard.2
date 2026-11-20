@@ -1,0 +1,32 @@
+name: L3-N8S staging Firebase auth safety (offline)
+on:
+  pull_request:
+    branches:
+      - review/l3-n8p-staging-rollback-rehearsal
+    paths:
+      - 'src/lib/merchantStagingNoWrite.ts'
+      - 'src/lib/firebase.ts'
+      - 'tests/l3-n8s/**'
+      - 'docs/L3_N8S_STAGING_AUTH_AND_PAIRING_PREP.md'
+      - '.github/workflows/l3-n8s-staging-auth-safety.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-only-guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Prevent accidental hosted provider credentials during offline contract check
+        run: |
+          test -z "${SUPABASE_URL:-}${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${VERCEL_TOKEN:-}${FIREBASE_TOKEN:-}${GOOGLE_APPLICATION_CREDENTIALS:-}"
+      - name: Verify staging Firebase project is a browser-write hard stop
+        run: node --experimental-strip-types --test tests/l3-n8s/merchant-staging-identity-guard.test.mjs
+      - name: No Firebase, Supabase or Vercel changes executed
+        run: echo L3_N8S_SOURCE_ONLY_STAGING_WRITE_GUARD_DOES_NOT_PUBLISH_RULES_OR_ENABLE_ORDERS
