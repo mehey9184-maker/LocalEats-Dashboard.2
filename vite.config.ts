@@ -10,7 +10,13 @@ export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   // Only the dedicated staging build mode applies strict isolation; ordinary
   // Production/Preview source and original UI remain unchanged.
-  if (mode === 'merchant-staging') assertMerchantStagingBuild(mode, env, process.env);
+  // Never fall back to the bundled Production Firebase project when the
+  // dedicated staging Vercel project accidentally uses the default build.
+  if (mode === 'merchant-staging' ||
+      env.LOCALEATS_STAGING_ONLY === 'true' ||
+      env.VITE_MERCHANT_STAGING_ONLY === 'true') {
+    assertMerchantStagingBuild(mode, env, process.env);
+  }
   return {
     plugins: [
       react(), 
