@@ -13,6 +13,11 @@ export function pageForMerchantNotice(topic:MerchantNoticeTopic):AttentionPage {
 }
 
 const ANIMATION_MS=1150;
+type PulseState={
+  scope:string|null;
+  activeTab:string;
+  pulses:Partial<Record<AttentionPage,number>>;
+};
 type VerifiedSignals={
   scope:string|null;
   ordersFresh:boolean;
@@ -30,7 +35,19 @@ type VerifiedSignals={
 export function usePageNotificationAttention({
   scope,ordersFresh,orders,menuFresh,menuItems,activeTab
 }:VerifiedSignals){
-  const [pulses,setPulses]=useState<Partial<Record<AttentionPage,number>>>({});
+  // Scope and navigation share one presentation state. Reset during the
+  // component's own guarded render instead of synchronously in an effect:
+  // no prior-shop wiggle or visited-page movement can paint.
+  const [attention,setAttention]=useState<PulseState>(()=>({scope,activeTab,pulses:{}}));
+  if(attention.scope!==scope || attention.activeTab!==activeTab){
+    const next=attention.scope===scope?{...attention.pulses}:{};
+    if(attention.scope===scope && attention.activeTab!==activeTab &&
+       Object.values(TOPIC_PAGE).includes(activeTab as AttentionPage)){
+      delete next[activeTab as AttentionPage];
+    }
+    setAttention({scope,activeTab,pulses:next});
+  }
+  const pulses=attention.scope===scope?attention.pulses:{};
   const seq=useRef(0);
   const timers=useRef(new Map<AttentionPage,ReturnType<typeof setTimeout>>());
   const orderBaseline=useRef<Set<string>|null>(null);
@@ -38,17 +55,9 @@ export function usePageNotificationAttention({
   const scopeRef=useRef<string|null>(null);
   const previousTab=useRef(activeTab);
 
-  const stopPage=useCallback((page:AttentionPage)=>{
-    const timer=timers.current.get(page);
-    if(timer!==undefined){clearTimeout(timer);timers.current.delete(page);}
-    setPulses(old=>{
-      if(old[page]===undefined)return old;
-      const next={...old};delete next[page];return next;
-    });
-  },[]);
-
   const pulseForTopic=useCallback((topic:MerchantNoticeTopic)=>{
-    if(!scopeRef.current)return;
+    // A callback captured for merchant A must never animate merchant B.
+    if(!scope || scopeRef.current!==scope)return;
     const page=pageForMerchantNotice(topic);
     // Accessibility: keep the ordinary status badge, skip movement for users
     // who have asked their OS/browser to reduce motion.
@@ -58,16 +67,20 @@ export function usePageNotificationAttention({
     if(previous!==undefined)clearTimeout(previous);
     seq.current+=1;
     const nonce=seq.current;
-    setPulses(old=>({...old,[page]:nonce}));
+    setAttention(old=>old.scope===scope
+      ? {...old,pulses:{...old.pulses,[page]:nonce}} : old);
     const timer=setTimeout(()=>{
+      // An older timer must not erase a newer pulse or a different shop.
+      if(timers.current.get(page)!==timer)return;
       timers.current.delete(page);
-      setPulses(old=>{
-        if(old[page]!==nonce)return old;
-        const next={...old};delete next[page];return next;
+      setAttention(old=>{
+        if(old.scope!==scope || old.pulses[page]!==nonce)return old;
+        const next={...old.pulses};delete next[page];
+        return {...old,pulses:next};
       });
     },ANIMATION_MS);
     timers.current.set(page,timer);
-  },[]);
+  },[scope]);
 
   useEffect(()=>{
     scopeRef.current=scope;
@@ -75,7 +88,6 @@ export function usePageNotificationAttention({
     stockBaseline.current=null;
     for(const timer of timers.current.values())clearTimeout(timer);
     timers.current.clear();
-    setPulses({});
   },[scope]);
 
   useEffect(()=>{
@@ -102,11 +114,18 @@ export function usePageNotificationAttention({
     if(last!==activeTab && Object.values(TOPIC_PAGE).includes(activeTab as AttentionPage)){
       // A navigation tap stops the attention movement. Underlying order/stock
       // counts remain authoritative and are not marked read merely by visiting.
-      stopPage(activeTab as AttentionPage);
+      const page=activeTab as AttentionPage;
+      const timer=timers.current.get(page);
+      if(timer!==undefined){clearTimeout(timer);timers.current.delete(page);}
     }
-  },[activeTab,stopPage]);
+  },[activeTab]);
 
-  useEffect(()=>()=>{for(const timer of timers.current.values())clearTimeout(timer);timers.current.clear();},[]);
+  useEffect(()=>()=>{
+    // An event handler retained before unmount must not schedule a late cue.
+    scopeRef.current=null;
+    for(const timer of timers.current.values())clearTimeout(timer);
+    timers.current.clear();
+  },[]);
 
   return {pulses,pulseForTopic};
 }

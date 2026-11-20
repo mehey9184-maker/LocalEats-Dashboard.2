@@ -1127,15 +1127,15 @@ function App() {
   const orderReadScope = user && merchantShopGate.status === "ready" && orderReadShopId
     ? `${user.id}:${orderReadShopId}` : null;
   const [orderReadStatus,setOrderReadStatus] = useState<{
-    state:"unverified"|"fresh"|"failed";lastSuccessAt:number|null;
-  }>({state:"unverified",lastSuccessAt:null});
+    scope:string|null;state:"unverified"|"fresh"|"failed";lastSuccessAt:number|null;
+  }>({scope:null,state:"unverified",lastSuccessAt:null});
 
   // Invalidate and clear prior shop/account orders before the browser paints.
   // A stale inbox can stay visible only during a failed refresh of the SAME scope.
   useLayoutEffect(()=>{
     orderReadCoordinator.current.activate(orderReadScope);
     setOrders([]);
-    setOrderReadStatus({state:"unverified",lastSuccessAt:null});
+    setOrderReadStatus({scope:orderReadScope,state:"unverified",lastSuccessAt:null});
     return ()=>orderReadCoordinator.current.activate(null);
   },[orderReadScope]);
 
@@ -1165,7 +1165,7 @@ function App() {
         total_price: Number(d.total_price ?? d.price ?? 0),
       })) as Order[];
     processAndSetOrders([], apiOrders);
-    setOrderReadStatus({state:"fresh",lastSuccessAt:Date.now()});
+    setOrderReadStatus({scope:orderReadScope,state:"fresh",lastSuccessAt:Date.now()});
   }, [orderReadScope,orderReadShopId,processAndSetOrders]);
 
   const menuReadScope=user && merchantShopGate.status==="ready" && currentShop ? `${user.id}:${currentShop.id}` : null;
@@ -1237,7 +1237,7 @@ function App() {
   // The cue is visual only; it never acknowledges messages or changes data.
   const {pulses:navAttention,pulseForTopic:pulseNavNotice}=usePageNotificationAttention({
     scope:orderReadScope && menuReadScope===orderReadScope && merchantShopGate.status==="ready" ? orderReadScope : null,
-    ordersFresh:orderReadStatus.state==="fresh",
+    ordersFresh:Boolean(orderReadScope && orderReadStatus.scope===orderReadScope && orderReadStatus.state==="fresh"),
     orders,
     menuFresh:menuReadStatus.scope===menuReadScope && menuReadStatus.state==="ready",
     menuItems,
