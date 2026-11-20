@@ -3,7 +3,7 @@
  * account identifiers. Never print response bodies or redirect Locations.
  */
 const base="https://localeats-api.vercel.app";
-const urls=["/health","/api/v1/catalog/shops"];
+const urls=["/health","/api/v1/catalog/shops","/api/v1/catalog/pickup-shops?lat=-26.1000&lng=28.1000"];
 const origins=["https://www.localeatssa.co.za","https://localeatssa.co.za"];
 for(const path of urls) {
   for(const origin of origins) {
