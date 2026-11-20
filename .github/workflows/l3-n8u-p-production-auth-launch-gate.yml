@@ -37,5 +37,7 @@ jobs:
         run: npm run build
       - name: Offline revocation-aware auth, write gate and controlled-pickup regressions
         run: node --test dist/middleware/authenticateFirebase.test.js dist/middleware/pickupWriteGate.test.js dist/middleware/controlledPickup.test.js
+      - name: Run complete existing API regression suite with no hosted credentials
+        run: npm test
       - name: Confirm this job never activates Production
         run: echo L3_N8U_P_OFFLINE_ONLY_NO_PRODUCTION_WRITE_NO_DEPLOY
