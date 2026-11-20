@@ -1,5 +1,8 @@
 # L3-N8G — Merchant staging Preview and strict Firebase cutover (draft-only)
 
+> **N8H current hosted configuration (20 November 2026):** A dedicated Merchant Vercel Preview and a separate, branch-specific API address now exist. The Merchant Preview uses `https://localeats-merchant-api-stage-r52d-mehey9184-makers-projects.vercel.app`, **not** the original Customer staging API canonical URL described in the N8G preparation plan below. The N8H source build guard and CI enforce this corrected API target. See `docs/L3_N8H_HOSTED_MERCHANT_STAGE.md` for hosted verification, disabled-write controls, and remaining account acceptance gates.
+
+
 **20 November 2026.** This document describes *prepared* source changes and the exact **owner-gated** Vercel configuration. It does not authorize creation, billing, deployment, account registration, hosted writes or a PR merge.
 
 ## Verified starting inventory
