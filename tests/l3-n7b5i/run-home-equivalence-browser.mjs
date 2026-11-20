@@ -60,7 +60,7 @@ try{
      body:'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/merchant.css"><link rel="stylesheet" href="/snapshot.css"></head><body><div id="root"></div><script src="/merchant.js"></script></body></html>'
     });
     if(url.pathname==="/merchant.css")return route.fulfill({status:200,contentType:"text/css",body:css});
-    if(url.pathname==="/snapshot.css")return route.fulfill({status:200,contentType:"text/css",body:"*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important}"});
+    if(url.pathname==="/snapshot.css")return route.fulfill({status:200,contentType:"text/css",body:"*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important}svg [stroke-dashoffset]{stroke-dashoffset:0!important}"});
     if(url.pathname==="/merchant.js")return route.fulfill({status:200,contentType:"application/javascript",body:output[variant]});
     return route.abort();
    });
@@ -79,7 +79,15 @@ try{
     }
     const snap=await Promise.all(sessions.map(async x=>{
      const page=x.page;
-     const html=await page.locator('[data-testid="home-fixture"]').innerHTML();
+     const html=await page.locator('[data-testid="home-fixture"]').evaluate(root=>{
+      const copy=root.cloneNode(true);
+      // Recharts/Framer animation frames are not meaningful Home content.
+      // Normalize only their runtime-driven SVG progress-ring offset, not text,
+      // layout, styles or owner/pickup values.
+      copy.querySelectorAll("svg [stroke-dashoffset]").forEach(node=>
+       node.setAttribute("stroke-dashoffset","snapshot-stable"));
+      return copy.innerHTML;
+     });
      const image=await page.screenshot({animations:"disabled",fullPage:false});
      const scope=await page.getByTestId("fixture-scope").textContent();
      const observed=await page.evaluate(()=>window.l3n7b5iObserved);
