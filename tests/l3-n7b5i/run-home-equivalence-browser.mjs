@@ -27,7 +27,7 @@ assert(css.includes(".flex"),"Actual Merchant CSS required");
 const stubPaths={
  supabase:resolve(root,"tests/l3-n6b/fixture-supabase.ts"),
  useAuthGuard:resolve(root,"tests/l3-n6b/fixture-auth-guard.ts"),
- firebase:resolve(root,"tests/l3-n6/fixture-auth.ts"),
+ firebase:resolve(root,"tests/l3-n7b5i/fixture-firebase.ts"),
  apiAuth:resolve(root,"tests/l3-n6/fixture-api-auth.ts"),
  OrderService:resolve(root,"tests/l3-n6b/fixture-order-service.ts")
 };
