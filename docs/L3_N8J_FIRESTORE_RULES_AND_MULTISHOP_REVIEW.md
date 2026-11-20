@@ -19,11 +19,11 @@ Browser client protection in N8I remains defense in depth, not a server-side rul
 
 ## 2. Emulator-only verification
 
-`tests/l3-n8j/firebase.json` selects only the local Firestore emulator on `127.0.0.1:8181`, a separate candidate rules file and UI disabled. `tests/l3-n8j/package.json` pins direct testing dependencies `firebase-tools@15.37.0`, `@firebase/rules-unit-testing@6.0.0`, `firebase@12.16.0`. No root application dependency or lockfile changes. A CI-only ephemeral install is isolated under the test folder, without package-lock changes; no hosted Firebase credentials are supplied. The test runner supplies fake `owner-A`, `owner-B`, and `customer-A` contexts via the official `rules-unit-testing` library.
+`tests/l3-n8j/firebase.json` selects only the local Firestore emulator on `127.0.0.1:8181`, a separate candidate rules file and UI disabled. `tests/l3-n8j/package.json` pins direct testing dependencies `firebase-tools@15.37.0`, `@firebase/rules-unit-testing@6.0.0`, `firebase@13.4.0`. No root application dependency or lockfile changes. A CI-only ephemeral install is isolated under the test folder, without package-lock changes; no hosted Firebase credentials are supplied. The test runner supplies fake `owner-A`, `owner-B`, and `customer-A` contexts via the official `rules-unit-testing` library.
 
 The emulator test seeds disposable synthetic documents using `withSecurityRulesDisabled` *within the emulator only*, then tests genuine Firestore Rules permission decisions: own versus foreign profile, owner-scoped shop queries, multi-shop owner reads, forged shop approval/owner edits, menu cross-shop access, customer/shop-owner order reads, blocked `finding_rider` exposure, all browser writes denied, Rider GPS/payment denial and unknown paths denied. These are not real Firebase Auth identities or hosted documents.
 
-**Emulator results:** Record actual GitHub CI status here after runs; an emulator test must not be claimed passing merely because the static rules text compiles or Node offline tests pass.
+**Actual emulator result:** GitHub Actions run [#44701726304](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/44701726304) completed with **3/3 jobs PASS**. The genuine local Firestore emulator executed **10/10 permission tests PASS, 0 failed** using Java 21 and a `demo-` project ID. The synthetic dormant multi-shop owner test runs passed **11/11 (N8C)**, **6/6 (N8D)** and **11/11 (N8B)**, plus the **247/247 existing API** regressions, **16/16 Merchant pickup** tests, Merchant TypeScript 0 errors, root ESLint 0 errors (35 existing warnings). The tests never read/published real Firebase rules or connected to any hosted Auth project.
 
 ## 3. Safe multi-shop owner/profile admission correction (unmounted)
 
