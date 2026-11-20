@@ -1,4 +1,5 @@
 import {assertControlledPickup, canSubmitControlledPickup} from "../middleware/controlledPickup.js";
+import {resolveDesignatedPilotShop} from "../accounts/designatedPilotShop.js";
 import {assertPickupWritesDisabled} from "../middleware/pickupWriteGate.js";
 import { Router, type Response } from "express";
 import { authenticateFirebase, type AuthenticatedRequest } from "../middleware/authenticateFirebase.js";
@@ -229,11 +230,13 @@ merchantOrderRoutes.get(
 
       const { data: shops, error: shopError } = await supabaseAdmin
         .from("shops")
-        .select("id")
+        .select("id,owner_id,approval_status,archived_at")
         .eq("owner_id", uid)
         .is("archived_at", null);
       if (shopError) throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "Shop ownership could not be verified.");
-      const shopIds = (shops ?? []).map((shop) => String(shop.id));
+      const pilot = resolveDesignatedPilotShop(shops ?? [], uid);
+      if (pilot.mode === "denied") throw new OrderContractError(pilot.status, pilot.code, "The designated pilot shop could not be verified.");
+      const shopIds = (pilot.mode === "selected" ? [pilot.shop] : shops ?? []).map((shop) => String(shop.id));
       if (shopIds.length === 0) {
         res.status(200).json({ success: true, orders: [] });
         return;
@@ -382,3 +385,4 @@ for (const [path,action] of [["reject","reject"],["payment-confirmation","confir
     } catch(error) { sendOrderError(res,error); }
   });
 }
+

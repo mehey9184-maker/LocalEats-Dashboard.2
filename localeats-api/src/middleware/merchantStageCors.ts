@@ -24,3 +24,4 @@ export function isVerifiedMerchantStagingOrigin(
     env.MERCHANT_AVAILABILITY_WRITES_ENABLED!=="true" &&
     env.MERCHANT_ACCOUNT_WRITES_ENABLED!=="true";
 }
+

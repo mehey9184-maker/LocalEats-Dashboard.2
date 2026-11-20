@@ -1,4 +1,5 @@
 import {effectiveShop} from "../orders/shopAvailability.js";
+import {resolveDesignatedPilotShop} from "../accounts/designatedPilotShop.js";
 import { Router, Response } from "express";
 import { AuthenticatedRequest, authenticateFirebase } from "../middleware/authenticateFirebase.js";
 import { supabaseAdmin } from "../lib/supabaseAdmin.js";
@@ -58,6 +59,16 @@ router.get("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res:
       console.error("Supabase merchant shop query error:", error);
 
       res.status(503).json({success:false,code:"AVAILABILITY_SCHEMA_UNAVAILABLE",error:"Shop availability is not activated or could not be loaded."});
+      return;
+    }
+
+    const pilot = resolveDesignatedPilotShop(shops ?? [], uid);
+    if (pilot.mode === "denied") {
+      res.status(pilot.status).json({success:false,code:pilot.code,error:"The designated pilot shop could not be verified."});
+      return;
+    }
+    if (pilot.mode === "selected") {
+      res.status(200).json({success:true,shop:effectiveShop(pilot.shop)});
       return;
     }
 
@@ -363,3 +374,4 @@ router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res
 });
 
 export default router;
+

@@ -330,9 +330,17 @@ function App() {
 
   const merchantShopRequest=useRef(0);
   const verifiedMerchantUid=useRef<string|null>(null);
+  const verifiedMerchantScope=useRef<string|null>(null);
   const acceptAuthoritativeMerchantShop = useCallback((firebaseUid: string, shop: Shop) => {
     if(firebaseAuth.currentUser?.uid!==firebaseUid)return;
     if(shop.owner_id!==firebaseUid)throw Error("Shop ownership could not be verified for this account.");
+    const scope=`${firebaseUid}:${shop.id}`;
+    if(verifiedMerchantScope.current!==scope){
+      menuReadRequest.current++;
+      setMenuItems([]);
+      setOrders([]);
+    }
+    verifiedMerchantScope.current=scope;
     registerVerifiedShopId(firebaseUid, shop.id);
     setShops([shop]);
     if (shop.approval_status === "approved") {

@@ -14,7 +14,8 @@
       "fix/pickup-zero-fee": false,
       "fix/merchant-authoritative-availability": false,
       "fix/merchant-firestore-session-metadata": false,
-      "fix/pickup-quote-eligibility": false
+      "fix/pickup-quote-eligibility": false,
+      "review/l3-n8n-api-designated-pilot": false
     }
   }
 }
