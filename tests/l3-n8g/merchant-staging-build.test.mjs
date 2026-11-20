@@ -127,3 +127,14 @@ test("N8G no staging-only feature silently writes to Firestore or API",()=>{
   assert.match(app,/VITE_MERCHANT_PREVIEW_READ_ONLY === "true"/);
   assert.match(firebase,/VITE_FIREBASE_CONFIG_SOURCE === "environment"/);
 });
+
+test("N8H Merchant stage pins its own API branch alias rather than Customer stage API",()=>{
+  assert.equal(MERCHANT_STAGING_API_ORIGIN,
+    "https://localeats-merchant-api-stage-r52d-mehey9184-makers-projects.vercel.app");
+  assert.notEqual(MERCHANT_STAGING_API_ORIGIN,
+    "https://localeats-api-staging-r52d-mehey9184-makers-projects.vercel.app");
+  const env=valid();
+  env.VITE_LOCALEATS_API_URL=
+    "https://localeats-api-staging-r52d-mehey9184-makers-projects.vercel.app";
+  assert.equal(inspectMerchantStagingBuild("merchant-staging",env,preview).ready,false);
+});
