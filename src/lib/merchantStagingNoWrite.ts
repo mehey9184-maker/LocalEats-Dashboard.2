@@ -21,7 +21,7 @@ export type MerchantStageFlagEnvironment = {
  */
 export function isMerchantClientMutationBlocked(env:unknown):boolean {
   // Vite's ImportMetaEnv interface does not declare these optional stage keys.
-  // Accept unknown, narrow safely, then check only the two literal markers.
+  // Accept unknown, narrow safely, then check the fixed project and stage flags.
   const flags:MerchantStageFlagEnvironment = env && typeof env === "object" ? env : {};
   return flags.VITE_FIREBASE_PROJECT_ID === "localeats-staging" ||
          flags.VITE_MERCHANT_STAGING_ONLY === "true" ||
