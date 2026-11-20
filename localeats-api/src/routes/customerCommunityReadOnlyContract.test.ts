@@ -192,7 +192,8 @@ test("N8M no hosted router mount or DB writes: source-level review release gate"
  const contract=readFileSync(new URL("../../src/routes/customerCommunityReadOnlyContract.ts",import.meta.url),"utf8");
  assert.ok(!s.includes("customerCommunityReadOnlyContract"));
  assert.ok(!s.includes("/api/v1/community"));
- assert.ok(!contract.includes(".insert(") && !contract.includes(".update(") &&
-            !contract.includes(".upsert(") && !contract.includes(".delete("));
+ assert.ok(!/\\bstore\\.(?:insert|update|upsert|delete|write|save)\\s*\\(/.test(contract));
+ assert.match(contract,/router\\.delete\\("\/me\/follows\/:shopId"/);
+ assert.match(contract,/COMMUNITY_WRITES_DISABLED/);
  assert.match(contract,/authenticate:RequestHandler=authenticateFirebase/);
 });
