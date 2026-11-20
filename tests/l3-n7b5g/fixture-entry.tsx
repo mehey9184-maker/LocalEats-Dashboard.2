@@ -73,9 +73,9 @@ function RenderAttention({scope,ordersFresh,orderIds,menuFresh,lowIds,activeTab,
   <output data-testid="pulse-marketing">{pulses.marketing??"quiet"}</output>
   <output data-testid="pulse-payments">{pulses.payments??"quiet"}</output>
   <button data-testid="capture-callback" onClick={snapshotCallback}>Capture scope callback</button>
-  <button data-testid="pulse-new-order" onClick={()=>{pulseForTopic("new_order");onInvoke();}}>Pulse order topic</button>
-  <button data-testid="pulse-marketing" onClick={()=>{pulseForTopic("marketing");onInvoke();}}>Pulse marketing topic</button>
-  <button data-testid="pulse-payment" onClick={()=>{pulseForTopic("payment");onInvoke();}}>Pulse payment topic</button>
+  <button data-testid="trigger-new-order" onClick={()=>{pulseForTopic("new_order");onInvoke();}}>Pulse order topic</button>
+  <button data-testid="trigger-marketing" onClick={()=>{pulseForTopic("marketing");onInvoke();}}>Pulse marketing topic</button>
+  <button data-testid="trigger-payment" onClick={()=>{pulseForTopic("payment");onInvoke();}}>Pulse payment topic</button>
  </section>;
 }
 
