@@ -1,5 +1,9 @@
 # LocalEats Platform - Persistent System Instructions
 
+## L3-N8U-X (21 November 2026) — Opt-in public catalog publication gate
+On the separate Preview-only branch `review/l3-n8u-x-pilot-catalog-allowlist`, the public catalog router supports `PUBLIC_CATALOG_PILOT_SHOP_IDS` as a comma-separated exact shop-ID allowlist. When absent, the already deployed approved/nonarchived behavior is unchanged; when explicitly set but empty or invalid, no shops are published. Filtering applies to public list, nearby, detail and menu GETs, **not** authenticated shop ownership, database approval, payment or order admission. Set only on an isolated Preview for My-Kota until the owner audits shop identity, map coordinates, accurate menu, real availability and launch scope. No Production environment or data mutation is authorized by this branch. The API currently shows nine approved nonarchived shops, including a test-only record, an implausible non-SA location and nine identical 4.8 ratings without review counts; treat trust claims as unverified.
+
+
 ## LocalEats Production gate (2026-11-21)
 Read [the current Production readiness register](docs/LOCALEATS_PRODUCTION_RELEASE_READINESS_2026-11-21.md) before any merge, release or live pickup activation. It documents the exact WWW/apex CORS failure (GET 200 vs 403), Customer PR #125's verified outside-4-km browse-only UI, Production write flags OFF, active test shops requiring owner review, My-Kota effective OFFLINE despite the legacy active flag, Firebase/FCM real acceptance still unverified, Supabase PostGIS linter advisories and the ordered API→Customer release/rollback plan. Do not infer live ordering from passed synthetic tests or Vercel READY.
 
