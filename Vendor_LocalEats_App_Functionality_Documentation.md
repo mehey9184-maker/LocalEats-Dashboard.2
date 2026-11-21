@@ -1,5 +1,13 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N8U-Z — Paired Preview read-only release gate (21 November 2026)
+For the gated My-Kota browse pilot, `tests/l3-n8u-z-preview-readonly-smoke.mjs` validates a **new Vercel API Preview only** using explicit HTTPS origins, approved exact Customer Preview CORS, public shop list limited to My-Kota, My-Kota's R25 menu item, accurate closed status, and generic 404 for excluded shop details and menus. It refuses Production domains and all non-GET/OPTIONS operations. The test suite `l3-n8u-z-preview-readonly-smoke.test.mjs` runs with synthetic mocked responses and no external calls. The new GitHub Actions workflow includes a mock-only PR job and an opt-in manual remote Preview job for after the Vercel quota gate clears. API and Customer Production remain unchanged; the remaining release gates are full browser interaction, real-device GPS, merchant identity/availability and actual FCM acceptance. No new Production deployment, database mutation, real order or merge is authorized by this documentation.
+
+
+## L3-N8U-X — Preview-only publication allowlist (2026-11-21)
+The existing public API returns nine approved/nonarchived shops including a test-named listing without coordinates and a listing whose numeric location is outside South Africa while its address says Ivory Park. All nine public rating values are 4.8 with no review-count evidence in that API response; none should be publicly described as verified reviews yet. A narrow **opt-in** API Preview change introduces `PUBLIC_CATALOG_PILOT_SHOP_IDS` to limit only public browsing endpoints: `GET /api/v1/catalog/shops`, `/pickup-shops`, `/shops/:id` and `/shops/:id/menu`. If the variable is absent the prior catalog behavior remains unchanged, while a set but empty/invalid variable publishes no shops. This is not an order gate, merchant approval, or a change to the underlying database; My-Kota remains effectively closed. Testing requires CI and a separately scoped Preview before any Production release decision. No pickup/delivery/LocalPay writes, migration, live order, GPS mock or Production deploy is authorized.
+
+
 The Customer history API provides authenticated 50-row pages with a timestamp/ID cursor and a has_more flag. The original recent feed retains its 50-row limit and now uses the same deterministic timestamp/ID ordering. Each query filters to the Firebase UID before paging.
 
 ## Isolated Firebase staging configuration — 2026-11-05

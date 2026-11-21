@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import express from "express";
-import { makeCatalogRouter, SupabaseCatalogRepository } from "./catalog.js";
+import { makeCatalogRouter, SupabaseCatalogRepository, parsePublicCatalogPilotIds } from "./catalog.js";
 
 class FakeSupabase {
   calls: any[] = [];
@@ -194,5 +194,51 @@ test("Pickup nearby approved shops are distance-ranked across town boundaries, w
   assert.deepEqual(body.shops.map((x:any)=>x.id),["unknown-area","cosmo-near"]);
   assert.equal(body.shops[0].is_active,false);
   assert.ok(body.shops[0].distance_km < body.shops[1].distance_km);
+ });
+});
+
+test("Public pilot shop IDs parse fail-closed and preserve absent-mode compatibility",()=>{
+ assert.equal(parsePublicCatalogPilotIds(undefined),null,"Only an absent setting preserves the original approved catalog");
+ assert.deepEqual([...parsePublicCatalogPilotIds("shop-my-kota-ivory-park, shop-two")!],["shop-my-kota-ivory-park","shop-two"]);
+ assert.equal(parsePublicCatalogPilotIds("")!.size,0,"Empty settings must never publish everything");
+ assert.equal(parsePublicCatalogPilotIds("invalid ID!")!.size,0);
+});
+
+test("Pilot publication filters list, nearby, detail and menu without modifying merchant data",async()=>{
+ const fakeDb=new FakeSupabase(),app=express();
+ app.use(express.json());
+ app.use("/api/v1/catalog",makeCatalogRouter(new SupabaseCatalogRepository(fakeDb),new Set(["my-kota"])));
+ const raw={id:"my-kota",name:"My-Kota",lat:-25.983,lng:28.207,is_active:false};
+ const other={id:"production-fixture",name:"Test shop",lat:-25.984,lng:28.208,is_active:false};
+ fakeDb.mockShopData=[raw,other];
+ await runWithServer(app,async base=>{
+   const list=await fetch(base+"/api/v1/catalog/shops");
+   assert.equal(list.status,200);
+   assert.deepEqual((await list.json()).shops.map((s:any)=>s.id),["my-kota"]);
+   const nearby=await fetch(base+"/api/v1/catalog/pickup-shops?lat=-25.983&lng=28.207");
+   assert.equal(nearby.status,200);
+   assert.deepEqual((await nearby.json()).shops.map((s:any)=>s.id),["my-kota"]);
+   fakeDb.mockShopData=other;
+   const detailHidden=await fetch(base+"/api/v1/catalog/shops/production-fixture");
+   assert.equal(detailHidden.status,404);
+   const menuHidden=await fetch(base+"/api/v1/catalog/shops/production-fixture/menu");
+   assert.equal(menuHidden.status,404);
+   assert.equal(fakeDb.calls.some(c=>c.method==="execute"&&c.table==="menu_items"),false,"Hidden shop menu must not be fetched");
+   fakeDb.mockShopData=raw;fakeDb.mockMenuData=[{id:"kota-25",shop_id:"my-kota",name:"My-Kota meal",price:25,is_available:true}];
+   const detail=await fetch(base+"/api/v1/catalog/shops/my-kota");assert.equal(detail.status,200);
+   const menu=await fetch(base+"/api/v1/catalog/shops/my-kota/menu");
+   assert.equal(menu.status,200);
+   assert.equal((await menu.json()).menu_items[0].price,25);
+ });
+});
+
+test("Configured empty pilot set cannot accidentally expose approved shops",async()=>{
+ const fakeDb=new FakeSupabase(),app=express();
+ app.use("/api/v1/catalog",makeCatalogRouter(new SupabaseCatalogRepository(fakeDb),new Set()));
+ fakeDb.mockShopData=[{id:"test",name:"Fixture",lat:-25.98,lng:28.2,is_active:true}];
+ await runWithServer(app,async base=>{
+   assert.deepEqual((await (await fetch(base+"/api/v1/catalog/shops")).json()).shops,[]);
+   assert.deepEqual((await (await fetch(base+"/api/v1/catalog/pickup-shops?lat=-25.98&lng=28.2")).json()).shops,[]);
+   assert.equal((await fetch(base+"/api/v1/catalog/shops/test/menu")).status,404);
  });
 });

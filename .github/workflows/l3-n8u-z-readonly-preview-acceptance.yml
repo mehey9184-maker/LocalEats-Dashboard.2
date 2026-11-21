@@ -1,0 +1,51 @@
+name: L3-N8U-Z Preview-only My-Kota CORS and catalog acceptance
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/tests/l3-n8u-z-preview-readonly-smoke*'
+      - '.github/workflows/l3-n8u-z-readonly-preview-acceptance.yml'
+  workflow_dispatch:
+    inputs:
+      api_preview_url:
+        description: 'Exact HTTPS API Preview origin (NOT Production)'
+        required: true
+        type: string
+      customer_preview_origin:
+        description: 'Exact HTTPS Customer Preview origin (NOT Production)'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  isolated-readonly-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Reject Production origins and run mock-only release gate
+        working-directory: localeats-api
+        run: node --test tests/l3-n8u-z-preview-readonly-smoke.test.mjs
+  remote-preview-readonly:
+    if: github.event_name == 'workflow_dispatch'
+    needs: isolated-readonly-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+      - name: Exact Preview only GET/OPTIONS no account/GPS/writes
+        working-directory: localeats-api
+        env:
+          API_PREVIEW_URL: ${{ inputs.api_preview_url }}
+          CUSTOMER_PREVIEW_ORIGIN: ${{ inputs.customer_preview_origin }}
+        run: node tests/l3-n8u-z-preview-readonly-smoke.mjs
