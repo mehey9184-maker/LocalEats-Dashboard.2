@@ -27,10 +27,23 @@ test('print QR reserves four quiet modules, uses high error correction and bound
  assert.equal(sign.QR_OPTIONS.color.dark,'#0F172A');assert.equal(sign.QR_OPTIONS.color.light,'#FFFFFF');
  for(const size of [528,784,1200]) {const box=sign.centreLogoBox(size);assert.ok(box.outer/size<=.16);assert.ok(box.left>size*.4);assert.ok(box.inset>0);}
 });
+test('dotted renderer rounds data and three finder eyes while the classic fallback stays unchanged',async()=>{
+ const previous=globalThis.document;
+ const draws={dots:0,rounded:0};
+ const context={clearRect(){},createImageData(w,h){return {data:new Uint8ClampedArray(w*h*4)};},putImageData(){},fillRect(){},beginPath(){},arc(){draws.dots++;},roundRect(){draws.rounded++;},fill(){}};
+ globalThis.document={createElement(){return {style:{},width:0,height:0,getContext(){return context;},toDataURL(){return 'data:image/png;base64,isolated-render-spy';}};}};
+ try {
+  await sign.createCounterQr(sign.shopMenuUrl('fixture'),false,'dots');
+  assert.ok(draws.dots>0);assert.equal(draws.rounded,9,'three nested shapes per finder');
+  draws.dots=0;draws.rounded=0;
+  await sign.createCounterQr(sign.shopMenuUrl('fixture'),false,'classic');
+  assert.equal(draws.dots,0);assert.equal(draws.rounded,0);
+ } finally {if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
+});
 test('A4/A5 PDFs contain website, honest pickup invitation and actual scan image, never a blank QR',async()=>{
  const url=sign.shopMenuUrl('shop-print-fixture'), qr=await QRCode.toDataURL(url,sign.QR_OPTIONS);
  for(const [format,width] of [['a4',210],['a5',148]]) {
-  const doc=sign.counterSignPdf({shopName:'Print fixture',url,qr,headline:'Hungry? Scan the menu.'},format);
+  const doc=sign.counterSignPdf({shopName:'Print fixture',url,qr,artwork:qr,headline:'Hungry? Scan the menu.'},format);
   assert.ok(Math.abs(doc.internal.pageSize.getWidth()-width)<1);
   const pdf=doc.output();assert.match(pdf,/www\.localeatssa\.co\.za/);assert.match(pdf,/Hungry\? Scan the menu\./);
   assert.match(pdf,/Pickup only/);assert.match(pdf,/Ordering depends on/);assert.match(pdf,/\/Subtype \/Image/);
@@ -42,6 +55,7 @@ test('counter screen renders small, accessible controls and disables exports wit
  const html=renderToStaticMarkup(React.createElement(CounterSignStudio,{}));
  assert.match(html,/www\.localeatssa\.co\.za/);assert.match(html,/Hungry\? Scan the menu\./);
  assert.match(html,/LocalEats logo in the centre/);assert.match(html,/A4 PDF/);assert.match(html,/A5 PDF/);
+ assert.match(html,/Dots &amp; rounded corners/);assert.match(html,/Classic squares/);
  assert.equal((html.match(/disabled=""/g)||[]).length,3);assert.doesNotMatch(html,/QR_Code_default|dineIn|table=/);
 });
 test('message copy uses actual menu prices and cannot activate discounts',()=>{

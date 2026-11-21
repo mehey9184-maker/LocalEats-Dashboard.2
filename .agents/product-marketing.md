@@ -1,7 +1,7 @@
 # LocalEats product marketing context
 
-Document version: v1
-Last updated: 2026-11-21
+Document version: v2
+Last updated: 2026-11-22
 
 ## Product and audience
 
@@ -28,6 +28,12 @@ No additional paid infrastructure, AI provider, advertising account, SMS gateway
 
 Applied guidance from https://github.com/coreyhaines31/marketingskills at reviewed commit 5b2b400eec1e7e1cec76245a715d0b0d4fd2a9c1: product-marketing context, truthful copywriting, social content adaptation and analytics definitions. These are development instructions, not live product integrations. Do not copy international legal guidance or generic conversion benchmarks into LocalEats claims.
 
+## Counter-sign style
+
+The owner supplied a shopping-bag QR reference and requested a creative food-related replacement. Use the LocalEats serving-dome frame, LocalEats base name, dotted QR with rounded finder eyes and small centred existing orange logo. Keep a classic-pattern fallback and preserve scan reliability over decorative similarity. Never reuse the reference QR payload.
+
 ## Changelog
+
+- v2 (2026-11-22): Recorded the owner-requested counter-sign visual style; no operational or pricing policy changed.
 
 - v1 (2026-11-21): Captured existing owner-approved pickup constraints and the counter-sign improvement brief. No new commercial or operational policy introduced.
