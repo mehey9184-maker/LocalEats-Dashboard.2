@@ -670,3 +670,8 @@ If the handover result is unconfirmed and the original command is retained, **Re
 Unpaid Ready collection orders with at least 30 minutes since `updated_at` now show a concise advisory in both compact and expanded tickets. The time is explicitly **since the last status update**, not proof of how long food has been Ready or that a customer is a no-show. A native keyboard-accessible **Follow up on unpaid pickup** disclosure guides the merchant to check the latest order and the counter before calling. A call link is available only for a real collection order with a valid formatted phone number; missing or malformed numbers show an explanation. Fake orders cannot offer this follow-up or a real call.
 
 This is local guidance only: expanding it or calling records no follow-up, sends no notification, and confirms no payment, cancellation or collection. Waiting leaves the authoritative order Ready and unpaid. Actual payment and actual food handover still require their separate server-confirmed actions. Rendered-component regressions in `tests/merchant-handover.test.mjs` cover both ticket densities, gate-disabled guidance, disclosure semantics, safe call links, absent/invalid/future timestamps, sample exclusion and payment/status separation; `tests/merchant-unpaid-ready-aging.test.mjs` retains detector boundary coverage.
+
+
+## Marketing merge deployment boundary — 2026-11-22
+
+The reviewed Marketing/QR branch explicitly disables Git previews in both root and API Vercel configurations. Merchant main remains enabled; API main remains disabled. The existing Merchant release workflow also runs the focused Marketing regression suite. These publication guards do not change environment settings, write flags, API behavior, Customer, Rider or business data.
