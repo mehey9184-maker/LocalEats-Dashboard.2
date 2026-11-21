@@ -25,14 +25,16 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
-import QRCodeLib from "qrcode";
+import { CounterSignStudio } from "./marketing/CounterSignStudio";
+import { createCounterQr, shopMenuUrl } from "./marketing/counterSign";
 import { Shop, MenuItem, Order } from "../types";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
 import type { User } from "@supabase/supabase-js";
-import { CampaignBuilder } from "./CampaignBuilder";
-import { CustomerReEngagement } from "./marketing/CustomerReEngagement";
-import { FlashDealsStudio } from "./marketing/FlashDealsStudio";
-import { TableTentGenerator } from "./marketing/TableTentGenerator";
+import { CampaignBuilder } from "./marketing/CampaignDrafts";
+import { marketingOrderSummary } from "./marketing/campaignDraft";
+
+
+
 
 interface MarketingProps {
   currentShop: Shop | undefined;
@@ -56,7 +58,7 @@ type ToolSubTab =
   | "sms"
   | "playbook";
 
-type QrStyle = "standard" | "coral" | "dark";
+
 type SocialTheme = "coral" | "dark" | "golden" | "emerald";
 
 export const Marketing: React.FC<MarketingProps> = ({
@@ -99,56 +101,10 @@ export const Marketing: React.FC<MarketingProps> = ({
   // Store URL
   const storeUrl = useMemo(() => {
     if (!activeShop) return "https://www.localeatssa.co.za";
-    return `https://www.localeatssa.co.za/?shopId=${activeShop.id}`;
+    return shopMenuUrl(activeShop.id);
   }, [activeShop]);
 
-  // High-Level Diner Analytics for Dashboard Summary
-  const shopOrders = useMemo(() => {
-    if (!activeShop) return orders;
-    return orders.filter(
-      (o) =>
-        String(o.shop_id) === String(activeShop.id) ||
-        (activeShop.name && o.shop_name?.toLowerCase() === activeShop.name.toLowerCase())
-    );
-  }, [orders, activeShop]);
-
-  const dinerStats = useMemo(() => {
-    const customerMap = new Map<string, { count: number; spend: number }>();
-    let totalRevenue = 0;
-
-    shopOrders.forEach((ord) => {
-      const phone = ord.customer_phone || ord.phone || "";
-      const name = ord.customer_name || ord.customer || "Diner";
-      const key = phone.trim() || name.trim();
-      const amount = typeof ord.total === "number" ? ord.total : parseFloat(String(ord.total || 0)) || 0;
-      totalRevenue += amount;
-
-      if (!customerMap.has(key)) {
-        customerMap.set(key, { count: 1, spend: amount });
-      } else {
-        const curr = customerMap.get(key)!;
-        curr.count += 1;
-        curr.spend += amount;
-      }
-    });
-
-    const totalUniqueDiners = customerMap.size || (shopOrders.length > 0 ? Math.ceil(shopOrders.length * 0.75) : 0);
-    let repeatCount = 0;
-    customerMap.forEach((val) => {
-      if (val.count > 1) repeatCount += 1;
-    });
-
-    const repeatRate = totalUniqueDiners > 0 ? Math.round((repeatCount / totalUniqueDiners) * 100) : 0;
-    const avgSpend = totalUniqueDiners > 0 ? Math.round(totalRevenue / totalUniqueDiners) : 0;
-
-    return {
-      totalUniqueDiners,
-      repeatCount,
-      repeatRate,
-      avgSpend,
-      totalOrders: shopOrders.length,
-    };
-  }, [shopOrders]);
+  const dinerStats = useMemo(() => marketingOrderSummary(orders as unknown as Record<string, unknown>[], activeShop?.id), [orders, activeShop?.id]);
 
   // Quick Action Switchers
   const handleLaunchQuickAction = (tool: ToolSubTab) => {
@@ -157,8 +113,6 @@ export const Marketing: React.FC<MarketingProps> = ({
   };
 
   // 2. QR Code State & Generator
-  const [qrStyle, setQrStyle] = useState<QrStyle>("coral");
-  const [qrFrameText, setQrFrameText] = useState<string>("SCAN TO VIEW MENU");
   const [qrState, setQrState] = useState<{ sourceUrl: string; image: string } | null>(null);
   const qrDataUrl = qrState?.sourceUrl === storeUrl ? qrState.image : "";
   const [copiedLink, setCopiedLink] = useState(false);
@@ -171,24 +125,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     let isMounted = true;
     const generateQR = async () => {
       try {
-        let darkColor = "#0F172A";
-        const lightColor = "#FFFFFF";
-
-        if (qrStyle === "coral") {
-          darkColor = "#EA580C"; // Brand Coral / Orange
-        } else if (qrStyle === "dark") {
-          darkColor = "#020617";
-        }
-
-        const url = await QRCodeLib.toDataURL(storeUrl, {
-          width: 500,
-          margin: 1,
-          color: {
-            dark: darkColor,
-            light: lightColor,
-          },
-          errorCorrectionLevel: "H",
-        });
+        const url = await createCounterQr(storeUrl);
 
         if (isMounted) {
           setQrState({ sourceUrl: storeUrl, image: url });
@@ -202,7 +139,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [storeUrl, qrStyle]);
+  }, [storeUrl]);
 
   // Copy Store Link Handler
   const copyStoreUrl = () => {
@@ -460,90 +397,6 @@ export const Marketing: React.FC<MarketingProps> = ({
   };
 
   // 5. PDF Flyer & Counter Stand Generator (A4 / Table Tent)
-  const generatePdfFlyer = () => {
-    try {
-      const doc = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4",
-      });
-
-      const shopName = activeShop?.name || "LocalEats Eatery";
-      const shopLocation = activeShop?.address || activeShop?.location || activeShop?.city || "Township Store";
-      const shopPhone = activeShop?.phone || activeShop?.whatsapp || "";
-
-      // Header Banner
-      doc.setFillColor(234, 88, 12); // #EA580C
-      doc.rect(0, 0, 210, 45, "F");
-
-      // Platform badge
-      doc.setTextColor(255, 255, 255);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(16);
-      doc.text("LOCALEATS SA - OFFICIAL STORE", 105, 18, { align: "center" });
-
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "normal");
-      doc.text("Explore menus | Pickup only | Pay at shop", 105, 28, { align: "center" });
-
-      // Shop Name Heading
-      doc.setTextColor(15, 23, 42); // #0F172A
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(28);
-      doc.text(shopName, 105, 65, { align: "center" });
-
-      doc.setFontSize(14);
-      doc.setTextColor(234, 88, 12);
-      doc.text("SCAN TO EXPLORE OUR MENU", 105, 75, { align: "center" });
-
-      // Frame around QR code
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(1);
-      doc.roundedRect(45, 88, 120, 120, 6, 6, "S");
-
-      // Add QR Code Image if available
-      if (qrDataUrl) {
-        doc.addImage(qrDataUrl, "PNG", 55, 98, 100, 100);
-      }
-
-      // Step-by-step instructions box
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(25, 218, 160, 40, 4, 4, "F");
-
-      doc.setFontSize(12);
-      doc.setTextColor(15, 23, 42);
-      doc.setFont("helvetica", "bold");
-      doc.text("EXPLORE LOCAL FOOD IN 3 STEPS:", 105, 227, { align: "center" });
-
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.text("1. Open your phone camera & scan the QR code above.", 35, 236);
-      doc.text("2. Browse the available menus and prices.", 35, 243);
-      doc.text("3. If ordering is available, collect and pay at the shop.", 35, 250);
-
-      // Footer bar
-      doc.setFillColor(15, 23, 42);
-      doc.rect(0, 268, 210, 29, "F");
-
-      doc.setTextColor(255, 255, 255);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.text(`📍 Location: ${shopLocation}`, 105, 278, { align: "center" });
-
-      if (shopPhone) {
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.text(`📞 Phone / WhatsApp: ${shopPhone}  •  🌐 ${storeUrl}`, 105, 286, { align: "center" });
-      }
-
-      doc.save(`LocalEats_Counter_Flyer_${shopName.replace(/\s+/g, "_")}.pdf`);
-      toast.success("Printable A4 Counter Stand Flyer downloaded!");
-    } catch (e) {
-      console.error("PDF Flyer Generation Error:", e);
-      toast.error("Failed to generate PDF flyer.");
-    }
-  };
-
   // LocalEats brand campaign preview; never creates or promises a live reward.
   const generateRewardsTeaserPdf = () => {
     if (!qrDataUrl) {
@@ -606,10 +459,7 @@ export const Marketing: React.FC<MarketingProps> = ({
     }
   };
 
-  // Direct Browser Print
-  const handleDirectPrint = () => {
-    window.print();
-  };
+  // Direct Browser Print: use the PDF counter sign for a clean page without dashboard chrome.
 
   // SMS Text State
   const smsText = useMemo(() => {
@@ -631,7 +481,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                 <span>Marketing & Customer Growth Studio</span>
               </h2>
               <p className="text-xs text-on-surface-variant">
-                Drive sales, reward loyal diners, and promote your LocalEats store with QR stands, WhatsApp promos & flash deals.
+                Share your real menu with counter signs, short message drafts and social posts. Pickup only. Pay at the shop.
               </p>
             </div>
           </div>
@@ -689,7 +539,7 @@ export const Marketing: React.FC<MarketingProps> = ({
           }`}
         >
           <Ticket size={16} />
-          <span>Campaign Builder</span>
+          <span>Message Drafts</span>
         </button>
 
         {/* Segment 3: Tool Library */}
@@ -706,6 +556,11 @@ export const Marketing: React.FC<MarketingProps> = ({
         </button>
       </div>
 
+      <div className="rounded-3xl border border-primary/20 bg-primary/5 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div><h3 className="font-extrabold">Bring your shop menu to the counter.</h3><p className="text-sm text-on-surface-variant mt-1">A short invitation, your shop QR and a website address customers can type.</p></div>
+        <button type="button" onClick={() => handleLaunchQuickAction("qr_stands")} className="min-h-[48px] shrink-0 rounded-2xl px-5 bg-primary text-on-primary font-bold text-sm">Create my counter sign</button>
+      </div>
+
       {/* 3. SEGMENT CONTENT */}
 
       {/* ========================================================================= */}
@@ -718,14 +573,14 @@ export const Marketing: React.FC<MarketingProps> = ({
             <div className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/15 shadow-xs">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
-                  Total Diners Reached
+                  Customers in loaded orders
                 </span>
                 <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
                   <Users size={16} />
                 </div>
               </div>
               <p className="text-2xl font-black text-on-surface">{dinerStats.totalUniqueDiners}</p>
-              <p className="text-[11px] text-on-surface-variant mt-1">Unique customer profiles</p>
+              <p className="text-[11px] text-on-surface-variant mt-1">Known accounts; loaded records only</p>
             </div>
 
             <div className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/15 shadow-xs">
@@ -740,36 +595,36 @@ export const Marketing: React.FC<MarketingProps> = ({
               <div className="flex items-baseline gap-2">
                 <p className="text-2xl font-black text-on-surface">{dinerStats.repeatCount}</p>
                 <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
-                  {dinerStats.repeatRate}% loyalty
+                  {dinerStats.repeatRate}% repeat
                 </span>
               </div>
-              <p className="text-[11px] text-on-surface-variant mt-1">Ordered 2+ times</p>
+              <p className="text-[11px] text-on-surface-variant mt-1">2+ loaded orders; not campaign results</p>
             </div>
 
             <div className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/15 shadow-xs">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
-                  Avg Diner Spend
+                  Average order value
                 </span>
                 <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
                   <Zap size={16} />
                 </div>
               </div>
-              <p className="text-2xl font-black text-on-surface">R{dinerStats.avgSpend || 0}</p>
-              <p className="text-[11px] text-on-surface-variant mt-1">Average basket value</p>
+              <p className="text-2xl font-black text-on-surface">{dinerStats.avgSpend === null ? "Unavailable" : `R${dinerStats.avgSpend.toFixed(2)}`}</p>
+              <p className="text-[11px] text-on-surface-variant mt-1">Loaded order value; not paid revenue</p>
             </div>
 
             <div className="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/15 shadow-xs">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
-                  Total Orders Driven
+                  Loaded shop orders
                 </span>
                 <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center">
                   <Store size={16} />
                 </div>
               </div>
               <p className="text-2xl font-black text-on-surface">{dinerStats.totalOrders}</p>
-              <p className="text-[11px] text-on-surface-variant mt-1">Direct from LocalEats</p>
+              <p className="text-[11px] text-on-surface-variant mt-1">Not attributed to campaigns</p>
             </div>
           </div>
 
@@ -803,14 +658,14 @@ export const Marketing: React.FC<MarketingProps> = ({
                     </span>
                   </div>
                   <h4 className="font-bold text-xs text-on-surface group-hover:text-primary transition-colors">
-                    Launch Flash Deal
+                    Prepare Menu Spotlight
                   </h4>
                   <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
-                    Trigger a 15% discount for 3 hours to capture lunch break hunger.
+                    Prepare a menu spotlight. No discount is activated.
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-orange-500/15 flex items-center justify-between text-xs font-bold text-orange-600">
-                  <span>Start Deal</span>
+                  <span>Write Draft</span>
                   <span>→</span>
                 </div>
               </div>
@@ -830,14 +685,14 @@ export const Marketing: React.FC<MarketingProps> = ({
                     </span>
                   </div>
                   <h4 className="font-bold text-xs text-on-surface group-hover:text-primary transition-colors">
-                    Win Back Inactive Diners
+                    Understand Customer Activity
                   </h4>
                   <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
-                    Send 1-tap WhatsApp greetings with a discount to diners who haven't ordered in 14d.
+                    Review loaded customer activity. Promotional contact requires verified permission.
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-blue-500/15 flex items-center justify-between text-xs font-bold text-blue-600">
-                  <span>View Diners</span>
+                  <span>View Activity</span>
                   <span>→</span>
                 </div>
               </div>
@@ -853,14 +708,14 @@ export const Marketing: React.FC<MarketingProps> = ({
                       <Utensils size={15} />
                     </span>
                     <span className="text-[10px] font-black uppercase text-emerald-600 bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full">
-                      Dine-In
+                      Pickup
                     </span>
                   </div>
                   <h4 className="font-bold text-xs text-on-surface group-hover:text-primary transition-colors">
-                    Print Table Cards (PDF)
+                    Print Menu Signs (PDF)
                   </h4>
                   <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
-                    Batch generate QR tent cards for tables 1–20 for direct table ordering.
+                    Print a clear menu QR for your counter or shop window.
                   </p>
                 </div>
                 <div className="mt-3 pt-2 border-t border-emerald-500/15 flex items-center justify-between text-xs font-bold text-emerald-600">
@@ -954,7 +809,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                   className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 transition-all cursor-pointer"
                 >
                   <Ticket size={15} className="text-primary" />
-                  <span>Create Voucher</span>
+                  <span>Prepare Message</span>
                 </button>
               </div>
             </div>
@@ -1001,6 +856,7 @@ export const Marketing: React.FC<MarketingProps> = ({
       {/* ========================================================================= */}
       {mainSegment === "campaign_builder" && (
         <CampaignBuilder
+          key={String(activeShop?.id)}
           activeShop={activeShop}
           storeMenuItems={storeMenuItems}
           storeUrl={storeUrl}
@@ -1023,7 +879,7 @@ export const Marketing: React.FC<MarketingProps> = ({
               }`}
             >
               <Users size={15} />
-              <span>Direct Customer Reach</span>
+              <span>Customer Activity</span>
             </button>
 
             <button
@@ -1035,7 +891,7 @@ export const Marketing: React.FC<MarketingProps> = ({
               }`}
             >
               <Flame size={15} />
-              <span>Timed Flash Deals</span>
+              <span>Offer Drafts</span>
             </button>
 
             <button
@@ -1047,7 +903,7 @@ export const Marketing: React.FC<MarketingProps> = ({
               }`}
             >
               <Utensils size={15} />
-              <span>Table Tent Generator</span>
+              <span>Window & Counter Signs</span>
             </button>
 
             <button
@@ -1059,7 +915,7 @@ export const Marketing: React.FC<MarketingProps> = ({
               }`}
             >
               <QrCode size={15} />
-              <span>Counter Stands & Flyers</span>
+              <span>Print Your Menu QR</span>
             </button>
 
             <button
@@ -1095,7 +951,7 @@ export const Marketing: React.FC<MarketingProps> = ({
               }`}
             >
               <Smartphone size={15} />
-              <span>SMS Broadcast</span>
+              <span>SMS Message Draft</span>
             </button>
 
             <button
@@ -1115,223 +971,32 @@ export const Marketing: React.FC<MarketingProps> = ({
 
           {/* Tool 1: Direct Customer Reach & Diners */}
           {activeTool === "direct_reach" && (
-            <CustomerReEngagement
-              activeShop={activeShop}
-              orders={orders}
-              menuItems={storeMenuItems}
-              storeUrl={storeUrl}
-            />
+            <div className="p-6 rounded-3xl border border-outline-variant/15 bg-surface-container-lowest space-y-3">
+              <h3 className="font-extrabold">Customer activity</h3>
+              <p className="text-sm">{dinerStats.totalUniqueDiners} known customer accounts in {dinerStats.totalOrders} loaded shop orders.</p>
+              <p className="text-sm text-on-surface-variant">Order contacts are for fulfilling orders. Targeted promotional messaging is unavailable until marketing permission can be verified. Use the general shop-link tools to prepare a message for your own channels.</p>
+              <p className="text-xs text-on-surface-variant">Loaded records only; this is not lifetime revenue, message reach or campaign attribution.</p>
+            </div>
           )}
 
           {/* Tool 2: Timed Flash Deals */}
           {activeTool === "flash_deals" && (
-            <FlashDealsStudio
-              activeShop={activeShop}
-              menuItems={storeMenuItems}
-              storeUrl={storeUrl}
-            />
+            <CampaignBuilder key={String(activeShop?.id)} activeShop={activeShop} storeMenuItems={storeMenuItems} storeUrl={storeUrl} />
           )}
 
           {/* Tool 3: Table Tent Card Generator */}
           {activeTool === "table_tents" && (
-            <TableTentGenerator
-              activeShop={activeShop}
-              storeUrl={storeUrl}
-            />
+            <CounterSignStudio shopId={activeShop?.id} shopName={activeShop?.name} />
           )}
 
-          {/* Tool 4: QR Stands & Printable A4 Flyers */}
-          {activeTool === "qr_stands" && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left: Customization Controls */}
-              <div className="lg:col-span-5 space-y-5">
-                <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/15 shadow-xs space-y-5">
-                  <h3 className="font-extrabold text-base text-on-surface flex items-center gap-2">
-                    <Palette size={18} className="text-primary" />
-                    <span>Customize Stand & QR Code</span>
-                  </h3>
-
-                  {/* QR Style Preset */}
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface mb-2">QR Code Color Theme</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      <button
-                        onClick={() => setQrStyle("coral")}
-                        className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1.5 ${
-                          qrStyle === "coral"
-                            ? "border-primary bg-primary/10 text-primary font-bold shadow-xs"
-                            : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-                        }`}
-                      >
-                        <div className="w-5 h-5 rounded-full bg-[#EA580C] shadow-xs" />
-                        <span className="text-[11px]">Brand Coral</span>
-                      </button>
-
-                      <button
-                        onClick={() => setQrStyle("dark")}
-                        className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1.5 ${
-                          qrStyle === "dark"
-                            ? "border-primary bg-primary/10 text-primary font-bold shadow-xs"
-                            : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-                        }`}
-                      >
-                        <div className="w-5 h-5 rounded-full bg-[#0F172A] shadow-xs" />
-                        <span className="text-[11px]">Midnight Dark</span>
-                      </button>
-
-                      <button
-                        onClick={() => setQrStyle("standard")}
-                        className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1.5 ${
-                          qrStyle === "standard"
-                            ? "border-primary bg-primary/10 text-primary font-bold shadow-xs"
-                            : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-                        }`}
-                      >
-                        <div className="w-5 h-5 rounded-full bg-slate-400 shadow-xs" />
-                        <span className="text-[11px]">Classic Crisp</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Frame Label */}
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface mb-2">Display Stand Heading</label>
-                    <select
-                      value={qrFrameText}
-                      onChange={(e) => setQrFrameText(e.target.value)}
-                      className="w-full bg-surface-container-high border-none rounded-xl px-3.5 py-2.5 text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary outline-none"
-                    >
-                      <option value="SCAN TO VIEW MENU">SCAN TO VIEW MENU</option>
-                      <option value="TABLE & COUNTER MENU">TABLE & COUNTER MENU</option>
-                      <option value="VIEW PICKUP OPTIONS">VIEW PICKUP OPTIONS</option>
-                      <option value="SCAN FOR MENU & PRICES">SCAN FOR MENU & PRICES</option>
-                    </select>
-                  </div>
-
-                  {/* Direct Store URL display & Copy */}
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface mb-1.5">Direct Online Store URL</label>
-                    <div className="flex items-center gap-2 p-2 bg-surface-container-low rounded-2xl border border-outline-variant/15">
-                      <input
-                        type="text"
-                        readOnly
-                        value={storeUrl}
-                        className="flex-1 bg-transparent border-none text-xs font-mono text-on-surface px-2 outline-none"
-                      />
-                      <button
-                        onClick={copyStoreUrl}
-                        className="px-3 py-1.5 bg-surface-container-highest hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
-                      >
-                        {copiedLink ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-                        <span>{copiedLink ? "Copied" : "Copy"}</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Download & Print Actions */}
-                  <div className="space-y-2.5 pt-2 border-t border-outline-variant/10">
-                    <button
-                      onClick={generatePdfFlyer}
-                      className="w-full py-3 rounded-2xl bg-primary text-on-primary text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:bg-primary/90 transition-all cursor-pointer"
-                    >
-                      <FileText size={16} />
-                      <span>Download A4 Printable Flyer (PDF)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={generateRewardsTeaserPdf}
-                      className="w-full py-3 rounded-2xl bg-surface-container-high text-on-surface text-xs font-bold flex items-center justify-center gap-2 border border-outline-variant/20 hover:bg-surface-container-highest transition-all cursor-pointer"
-                    >
-                      <Gift size={16} />
-                      <span>Download Free Kota Teaser (PDF)</span>
-                    </button>
-                    <p className="text-[11px] text-on-surface-variant leading-snug">
-                      Rewards COMING SOON. This teaser does not promise a live free kota; no purchases earn rewards yet.
-                    </p>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <a
-                        href={qrDataUrl}
-                        download={`QR_Code_${activeShop?.name || "LocalEats"}.png`}
-                        className="py-2.5 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-outline-variant/20"
-                      >
-                        <Download size={15} />
-                        <span>Download PNG</span>
-                      </a>
-
-                      <button
-                        onClick={handleDirectPrint}
-                        className="py-2.5 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-outline-variant/20"
-                      >
-                        <Printer size={15} />
-                        <span>Print Direct</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right: Live Stand Mockup Preview */}
-              <div className="lg:col-span-7 flex flex-col items-center justify-center">
-                <div className="w-full max-w-md bg-surface-container-lowest p-8 rounded-3xl border border-outline-variant/15 shadow-xl text-center space-y-6 relative overflow-hidden">
-                  {/* Stand Header Ribbon */}
-                  <div className="bg-primary text-on-primary py-2 px-6 rounded-2xl inline-block shadow-md">
-                    <p className="text-xs font-black tracking-wider uppercase">{qrFrameText}</p>
-                  </div>
-
-                  <div>
-                    <h2 className="text-2xl font-black text-on-surface tracking-tight">{activeShop?.name || "My Store"}</h2>
-                    <p className="text-xs text-on-surface-variant mt-0.5">
-                      {activeShop?.address || activeShop?.location || activeShop?.city || "Township Store"}
-                    </p>
-                  </div>
-
-                  {/* QR Code Container */}
-                  <div className="p-4 bg-white rounded-3xl shadow-inner border border-slate-200 inline-block">
-                    {qrDataUrl ? (
-                      <img
-                        src={qrDataUrl}
-                        alt="Store QR Code"
-                        className="w-56 h-56 rounded-2xl object-contain mx-auto"
-                      />
-                    ) : (
-                      <div className="w-56 h-56 bg-slate-100 rounded-2xl animate-pulse flex items-center justify-center text-slate-400">
-                        <QrCode size={48} />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Ordering Steps Pill */}
-                  <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/15 text-left space-y-1.5">
-                    <p className="text-xs font-extrabold text-on-surface text-center mb-1">How customers browse:</p>
-                    <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-                      <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0">1</span>
-                      <span>Open Camera & Scan QR Code</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-                      <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0">2</span>
-                      <span>Browse the menu and prices</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-                      <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0">3</span>
-                      <span>Pay at the shop when ordering is available</span>
-                    </div>
-                  </div>
-
-                  {/* Footer Trust Signals */}
-                  <div className="flex items-center justify-center gap-4 text-[11px] font-bold text-on-surface-variant/80 pt-1">
-                    <span className="flex items-center gap-1">
-                      <Utensils size={13} className="text-primary" /> Pickup Only
-                    </span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <Store size={13} className="text-primary" /> Pay at Shop
-                    </span>
-                  </div>
-                </div>
-              </div>
+          {/* Tool 4: Shop-scoped counter signs with matching PDF and scan artwork. */}
+          {activeTool === "qr_stands" && <div className="space-y-5">
+            <CounterSignStudio key={String(activeShop?.id)} shopId={activeShop?.id} shopName={activeShop?.name} />
+            <div className="text-sm text-on-surface-variant border-t border-outline-variant/15 pt-4">
+              <button type="button" onClick={generateRewardsTeaserPdf} disabled={!qrDataUrl} className="min-h-[44px] underline font-bold disabled:opacity-50">Download Free Kota Teaser (PDF)</button>
+              <p className="text-xs">Optional coming-soon material. Rewards are not active and no purchases earn free food.</p>
             </div>
-          )}
+          </div>}
 
           {/* Tool 5: WhatsApp Promos */}
           {activeTool === "whatsapp" && (
@@ -1791,7 +1456,7 @@ export const Marketing: React.FC<MarketingProps> = ({
                     onClick={() => setMainSegment("campaign_builder")}
                     className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <span>Open Campaign Builder</span>
+                    <span>Open Message Drafts</span>
                     <ExternalLink size={12} />
                   </button>
                   {onNavigateTab && (

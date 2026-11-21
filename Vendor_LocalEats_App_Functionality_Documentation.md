@@ -1,5 +1,14 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## Merchant Marketing and print QR studio — 2026-11-21
+
+Prepared on a focused branch from main b7e003700b0320aa1dae5efc90e427fcc6dfa8c9. The original Marketing page, navigation, brand colours, menu reads, social tools and optional clearly labelled Rewards teaser remain. Counter/window signs use a shared shop-scoped QR generator and A4/A5 PDF layout: verified www.localeatssa.co.za at the top, short invitation, existing LocalEats icon embedded in the QR, high-contrast modules, four-module quiet zone and H error correction. The plain-QR option supports difficult printers. Exports wait for the selected shop's current QR; failed generation offers retry, and PDFs exclude dashboard controls. No unverified localeats.co.za address or dine-in/table-order parameters are introduced.
+
+The active Campaign/Offer tools now use a small menu-message draft editor. Drafts save on the current device and never claim publication, delivery, voucher activation, discount enforcement or push sending. Legacy simulator components are retained in source but are not mounted from Marketing. Customer activity shows shop-ID-scoped loaded order records without targeted promotional contact actions; no marketing permission is inferred from order contact details. Summary counts omit invented customer identities and average order value is explicitly not paid revenue or campaign attribution.
+
+Guidance: Corey Haines marketingskills, reviewed commit 5b2b400eec1e7e1cec76245a715d0b0d4fd2a9c1 (product-marketing, copywriting, social and analytics principles). No hosted AI, paid messaging, third-party marketing account connection, backend/schema mutation or activation-flag change is included. Automated tests cover link validation, print output, safe draft language, shop isolation and payment-fact separation. Local browser checks use labelled sample data. Physical printed scanning and owner design review remain release gates; this is not a Production deployment.
+
+
 The Customer history API provides authenticated 50-row pages with a timestamp/ID cursor and a has_more flag. The original recent feed retains its 50-row limit and now uses the same deterministic timestamp/ID ordering. Each query filters to the Firebase UID before paging.
 
 ## Isolated Firebase staging configuration — 2026-11-05
