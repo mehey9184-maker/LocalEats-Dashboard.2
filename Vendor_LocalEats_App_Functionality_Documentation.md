@@ -1,5 +1,14 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## Merchant Marketing and print QR studio — 2026-11-21
+
+Prepared on a focused branch from main b7e003700b0320aa1dae5efc90e427fcc6dfa8c9. The original Marketing page, navigation, brand colours, menu reads, social tools and optional clearly labelled Rewards teaser remain. Counter/window signs use a shared shop-scoped QR generator and A4/A5 PDF layout: verified www.localeatssa.co.za at the top, short invitation, existing LocalEats icon embedded in the QR, high-contrast modules, four-module quiet zone and H error correction. The plain-QR option supports difficult printers. The owner-supplied bag reference is adapted into a generated LocalEats serving-dome frame, with a small centred existing logo, dotted data modules and rounded finder eyes. Reserved timing/alignment modules stay exact; classic square rendering remains selectable. The same framed PNG feeds the live sign preview and both PDF exports. The reference QR data is never reused. Exports wait for the selected shop's current QR; failed generation offers retry, and PDFs exclude dashboard controls. No unverified localeats.co.za address or dine-in/table-order parameters are introduced.
+
+The active Campaign/Offer tools now use a small menu-message draft editor. Drafts save on the current device and never claim publication, delivery, voucher activation, discount enforcement or push sending. Legacy simulator components are retained in source but are not mounted from Marketing. Customer activity shows shop-ID-scoped loaded order records without targeted promotional contact actions; no marketing permission is inferred from order contact details. Summary counts omit invented customer identities and average order value is explicitly not paid revenue or campaign attribution.
+
+Guidance: Corey Haines marketingskills, reviewed commit 5b2b400eec1e7e1cec76245a715d0b0d4fd2a9c1 (product-marketing, copywriting, social and analytics principles). No hosted AI, paid messaging, third-party marketing account connection, backend/schema mutation or activation-flag change is included. Automated tests cover link validation, print output, safe draft language, shop isolation and payment-fact separation. Local browser checks use labelled sample data. Physical printed scanning and owner design review remain release gates; this is not a Production deployment.
+
+
 The Customer history API provides authenticated 50-row pages with a timestamp/ID cursor and a has_more flag. The original recent feed retains its 50-row limit and now uses the same deterministic timestamp/ID ordering. Each query filters to the Firebase UID before paging.
 
 ## Isolated Firebase staging configuration — 2026-11-05
@@ -661,3 +670,8 @@ If the handover result is unconfirmed and the original command is retained, **Re
 Unpaid Ready collection orders with at least 30 minutes since `updated_at` now show a concise advisory in both compact and expanded tickets. The time is explicitly **since the last status update**, not proof of how long food has been Ready or that a customer is a no-show. A native keyboard-accessible **Follow up on unpaid pickup** disclosure guides the merchant to check the latest order and the counter before calling. A call link is available only for a real collection order with a valid formatted phone number; missing or malformed numbers show an explanation. Fake orders cannot offer this follow-up or a real call.
 
 This is local guidance only: expanding it or calling records no follow-up, sends no notification, and confirms no payment, cancellation or collection. Waiting leaves the authoritative order Ready and unpaid. Actual payment and actual food handover still require their separate server-confirmed actions. Rendered-component regressions in `tests/merchant-handover.test.mjs` cover both ticket densities, gate-disabled guidance, disclosure semantics, safe call links, absent/invalid/future timestamps, sample exclusion and payment/status separation; `tests/merchant-unpaid-ready-aging.test.mjs` retains detector boundary coverage.
+
+
+## Marketing merge deployment boundary — 2026-11-22
+
+The reviewed Marketing/QR branch explicitly disables Git previews in both root and API Vercel configurations. Merchant main remains enabled; API main remains disabled. The existing Merchant release workflow also runs the focused Marketing regression suite. These publication guards do not change environment settings, write flags, API behavior, Customer, Rider or business data.

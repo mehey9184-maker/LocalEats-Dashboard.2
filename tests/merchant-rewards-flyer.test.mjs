@@ -11,7 +11,8 @@ const flyer = marketing.slice(
 test('merchant promo tools never claim delivery or publicly enabled ordering', () => {
   assert.doesNotMatch(marketing, /Fast Local Delivery|FastDelivery|RIDER DELIVERY|Live & Accepting Orders|TOWNSHIP DELIVERY NOW AVAILABLE|SPECIAL VOUCHER FOR YOU|DEAL OF THE DAY|LUNCH TIME SPECIAL AT|ORDER AHEAD & SKIP THE LINE/i);
   assert.match(marketing, /Pickup Only/);
-  assert.match(marketing, /Pay at Shop/);
+  const counterSign = readFileSync(new URL('../src/components/marketing/CounterSignStudio.tsx', import.meta.url), 'utf8');
+  assert.match(marketing + counterSign, /Pay at (?:the )?shop/i);
   assert.match(marketing, /does not create or activate a voucher code/);
   assert.match(marketing, /Pickup ordering availability is shown inside LocalEats/);
   assert.match(marketing, /Share your LocalEats shop link so customers can browse menus/);

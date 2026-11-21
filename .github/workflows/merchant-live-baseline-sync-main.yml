@@ -27,6 +27,7 @@ jobs:
       - name: Merchant pickup and availability safety checks
         run: |
           npm run test:merchant-pickup
+          npm run test:merchant-marketing
           node --test tests/merchant-availability.test.cjs
       - name: Merchant build
         run: npm run build
