@@ -40,8 +40,11 @@ export const isAllowedOrigin = (
   environment: CorsOriginEnvironment = process.env
 ): boolean => {
   if (origin === undefined) return true;
-  // Canonical Customer Production origin only; Firebase still authorizes private reads/quotes.
-  if (origin === "https://www.localeatssa.co.za") return true;
+  // Both public Customer domains resolve to the same production application.
+  // Vercel's apex URL is a valid browser Origin too: rejecting it blocks
+  // public catalog preflights even though shop discovery needs no account.
+  // Exact matches only; this does not authorize any login, private data or writes.
+  if (origin === "https://www.localeatssa.co.za" || origin === "https://localeatssa.co.za") return true;
 
   const productionOrigin = environment.MERCHANT_DASHBOARD_ORIGIN;
   if (productionOrigin && origin === productionOrigin) return true;
