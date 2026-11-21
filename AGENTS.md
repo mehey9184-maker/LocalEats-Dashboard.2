@@ -1,5 +1,9 @@
 # LocalEats Platform - Persistent System Instructions
 
+## LocalEats Production gate (2026-11-21)
+Read [the current Production readiness register](docs/LOCALEATS_PRODUCTION_RELEASE_READINESS_2026-11-21.md) before any merge, release or live pickup activation. It documents the exact WWW/apex CORS failure (GET 200 vs 403), Customer PR #125's verified outside-4-km browse-only UI, Production write flags OFF, active test shops requiring owner review, My-Kota effective OFFLINE despite the legacy active flag, Firebase/FCM real acceptance still unverified, Supabase PostGIS linter advisories and the ordered API→Customer release/rollback plan. Do not infer live ordering from passed synthetic tests or Vercel READY.
+
+
 ## Active Merchant pickup-only Codex policy — 2026-11-05
 
 Isolated Firebase staging builds must explicitly set `VITE_FIREBASE_CONFIG_SOURCE=environment` and supply the complete staging app configuration. That mode selects `VITE_FIREBASE_FIRESTORE_DATABASE_ID` (defaulting to `(default)`) without reusing bundled production values. Existing deployments retain their bundled configuration until opted in.
