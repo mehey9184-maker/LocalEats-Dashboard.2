@@ -1,5 +1,9 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L3-N8U-X — Preview-only publication allowlist (2026-11-21)
+The existing public API returns nine approved/nonarchived shops including a test-named listing without coordinates and a listing whose numeric location is outside South Africa while its address says Ivory Park. All nine public rating values are 4.8 with no review-count evidence in that API response; none should be publicly described as verified reviews yet. A narrow **opt-in** API Preview change introduces `PUBLIC_CATALOG_PILOT_SHOP_IDS` to limit only public browsing endpoints: `GET /api/v1/catalog/shops`, `/pickup-shops`, `/shops/:id` and `/shops/:id/menu`. If the variable is absent the prior catalog behavior remains unchanged, while a set but empty/invalid variable publishes no shops. This is not an order gate, merchant approval, or a change to the underlying database; My-Kota remains effectively closed. Testing requires CI and a separately scoped Preview before any Production release decision. No pickup/delivery/LocalPay writes, migration, live order, GPS mock or Production deploy is authorized.
+
+
 The Customer history API provides authenticated 50-row pages with a timestamp/ID cursor and a has_more flag. The original recent feed retains its 50-row limit and now uses the same deterministic timestamp/ID ordering. Each query filters to the Firebase UID before paging.
 
 ## Isolated Firebase staging configuration — 2026-11-05
