@@ -1,0 +1,31 @@
+name: CF2-C exact availability + narrow reader PostgreSQL 17 (no hosted DB)
+on:
+  push:
+    branches:
+      - cloudflare/cf1-merchant-api-staging-20261122
+    paths:
+      - 'localeats-api/tests/cf2c/**'
+      - '.github/workflows/cloudflare-cf2c-exact-availability.yml'
+  pull_request:
+    paths:
+      - 'localeats-api/tests/cf2c/**'
+      - '.github/workflows/cloudflare-cf2c-exact-availability.yml'
+permissions:
+  contents: read
+jobs:
+  exact-sql-pg17:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify local-only runner, original source and no credentials
+        run: |
+          node -e "const fs=require('node:fs');const s=fs.readFileSync('localeats-api/tests/cf2c/run-exact-availability-pg17.sh','utf8');if(!s.includes('postgres:17-alpine') || !s.includes('docker run') || /supabase\.co|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY|db push|apply_migration|--publish|-p [0-9]/.test(s))process.exit(1);console.log('CF2C no hosted database or published port')"
+          node --test localeats-api/tests/cf2c/exact-availability-source-parity.test.mjs
+      - name: Run exact-source availability and role RLS in disposable PostgreSQL
+        run: bash localeats-api/tests/cf2c/run-exact-availability-pg17.sh
+      - name: Confirm no live change
+        run: echo "CF2C_PG17_DISPOSABLE_ONLY_NO_HOSTED_DB_NO_DEPLOY"
