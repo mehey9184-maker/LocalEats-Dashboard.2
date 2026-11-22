@@ -1,5 +1,15 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## CF2-B read-only catalogue role — synthetic proof (2026-11-22)
+
+A new dependency-injected [PostgreSQL read-only catalogue adapter](localeats-api/cloudflare-staging/cf2ReadOnlyPgCatalog.mjs) was added to Cloudflare migration draft [#222](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/pull/222), with fixed SELECT statements, parameterized shop IDs, vetted public shop/menu columns, strict money/coordinate parsing, bounded rows and payloads, and no Cloudflare or Supabase credentials. The actual deployed CF1 Worker does **not** import this adapter and continues to reject real catalogue/menu/orders.
+
+The [disposable PostgreSQL 17 RLS and private-column rehearsal](docs/CLOUDFLARE_CF2B_ROLE_REHEARSAL.md) passed on [GitHub Actions #45067699808](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/45067699808) using entirely synthetic shops/menu records, a nonlogin/nonbypass test role, restricted SELECT and negative INSERT/UPDATE/DELETE tests. No external Supabase project, database keys or publicly deployed Worker were involved.
+
+**Architecture condition:** The real staging `shops_with_availability` view exposes `s.*` and computes effective state with a composite shop function, so an independently authorized column-limited role must be tested against the **exact** existing view/function before anyone creates grants or connects a Cloudflare Hyperdrive reader. Proposed non-exposed projected views and a least-privilege role are only design, not installed. The sample fixture Boolean is not evidence of live time-zone availability parity. Reusing existing LocalEats-Profile-Staging may avoid a paid third Supabase project after approval.
+
+No staging permission, RLS, credential, Hyperdrive, new Worker, Customer/Merchant hosting, Production, DNS, payments or orders were changed. Founder approval remains required for each actual hosted modification. Full details and current handoff: [CF2-B design/rehearsal](docs/CLOUDFLARE_CF2B_STAGING_READER_PLAN.md) and [LocalEats Project Memory](docs/LOCALEATS_PROJECT_MEMORY.md).
+
 ## CF2-A staging fixture audit — completed 2026-11-22
 
 Under the founder's **CF2-A-only approval**, I inspected bounded **synthetic shop/menu records** in the existing LocalEats-Profile-Staging project. All five shop and all three menu rows have test markers in both ID and name; none of the shop/menu rows were unmarked. Three shops are approved/unarchived (two effectively open, one closed browse-only); one pending and one archived shop must be excluded. The three menu items have R25/R25/R10 prices, correct shop linkage and no orphan/invalid prices. A synthetic far-vs-open pair is approximately **8.9 km** apart. Exact test cases, separate-project scope and unresolved identity/provenance limits: [CF2-A fixture acceptance](docs/CLOUDFLARE_CF2A_FIXTURE_ACCEPTANCE.md). No customer/merchant account or order records, private credentials, SQL grants, schema writes or Cloudflare deployments were touched. This is **not** approval for a new live API or Production release.
