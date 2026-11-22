@@ -1,0 +1,36 @@
+name: CF2-B disposable PostgreSQL read-only role safety (no hosted DB)
+on:
+  push:
+    branches:
+      - cloudflare/cf1-merchant-api-staging-20261122
+    paths:
+      - 'localeats-api/tests/cf2b/**'
+      - 'localeats-api/cloudflare-staging/cf2ReadOnlyPgCatalog.mjs'
+      - 'localeats-api/tests/cloudflare-cf2b-readonly-pg-catalog.test.mjs'
+      - '.github/workflows/cloudflare-cf2b-pg17-rehearsal.yml'
+  pull_request:
+    paths:
+      - 'localeats-api/tests/cf2b/**'
+      - 'localeats-api/cloudflare-staging/cf2ReadOnlyPgCatalog.mjs'
+      - 'localeats-api/tests/cloudflare-cf2b-readonly-pg-catalog.test.mjs'
+      - '.github/workflows/cloudflare-cf2b-pg17-rehearsal.yml'
+permissions:
+  contents: read
+jobs:
+  disposable-pg17:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Assert source-only SQL query behavior
+        run: node --test localeats-api/tests/cloudflare-cf2b-readonly-pg-catalog.test.mjs
+      - name: Assert Docker rehearsal never touches hosted databases or exposes ports
+        run: |
+          node -e "const fs=require('node:fs');const p='localeats-api/tests/cf2b/run-readonly-catalog-pg17.sh';const s=fs.readFileSync(p,'utf8');if(!s.includes('postgres:17-alpine') || !s.includes('docker run') || /supabase\.co|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY|db push|apply_migration|-p [0-9]|--publish/.test(s))process.exit(1);console.log('CF2B local-only runner confirmed')"
+      - name: Run disposable synthetic PostgreSQL 17 RLS and column permissions
+        run: bash localeats-api/tests/cf2b/run-readonly-catalog-pg17.sh
+      - name: Confirm no production operations
+        run: echo "CF2B_PG17_DISPOSABLE_ONLY_NO_HOSTED_DB_NO_CLOUDFLARE_DEPLOY"
