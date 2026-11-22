@@ -8,6 +8,7 @@ on:
       - 'src/components/PreviewFakeOrders.tsx'
       - 'src/services/merchantWorkshopDemoEngine.ts'
       - 'tests/merchant-workshop-demo.test.mjs'
+      - 'tests/merchant-workshop-type-parity.mjs'
       - '.github/workflows/merchant-workshop-demo-preview.yml'
       - 'docs/MERCHANT_WORKSHOP_DEMO_PREVIEW_20261123.md'
   pull_request:
@@ -16,6 +17,7 @@ on:
       - 'src/components/PreviewFakeOrders.tsx'
       - 'src/services/merchantWorkshopDemoEngine.ts'
       - 'tests/merchant-workshop-demo.test.mjs'
+      - 'tests/merchant-workshop-type-parity.mjs'
       - '.github/workflows/merchant-workshop-demo-preview.yml'
       - 'docs/MERCHANT_WORKSHOP_DEMO_PREVIEW_20261123.md'
 permissions:
@@ -26,6 +28,8 @@ jobs:
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
@@ -34,8 +38,21 @@ jobs:
         run: node --experimental-strip-types --test tests/merchant-workshop-demo.test.mjs
       - name: Install reviewed dependencies
         run: npm ci --no-audit --no-fund
-      - name: Typecheck original Merchant frontend with workshop
-        run: npx tsc --noEmit
+      - name: Fail on new TypeScript errors compared with current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/workshop-main"
+          git worktree add --detach "$RUNNER_TEMP/workshop-main" origin/main
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/workshop-main/node_modules"
+          set +e
+          (cd "$RUNNER_TEMP/workshop-main" && "$GITHUB_WORKSPACE/node_modules/.bin/tsc" --noEmit --pretty false) > "$RUNNER_TEMP/workshop-main-types.log" 2>&1
+          baseline_code=$?
+          npx tsc --noEmit --pretty false > "$RUNNER_TEMP/workshop-head-types.log" 2>&1
+          proposed_code=$?
+          set -e
+          echo "Main baseline exit status: $baseline_code; workshop exit status: $proposed_code"
+          node tests/merchant-workshop-type-parity.mjs "$RUNNER_TEMP/workshop-main-types.log" "$RUNNER_TEMP/workshop-head-types.log"
       - name: Build Merchant frontend, do not deploy
         run: npm run build
       - name: Verify no secrets or hosted mutations were used
