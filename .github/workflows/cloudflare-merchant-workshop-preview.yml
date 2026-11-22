@@ -1,0 +1,89 @@
+name: Cloudflare Merchant Workshop — isolated static preview (NO deploy)
+on:
+  push:
+    branches:
+      - review/merchant-orders-workshop-demo-20261123
+    paths:
+      - 'preview/merchant-workshop/**'
+      - 'wrangler.merchant-workshop-preview.jsonc'
+      - 'src/services/cloudflareWorkshopPreviewGuard.ts'
+      - 'src/components/MerchantWorkshopDemo.tsx'
+      - 'tests/merchant-cloudflare-workshop-preview.test.mjs'
+      - 'tests/cloudflare-workshop-browser.mjs'
+      - '.github/workflows/cloudflare-merchant-workshop-preview.yml'
+  pull_request:
+    paths:
+      - 'preview/merchant-workshop/**'
+      - 'wrangler.merchant-workshop-preview.jsonc'
+      - 'src/services/cloudflareWorkshopPreviewGuard.ts'
+      - 'src/components/MerchantWorkshopDemo.tsx'
+      - 'tests/merchant-cloudflare-workshop-preview.test.mjs'
+      - 'tests/cloudflare-workshop-browser.mjs'
+      - '.github/workflows/cloudflare-merchant-workshop-preview.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-demo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Static guardrails reject APIs, DB bindings and Production host
+        run: node --test tests/merchant-cloudflare-workshop-preview.test.mjs
+      - name: Install existing frontend dependencies (no new runtime packages)
+        run: npm ci --no-audit --no-fund
+      - name: Build standalone fictional workshop from original React component
+        env:
+          VITE_MERCHANT_WORKSHOP_CLOUDFLARE_PREVIEW: 'true'
+          VITE_MERCHANT_PREVIEW_READ_ONLY: 'true'
+          VITE_MERCHANT_FAKE_ORDERS_ENABLED: 'false'
+          VITE_PICKUP_ORDERING_ENABLED: 'false'
+        run: npx vite build --config preview/merchant-workshop/vite.config.ts
+      - name: Inspect generated public output for forbidden data/API integration
+        run: |
+          test -f dist-merchant-workshop/index.html
+          test -n "$(find dist-merchant-workshop/assets -type f -name '*.js' -print -quit)"
+          ! grep -RIE 'localeats-api|SUPABASE_SERVICE_ROLE_KEY|firebaseapp\.com|firebasestorage|serviceRoleKey|DATABASE_URL' dist-merchant-workshop/
+      - name: Workers Static Assets packaging dry run ONLY
+        run: npx --yes wrangler@4.54.0 deploy --dry-run --config wrangler.merchant-workshop-preview.jsonc --outdir artifacts/wrangler-cloudflare-workshop
+      - name: Install pinned browser automation for local-only acceptance
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.55.1
+          npx playwright install --with-deps chromium
+      - name: Virtual-host Chromium acceptance — never send traffic to Cloudflare
+        shell: bash
+        env:
+          VITE_MERCHANT_WORKSHOP_CLOUDFLARE_PREVIEW: 'true'
+          VITE_MERCHANT_PREVIEW_READ_ONLY: 'true'
+          VITE_MERCHANT_FAKE_ORDERS_ENABLED: 'false'
+          VITE_PICKUP_ORDERING_ENABLED: 'false'
+        run: |
+          set -euo pipefail
+          npx vite preview --config preview/merchant-workshop/vite.config.ts > "$RUNNER_TEMP/cf-workshop-vite.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for i in $(seq 1 40); do
+            if curl --silent --fail http://127.0.0.1:4174/ >/dev/null; then ready=true; break; fi
+            sleep 1
+          done
+          if [[ "$ready" != true ]]; then
+            echo "CF_WORKSHOP_LOCAL_SERVER_FAILED"
+            tail -n 50 "$RUNNER_TEMP/cf-workshop-vite.log"
+            exit 1
+          fi
+          node tests/cloudflare-workshop-browser.mjs
+      - name: Save fictional visual evidence for founder (no personal data)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cloudflare-workshop-preview-chromium-evidence
+          path: artifacts/cloudflare-workshop-preview
+          retention-days: 3
+          if-no-files-found: ignore
+      - name: Confirm no Cloudflare hosted changes
+        run: echo "CLOUDFLARE_WORKSHOP_PREVIEW_BUILD_TESTS_ONLY_NO_DEPLOY"
