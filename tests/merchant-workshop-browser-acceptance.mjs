@@ -113,7 +113,12 @@ const runPositive=async (width,height,tag)=>{
   await page.screenshot({path:`${dir}/${tag}-after-controls.png`,fullPage:false,animations:"disabled"});
   if(tag==="desktop"){
     await check("desktop workshop remains bounded after 30 artificial steps",async()=>{
-      await page.getByRole("button",{name:"Pause"}).click();
+      // The preceding control test already pauses the demo.
+      // Make this stress test independent of its incoming toggle state.
+      if (await page.getByRole("button",{name:"Pause"}).count()){
+        await page.getByRole("button",{name:"Pause"}).click();
+      }
+      assert.equal(await page.getByRole("button",{name:"Resume"}).count(),1);
       for(let i=0;i<30;i++) await page.getByRole("button",{name:"Next step"}).click();
       const tickets=await page.getByTestId("workshop-fake-ticket").count();
       assert.ok(tickets<=10,`expected <=10, got ${tickets}`);
