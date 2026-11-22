@@ -1,0 +1,42 @@
+name: Merchant Workshop Demo — isolated preview (no deploy)
+on:
+  push:
+    branches:
+      - review/merchant-orders-workshop-demo-20261123
+    paths:
+      - 'src/components/MerchantWorkshopDemo.tsx'
+      - 'src/components/PreviewFakeOrders.tsx'
+      - 'src/services/merchantWorkshopDemoEngine.ts'
+      - 'tests/merchant-workshop-demo.test.mjs'
+      - '.github/workflows/merchant-workshop-demo-preview.yml'
+      - 'docs/MERCHANT_WORKSHOP_DEMO_PREVIEW_20261123.md'
+  pull_request:
+    paths:
+      - 'src/components/MerchantWorkshopDemo.tsx'
+      - 'src/components/PreviewFakeOrders.tsx'
+      - 'src/services/merchantWorkshopDemoEngine.ts'
+      - 'tests/merchant-workshop-demo.test.mjs'
+      - '.github/workflows/merchant-workshop-demo-preview.yml'
+      - 'docs/MERCHANT_WORKSHOP_DEMO_PREVIEW_20261123.md'
+permissions:
+  contents: read
+jobs:
+  synthetic-workshop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Test bounded fictional lifecycle and no-write preview-only gate
+        run: node --experimental-strip-types --test tests/merchant-workshop-demo.test.mjs
+      - name: Install reviewed dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck original Merchant frontend with workshop
+        run: npx tsc --noEmit
+      - name: Build Merchant frontend, do not deploy
+        run: npm run build
+      - name: Verify no secrets or hosted mutations were used
+        run: echo "MERCHANT_WORKSHOP_SYNTHETIC_ONLY_NO_DATABASE_NO_FCM_NO_DEPLOY"
