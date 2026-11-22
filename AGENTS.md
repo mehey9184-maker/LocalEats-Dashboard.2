@@ -1,5 +1,9 @@
 # LocalEats Platform - Persistent System Instructions
 
+## L3-P4 (2026-11-22): verified Merchant pickup feedback and canonical idea register
+Draft branch `review/l3-p4-merchant-confirmation-trust-20261122` adds accessible success feedback only after an authenticated pickup API command/retry returns confirmed; messages stay order-ID + revision scoped, never from simulation or stale state. Disabled order-action buttons refer to activation explanations. No pickup write flags, payments, SQL, API Worker, real data or Production changes. Canonical business idea register lives at `mehey9184-maker/LocalEats-app/docs/LOCALEATS_SCALABLE_IDEA_REGISTER.md` in the P4 Customer draft. Do not duplicate or silently activate its captured ideas, including photo/CDN. See `docs/L3_P4_MERCHANT_TRUST_20261122.md`, source tests and vendor documentation; owner release approval required.
+
+
 ## Draft merchant image defaults — 2026-11-22
 On branch `review/merchant-missing-image-defaults-20261122`, missing or failed customer-facing merchant images display `MerchantPhoto` branded defaults for shop/menu, and the merchant account profile displays local initials. Keep uploaded photos primary, never write placeholder URLs to the database, never imply the merchant photographed a generic stock item. Read `Vendor_LocalEats_App_Functionality_Documentation.md` and run `tests/default-image-fallback.test.mjs`. Draft only; no Production or pickup-activation approval.
 

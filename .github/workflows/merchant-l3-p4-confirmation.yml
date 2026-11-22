@@ -1,0 +1,37 @@
+name: L3-P4 Merchant pickup confirmation usability
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/components/PickupOrderActions.tsx'
+      - 'tests/l3-p4-merchant-confirmation.test.mjs'
+      - 'docs/L3_P4_MERCHANT_TRUST_20261122.md'
+      - '.github/workflows/merchant-l3-p4-confirmation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  merchant-confirmation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      VITE_MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Merchant receipt verification and pickup constraints
+        run: node --experimental-strip-types --test tests/l3-p4-merchant-confirmation.test.mjs tests/merchant-handover.test.mjs tests/merchant-pickup.test.mjs
+      - name: Lint modified pickup-action file (existing broad 'any' reported as warning)
+        run: npx eslint src/components/PickupOrderActions.tsx --rule '@typescript-eslint/no-explicit-any: warn'
+      - name: Existing repository-wide lint debt (informational, not a P4 acceptance claim)
+        continue-on-error: true
+        run: npm run lint
+      - name: Build unchanged merchant app safely
+        run: npm run build
