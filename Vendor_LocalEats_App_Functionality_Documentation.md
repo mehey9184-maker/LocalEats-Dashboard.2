@@ -1,5 +1,12 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## Founder–AI operating agreement and Cloudflare continuity — 2026-11-22 (draft branch)
+
+The founder approved **SAFE** AI worker autonomy for read-only source/system inspection, independently prepared isolated code/tests/docs and draft PRs, **milestone CEO reports**, and **GitHub Markdown as cross-chat memory**. Founder remains final authority for mergers to main, staging or public deploys, DNS, costs, real orders, payment and live data/security changes. Canonical references: [founder charter](docs/LOCALEATS_FOUNDER_CHARTER.md) and [project memory](docs/LOCALEATS_PROJECT_MEMORY.md), also linked at the top of root `AGENTS.md`. Do not assume an older generic go-live instruction authorizes current Production actions.
+
+CF1 Customer #140 and Merchant/API #222 staging source, static builds, safety tests and Wrangler packaging dry-runs passed; no Cloudflare deployment has been made. The existing Cloudflare `localeats-app` is a dashboard-created placeholder with auto-build targeting Customer GitHub `main` and its Bun lockfile mismatch, not a verified release. The new CF2 goal is a **mock-only read contract** for approved public shops/menu; all write commands, live credentials, real orders and payments remain denied. Refer to [migration tracker #223](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/issues/223).
+
+
 ## Default merchant pictures — 2026-11-22 (draft, UI-only)
 The Merchant Dashboard uses reusable `MerchantPhoto` across Menu, Home inventory and Shop Profile. Uploaded item/merchant images remain primary; missing, known legacy placeholder and failed URLs render a neutral branded food/store icon instead of a broken photo or unrelated stock image. The Storefront banner retains the shop name adjacent to its default store icon. The account profile falls back to local initials (or a person glyph when no name is supplied), including when an uploaded URL fails, without altering saved URLs. `tests/default-image-fallback.test.mjs` checks these display contracts. No item data or imagery is inserted into Supabase, Firebase, R2 or Cloudinary; the original upload controls and layout remain. Pickup ordering, payments, production flags, CORS, GPS, and API writes are unchanged. Preview/draft only, subject to owner visual review.
 
