@@ -1,7 +1,7 @@
 # CF2-E — Staging-only catalogue permission release gate
 
 **Date:** 2026-11-22 (Africa/Johannesburg)  
-**Status:** **READ-ONLY LIVE PREFLIGHT PASSED; HOSTED DDL NOT AUTHORIZED OR EXECUTED**  
+**Status:** **LIVE STAGING READ-ONLY PREFLIGHT PASSED; DISPOSABLE PG17 CF2-E RELEASE REHEARSAL PASSED; HOSTED DDL NOT AUTHORIZED OR EXECUTED**  
 **Scope:** Existing separate **LocalEats-Profile-Staging** Supabase project only. Never the primary LocalEats database.  
 **Founder authority:** SAFE autonomous source work; a phase-selection message is **not a standalone explicit approval** to change hosted database security policies. See [Founder charter](LOCALEATS_FOUNDER_CHARTER.md).
 
@@ -44,7 +44,7 @@ Single atomic transaction in [CF2-D forward proposal](../supabase/drafts/cf2d_ca
 - [Read-only preflight SELECT](../supabase/drafts/cf2e_catalog_staging_preflight.READ_ONLY.sql): 19 metadata checks; already **PASS** against actual connected staging.
 - [Read-only postflight SELECT](../supabase/drafts/cf2e_catalog_staging_postflight.READ_ONLY.sql): verify NOLOGIN, no role memberships, RLS policy scope, private view options, allowed SELECT, denials for `anon`/`authenticated`, no DML, owner ID denial, and no other public relation reads. **Not executed on hosted staging because the change is not authorized.**
 - [Rollback SQL](../supabase/drafts/cf2d_catalog_projection_rollback.REVIEW_ONLY.sql) removes **only** the two proposed views/policies/schema and the no-login role, using `RESTRICT` rather than cascade.
-- [Disposable PostgreSQL runner](../localeats-api/tests/cf2d/run-reviewed-sql-pg17.sh) now runs **preflight → forward proposal → postflight → negative access/price/availability tests → rollback → preflight restored** on an invented PostgreSQL 17 database. See latest [draft PR #222](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/pull/222) CI; **do not claim this new CF2-E test is green until the exact commit finishes**.
+- [Disposable PostgreSQL runner](../localeats-api/tests/cf2d/run-reviewed-sql-pg17.sh) now runs **preflight → forward proposal → postflight → negative access/price/availability tests → rollback → preflight restored** on an invented PostgreSQL 17 database. See latest [draft PR #222](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/pull/222) CI; [CF2-D/E disposable PG17 CI #45073869976](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/45073869976) **PASSED** on code head `119bf7b4ca9a39fac7d3eccf4fa35872ebfcf315`, including synthetic preflight, migration, postflight, role restrictions, complete rollback and restored preflight. A previously missing existing availability view in the disposable fixture was added to model real staging shape. This green run is **not** evidence of applying SQL to hosted staging. Verify the newest commit/workflows again before execution.
 - No real backups were created here. Per [Supabase backup guidance](https://supabase.com/docs/guides/platform/backups), automatic daily backups are not included in the Free plan; the actual staging project's billing plan/backup eligibility and a restorable schema snapshot must be confirmed before hosted DDL. No free-to-paid upgrade is authorized.
 
 ## Founder decision gate before applying hosted DDL
