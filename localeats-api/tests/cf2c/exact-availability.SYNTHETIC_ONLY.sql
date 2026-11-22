@@ -114,7 +114,7 @@ END $$;
 -- PostgreSQL rejected the table-level read. This scalar projection is tested
 -- against the ORIGINAL shop_effective_open(s, at) implementation, including
 -- Johannesburg clock/overnight/override cases, without private SELECT grants.
-DO $
+DO $$
 DECLARE failures int;
 BEGIN
  SELECT count(*) INTO failures
@@ -127,7 +127,7 @@ BEGIN
    )
  );
  IF failures <> 0 THEN RAISE EXCEPTION 'CF2C_SCALAR_AVAILABILITY_PARITY_FAILED_%',failures;END IF;
-END $;
+END $$;
 SET ROLE cf2c_reader;
 DO $$
 DECLARE n int;
