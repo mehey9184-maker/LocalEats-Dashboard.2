@@ -92,12 +92,17 @@ test('CF2 synthetic menu only resolves after exact approved, unarchived shop',as
 test('CF2 rejects missing availability authority and corrupted/cross-shop menu prices',async()=>{
   for(const invalidShop of [
     shop({effective_is_active:null}), shop({availability_revision:null}),
-    shop({is_active:'true'}), shop({approval_status:'approved',archived_at:undefined})
+    shop({is_active:'true'})
   ]) {
     const response=await createIsolatedCatalogTestWorker(fake({shops:[invalidShop]}))
       .fetch(request('/api/v1/catalog/shops'),allowed);
     assert.notEqual(response.status,200,'Invalid shop cannot become visible');
   }
+  const unknownArchive = await createIsolatedCatalogTestWorker(
+    fake({shops:[shop({archived_at:undefined})]}))
+    .fetch(request('/api/v1/catalog/shops'),allowed);
+  assert.equal(unknownArchive.status,200);
+  assert.deepEqual((await unknownArchive.json()).shops,[],'unverified archive state must not be visible');
   for(const item of [menu({shop_id:'other'}),menu({price:NaN}),
     menu({price:-1}),menu({is_available:undefined}),menu({price:'25'})]) {
     const response=await createIsolatedCatalogTestWorker(fake({items:[item]}))
