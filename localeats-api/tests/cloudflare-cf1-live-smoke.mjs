@@ -9,7 +9,6 @@ const base = 'https://localeats-api-cf1-staging.mehey9184.workers.dev';
 if (!base.endsWith('.mehey9184.workers.dev') || !base.includes('cf1-staging')) {
   throw new Error('Refusing to probe any non-CF1 staging host');
 }
-const signal = AbortSignal.timeout(12000);
 
 async function call(path, init = {}) {
   let res;
@@ -18,7 +17,7 @@ async function call(path, init = {}) {
       ...init,
       redirect: 'manual',
       cache: 'no-store',
-      signal,
+      signal: AbortSignal.timeout(12000),
       headers: { 'User-Agent': 'LocalEats-CF1-safe-GitHub-acceptance', ...(init.headers || {}) }
     });
   } catch (error) {
