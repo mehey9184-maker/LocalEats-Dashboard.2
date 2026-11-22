@@ -1,5 +1,9 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## CF2-A staging fixture audit — completed 2026-11-22
+
+Under the founder's **CF2-A-only approval**, I inspected bounded **synthetic shop/menu records** in the existing LocalEats-Profile-Staging project. All five shop and all three menu rows have test markers in both ID and name; none of the shop/menu rows were unmarked. Three shops are approved/unarchived (two effectively open, one closed browse-only); one pending and one archived shop must be excluded. The three menu items have R25/R25/R10 prices, correct shop linkage and no orphan/invalid prices. A synthetic far-vs-open pair is approximately **8.9 km** apart. Exact test cases, separate-project scope and unresolved identity/provenance limits: [CF2-A fixture acceptance](docs/CLOUDFLARE_CF2A_FIXTURE_ACCEPTANCE.md). No customer/merchant account or order records, private credentials, SQL grants, schema writes or Cloudflare deployments were touched. This is **not** approval for a new live API or Production release.
+
 ## CF2 source-only staging data and Firebase packaging — 2026-11-22
 
 Cloudflare migration [draft PR #222](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/pull/222) now contains a **disconnected, dependency-injected, GET-only** PostgREST staging repository/transport (`localeats-api/cloudflare-staging/stagingCatalogRepository.mjs`). It selects internal approval/archive evidence for strict filtering without exposing those fields to customers, enforces full exact-count replies, explicit same-shop ownership for menu items, bounded response/row/time limits and a pinned staging-host check. Tests use **mock HTTP responses**, not a live Supabase endpoint; all real API routes on the deployed CF1 Worker still return 503.
