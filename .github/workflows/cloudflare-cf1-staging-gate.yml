@@ -14,6 +14,7 @@ on:
       - 'localeats-api/tests/cloudflare-staging-worker.test.mjs'
       - 'localeats-api/tests/cloudflare-cf2-public-catalog-contract.test.mjs'
       - 'localeats-api/tests/cloudflare-cf2-staging-postgrest.test.mjs'
+      - 'localeats-api/tests/cloudflare-cf2b-readonly-pg-catalog.test.mjs'
       - 'localeats-api/tests/cloudflare-cf2-firebase-auth-parity.test.mjs'
       - 'localeats-api/tests/cloudflare-cf1-live-smoke.mjs'
       - 'docs/CLOUDFLARE_CF1_MERCHANT_API_STAGING.md'
@@ -36,6 +37,7 @@ jobs:
           node --test localeats-api/tests/cloudflare-staging-worker.test.mjs
           node --test localeats-api/tests/cloudflare-cf2-public-catalog-contract.test.mjs
           node --test localeats-api/tests/cloudflare-cf2-staging-postgrest.test.mjs
+          node --test localeats-api/tests/cloudflare-cf2b-readonly-pg-catalog.test.mjs
           node --test localeats-api/tests/cloudflare-cf2-firebase-auth-parity.test.mjs
       - name: Install dependencies for Merchant static build only
         run: npm ci
