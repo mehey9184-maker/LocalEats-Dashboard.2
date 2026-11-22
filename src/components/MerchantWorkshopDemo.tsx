@@ -10,6 +10,7 @@ import {
   type WorkshopOrder, type WorkshopStage,
 } from "../services/merchantWorkshopDemoEngine";
 import {isMerchantPreviewSimulatorEnabled} from "../services/merchantPreviewSimulator";
+import {isIsolatedCloudflareWorkshopPreviewEnabled} from "../services/cloudflareWorkshopPreviewGuard";
 
 const STAGE_PRESENTATION: Record<WorkshopStage, {
   title: string; step: string; icon: typeof ShoppingBag; color: string;
@@ -78,7 +79,7 @@ export function MerchantWorkshopDemo({onClose}: {onClose: () => void}) {
     const timer = window.setInterval(() => {
       // Do not run a CPU-intensive or misleading demo while the tab is hidden.
       if (document.visibilityState === "hidden") return;
-      if (!isMerchantPreviewSimulatorEnabled()) return;
+      if (!(isMerchantPreviewSimulatorEnabled() || isIsolatedCloudflareWorkshopPreviewEnabled())) return;
       setState(advanceWorkshop);
     }, 2200);
     return () => window.clearInterval(timer);
@@ -102,7 +103,10 @@ export function MerchantWorkshopDemo({onClose}: {onClose: () => void}) {
   };
 
   // Second guard: even a direct import cannot open the workshop in Production.
-  if (!isMerchantPreviewSimulatorEnabled() || typeof document === "undefined") return null;
+  if (typeof document === "undefined" ||
+      !(isMerchantPreviewSimulatorEnabled() || isIsolatedCloudflareWorkshopPreviewEnabled())) {
+    return null;
+  }
 
   return createPortal(
     <div className="fixed inset-0 z-[20000] flex items-center justify-center bg-slate-950/80 p-2 backdrop-blur-sm sm:p-5">
