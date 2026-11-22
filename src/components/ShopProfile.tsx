@@ -30,7 +30,7 @@ import {
 } from "../utils";
 import { analyzeLocationSync } from "../hooks/useShopLocation";
 import { handleCentralizedError } from "../utils/errorHandler";
-import { DEFAULT_SHOP_LOGO, isPlaceholderImage } from "../constants";
+import { MerchantPhoto } from "./MerchantPhoto";
 import imageCompression from "browser-image-compression";
 import { uploadImageToFirebaseStorage } from "../lib/firebase";
 function cn(...inputs: ClassValue[]) {
@@ -887,19 +887,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-primary/10" />
               <div className="absolute bottom-4 left-4 right-4 flex items-end gap-3">
                 <div className="w-12 h-12 rounded-xl bg-white shadow-lg shrink-0 overflow-hidden flex items-center justify-center">
-                  {!isPlaceholderImage(formData.logo_url) ? (
-                    <img
-                      src={formData.logo_url!}
-                      className="w-full h-full object-cover"
-                      alt="Logo"
-                    />
-                  ) : (
-                    <img
-                      src={DEFAULT_SHOP_LOGO}
-                      className="w-full h-full object-cover opacity-80"
-                      alt="Default Logo"
-                    />
-                  )}
+                  <MerchantPhoto src={formData.logo_url} alt={formData.name || "Shop"} kind="shop" compact />
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="text-white font-semibold text-lg leading-tight truncate">
@@ -954,26 +942,8 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                         className="animate-spin text-primary"
                         size={24}
                       />
-                    ) : !isPlaceholderImage(formData.logo_url) ? (
-                      <img
-                        src={formData.logo_url!}
-                        className="w-full h-full object-cover"
-                        alt="Logo"
-                      />
                     ) : (
-                      <div
-                        className="w-full h-full flex items-center justify-center"
-                        style={{
-                          background:
-                            "linear-gradient(135deg, #ff9d42 0%, #f58220 100%)",
-                        }}
-                      >
-                        <Store
-                          size={32}
-                          className="text-white drop-shadow-md"
-                          strokeWidth={1.5}
-                        />
-                      </div>
+                      <MerchantPhoto src={formData.logo_url} alt={formData.name || "Shop"} kind="shop" />
                     )}
                   </div>
                   <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl cursor-pointer">
