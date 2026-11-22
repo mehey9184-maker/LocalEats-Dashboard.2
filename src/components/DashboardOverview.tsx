@@ -1,7 +1,7 @@
 import {pickupHomeOrders,pickupReadyCount,pickupReportCsv,pickupDayKey} from "../services/merchantHomePickup";
 import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
-import { FoodPlaceholder } from "../components/MenuManagement";
-import { isPlaceholderImage } from "../constants";
+import { MerchantPhoto } from "../components/MerchantPhoto";
+
 import { updateFirestoreShop } from "../lib/firebase";
 import { syncShopAvailability } from "../utils/availabilityChecker";
 import { Skeleton } from "../components/ui/Skeleton";
@@ -2166,15 +2166,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/10 flex items-center gap-4 group hover:border-error/30 transition-colors"
                 >
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-surface-container flex items-center justify-center">
-                    {!isPlaceholderImage(item.image_url) ? (
-                      <img
-                        src={item.image_url}
-                        alt={item.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <FoodPlaceholder size={20} />
-                    )}
+                    <MerchantPhoto src={item.image_url} alt={item.name} kind="food" compact />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-bold text-sm text-on-surface truncate">

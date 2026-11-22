@@ -29,6 +29,7 @@ import {
 import { useAuthGuard } from "../hooks/useAuthGuard";
 import { cn } from "../lib/utils";
 import { uploadImageToCloudinary, getOptimizedCloudinaryUrl } from "../lib/cloudinary";
+import { MerchantPhoto } from "./MerchantPhoto";
 import AIMenuScannerModal from "./AIMenuScannerModal";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
 
@@ -611,20 +612,15 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
         </button>
 
         <div className="relative h-36 bg-surface-container rounded-xl flex items-center justify-center overflow-hidden shrink-0">
-          {!isPlaceholderImage(item.image_url) ? (
-            <img
-              className={cn(
-                "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500",
-                !item.is_available && "grayscale opacity-50"
-              )}
-              src={getOptimizedCloudinaryUrl(item.image_url)}
-              alt={item.name}
-              loading="lazy"
-              decoding="async"
-            />
-          ) : (
-            <FoodPlaceholder size={44} />
-          )}
+          <MerchantPhoto
+            src={isPlaceholderImage(item.image_url) ? "" : getOptimizedCloudinaryUrl(item.image_url)}
+            alt={item.name}
+            kind="food"
+            className={cn(
+              "group-hover:scale-105 transition-transform duration-500",
+              !item.is_available && "grayscale opacity-50"
+            )}
+          />
           {(!item.is_available || item.stock_quantity === 0) && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-xs">
               <span className="bg-error text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg">
@@ -1030,10 +1026,10 @@ export const MenuManagement: React.FC<MenuManagementProps> = ({
                 <div className="relative w-32 h-32 rounded-2xl bg-surface-container-high border-2 border-dashed border-outline-variant/30 flex items-center justify-center overflow-hidden shrink-0">
                   {imagePreview && !isPlaceholderImage(imagePreview) ? (
                     <>
-                      <img
+                      <MerchantPhoto
                         src={imagePreview.startsWith("blob:") ? imagePreview : getOptimizedCloudinaryUrl(imagePreview)}
-                        alt="Preview"
-                        className="w-full h-full object-cover"
+                        alt="Item preview"
+                        kind="food"
                       />
                       <button
                         type="button"

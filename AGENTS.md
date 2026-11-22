@@ -1,5 +1,9 @@
 # LocalEats Platform - Persistent System Instructions
 
+## Draft merchant image defaults — 2026-11-22
+On branch `review/merchant-missing-image-defaults-20261122`, missing or failed customer-facing merchant images display `MerchantPhoto` branded defaults for shop/menu, and the merchant account profile displays local initials. Keep uploaded photos primary, never write placeholder URLs to the database, never imply the merchant photographed a generic stock item. Read `Vendor_LocalEats_App_Functionality_Documentation.md` and run `tests/default-image-fallback.test.mjs`. Draft only; no Production or pickup-activation approval.
+
+
 ## LocalEats Production gate (2026-11-21)
 Read [the current Production readiness register](docs/LOCALEATS_PRODUCTION_RELEASE_READINESS_2026-11-21.md) before any merge, release or live pickup activation. It documents the exact WWW/apex CORS failure (GET 200 vs 403), Customer PR #125's verified outside-4-km browse-only UI, Production write flags OFF, active test shops requiring owner review, My-Kota effective OFFLINE despite the legacy active flag, Firebase/FCM real acceptance still unverified, Supabase PostGIS linter advisories and the ordered API→Customer release/rollback plan. Do not infer live ordering from passed synthetic tests or Vercel READY.
 
