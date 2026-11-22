@@ -1,3 +1,5 @@
+import {publicCatalogResponse} from './publicCatalogRead.mjs';
+
 /**
  * CF1 isolated staging bootstrap only. NOT the real LocalEats API.
  *
@@ -36,7 +38,12 @@ function apiResponse(status, payload, headers, head = false) {
   });
 }
 
-export default {
+/**
+ * CF2 is exercised ONLY by explicit dependency injection in tests. Wrangler's
+ * default export has no repository and still denies every business API read.
+ */
+export function createIsolatedCatalogTestWorker(testOnlyRepository = null) {
+ return {
   async fetch(request, env) {
     const origin = request.headers.get('Origin');
     const method = request.method.toUpperCase();
@@ -77,6 +84,12 @@ export default {
         writes_enabled: false
       }, headers, method === 'HEAD');
     }
+    // CF2 contract tests inject a synthetic, approval-filtered repository.
+    // The default deployed Worker has null here and remains bootstrap-only.
+    if (testOnlyRepository) {
+      const response=await publicCatalogResponse(new URL(request.url),testOnlyRepository);
+      if (response) return apiResponse(response.status,response.body,headers,method === 'HEAD');
+    }
     // GET /health is intentionally NOT OK: operational API is not migrated.
     return apiResponse(503, {
       success: false,
@@ -84,4 +97,7 @@ export default {
       error: 'Cloudflare LocalEats staging bootstrap has no business API routes yet.'
     }, headers, method === 'HEAD');
   }
-};
+ };
+}
+
+export default createIsolatedCatalogTestWorker();
