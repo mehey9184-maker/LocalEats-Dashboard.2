@@ -3,7 +3,7 @@
   // Dedicated public fictional demo. NEVER assign a LocalEats Production domain.
   "name": "localeats-merchant-workshop-preview",
   "main": "preview/merchant-workshop/worker.ts",
-  "compatibility_date": "2026-11-23",
+  "compatibility_date": "2026-11-22",
   "workers_dev": true,
   "preview_urls": false,
   "assets": {
