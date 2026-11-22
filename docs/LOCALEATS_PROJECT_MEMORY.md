@@ -2,9 +2,21 @@
 
 **As-of:** 2026-11-22 (Africa/Johannesburg) · **Maintainer:** AI technical worker on behalf of founder
 **Canonical location:** Merchant/API repository, `docs/LOCALEATS_PROJECT_MEMORY.md`, review branch `cloudflare/cf1-merchant-api-staging-20261122`
-**State label:** **PREPARED / REVIEW-ONLY — NO CLOUDFLARE LIVE APPLICATION RELEASE**
+**State label:** **CF1 API BOOTSTRAP DEPLOYED AND LIVE-SMOKE VERIFIED; REAL APP/API NOT MIGRATED**
 
 > **Starting a new chat?** Open this Markdown file from GitHub using the exact branch, read `docs/LOCALEATS_FOUNDER_CHARTER.md`, read both repositories' root `AGENTS.md` and source documentation, then fetch the actual current PR/CI/Cloudflare state. Details below describe the last verified state, **not** a permanent runtime guarantee. Do not ask the founder to repeat facts already recorded here.
+
+## LATEST — approved CF1 API bootstrap deployed and smoke verified (2026-11-22)
+
+**Founder explicitly approved** this one restricted no-data Worker deployment; no blanket staging or Production authority. The existing `localeats-app` placeholder and the Vercel-hosted Production domains remain untouched.
+
+- **Real Cloudflare staging URL:** `https://localeats-api-cf1-staging.mehey9184.workers.dev/bootstrap-health` (the **bootstrap**, not the working app).
+- **Deployed only** `localeats-api-cf1-staging`, uploaded from GitHub draft #222 pinned at `01c0217fea7bf480ad80d1c9bbdaceb836335c5f`, using `localeats-api/cloudflare-staging/worker.mjs` and its imported mock-only public catalog contract module. Production `main` not merged. Version `b4285a75-6538-45c0-b5d3-4f924bf07c4f`, deployment `ccd37d7f-fca8-42ae-b27d-4196c1dce50f`.
+- **Safety read-back from Cloudflare:** `LOCALEATS_PREVIEW_READ_ONLY=true`; all four write flags false; **no Firebase/Supabase/R2/FCM bindings**, no assets or custom domains. Worker is available only on its own `workers.dev` host; Preview URLs disabled.
+- **Actual remote HTTP tests** from [GitHub Actions run 45063320204](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/45063320204), code commit `ea614ec4fa108a04b44257d8cc3e97b963e7a0b5`, **PASS**: bootstrap GET 200 with `api_ready=false` and no data/Auth/writes; business GET /health, /catalog/shops, /catalog/shops/18/menu and order/merchant endpoints all 503; HEAD 200 no body; read OPTIONS 204; mutation OPTIONS 503; untrusted Origin 403; empty synthetic POST /orders 503. No customer account or real order information transmitted.
+- **Not accomplished:** full API/Supabase migration, live catalogue/menu, Customer/Merchant Cloudflare frontend deployments, real phone tests, Production restoration, DNS changes, paid account changes or merge. **No one should treat the successful bootstrap as a usable food ordering service.**
+- **Next safe task:** CF2 isolated database adapter + Firebase Admin/FCM runtime compatibility review (mock/fixture-only until individually approved); estimate free-tier limits/CPU. Any more staging deployment or real backend connection requires separate founder authorization.
+- **Complete approved-deployment audit:** [`docs/CLOUDFLARE_STAGING_DEPLOY_APPROVAL.md`](CLOUDFLARE_STAGING_DEPLOY_APPROVAL.md).
 
 ## Decision / working contract (2026-11-22)
 
@@ -37,7 +49,7 @@ Merchant/API [run 45058258166](https://github.com/mehey9184-maker/LocalEats-Dash
 - Official Cloudflare integration is connected to this ChatGPT session (and founder reports Codex connected). Cloudflare account lists a **single** existing Worker called `localeats-app` from a **dashboard template**; `has_assets=false` (not the Customer build). Two dashboard-created versions were Ready; its public `workers.dev` subdomain was disabled at inspection.
 - That placeholder's auto-build configuration targets **Customer GitHub `main`**, `bun run build`, `npx wrangler deploy`; it is **not** CF1 draft #140. Treat it as unrelated; **do not retry/promote it**.
 - Its first GitHub build failed before app compilation: Bun `--frozen-lockfile` mismatch (`@vercel/analytics` removed from `package.json` but retained in `bun.lock`); duplicate `vite` entry warning. This does **not** invalidate CF1 npm-based safety tests.
-- **No reviewed LocalEats Customer/Merchant/API Cloudflare Worker has been deployed yet.** No public DNS, Production secret, Firebase, Supabase, payment or real-order mutations by this migration.
+- **Update, 2026-11-22:** exactly one **API bootstrap-only** Cloudflare Worker was deployed with founder approval and passed remote smoke tests; the Customer and Merchant frontend apps still have no Cloudflare deployments. No Production DNS, secrets, Firebase, Supabase, payment or real-order mutations by this migration.
 
 ## Vercel status and reason for migration
 
@@ -49,7 +61,7 @@ At the previous verified live check, `www.localeatssa.co.za`, `dashboard.localea
 - Merchant/API draft #222 holds Merchant static `wrangler.cf-merchant-staging.jsonc`, guarded Vite-only build, tests, and a separate API `localeats-api/wrangler.cf-api-staging.jsonc` → `localeats-api/cloudflare-staging/worker.mjs`. Its **CF1 API is bootstrap-only**, `GET /bootstrap-health` reports `api_ready:false`, ALL real business reads/mutations are 503, write gates fail closed, exact-origin CORS required. This is not live catalog or accepted API compatibility.
 - **CF2 mock-only catalogue contract prepared in draft #222** (2026-11-22): `localeats-api/cloudflare-staging/publicCatalogRead.mjs`, dependency-injected test variant in `worker.mjs` and `localeats-api/tests/cloudflare-cf2-public-catalog-contract.test.mjs`. The mock tests model approved/nonarchived shop list, shop detail, menu, 4km pickup-list, effective availability, strict prices, CORS, HEAD/OPTIONS and mutation denial. **The default Worker still injects NO repository, serves no authentic shop/menu data and returns 503 for all business routes; `/health` stays unavailable.** See [CF2 source-only contract](CLOUDFLARE_CF2_PUBLIC_CATALOG_CONTRACT.md). GitHub CI must be rechecked on the last commit and it is NOT a live staging integration.
 - After pure-code parity, design disposable Supabase staging connection without embedding secrets. Verify Firebase Admin revocation/disabled-token and FCM push compatibility with Workers **before** enabling authenticated routes. Do not silently reduce auth standards.
-- Founder has **not** approved actual Cloudflare staging deployment under the SAFE autonomy choice; only packaging dry-runs and isolated PRs are authorized. Before any staging deployment, propose specific resources and budget, then obtain founder approval.
+- Founder **approved exactly one no-data Cloudflare API bootstrap staging deployment on 2026-11-22 and it is complete**. No general authority for additional staging deployments, customer/merchant hostings, database/auth integrations or real data. Future staging deployments still require a separate specific founder decision, with cost and rollback review.
 
 ## Manual / Production release gates
 
@@ -69,4 +81,4 @@ At the previous verified live check, `www.localeatssa.co.za`, `dashboard.localea
 
 **Last verified CF2 code-only milestone (2026-11-22):** `localeats-api/cloudflare-staging/publicCatalogRead.mjs` and `localeats-api/tests/cloudflare-cf2-public-catalog-contract.test.mjs` were added to draft PR #222; the worker injects a repository **only for synthetic tests**, leaving the default Worker bootstrap-only (no real API). The combined CF1/CF2 safety and Wrangler `--dry-run` workflow [run 45062047767](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/45062047767) completed **successfully** on `112666061622d8f797eed36035456da5ad7817f0`. [Customer CF1 workflow 45061812046](https://github.com/mehey9184-maker/LocalEats-app/actions/runs/45061812046) also succeeded. Documentation commits after those SHAs need current CI revalidation; **no real Cloudflare API or production functionality tested**.
 
-**Next safe task:** design the separate database-staging adapter and verify Firebase Admin/FCM compatibility without touching Production. **Founder decision when ready:** [one no-data, no-DNS API Worker staging proposal](CLOUDFLARE_STAGING_DEPLOY_APPROVAL.md) is prepared but NOT approved. Only that specific isolated bootstrap would be in scope; no frontend deployment, live secrets, business orders, spending or domain change.
+**Current milestone:** the founder-approved [one-worker staging proposal](CLOUDFLARE_STAGING_DEPLOY_APPROVAL.md) was executed and verified by real edge smoke; all other deployment scopes remain unapproved. **Next safe task:** design the isolated database-staging adapter and verify Firebase Admin/FCM compatibility without touching Production. No frontend deployment, live secrets, business orders, spending or domain changes are authorized.
