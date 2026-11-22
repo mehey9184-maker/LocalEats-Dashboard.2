@@ -1,5 +1,11 @@
 # LocalEats Platform - Persistent System Instructions
 
+## 2026-11-23 merchant shop signup compatibility — source-only preview
+
+Founder wants safe vendor signups soon. [Draft PR #224](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/pull/224) on `review/merchant-shop-coordinate-parity-20261123` fixes source-level coordinate payload handling with default **legacy-dual** main-schema compatibility, a future opt-in `canonical-only` mode gated behind **`MERCHANT_CANONICAL_SIGNUP_SCHEMA_VERIFIED=true`**, and persisted-response checks for the authenticated owner, pending approval, inactive status and authoritative coordinates. **Not deployed.**
+
+**IMPORTANT:** Connected read-only schema inspection showed the actual main LocalEats `shops` has all 4 coordinates plus a generated ID and `phone`/`approval_reason`, while `LocalEats-Profile-Staging` is a synthetic catalogue-only database with just latitude/longitude and also **lacks** a generated shop ID, `phone`, `approval_reason` and `created_at`. Do not send live merchant signups to Profile-Staging or infer this PR makes it registration-ready. No DB grants, record insertion, API deployment or merchant account enrollment has been authorized. Read [detailed compatibility review](docs/MERCHANT_SIGNUP_SCHEMA_PARITY_20261123.md). Validate `tests/merchant-shop-onboarding-schema.test.mjs` and `localeats-api/src/routes/merchantShopCoordinates.test.ts` before any release consideration.
+
 ## Draft merchant image defaults — 2026-11-22
 On branch `review/merchant-missing-image-defaults-20261122`, missing or failed customer-facing merchant images display `MerchantPhoto` branded defaults for shop/menu, and the merchant account profile displays local initials. Keep uploaded photos primary, never write placeholder URLs to the database, never imply the merchant photographed a generic stock item. Read `Vendor_LocalEats_App_Functionality_Documentation.md` and run `tests/default-image-fallback.test.mjs`. Draft only; no Production or pickup-activation approval.
 
