@@ -3,6 +3,16 @@
 **State:** DRAFT DESIGN ONLY; not approved for execution (2026-11-22).
 **Founder boundary:** No database grants, SQL migrations, keys, secrets, Worker deployments, frontend releases or Production changes from this file.
 
+## CF2-B SOURCE / DISPOSABLE MILESTONE — 2026-11-22
+
+The first bounded **CF2-B proof** is now in [draft PR #222](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/pull/222): the fixed-query, parameterized, source-only `cf2ReadOnlyPgCatalog.mjs` adapter; the synthetic [Node security tests](../localeats-api/tests/cloudflare-cf2b-readonly-pg-catalog.test.mjs); and the isolated [PostgreSQL 17 reader/RLS rehearsal](../localeats-api/tests/cf2b/readonly-catalog.SYNTHETIC_ONLY.sql) run by [a no-port disposable Docker script](../localeats-api/tests/cf2b/run-readonly-catalog-pg17.sh). The [GitHub Actions CI rehearsal run #45067699808](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/45067699808) **passed**: 8 Node tests and synthetic PostgreSQL role/RLS/denied-DML and private-column checks. It used no hosted database credentials and did not deploy.
+
+**Design outcome:** prefer a separately approved, column- and row-scoped PostgreSQL reader and **Hyperdrive** against `LocalEats-Profile-Staging`, not the unscoped `service_role` PostgREST route. The reader targets future `catalog_cf2.public_shops` / `catalog_cf2.public_menu` views in a **non-exposed schema**; these relations and the reader role **do not exist** in connected staging. A disposable no-login role is not an active database account. The real existing availability SQL uses `shop_effective_open(s,...)` on a full composite shop row; compatibility with column-only GRANTs and precise active-state semantics remains **unproven**. Preserve all current shop, profile and order rules. See [CF2-B technical/negative-test record](CLOUDFLARE_CF2B_ROLE_REHEARSAL.md).
+
+**Approved now:** local/synthetic code, tests, documents, CI. **Not authorized:** live staging role creation, grants, RLS changes, secrets, Hyperdrive resource creation, any new Worker deployment, real authenticated Firebase, DNS or Production release.
+
+---
+
 ## CF2-A facts behind the proposal
 
 Existing LocalEats-Profile-Staging has 5 synthetic-marker shops and 3 synthetic-marker menu rows with no untagged shop/menu data; 3 approved/unarchived shops (currently 2 effective-open, one closed), 1 pending, 1 archived; all three menus linked; two R25 items and one R10 item; far-vs-open fixture distance 8.9 km. Provenance of *fixture creation* and account/identity isolation remains unverified. See [CF2-A acceptance](CLOUDFLARE_CF2A_FIXTURE_ACCEPTANCE.md).
