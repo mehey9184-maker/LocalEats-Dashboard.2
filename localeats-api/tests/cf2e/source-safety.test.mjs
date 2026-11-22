@@ -13,7 +13,10 @@ function assertSelectOnly(sql){
  const uncomments=sql.replace(/^--.*$/gm,"");
  assert.match(uncomments,/^\s*WITH checks\(name, ok\) AS \(/);
  assert.match(uncomments,/\bSELECT CASE\b/);
- assert.doesNotMatch(uncomments,/\b(?:CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE|INSERT|DELETE|UPDATE|CALL|COPY|DO)\b/i);
+ // "INSERT", "UPDATE" and "DELETE" occur as SQL string arguments to
+ // has_table_privilege(); they're not mutation statements. Mask quoted literals.
+ const withoutLiterals=uncomments.replace(/'(?:''|[^'])*'/g,"''");
+ assert.doesNotMatch(withoutLiterals,/(?:^|[;\n])\s*(?:CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE|INSERT|DELETE|UPDATE|CALL|COPY|DO)\b/im);
 }
 
 test("CF2-E same-file preflight and postflight are read-only",()=>{
