@@ -4,7 +4,9 @@ set -Eeuo pipefail
 fixture="localeats-api/tests/cf2d/staging-shape.SYNTHETIC_ONLY.sql"
 proposal="supabase/drafts/cf2d_catalog_projection.REVIEW_ONLY.sql"
 rollback="supabase/drafts/cf2d_catalog_projection_rollback.REVIEW_ONLY.sql"
-[[ $# -eq 0 && -f "$fixture" && -f "$proposal" && -f "$rollback" ]] ||
+preflight="supabase/drafts/cf2e_catalog_staging_preflight.READ_ONLY.sql"
+postflight="supabase/drafts/cf2e_catalog_staging_postflight.READ_ONLY.sql"
+[[ $# -eq 0 && -f "$fixture" && -f "$proposal" && -f "$rollback" && -f "$preflight" && -f "$postflight" ]] ||
   { echo "CF2D_INVALID_INPUT" >&2; exit 1; }
 command -v docker >/dev/null || { echo "CF2D_DOCKER_REQUIRED" >&2; exit 1; }
 name="cf2d-pg17-$(date +%s)-$RANDOM"
@@ -25,8 +27,14 @@ done
 
 docker exec -i "$name" psql -X -qAt -v ON_ERROR_STOP=1 \
  -U postgres -d cf2d_lab < "$fixture" >/dev/null
+# Assert the very same SELECT-only CF2-E preflight before any synthetic DDL.
+docker exec -i "$name" psql -X -qAt -v ON_ERROR_STOP=1 \
+ -U postgres -d cf2d_lab < "$preflight" | grep -Fq CF2E_STAGING_READ_ONLY_PREFLIGHT_PASS
 docker exec -i "$name" psql -X -qAt -v ON_ERROR_STOP=1 \
  -U postgres -d cf2d_lab < "$proposal" >/dev/null
+# Assert no unintended role, RLS or anonymous permissions after synthetic DDL.
+docker exec -i "$name" psql -X -qAt -v ON_ERROR_STOP=1 \
+ -U postgres -d cf2d_lab < "$postflight" | grep -Fq CF2E_STAGING_READ_ONLY_POSTFLIGHT_PASS
 
 # Role-scoped projections: 3 approved shops, 2 menu items. Original source
 # table with private owner/price-cost columns remains inaccessible.
@@ -84,6 +92,9 @@ docker exec "$name" psql -X -qAt -v ON_ERROR_STOP=1 -U postgres -d cf2d_lab \
 # must survive the rollback and the projected objects must disappear.
 docker exec -i "$name" psql -X -qAt -v ON_ERROR_STOP=1 \
  -U postgres -d cf2d_lab < "$rollback" >/dev/null
+# Rollback must restore original metadata preflight conditions.
+docker exec -i "$name" psql -X -qAt -v ON_ERROR_STOP=1 \
+ -U postgres -d cf2d_lab < "$preflight" | grep -Fq CF2E_STAGING_READ_ONLY_PREFLIGHT_PASS
 docker exec "$name" psql -X -qAt -v ON_ERROR_STOP=1 -U postgres -d cf2d_lab \
  -c "DO \$\$ BEGIN
    IF to_regclass('catalog_cf2.public_shops') IS NOT NULL
@@ -93,4 +104,4 @@ docker exec "$name" psql -X -qAt -v ON_ERROR_STOP=1 -U postgres -d cf2d_lab \
      OR (SELECT count(*) FROM public.menu_items)<>3
    THEN RAISE EXCEPTION 'CF2D_ROLLBACK_ALTERED_FIXTURES'; END IF;
    END \$\$;" >/dev/null
-echo "CF2D_DISPOSABLE_STAGING_SHAPE_PARITY_RLS_AND_ROLLBACK_PASS"
+echo "CF2E_PRE_POST_AND_ROLLBACK_ISOLATED_PG17_PASS"
