@@ -23,11 +23,18 @@ export function strictPreviewOrigin(raw,{project}={}){
  assert.equal(url.username,'');
  assert.equal(url.password,'');
  const h=url.hostname;
- assert.ok(h.endsWith('.vercel.app') && h.includes('-mehey9184-makers-projects.'),'Only the selected Vercel team Preview host is allowed');
- assert.ok(!h.includes('-git-main-') && !h.endsWith('-git-main.vercel.app'),'Never test a main-branch deployment');
- assert.ok(!['localeats-api.vercel.app','project-x7cvt.vercel.app','www.localeatssa.co.za','localeatssa.co.za'].includes(h),'Refuse Production aliases');
- if(project==='api')assert.ok(h.startsWith('localeats-')||h.startsWith('localeats-api-'),'Expected an API Preview host');
- if(project==='customer')assert.ok(h.startsWith('project-x7cvt-'),'Expected Customer Preview host');
+ // Require branch aliases, never an immutable deployment URL: immutable
+ // Vercel Production hosts also end in "-mehey9184-makers-projects.vercel.app".
+ const previewAlias=project==='api'
+   ? 'localeats-api-git-review-'
+   : project==='customer'
+     ? 'project-x7cvt-git-review-'
+     : null;
+ assert.ok(previewAlias!==null,'Specify API or Customer Preview project');
+ assert.ok(h.startsWith(previewAlias) && h.endsWith('-mehey9184-makers-projects.vercel.app'),
+   'Require exact selected Git review-branch Preview alias (never immutable Production URL)');
+ assert.ok(!h.includes('-git-main-') && !h.includes('-git-production-'),
+   'Never test main or production branch deployments');
  return url.origin;
 }
 
