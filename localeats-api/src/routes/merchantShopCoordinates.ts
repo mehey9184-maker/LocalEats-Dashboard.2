@@ -2,10 +2,13 @@
  * Merchant shop-location column compatibility.
  *
  * Main LocalEats shops historically has latitude/longitude AND lat/lng.
- * Separate LocalEats-Profile-Staging has latitude/longitude only.
+ * Separate LocalEats-Profile-Staging has latitude/longitude only, but
+ * ALSO lacks the existing signup route's required phone/approval_reason and
+ * generated shop ID. It is catalogue-only: DO NOT send merchant signup
+ * requests there or assume selecting canonical-only makes it signup-ready.
  * Server-side mode defaults to legacy-dual, preserving current Production
- * inserts. Future isolated staging runtime may explicitly set canonical-only
- * after a separately approved deployment/backup and schema verification.
+ * inserts. A future merchant-capable schema may explicitly use canonical-only
+ * only after complete schema/backup/authorization verification.
  *
  * This module is pure: no database access, logins, network, or configuration
  * mutations. Never infer a schema from a user-submitted field or public URL.
