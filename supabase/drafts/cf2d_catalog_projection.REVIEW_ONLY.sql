@@ -26,6 +26,25 @@ BEGIN
   THEN
     RAISE EXCEPTION 'CF2D_RLS_DISABLED_STOP';
   END IF;
+  -- Stop if the *deployed* function loses approval/archive authority.
+  -- A legacy GitHub draft omitted these checks and must NOT be reused here.
+  IF position('p_shop.approval_status = ''approved''' in
+       pg_get_functiondef('public.shop_effective_open(public.shops,timestamptz)'::regprocedure)) = 0
+     OR position('p_shop.archived_at IS NULL' in
+       pg_get_functiondef('public.shop_effective_open(public.shops,timestamptz)'::regprocedure)) = 0
+     OR position('Africa/Johannesburg' in
+       pg_get_functiondef('public.shop_schedule_open(text,text,timestamptz)'::regprocedure)) = 0
+  THEN
+    RAISE EXCEPTION 'CF2D_DEPLOYED_AVAILABILITY_DRIFT_STOP';
+  END IF;
+  IF (SELECT COUNT(*) FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='shops'
+        AND column_name IN ('id','name','approval_status','archived_at',
+          'opening_time','closing_time','is_active','latitude','longitude',
+          'availability_override_until','availability_revision')) <> 11
+  THEN
+    RAISE EXCEPTION 'CF2D_STAGING_SHOP_COLUMNS_CHANGED';
+  END IF;
 END $$;
 
 CREATE ROLE cf2_catalog_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT;
