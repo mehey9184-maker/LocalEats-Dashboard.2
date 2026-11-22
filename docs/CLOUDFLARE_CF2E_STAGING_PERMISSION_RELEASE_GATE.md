@@ -5,6 +5,12 @@
 **Scope:** Existing separate **LocalEats-Profile-Staging** Supabase project only. Never the primary LocalEats database.  
 **Founder authority:** SAFE autonomous source work; a phase-selection message is **not a standalone explicit approval** to change hosted database security policies. See [Founder charter](LOCALEATS_FOUNDER_CHARTER.md).
 
+## Founder authorization result — 2026-11-22
+
+**Explicit founder reply:** “i approve” accepted **only for the exact reviewed staging DDL subject to the agreed backup and preflight checks**. Live preflight was repeated and returned `CF2E_STAGING_READ_ONLY_PREFLIGHT_PASS` (all 19 checks); a read-only migration-history recheck found Nov 20 changes after older backup evidence dated Nov 10/18. **No currently restorable post-Nov-20 backup could be verified through the connected tools**. The new role/schema still do not exist in hosted staging. Therefore this condition fails and **no hosted SQL was applied**. Keep the approval for its original narrow scope—do not infer permission to waive safety gates, activate credentials, deploy another Worker or spend.
+
+**Auditable hold record:** [CF2-E founder-approved backup hold and live metadata baseline](CLOUDFLARE_CF2E_APPROVED_BACKUP_HOLD.md). A tested SQL rollback is not equivalent to a recoverable project backup. Request current encrypted staging backup/restore evidence; avoid uploading actual SQL dumps or secrets into GitHub. We can recheck and execute within the original scope only after the condition is satisfied.
+
 ## Business reason
 
 Build a secure public catalogue data path while retaining server-authoritative shop approval, prices, Johannesburg opening times and merchant overrides, without revealing shop owner/contact fields or granting any customer or AI read/write access to accounts, orders, payments or push infrastructure.
