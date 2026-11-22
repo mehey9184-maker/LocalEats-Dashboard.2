@@ -37,6 +37,9 @@ test('only explicit customer/API Preview origins accepted, no Production aliases
  for(const url of [
    'https://localeats-api.vercel.app',
    'https://project-x7cvt.vercel.app',
+   // Immutable Production deployments share the Vercel team hostname suffix.
+   'https://localeats-e8aip1yg1-mehey9184-makers-projects.vercel.app',
+   'https://project-x7cvt-mcz8ejnaz-mehey9184-makers-projects.vercel.app',
    'https://localeats-api-git-main-mehey9184-makers-projects.vercel.app',
    'http://localeats-api-git-review-l3-n8-abc123-mehey9184-makers-projects.vercel.app',
    api+'/api/v1/catalog/shops',
