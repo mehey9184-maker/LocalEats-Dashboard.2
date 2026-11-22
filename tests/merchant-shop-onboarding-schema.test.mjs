@@ -22,6 +22,10 @@ test('server-only explicit schema mode prevents uncontrolled fallback/retry', ()
   assert.match(route,/resolveMerchantCoordinateMode/);
   assert.match(route,/\.\.\.createMerchantCoordinates\(body\.latitude, body\.longitude, coordinateMode\)/);
   assert.match(route,/MERCHANT_SCHEMA_CONFIGURATION_UNVERIFIED/);
+  assert.match(route,/MERCHANT_CANONICAL_SIGNUP_SCHEMA_VERIFIED !== "true"/);
+  assert.match(route,/MERCHANT_SIGNUP_SCHEMA_NOT_VERIFIED/);
+  assert.match(coordinates,/Profile-Staging.*latitude\/longitude only/);
+  assert.match(coordinates,/DO NOT send merchant signup/);
   assert.match(coordinates,/return "legacy-dual"/);
   assert.match(coordinates,/return \{ latitude, longitude, lat: latitude, lng: longitude \}/);
   assert.match(coordinates,/return \{ latitude, longitude \}/);
