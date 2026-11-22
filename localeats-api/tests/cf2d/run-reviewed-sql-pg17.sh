@@ -28,13 +28,21 @@ done
 docker exec -i "$name" psql -X -qAt -v ON_ERROR_STOP=1 \
  -U postgres -d cf2d_lab < "$fixture" >/dev/null
 # Assert the very same SELECT-only CF2-E preflight before any synthetic DDL.
-docker exec -i "$name" psql -X -qAt -v ON_ERROR_STOP=1 \
- -U postgres -d cf2d_lab < "$preflight" | grep -Fq CF2E_STAGING_READ_ONLY_PREFLIGHT_PASS
+assert_select_only_gate() {
+ local label="$1" sql_file="$2" expected="$3" actual
+ actual=$(docker exec -i "$name" psql -X -qAt -v ON_ERROR_STOP=1 \
+  -U postgres -d cf2d_lab < "$sql_file")
+ if [[ "$actual" != "$expected"* ]]; then
+   echo "CF2E_${label}_BLOCKED: $actual" >&2
+   exit 1
+ fi
+ echo "CF2E_${label}_PASS"
+}
+assert_select_only_gate PREFLIGHT "$preflight" CF2E_STAGING_READ_ONLY_PREFLIGHT_PASS
 docker exec -i "$name" psql -X -qAt -v ON_ERROR_STOP=1 \
  -U postgres -d cf2d_lab < "$proposal" >/dev/null
 # Assert no unintended role, RLS or anonymous permissions after synthetic DDL.
-docker exec -i "$name" psql -X -qAt -v ON_ERROR_STOP=1 \
- -U postgres -d cf2d_lab < "$postflight" | grep -Fq CF2E_STAGING_READ_ONLY_POSTFLIGHT_PASS
+assert_select_only_gate POSTFLIGHT "$postflight" CF2E_STAGING_READ_ONLY_POSTFLIGHT_PASS
 
 # Role-scoped projections: 3 approved shops, 2 menu items. Original source
 # table with private owner/price-cost columns remains inaccessible.
@@ -93,8 +101,7 @@ docker exec "$name" psql -X -qAt -v ON_ERROR_STOP=1 -U postgres -d cf2d_lab \
 docker exec -i "$name" psql -X -qAt -v ON_ERROR_STOP=1 \
  -U postgres -d cf2d_lab < "$rollback" >/dev/null
 # Rollback must restore original metadata preflight conditions.
-docker exec -i "$name" psql -X -qAt -v ON_ERROR_STOP=1 \
- -U postgres -d cf2d_lab < "$preflight" | grep -Fq CF2E_STAGING_READ_ONLY_PREFLIGHT_PASS
+assert_select_only_gate ROLLBACK_PREFLIGHT "$preflight" CF2E_STAGING_READ_ONLY_PREFLIGHT_PASS
 docker exec "$name" psql -X -qAt -v ON_ERROR_STOP=1 -U postgres -d cf2d_lab \
  -c "DO \$\$ BEGIN
    IF to_regclass('catalog_cf2.public_shops') IS NOT NULL
