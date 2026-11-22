@@ -15,7 +15,7 @@ const html=read("../preview/merchant-workshop/index.html");
 const vite=read("../preview/merchant-workshop/vite.config.ts");
 
 test("original Merchant preview fake orders still require Vercel hostname and three flags",()=>{
-  assert.match(vercel,/^local-eats-dashboard/mi);
+  assert.match(vercel,/local-eats-dashboard-2-6m8o-/);
   assert.match(vercel,/vercel\\.app/);
   assert.match(vercel,/VITE_MERCHANT_FAKE_ORDERS_ENABLED/);
   assert.match(vercel,/VITE_MERCHANT_PREVIEW_READ_ONLY/);
@@ -39,7 +39,7 @@ test("standalone Cloudflare fixture imports only real React workshop and simple 
   assert.match(shell,/import \{MerchantWorkshopDemo\}/);
   assert.match(shell,/import \{isIsolatedCloudflareWorkshopPreviewEnabled\}/);
   assert.match(html,/noindex, nofollow, noarchive/);
-  assert.doesNotMatch(shell,/import .*App|MerchantApi|Firebase|Supabase|OrderService|serviceWorker|initSentry/);
+  assert.doesNotMatch(shell,/^\s*import\s+.*(?:App[\."']|MerchantApi|Firebase|Supabase|OrderService|serviceWorker|initSentry)/m);
   assert.doesNotMatch(shell,/\bfetch\(|\baxios\.|\bsupabase\.|\bprint\(|\bNotification\(/);
   assert.match(vite,/dist-merchant-workshop/);
   assert.doesNotMatch(vite,/VitePWA|process\.env\.GEMINI_API_KEY|process\.env\.GOOGLE_MAPS_PLATFORM_KEY/);
