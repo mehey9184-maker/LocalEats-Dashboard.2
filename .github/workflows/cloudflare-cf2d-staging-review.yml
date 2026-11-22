@@ -1,0 +1,34 @@
+name: CF2-D staging SQL proposal and rollback (disposable only)
+on:
+  push:
+    branches:
+      - cloudflare/cf1-merchant-api-staging-20261122
+    paths:
+      - 'localeats-api/tests/cf2d/**'
+      - 'supabase/drafts/cf2d_catalog_projection.REVIEW_ONLY.sql'
+      - 'supabase/drafts/cf2d_catalog_projection_rollback.REVIEW_ONLY.sql'
+      - '.github/workflows/cloudflare-cf2d-staging-review.yml'
+  pull_request:
+    paths:
+      - 'localeats-api/tests/cf2d/**'
+      - 'supabase/drafts/cf2d_catalog_projection.REVIEW_ONLY.sql'
+      - 'supabase/drafts/cf2d_catalog_projection_rollback.REVIEW_ONLY.sql'
+      - '.github/workflows/cloudflare-cf2d-staging-review.yml'
+permissions:
+  contents: read
+jobs:
+  reviewed-sql-disposable-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify no real database or deployment credential access
+        run: |
+          node --test localeats-api/tests/cf2d/review-proposal.test.mjs
+      - name: Apply review proposal and rollback to disposable local PostgreSQL only
+        run: bash localeats-api/tests/cf2d/run-reviewed-sql-pg17.sh
+      - name: Confirm no hosted migration or public deployment
+        run: echo "CF2D_LOCAL_DISPOSABLE_ONLY_NO_SUPABASE_NO_WORKERS_DEPLOY"
