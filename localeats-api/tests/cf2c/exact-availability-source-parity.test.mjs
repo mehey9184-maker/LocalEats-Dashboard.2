@@ -25,7 +25,7 @@ test("CF2-C SQL is local-only, non-login, non-bypass and cannot grant private co
  assert.match(rehearsal,/CREATE POLICY cf2c_shop_read/);
  assert.match(rehearsal,/GRANT SELECT \(/);
  assert.doesNotMatch(rehearsal,/SUPABASE_SERVICE_ROLE_KEY|DATABASE_URL|supabase\.co|CREATE ROLE .* LOGIN|ALTER ROLE .* LOGIN/);
- const readGrants=rehearsal.match(/GRANT SELECT \([^)]*\) ON public\.shops TO cf2c_reader/);
+ const readGrants=rehearsal.match(/GRANT SELECT\s*\([\s\S]*?\)\s*ON public\.shops TO cf2c_reader/);
  assert.ok(readGrants);
  assert.doesNotMatch(readGrants[0],/owner_id|private_notes/);
 });
