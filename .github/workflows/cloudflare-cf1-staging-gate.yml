@@ -13,6 +13,7 @@ on:
       - 'localeats-api/cloudflare-staging/**'
       - 'localeats-api/tests/cloudflare-staging-worker.test.mjs'
       - 'localeats-api/tests/cloudflare-cf2-public-catalog-contract.test.mjs'
+      - 'localeats-api/tests/cloudflare-cf2-staging-postgrest.test.mjs'
       - 'localeats-api/tests/cloudflare-cf1-live-smoke.mjs'
       - 'docs/CLOUDFLARE_CF1_MERCHANT_API_STAGING.md'
       - '.github/workflows/cloudflare-cf1-staging-gate.yml'
@@ -33,6 +34,7 @@ jobs:
           node --test tests/cloudflare-staging-gate.test.mjs
           node --test localeats-api/tests/cloudflare-staging-worker.test.mjs
           node --test localeats-api/tests/cloudflare-cf2-public-catalog-contract.test.mjs
+          node --test localeats-api/tests/cloudflare-cf2-staging-postgrest.test.mjs
       - name: Install dependencies for Merchant static build only
         run: npm ci
       - name: Build Merchant with synthetic Cloudflare staging URL (not deployed)
