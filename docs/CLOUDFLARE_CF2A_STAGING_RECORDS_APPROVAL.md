@@ -1,7 +1,19 @@
-# CF2 — Restricted staging data connection proposal (FOUNDER APPROVAL REQUIRED)
+# CF2-A — Founder-approved staging fixture inspection: COMPLETED
+
+**Authorized 2026-11-22:** The founder responded “Next recommended task — CF2-A” to the narrowly described staging-only fixture inspection. This approved only read-only synthetic shop/menu inspection in **LocalEats-Profile-Staging** and local/source documentation.
+
+**Verified:** 5 explicitly test-marked shops, 3 explicitly test-marked menu items, 3 approved/unarchived shops (2 effectively open, 1 effectively closed), 1 pending and 1 archived shop; 0 orphan menu rows, 0 invalid price/stock fields, 2 R25 items, and a synthetic distant-shop case 8.9 km away. All records inspected were test-marked. The connected staging catalogue migration was listed, but independent proof of all underlying account isolation or original fixture seeding is still outstanding.
+
+**Read-only boundary maintained:** No main/Production records accessed, and no customer/account/order/profile data, credentials, SQL grants, schema changes, Cloudflare Worker deployments, domain edits or spending. The public CF1 Worker is still no-data/bootstrap-only.
+
+**Full bounded inspection record:** [CF2-A fixture acceptance](CLOUDFLARE_CF2A_FIXTURE_ACCEPTANCE.md). **Decision:** CF2-A fixture-suitability **PASS**, while CF2-B secret provisioning, SQL permissions, new staging Worker deployment and Production access are **NOT AUTHORIZED**.
+
+---
+
+## Historical CF2-A authorization proposal (preserved)
 
 **Date:** 2026-11-22
-**Status:** Prepared, **not approved or executed**.
+**Status when proposed:** Prepared, not yet approved or executed. Superseded by the verified CF2-A result above.
 **Required authority:** explicit founder consent before inspecting staging fixture records, using a database key, altering SQL permissions, or deploying another Worker version.
 
 ## Why this is the next real integration gate
@@ -26,6 +38,6 @@ Reuse the active staging project **only if data isolation is proven**, avoiding 
 
 If the founder **expressly approves Stage CF2-A**, the AI may inspect **only synthetic or test fixture shop/menu records within LocalEats-Profile-Staging**, and continue local simulations/CI. It may not create database objects, alter privileges/RLS, use database secret keys, deploy a new Worker, change custom domains/DNS, connect real Firebase, touch main Production, place orders or incur costs. Those would require an **additional specific, evidence-based approval** after CF2-A.
 
-**Status now:** CF2-A approval outstanding. No action required until the source/CI handoff is complete and this request is presented in a CEO report.
+**Status when proposed:** CF2-A approval outstanding; now fulfilled as documented above. No action required until the source/CI handoff is complete and this request is presented in a CEO report.
 
 [Founder charter](LOCALEATS_FOUNDER_CHARTER.md) · [CF2 security findings](CLOUDFLARE_CF2_STAGING_DATA_AUTH_REVIEW.md) · [Canonical project handoff](LOCALEATS_PROJECT_MEMORY.md) · [Migration issue #223](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/issues/223).
