@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState, type KeyboardEvent} from "react";
+import {useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent} from "react";
 import {createPortal} from "react-dom";
 import {
   BellRing, Check, CheckCircle2, Clock3, FlaskConical, Pause,
@@ -63,7 +63,7 @@ export function MerchantWorkshopDemo({onClose}: {onClose: () => void}) {
     const previousFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
     closeRef.current?.focus();
-    const onEscape = (event: globalThis.KeyboardEvent) => {
+    const onEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onEscape);
@@ -89,7 +89,7 @@ export function MerchantWorkshopDemo({onClose}: {onClose: () => void}) {
     orders: state.orders.filter((order) => order.stage === stage),
   })), [state.orders]);
 
-  const onDialogKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+  const onDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Tab") return;
     const controls = dialogRef.current?.querySelectorAll<HTMLButtonElement>("button:not([disabled])");
     if (!controls?.length) return;
