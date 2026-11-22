@@ -13,6 +13,7 @@ on:
       - 'localeats-api/cloudflare-staging/**'
       - 'localeats-api/tests/cloudflare-staging-worker.test.mjs'
       - 'localeats-api/tests/cloudflare-cf2-public-catalog-contract.test.mjs'
+      - 'localeats-api/tests/cloudflare-cf1-live-smoke.mjs'
       - 'docs/CLOUDFLARE_CF1_MERCHANT_API_STAGING.md'
       - '.github/workflows/cloudflare-cf1-staging-gate.yml'
 permissions:
@@ -45,6 +46,8 @@ jobs:
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.cf-merchant-staging.jsonc
       - name: Wrangler dry-run API bootstrap (no deployment)
         run: cd localeats-api && npx --yes wrangler@4 deploy --dry-run --config wrangler.cf-api-staging.jsonc
+      - name: Bounded live CF1 edge smoke against isolated no-data Worker (no deploy)
+        run: node localeats-api/tests/cloudflare-cf1-live-smoke.mjs
       - name: Verify static config and deployment separation
         run: |
           node -e "const fs=require('node:fs');let a=JSON.parse(fs.readFileSync('wrangler.cf-merchant-staging.jsonc'));let b=JSON.parse(fs.readFileSync('localeats-api/wrangler.cf-api-staging.jsonc'));if(!a.assets || a.assets.not_found_handling!=='single-page-application' || a.main || b.assets || !b.main || a.name===b.name)process.exit(1); console.log('CF1 staging configs isolated, deploy not invoked')"
