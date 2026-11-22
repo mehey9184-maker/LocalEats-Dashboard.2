@@ -1,0 +1,39 @@
+name: CF2 Firebase Admin package-compatibility probe (no deploy)
+on:
+  push:
+    branches:
+      - cloudflare/cf1-merchant-api-staging-20261122
+  pull_request:
+    paths:
+      - 'localeats-api/cloudflare-staging/firebaseAdminBuildProbe.mjs'
+      - 'localeats-api/wrangler.cf2-auth-build-probe.jsonc'
+      - 'localeats-api/package.json'
+      - 'localeats-api/package-lock.json'
+      - '.github/workflows/cloudflare-cf2-auth-compatibility.yml'
+permissions:
+  contents: read
+jobs:
+  firebase-admin-bundle-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Install pinned API dependencies (no credentials)
+        working-directory: localeats-api
+        run: npm ci --ignore-scripts
+      - name: Bundle Firebase Admin Auth and Messaging against Cloudflare nodejs_compat (DRY RUN ONLY)
+        working-directory: localeats-api
+        env:
+          CLOUDFLARE_API_TOKEN: ''
+          CF_API_TOKEN: ''
+          FIREBASE_PRIVATE_KEY: ''
+          SUPABASE_SERVICE_ROLE_KEY: ''
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.cf2-auth-build-probe.jsonc
+      - name: Ensure no accidental Worker live deployment or business API activation
+        run: |
+          node -e "const fs=require('node:fs');const cfg=JSON.parse(fs.readFileSync('localeats-api/wrangler.cf2-auth-build-probe.jsonc'));if(cfg.workers_dev!==false||!cfg.compatibility_flags?.includes('nodejs_compat')||cfg.name.includes('cf1-staging')||cfg.vars?.CF2_BUILD_ONLY_NO_DEPLOY!=='true')process.exit(1);console.log('Probe isolated and not published')"
