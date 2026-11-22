@@ -39,9 +39,13 @@ Cloudflare's Express guide uses nodejs_compat with cloudflare:node/httpServerHan
 
 First accepted Cloudflare API routes should be **read-only** GET /health plus public shop catalogue/menu GET and exact-origin OPTIONS, preserving freshness and out-of-range browsing. Only then rebuild Customer PR #139 with its real staging API origin. Customer / Merchant authenticated or write routes remain disabled until audited with separate credentials and tests.
 
-## 4. Release and cost gates
+## 4. CF2 code-only public catalogue contract
 
-1. Cloudflare account and verified *.workers.dev subdomain must exist; no connector for Cloudflare is available in this ChatGPT session. Do not share tokens/private keys in chat.
+Draft source-only `cloudflare-staging/publicCatalogRead.mjs` and `tests/cloudflare-cf2-public-catalog-contract.test.mjs` model existing Express `shops`, shop detail, menu, and 4 km pickup-list GET response shapes using **explicit test-only dependency injection**. The default Worker still has **no connected database**, no authentic menu data and returns 503 for every real API route. See [CF2 contract and open gates](CLOUDFLARE_CF2_PUBLIC_CATALOG_CONTRACT.md). Do not configure Customer to use a mock contract as if real merchant prices were available.
+
+## 5. Release and cost gates
+
+1. The Cloudflare connector is now available in this ChatGPT session and the account has been verified by read-only inspection (22 Nov 2026). The sole dashboard-created `localeats-app` Worker points to Customer `main`, contains no reviewed CF1 static assets and must not be confused with staging. No CF1 application has been deployed. Do not share tokens/private keys in chat.
 2. Local and GitHub CI Node tests and Wrangler --dry-run must pass, followed by optional isolated staging deployment with no custom domains.
 3. Exact CORS; role/merchant separation; PWA service workers/icons/Android GPS; real-phone mobile data; R25 menu/4 km pickup truth; push (background and foreground); stale/offline guards; no real orders/Production DB writes; cost and request-count budget.
 4. Review Worker CPU metrics in Cloudflare before increasing usage. Workers Free has per-invocation CPU and daily request limits; keep fail-closed for any security-critical route. Monitor out-of-limit and error responses.
