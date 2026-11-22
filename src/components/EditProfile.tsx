@@ -75,6 +75,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({
 
   const [uploading, setUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [preferences, setPreferences] = useState({
@@ -181,11 +182,12 @@ export const EditProfile: React.FC<EditProfileProps> = ({
             <div className="w-32 h-32 rounded-full overflow-hidden ring-4 ring-surface-container-lowest shadow-lg bg-surface-container-low flex items-center justify-center relative">
               {uploading ? (
                 <RefreshCw className="animate-spin text-primary" size={32} />
-              ) : formData.avatarUrl ? (
+              ) : formData.avatarUrl && failedAvatarUrl !== formData.avatarUrl ? (
                 <img
                   alt="Profile"
                   className="w-full h-full object-cover"
                   src={formData.avatarUrl}
+                  onError={() => setFailedAvatarUrl(formData.avatarUrl)}
                 />
               ) : (
                 <div
@@ -195,11 +197,17 @@ export const EditProfile: React.FC<EditProfileProps> = ({
                       "radial-gradient(circle at 30% 30%, #ff9d4d 0%, #f58220 100%)",
                   }}
                 >
-                  <UserIcon
-                    size={64}
-                    className="text-white drop-shadow-md"
-                    strokeWidth={1.5}
-                  />
+                  {formData.fullName.trim() ? (
+                    <span className="text-4xl font-black text-white tracking-wider" aria-label="Default profile initials">
+                      {formData.fullName.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}
+                    </span>
+                  ) : (
+                    <UserIcon
+                      size={64}
+                      className="text-white drop-shadow-md"
+                      strokeWidth={1.5}
+                    />
+                  )}
                 </div>
               )}
               {isDragOver && (
