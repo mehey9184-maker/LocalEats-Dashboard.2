@@ -55,6 +55,17 @@ AS $function$
  );
 $function$;
 
+-- Preserve the existing staging view's presence and invoker semantics
+-- so CF2-E preflight checks a realistic disposable schema.
+CREATE VIEW public.shops_with_availability WITH (security_invoker=true) AS
+SELECT s.id,s.name,s.description,s.story,s.location,s.category,s.logo_url,
+ s.rating,s.approval_status,s.archived_at,s.opening_time,s.closing_time,
+ s.is_active,s.latitude,s.longitude,s.latitude AS lat,s.longitude AS lng,
+ s.availability_override_until,s.availability_revision,
+ public.shop_effective_open(s,statement_timestamp()) AS effective_is_active
+FROM public.shops s;
+REVOKE ALL ON public.shops_with_availability FROM PUBLIC,anon,authenticated;
+
 -- Current staging limits executor to service_role. Dummy fixture uses
 -- deliberate narrower grants only after the proposal SQL is applied.
 REVOKE EXECUTE ON FUNCTION public.shop_schedule_open(text,text,timestamptz)
