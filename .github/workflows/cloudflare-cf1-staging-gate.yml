@@ -39,6 +39,10 @@ jobs:
           VITE_PROFILE_WRITES_ENABLED: 'false'
           VITE_MERCHANT_PREVIEW_READ_ONLY: 'true'
         run: node scripts/build-cloudflare-staging.mjs
+      - name: Wrangler dry-run Merchant static assets (no deployment)
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.cf-merchant-staging.jsonc
+      - name: Wrangler dry-run API bootstrap (no deployment)
+        run: cd localeats-api && npx --yes wrangler@4 deploy --dry-run --config wrangler.cf-api-staging.jsonc
       - name: Verify static config and deployment separation
         run: |
           node -e "const fs=require('node:fs');let a=JSON.parse(fs.readFileSync('wrangler.cf-merchant-staging.jsonc'));let b=JSON.parse(fs.readFileSync('localeats-api/wrangler.cf-api-staging.jsonc'));if(!a.assets || a.assets.not_found_handling!=='single-page-application' || a.main || b.assets || !b.main || a.name===b.name)process.exit(1); console.log('CF1 staging configs isolated, deploy not invoked')"
