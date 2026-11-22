@@ -9,13 +9,26 @@ if(!baselineFile || !headFile){
   console.error("Provide baseline and head TypeScript logs");exit(2);
 }
 
+// Absolute import paths differ because the baseline is compiled in a temporary
+// worktree. Normalize only source/node_modules paths in diagnostic messages.
+function normalizedDiagnosticMessage(message){
+  return message.replace(/import\(["']([^"']+)["']\)/g,(full,path)=>{
+    const slashPath=path.replaceAll("\\","/");
+    for(const segment of ["/src/","/node_modules/"]){
+      const at=slashPath.lastIndexOf(segment);
+      if(at>=0)return `import("${slashPath.slice(at+1)}")`;
+    }
+    return full;
+  });
+}
+
 function errors(file){
   const rows=readFileSync(file,"utf8").split(/\r?\n/);
   const diagnostics=[];
   for(const row of rows){
     const match=row.match(/^(.+?)\(\d+,\d+\): error (TS\d+): (.*)$/);
     if(match){
-      diagnostics.push(`${match[1].replaceAll("\\","/")}|${match[2]}|${match[3]}`);
+      diagnostics.push(`${match[1].replaceAll("\\","/")}|${match[2]}|${normalizedDiagnosticMessage(match[3])}`);
     }
   }
   return diagnostics;
