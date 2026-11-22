@@ -4,6 +4,12 @@
 
 **Execution decision:** **HOLD — no hosted DDL applied**, because there is no independently accessible, **current** restorable backup of the staging project after its latest migrations. Do not reinterpret old restore/dump evidence as a verified present-state restore point. Approval remains limited to the exact forward SQL and excludes passwords/keys, Hyperdrive, any Cloudflare Worker, Production, Firebase, DNS and paid changes.
 
+## 2026-11-23 local backup-verification update (reported by founder from Codex)
+
+**Outcome: NOT READY / STOP maintained.** The user supplied a local Codex verification summary (not the full text file): extracted SQL files dated **9 November**, before the **20 November** staging migrations; **three password-protected archives** remain uninspected/unrestored; encrypted **V:** drive not mounted. Codex reports **no SQL applied and no hosted settings changed**. The underlying local report `CF2E-backup-check-2026-11-23.txt` lives on the founder's Windows machine and was **not accessible for direct inspection in this chat**. Do not represent its complete contents as independently audited evidence.
+
+**Next condition:** Founder locally unlocks/mounts V: through the secure prompt (no password in chat). Then local Codex may use the approved [workstation backup runbook](CLOUDFLARE_CF2E_LOCAL_BACKUP_VERIFICATION_CODEX.md) to check archive manifests and verify a **current** staging project backup plus a disposable restore. If only Nov 9 backups exist, a fresh **staging-only** encrypted backup taken after the latest migrations and restore verification is needed. Only sanitized evidence comes back to ChatGPT; no data dump, authentication secrets or customer records. Conditional hosted staging SQL approval remains held.
+
 ## 2026-11-22 connected pre-execution checks
 
 The only project inspected was **LocalEats-Profile-Staging** (PostgreSQL **17.11**, ACTIVE_HEALTHY, Europe West/Ireland), not the primary LocalEats project.
