@@ -8,6 +8,10 @@
 
 ## LATEST — CF2-B least-privilege source + disposable PG17 rehearsal (2026-11-22)
 
+**Final CF2-B status check:** On source/doc head `4d00f2e951eae930bd144c6ccdb43126694205c5`, all four required GitHub workflows completed **SUCCESS**: [disposable PG17 #45067890906](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/45067890906), [Merchant baseline #45067891007](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/45067891007), [Firebase bundle-only #45067891059](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/45067891059), [CF1/CF2 read-only safety #45067891058](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/45067891058). Cloudflare recheck showed exactly the two pre-existing Workers, CF1 deployment/version unchanged, all four write bindings false, no custom domain; no hosted DB/role/secret created. **This handoff-document commit is later than the green code head; verify the new head on continuation.**
+
+
+
 **Founder task request:** “Next recommended task — CF2-B.” Under the founder's SAFE agreement, this authorizes source-only work, read-only metadata inspection, synthetic CI and documentation, **not** an actual connected Supabase role/key/Hyperdrive/new Worker deployment.
 
 - **Preferred design:** a separate Cloudflare Hyperdrive → Supabase PostgreSQL reader with a **new dedicated no-write, non-bypass role** and an **isolated non-exposed** `catalog_cf2` schema containing only public shop/menu projections. Avoid a public-client `service_role` key or unrestricted `anon` grant. Hyperdrive has a Free offering; actual CPU/database/subrequest budgets and project compatibility still need acceptance. The current protected `shops_with_availability` view uses `s.*` and a composite-row availability function, so a narrow projection requires separate exact-view/column privilege testing.
