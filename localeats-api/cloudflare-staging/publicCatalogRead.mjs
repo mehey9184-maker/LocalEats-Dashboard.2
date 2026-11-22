@@ -21,7 +21,7 @@ const COORDINATE = /^-?\d+(?:\.\d+)?$/;
 export function verifiedShop(row) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) throw Error('INVALID_SHOP');
   // Defense in depth. A future live repository must also filter in SQL.
-  if (row.approval_status !== 'approved' || row.archived_at != null) return null;
+  if (row.approval_status !== 'approved' || row.archived_at !== null) return null;
   if (typeof row.id !== 'string' || !VALID_ID.test(row.id) ||
       typeof row.name !== 'string' || !row.name.trim() ||
       typeof row.is_active !== 'boolean' ||
