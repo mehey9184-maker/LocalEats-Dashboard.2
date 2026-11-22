@@ -1,0 +1,77 @@
+name: Merchant Workshop — isolated Chromium acceptance (no hosted preview)
+on:
+  push:
+    branches:
+      - review/merchant-orders-workshop-demo-20261123
+    paths:
+      - 'src/components/MerchantWorkshopDemo.tsx'
+      - 'src/components/PreviewFakeOrders.tsx'
+      - 'src/services/merchantWorkshopDemoEngine.ts'
+      - 'src/services/merchantPreviewSimulator.ts'
+      - 'tests/fixtures/workshop-acceptance.*'
+      - 'tests/fixtures/vite-workshop.config.mts'
+      - 'tests/merchant-workshop-browser-acceptance.mjs'
+      - '.github/workflows/merchant-workshop-browser-acceptance.yml'
+  pull_request:
+    paths:
+      - 'src/components/MerchantWorkshopDemo.tsx'
+      - 'src/components/PreviewFakeOrders.tsx'
+      - 'src/services/merchantWorkshopDemoEngine.ts'
+      - 'src/services/merchantPreviewSimulator.ts'
+      - 'tests/fixtures/workshop-acceptance.*'
+      - 'tests/fixtures/vite-workshop.config.mts'
+      - 'tests/merchant-workshop-browser-acceptance.mjs'
+      - '.github/workflows/merchant-workshop-browser-acceptance.yml'
+permissions:
+  contents: read
+jobs:
+  browser-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install exact repo dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install isolated pinned Chromium automation (CI only)
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.55.1
+          npx playwright install --with-deps chromium
+      - name: Verify the ACTUAL workshop React component in an offline browser
+        shell: bash
+        env:
+          VITE_MERCHANT_PREVIEW_READ_ONLY: 'true'
+          VITE_MERCHANT_FAKE_ORDERS_ENABLED: 'true'
+          VITE_PICKUP_ORDERING_ENABLED: 'false'
+        run: |
+          set -euo pipefail
+          npx vite --config tests/fixtures/vite-workshop.config.mts > "$RUNNER_TEMP/workshop-vite.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for i in $(seq 1 45); do
+            if curl --fail --silent http://127.0.0.1:4173/tests/fixtures/workshop-acceptance.html >/dev/null; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != "true" ]]; then
+            echo "ISOLATED_WORKSHOP_VITE_BOOT_FAILED"
+            tail -n 60 "$RUNNER_TEMP/workshop-vite.log"
+            exit 1
+          fi
+          node tests/merchant-workshop-browser-acceptance.mjs
+      - name: Save fictional screenshot evidence (no customer or business data)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: merchant-workshop-320-390-desktop-acceptance
+          path: artifacts/workshop-acceptance
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Confirm no release operation
+        run: echo "WORKSHOP_BROWSER_ACCEPTANCE_LOCAL_MOCK_ONLY_NO_VERCEL_DEPLOY_NO_BACKEND_NO_PRODUCTION"
