@@ -1,5 +1,6 @@
 import {memo,startTransition,useCallback,useEffect,useRef,useState} from "react";
-import {FlaskConical,X} from "lucide-react";
+import {FlaskConical,PlayCircle,X} from "lucide-react";
+import {MerchantWorkshopDemo} from "./MerchantWorkshopDemo";
 import {toast} from "sonner";
 import {PickupOrderActions} from "./PickupOrderActions";
 import {OrderCustomerNote} from "./OrderCustomerNote";
@@ -150,15 +151,25 @@ export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDe
 export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear}:{
   incoming:boolean;count:number;onSimulate:()=>void;onClear:()=>void;
 }){
+  const [workshopOpen,setWorkshopOpen]=useState(false);
+  const closeWorkshop=useCallback(()=>setWorkshopOpen(false),[]);
   if(!isMerchantPreviewSimulatorEnabled())return null;
-  return <div data-testid="fake-incoming-controls" className="flex items-center gap-2">
+  return <>
+    <div data-testid="fake-incoming-controls" className="flex flex-wrap items-center gap-2">
     <button type="button" onClick={onSimulate} disabled={incoming}
       aria-label="Simulate a fake incoming pickup order"
       className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold disabled:opacity-60">
       <FlaskConical size={14} aria-hidden="true"/> {incoming?"Incoming…":"Simulate order"}
     </button>
+    <button type="button" onClick={()=>setWorkshopOpen(true)}
+      aria-label="Open the fictional live kitchen workshop demonstration"
+      className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-emerald-500 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-950 hover:bg-emerald-100">
+      <PlayCircle size={15} aria-hidden="true"/> Workshop Demo
+    </button>
     {count>0&&<button type="button" onClick={onClear} className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300" aria-label="Clear all fake orders">
       <X size={13} aria-hidden="true"/> Clear tests ({count})
     </button>}
-  </div>;
+    </div>
+    {workshopOpen&&<MerchantWorkshopDemo onClose={closeWorkshop}/>}
+  </>;
 }
