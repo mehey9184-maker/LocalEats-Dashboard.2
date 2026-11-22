@@ -1,6 +1,6 @@
 -- CF2-D rollback REVIEW ONLY — must be authorized separately for hosted staging.
 -- Reverts only cf2_catalog_reader / catalog_cf2 created by matching proposal.
--- STOP if objects have been reused or modified; no CASCADE anywhere.
+-- STOP if objects have been reused or modified; only RESTRICT drops.
 BEGIN;
 DO $$
 BEGIN
