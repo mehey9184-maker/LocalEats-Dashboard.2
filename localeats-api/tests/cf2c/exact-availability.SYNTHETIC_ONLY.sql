@@ -40,7 +40,10 @@ CREATE VIEW catalog_cf2.public_shops WITH (security_invoker = true,security_barr
  SELECT s.id,s.name,s.approval_status,s.archived_at,s.is_active,
  s.opening_time,s.closing_time,s.availability_override_until,s.availability_revision,
  s.lat,s.lng,
- public.shop_effective_open(s,statement_timestamp()) AS effective_is_active
+ (coalesce(s.is_active,false) AND (
+   coalesce(public.shop_schedule_open(s.opening_time,s.closing_time,statement_timestamp()),false)
+   OR coalesce(s.availability_override_until > statement_timestamp(),false)
+ )) AS effective_is_active
  FROM public.shops s WHERE s.approval_status = 'approved' AND s.archived_at IS NULL;
 CREATE VIEW catalog_cf2.public_menu WITH (security_invoker = true,security_barrier = true) AS
  SELECT m.id,m.shop_id,m.name,m.price,m.is_available FROM public.menu_items m;
@@ -107,8 +110,24 @@ BEGIN
   RAISE EXCEPTION 'CF2C_CLOSED_OPEN'; END IF;
 END $$;
 
--- This is the key CF2-C question: does PostgreSQL allow an invoker view that
--- invokes the original composite shop function without granting owner_id?
+-- The first direct composite-row view failed under narrow column grants:
+-- PostgreSQL rejected the table-level read. This scalar projection is tested
+-- against the ORIGINAL shop_effective_open(s, at) implementation, including
+-- Johannesburg clock/overnight/override cases, without private SELECT grants.
+DO $
+DECLARE failures int;
+BEGIN
+ SELECT count(*) INTO failures
+ FROM public.shops s
+ WHERE public.shop_effective_open(s,statement_timestamp())
+ IS DISTINCT FROM (
+   coalesce(s.is_active,false) AND (
+     coalesce(public.shop_schedule_open(s.opening_time,s.closing_time,statement_timestamp()),false)
+     OR coalesce(s.availability_override_until > statement_timestamp(),false)
+   )
+ );
+ IF failures <> 0 THEN RAISE EXCEPTION 'CF2C_SCALAR_AVAILABILITY_PARITY_FAILED_%',failures;END IF;
+END $;
 SET ROLE cf2c_reader;
 DO $$
 DECLARE n int;
