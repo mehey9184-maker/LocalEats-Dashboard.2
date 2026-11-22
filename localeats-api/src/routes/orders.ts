@@ -90,7 +90,8 @@ router.post("/quote", authenticateFirebase, async (req: AuthenticatedRequest, re
 router.post("/", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.authUser?.uid;
-    if (!userId) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
+    if (!userId || req.authUser?.isAnonymous)
+      throw new OrderContractError(401, "AUTHENTICATED_CUSTOMER_REQUIRED", "Sign in with your customer account to order.");
 
     assertPickupWritesDisabled({delivery_type:"collection"});
     const request=parsePickupInput(req.body,true);
