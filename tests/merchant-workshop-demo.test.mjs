@@ -64,7 +64,8 @@ test("workshop launcher is protected by the original restricted Preview gate",()
   assert.match(trigger,/isMerchantPreviewSimulatorEnabled\(\)/);
   assert.match(trigger,/workshopOpen&&<MerchantWorkshopDemo onClose=\{closeWorkshop\}\/>/);
   assert.match(trigger,/Workshop Demo/);
-  assert.match(workshop,/if \(!isMerchantPreviewSimulatorEnabled\(\)/);
+  assert.match(workshop,/isMerchantPreviewSimulatorEnabled\(\) \|\| isIsolatedCloudflareWorkshopPreviewEnabled\(\)/);
+  assert.doesNotMatch(trigger,/isIsolatedCloudflareWorkshopPreviewEnabled/);
   assert.match(previewGate,/VITE_MERCHANT_PREVIEW_READ_ONLY === "true"/);
   assert.match(previewGate,/VITE_MERCHANT_FAKE_ORDERS_ENABLED === "true"/);
   assert.match(previewGate,/VITE_PICKUP_ORDERING_ENABLED !== "true"/);
