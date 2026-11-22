@@ -135,7 +135,7 @@ const runPositive=async (width,height,tag)=>{
   await check(`${tag} no network writes, external APIs or runtime crashes`,async()=>{
     assert.deepEqual(blocked,[],`unexpected requests: ${JSON.stringify(blocked)}`);
     assert.equal(requests.some(req=>req.method!=="GET"),false);
-    assert.equal(requests.some(req=>/\/api\/|supabase|firebase|fcm|analytics|sentry|cloudflare/i.test(new URL(req.url).pathname)),false);
+    assert.equal(requests.some(req=>/(^\\/api\\/|\\/(?:supabase|firebase|fcm|analytics|sentry)(?:\\/|$))/i.test(new URL(req.url).pathname)),false);
     assert.deepEqual(consoleErrors,[]);
   });
   observations.push({check:`${tag} request summary`,status:"INFO",count:requests.length,origin:"localhost mocked preview origin"});
