@@ -274,6 +274,20 @@ router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res
       return;
     }
 
+    // Profile-Staging is read-only catalogue rehearsal, not a signup DB.
+    // A two-coordinate schema alone does NOT make it merchant-capable:
+    // require independent verification of full shop creation columns, ID
+    // generation, approval fields, ownership and recovery before opt-in.
+    if (coordinateMode === "canonical-only" &&
+        process.env.MERCHANT_CANONICAL_SIGNUP_SCHEMA_VERIFIED !== "true") {
+      res.status(503).json({
+        success: false,
+        code: "MERCHANT_SIGNUP_SCHEMA_NOT_VERIFIED",
+        error: "Merchant registration is not activated in this environment.",
+      });
+      return;
+    }
+
     const {
       data: existingShops,
       error: existingError,
