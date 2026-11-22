@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../../src/components/MerchantWorkshopDemo.tsx";
 
 @theme {
   --font-headline: "Quicksand", ui-sans-serif, system-ui, sans-serif;
