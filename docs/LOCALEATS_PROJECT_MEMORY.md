@@ -1,10 +1,16 @@
 # LocalEats Project Memory — Durable Handoff / Operational State
 
-**As-of:** 2026-11-22 (Africa/Johannesburg) · **Maintainer:** AI technical worker on behalf of founder
+**As-of:** 2026-11-23 (Africa/Johannesburg) · **Maintainer:** AI technical worker on behalf of founder
 **Canonical location:** Merchant/API repository, `docs/LOCALEATS_PROJECT_MEMORY.md`, review branch `cloudflare/cf1-merchant-api-staging-20261122`
 **State label:** **CF1 API BOOTSTRAP DEPLOYED AND LIVE-SMOKE VERIFIED; REAL APP/API NOT MIGRATED**
 
 > **Starting a new chat?** Open this Markdown file from GitHub using the exact branch, read `docs/LOCALEATS_FOUNDER_CHARTER.md`, read both repositories' root `AGENTS.md` and source documentation, then fetch the actual current PR/CI/Cloudflare state. Details below describe the last verified state, **not** a permanent runtime guarantee. Do not ask the founder to repeat facts already recorded here.
+
+## NEWEST — CF2-E local Codex backup verification reports NOT READY (2026-11-23)
+
+**User-provided Codex verification summary (not independently inspected in this ChatGPT session):** "Backup gate: NOT READY." Local SQL files extracted on the Windows workstation were dated **9 November 2026**, older than required **20 November** staging migrations. All three archives are **password-protected**; the contents and restore outcome have not been verified. The encrypted **V:** volume is **not mounted**. Codex stopped without applying SQL or changing hosted settings to conserve usage. It reports a local evidence note named **CF2E-backup-check-2026-11-23.txt**, but the Windows-only path was not accessible here; **do not claim its underlying contents were reviewed**.
+
+**Release decision remains HOLD.** These facts are consistent with the existing backup blocker, and none proves a current restorable backup for **LocalEats-Profile-Staging**. Do not use Nov 9 SQL or encrypted archives as evidence of an adequate post-Nov-20 restore point. Never ask the founder to paste archive passwords or SQL dumps into chat/GitHub. The secure next action is to have the founder **unlock/mount V: locally** using the OS/VeraCrypt prompt, then let local Codex inspect the encrypted archives/manifest, verify SHA-256 and whether there is a current staging-only backup *after the latest migration*, and test restoring to a disposable PostgreSQL 17 environment. If there is none, creating a fresh approved staging-only backup locally and restore-testing it is required. Codex must return **sanitized verification evidence only**, not keys, sensitive rows, passwords or full files. Previous conditional founder approval remains valid **only after** backup + exact read-only preflight pass; no hosted DDL, keys, Hyperdrive/Workers, Production, DNS, order/payment or spend actions permitted before then. Local Codex instructions: [secure backup runbook](CLOUDFLARE_CF2E_LOCAL_BACKUP_VERIFICATION_CODEX.md).
 
 ## LATEST — CF2-E founder conditional approval accepted; hosted execution HELD on current backup (2026-11-22)
 
