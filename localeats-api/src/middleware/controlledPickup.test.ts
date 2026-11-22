@@ -67,7 +67,7 @@ test("public pilot never alters single-invited-customer acceptance when disabled
 
 test("real order creation explicitly rejects anonymous identities before any write",async()=>{
  const {readFileSync}=await import("node:fs");
- const source=readFileSync(new URL("../routes/orders.ts",import.meta.url),"utf8");
+ const source=readFileSync(new URL("../routes/orders.js",import.meta.url),"utf8");
  const handler=source.slice(source.indexOf('router.post("/", authenticateFirebase,'),source.indexOf('router.get("/", authenticateFirebase,'));
  assert.match(handler,/req[.]authUser[?][.]isAnonymous/);
  assert.ok(handler.indexOf("isAnonymous")<handler.indexOf("assertPickupWritesDisabled"));
