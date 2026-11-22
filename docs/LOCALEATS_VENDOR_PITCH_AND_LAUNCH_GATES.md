@@ -8,10 +8,20 @@
 
 | Goal | Working estimate | Honest interpretation |
 |---|---:|---|
-| **Ready to start vendor pitches / interest gathering** | **75%** | Product concept, customer/merchant interfaces, pickup-only plan and security architecture can be explained and demonstrated where available. A reliable real-phone scripted demo, polished one-page merchant offer and verified live path remain open. The founder may start relationship-building now, **without promising live ordering**. |
-| **Ready for real public customer orders** | **50%** | Substantial frontends, design, source-level API contracts and synthetic acceptance exist. **Actual Cloudflare catalogue/checkout API migration, production hosting/DNS, real location, real pickup, push and end-to-end release acceptance are not complete**. A source test PASS does not imply a production order works. |
+| **Ready to start vendor pitches / interest gathering** | **75% last established estimate → 90% founder target** | Product concept, customer/merchant interfaces, pickup-only plan and security architecture can be explained and demonstrated where available. A reliable real-phone scripted demo, polished one-page merchant offer and verified live path remain open. The founder may start relationship-building now, **without promising live ordering**. |
+| **Ready for real public customer orders** | **50% last established estimate → 85% founder target** | Substantial frontends, design, source-level API contracts and synthetic acceptance exist. **Actual Cloudflare catalogue/checkout API migration, production hosting/DNS, real location, real pickup, push and end-to-end release acceptance are not complete**. A source test PASS does not imply a production order works. |
 
 These percentages are **qualitative milestone planning estimates**, not measured completion of every feature or evidence of an accessible demo. Revise them when new real-world and deployment evidence is available. Do not present numerical readiness percentages to vendors as a reliability SLA.
+
+## 23 November execution toward 90% / 85%
+
+The **targets are not achieved by changing status numbers**. Since the last estimate, the AI worker has:
+- Prepared a verified-build [Founder-only Vendor Pitch Kit, draft LocalAdmin PR #6](https://github.com/mehey9184-maker/Super-LocalAdmin/pull/6), stacked on Founder Briefing #5. It includes a fiction-labelled four-step demo, conversation script, merchant discovery checklist and an optional-consent **blank printable interest form**. No real accounts or API connection; it is **not deployed**.
+- Created a visually reviewed **two-page A4 LocalEats Vendor Pitch & Interest Form PDF** in the current conversation, for the founder to save/print locally. It is not a legal subscription agreement and does not claim public ordering is active. Contact details should not be collected until a complete privacy notice and secure retention method are established.
+- Opened [Merchant signup coordinate compatibility draft PR #224](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/pull/224) with fail-closed owner/pending/coordinates assertions and a default that preserves existing Production four-column behavior. Read-only **schema metadata** verified that the synthetic Profile-Staging database is **not merchant-signup capable**: it lacks not only legacy `lat/lng` but also a generated shop ID, `phone`, `approval_reason` and `created_at`. Never enroll real vendors in this separate catalogue test project.
+- Confirmed the deployed Cloudflare CF1 bootstrap still denies actual orders; CF2-E backup remains blocked. No live signups, new DNS, Cloudflare deployment, database grants or paid upgrades.
+
+**To earn vendor-pitch 90%:** verify the actual pitch/demo on a 320/390px phone, approve a written vendor offer and privacy/contact handling, and obtain feedback from consenting shop owners. **To approach safe real-order 85%:** unblock the current staging backup/CF2-E, integrate the real read-only catalogue, separately authorize an actual ordering API and hosting cutover, test Firebase/GPS/push, and complete an actual consenting customer + vendor paid-at-shop pickup. **Public ordering must remain OFF until full sign-off, even if a numerical score hits 85%.**
 
 ## What the founder may safely do with vendors now
 
