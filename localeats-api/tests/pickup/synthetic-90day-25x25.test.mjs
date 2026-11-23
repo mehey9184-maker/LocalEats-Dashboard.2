@@ -210,6 +210,7 @@ async function run(days=DAYS,workload){
   const dayVolumes=[];
   const monthlyOrders={};
   const daysCovered=new Set(),merchantsUsed=new Set(),customersUsed=new Set();
+  const merchantCustomerPairsUsed=new Set();
   const allOrderIds=new Set();
   let completed=0,cancelled=0,rejected=0,noShows=0;
   let cashHandover=0,cardTerminalHandover=0,paymentMethodChangedAtShop=0,lateCollections=0;
@@ -227,9 +228,12 @@ async function run(days=DAYS,workload){
     monthlyOrders[month]=(monthlyOrders[month]??0)+dayOrders;
     for(let slot=0;slot<dayOrders;slot++){
       const i=submitted++;
-      const shopIdx=(i*7)%MERCHANTS,customerIdx=(i*13)%CUSTOMERS;
+      // Rotate customers independently of shops so all 25x25 merchant/customer
+      // combinations are exercised, not just 25 permanently paired accounts.
+      const shopIdx=(i*7)%MERCHANTS,customerIdx=Math.floor(i/MERCHANTS)%CUSTOMERS;
       const shopId=SHOP(shopIdx),merchant=MERCHANT(shopIdx),customer=CUSTOMER(customerIdx);
       merchantsUsed.add(merchant);customersUsed.add(customer);
+      merchantCustomerPairsUsed.add(merchant+"|"+customer);
       const orderTime=calendar[day].getTime()+9*3600000+slot*900000;
       box.setTime(orderTime);
       const selectedMethod=workload && i%2===1?"card_machine":"cash";
@@ -325,6 +329,7 @@ async function run(days=DAYS,workload){
   assert.equal(daysCovered.size,days);
   assert.equal(merchantsUsed.size,MERCHANTS);
   assert.equal(customersUsed.size,CUSTOMERS);
+  assert.equal(merchantCustomerPairsUsed.size,MERCHANTS*CUSTOMERS);
   assert.equal(allOrderIds.size,intended);
   assert.equal(box.ordersById.size,intended);
   assert.equal(box.ordersByKey.size,intended);
@@ -346,6 +351,7 @@ async function run(days=DAYS,workload){
     mode:"OFFLINE_SYNTHETIC_MODEL_NOT_LIVE_PRODUCTION_TEST",
     timelineStart:[...daysCovered][0],timelineEnd:[...daysCovered].at(-1),
     virtualDays:days,syntheticMerchants:MERCHANTS,syntheticCustomers:CUSTOMERS,
+    distinctMerchantCustomerPairs:merchantCustomerPairsUsed.size,
     fictionalOrders:intended,collectedModel:completed,cancelledModel:cancelled,
     rejectedModel:rejected,readyButUnpaidModel:noShows,
     fictionalCashCollectedZAR:cashHandover*25,
@@ -408,6 +414,7 @@ test("2,500 pickup orders across six calendar months exercise both sides of paym
   assert.equal(result.timelineStart,"2026-11-11");
   assert.equal(result.timelineEnd,"2027-05-10");
   assert.equal(result.uniqueOrderIDs,2500);
+  assert.equal(result.distinctMerchantCustomerPairs,625);
   assert.equal(result.merchantInboxEntries,2500);
   assert.equal(result.collectedModel+result.cancelledModel+result.rejectedModel+result.readyButUnpaidModel,2500);
   assert.equal(result.cashHandover+result.cardTerminalHandover,result.collectedModel);
