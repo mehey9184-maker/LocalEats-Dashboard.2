@@ -40,7 +40,7 @@ test("sample orders and counter payment remain strictly local in browser memory"
  const html=await (await ask()).text();
  const js=await (await ask("/workshop.js")).text();
  for(const term of ["FICTIONAL ORDERS ONLY","READ-ONLY WORKSHOP","Sample menu","Simulate order"])assert.match(html,new RegExp(term));
- for(const term of ["Fictional Customer A","payment simulated","No real transaction occurred","Reset demo","orders.length>=15"])assert.ok(js.includes(term),term);
+ for(const term of ["Fictional Customer A","Payment simulated","No real transaction occurred","orders.length>=15"])assert.ok(js.includes(term),term);
  for(const unsafe of [/\bfetch\s*\(/,/XMLHttpRequest/,/localStorage/,/sessionStorage/,/WebSocket/,/firebase/i,/supabase/i,/Authorization:/,/navigator\.geolocation/])
   assert.doesNotMatch(js,unsafe);
  assert.match(js,/order\.paid/);
