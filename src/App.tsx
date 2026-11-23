@@ -223,10 +223,6 @@ function App() {
     onConfirm: () => {},
   });
 
-  const confirmAction = (title: string, message: string, onConfirm: () => void, confirmText = "Delete") => {
-    setConfirmDialog({ isOpen: true, title, message, onConfirm, confirmText });
-  };
-
   const { activeTab, setActiveTab } = useAppNavigation("dashboard");
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
