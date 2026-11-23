@@ -10,6 +10,7 @@ import React, {
   useCallback,
 } from "react";
 import L from "leaflet";
+import type { LucideIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -177,6 +178,14 @@ const getMerchantShopErrorMessage = (error: unknown): string => {
   }
   return "The merchant verification service is temporarily unavailable. Please try again.";
 };
+
+// Read adapter errors defensively: the legacy query bridge can return unknown values.
+const compatErrorCode = (error: unknown): string | undefined =>
+  typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+    ? error.code : undefined;
+const compatErrorMessage = (error: unknown): string | undefined =>
+  typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+    ? error.message : undefined;
 
 // Fix Leaflet marker icons
 // @ts-expect-error - Leaflet Default Icon prototype doesn't have _getIconUrl type
@@ -591,10 +600,10 @@ function App() {
           .eq("id", currentShop.id);
 
         if (error) {
-          if (error.code === '42703' || error.message?.includes('column "updated_at" of relation "shops" does not exist')) {
-            console.warn("Telemetry warning: updated_at column is not yet provisioned in your shops table.", error.message);
+          if (compatErrorCode(error) === '42703' || compatErrorMessage(error)?.includes('column "updated_at" of relation "shops" does not exist')) {
+            console.warn("Telemetry warning: updated_at column is not yet provisioned in your shops table.", compatErrorMessage(error));
           } else {
-            console.warn("Telemetry warning: Failed to push storefront heartbeat.", error.message);
+            console.warn("Telemetry warning: Failed to push storefront heartbeat.", compatErrorMessage(error));
           }
         } else {
           // Update local state smoothly
@@ -1319,12 +1328,17 @@ function App() {
 
         if (shopsError) {
           if (!isSupabaseMocked()) {
-            console.warn("Notice fetching owned shops for deletion:", shopsError.message || shopsError);
+            console.warn("Notice fetching owned shops for deletion:", compatErrorMessage(shopsError) || shopsError);
           }
           return;
         }
 
-        const ownedShopIds = ownedShops?.map((s) => s.id) || [];
+        const ownedShopIds = Array.isArray(ownedShops)
+          ? ownedShops.filter((shop: unknown): shop is { id: string | number } =>
+              typeof shop === "object" && shop !== null && "id" in shop &&
+              (typeof shop.id === "string" || typeof shop.id === "number")
+            ).map(shop => shop.id)
+          : [];
 
         if (ownedShopIds.length === 0) {
           toast.info("No orders to delete.");
@@ -1403,9 +1417,9 @@ function App() {
         const { error } = await supabase.from("shops").select("id").limit(1);
         if (error) {
           const isFetchError =
-            error.message?.includes("Failed to fetch") ||
-            error.message?.includes("NetworkError") ||
-            error.message?.includes("network");
+            compatErrorMessage(error)?.includes("Failed to fetch") ||
+            compatErrorMessage(error)?.includes("NetworkError") ||
+            compatErrorMessage(error)?.includes("network");
           if (isFetchError) {
             setIsHeartbeatFailed(true);
           } else {
@@ -1806,7 +1820,7 @@ function App() {
   const lowStockMenuCount = menuReadScope && menuReadStatus.scope===menuReadScope && menuReadStatus.state==="ready"
     ? menuItems.filter(item=>typeof item.stock_quantity==="number" && item.stock_quantity<5).length : 0;
 
-  const navItems = [
+  const navItems: Array<{ id: string; label: string; icon: LucideIcon; badge?: number | null }> = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "menu", label: "Menu", icon: UtensilsCrossed, badge: lowStockMenuCount>0 ? lowStockMenuCount : null },
     {
@@ -3241,8 +3255,8 @@ function App() {
                               })
                               .eq("id", currentShop.id);
 
-                            if (error && error.code !== "42703") {
-                              console.warn("Supabase delivery settings update warning:", error.message);
+                            if (error && compatErrorCode(error) !== "42703") {
+                              console.warn("Supabase delivery settings update warning:", compatErrorMessage(error));
                             }
 
                             setShops((prev) => {
