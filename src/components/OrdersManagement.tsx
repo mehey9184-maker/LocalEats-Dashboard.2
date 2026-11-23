@@ -116,6 +116,8 @@ export interface OrdersManagementProps {
   onRequestRider: (id: string, riderId?: string, riderName?: string, riderPhone?: string) => void;
   onUnassignRider: (id: string) => void;
   onTabChange: (tab: string) => void;
+  onOpenHelp?: () => void;
+  onOpenLegal?: () => void;
   currentShop: Shop | undefined;
   printingFormat?: PrintingFormat;
   setPrintingFormat?: (format: PrintingFormat) => void;
@@ -311,6 +313,8 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   onRequestRider,
   onUnassignRider,
   onTabChange,
+  onOpenHelp,
+  onOpenLegal,
   currentShop,
   printingFormat: propPrintingFormat,
   setPrintingFormat: propSetPrintingFormat,
@@ -2728,6 +2732,8 @@ Notes: "${order.notes || "None"}"
         simulationRunning={simulationRunning}
         onStartSimulation={()=>startSimulation(soundAlerts)}
         onStopSimulation={stopSimulation}
+        onOpenHelp={onOpenHelp}
+        onOpenLegal={onOpenLegal}
         demoNotificationsEnabled={demoNotificationsEnabled}
         onToggleDemoNotifications={()=>{void raiseDemoNotifications();}}
         viewMode={viewMode}
