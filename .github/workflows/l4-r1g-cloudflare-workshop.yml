@@ -25,3 +25,36 @@ jobs:
           grep -q "connect-src 'none'" dist/workshop-worker.mjs
           grep -q 'localeats-r1g-merchant-workshop.mehey9184.workers.dev' dist/workshop-worker.mjs
           echo 'WORKSHOP_SOURCE_PASS — NO DEPLOY'
+
+  hosted-readonly-http:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Verify deployed fictional Cloudflare Worker responds over HTTPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          host='https://localeats-r1g-merchant-workshop.mehey9184.workers.dev'
+          headers="$(mktemp)"
+          body="$(mktemp)"
+          curl --fail --silent --show-error --retry 2 --retry-delay 2 --max-time 25 --proto '=https' --dump-header "$headers" --output "$body" "$host/"
+          grep -q 'FICTIONAL ORDERS ONLY' "$body"
+          grep -qi "connect-src 'none'" "$headers"
+          grep -qi 'cache-control: no-store' "$headers"
+          test "$(curl --silent --show-error --max-time 15 --output /dev/null --write-out '%{http_code}' --request POST "$host/")" = '405'
+          test "$(curl --silent --show-error --max-time 15 --output /dev/null --write-out '%{http_code}' "$host/api/v1/orders")" = '404'
+          test "$(curl --silent --show-error --max-time 15 --output /dev/null --write-out '%{http_code}' "$host/workshop.js")" = '200'
+          echo 'CLOUDFLARE_HOSTED_READONLY_HTTP_PASS — no signed-in or Production requests'
+  gate:
+    needs: [worker-source,hosted-readonly-http]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require both local Worker contract and deployed read-only HTTP checks
+        env:
+          LOCAL_RESULT: ${{ needs.worker-source.result }}
+          HOSTED_RESULT: ${{ needs.hosted-readonly-http.result }}
+        run: |
+          test "$LOCAL_RESULT" = success
+          test "$HOSTED_RESULT" = success
+          echo 'L4_R1G_WORKSHOP_HTTP_GATE_PASS — STILL NOT REAL-PHONE ACCEPTANCE'
