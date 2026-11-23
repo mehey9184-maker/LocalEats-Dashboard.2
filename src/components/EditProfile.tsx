@@ -1,4 +1,5 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import {MerchantProfileApi} from "../services/merchantProfileApi";
 import {
   ArrowLeft,
   RefreshCw,
@@ -47,6 +48,7 @@ export interface ProfileData {
   avatarUrl?: string;
   marketing?: boolean;
   darkMode?: boolean;
+  expectedRevision?: number;
 }
 
 export interface EditProfileProps {
@@ -82,8 +84,28 @@ export const EditProfile: React.FC<EditProfileProps> = ({
     marketing: initialData?.marketing ?? true,
     darkMode: initialData?.darkMode ?? false,
   });
+  const [verifiedRevision,setVerifiedRevision]=useState<number|null>(null);
+  const [loadError,setLoadError]=useState<string|null>(null);
+  const [loadingVerified,setLoadingVerified]=useState(true);
+  const [reloadToken,setReloadToken]=useState(0);
+  useEffect(()=>{
+    let current=true;
+    void MerchantProfileApi.getAccount().then(profile=>{
+      if(!current)return;
+      setFormData({fullName:profile.full_name,email:initialData.email,phone:profile.phone,avatarUrl:profile.avatar_url});
+      setPreferences({marketing:profile.marketing_opt_in,darkMode:profile.dark_mode});
+      setVerifiedRevision(profile.revision);setLoadError(null);setLoadingVerified(false);
+    }).catch(error=>{
+      if(!current)return;
+      setVerifiedRevision(null);
+      setLoadError(error instanceof Error?error.message:"Unable to load verified account profile.");
+      setLoadingVerified(false);
+    });
+    return ()=>{current=false;};
+  },[userId,initialData.email,reloadToken]);
 
   const uploadAvatarPhoto = async (file: File) => {
+    if(verifiedRevision===null){toast.error("Load your verified account before uploading an avatar.");return;}
     const validation = validateImageFile(file);
     if (!validation.isValid) {
       toast.error(validation.error || "Invalid image file");
@@ -126,6 +148,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({
   };
 
   const handleSave = () => {
+    if(verifiedRevision===null){toast.error("Verified profile unavailable. No changes were saved.");return;}
     if (formData.phone) {
       const phoneCleaned = formData.phone.replace(/[\s-]/g, "");
       const saRegex = /^(?:\+27|0)[0-9]{9}$/;
@@ -136,7 +159,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({
       }
     }
 
-    onSave({ ...formData, ...preferences });
+    onSave({ ...formData, ...preferences, expectedRevision:verifiedRevision });
   };
 
   return (
@@ -270,11 +293,11 @@ export const EditProfile: React.FC<EditProfileProps> = ({
                 className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3.5 focus:ring-2 focus:ring-primary/40 focus:bg-surface-container-lowest transition-all text-on-surface"
                 type="email"
                 value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
+                readOnly
+                aria-describedby="merchant-email-readonly"
                 placeholder="your.email@example.com"
               />
+              <p id="merchant-email-readonly" className="text-[11px] text-on-surface-variant">Your verified Firebase login email is managed separately from merchant profile details.</p>
             </div>
             <div className="space-y-2">
               <label className="flex items-center justify-between text-sm font-medium text-on-surface-variant px-1">
@@ -369,9 +392,14 @@ export const EditProfile: React.FC<EditProfileProps> = ({
         </section>
 
         <div className="pt-6 pb-12">
+          {loadingVerified ? <p role="status" className="mb-3 text-sm text-on-surface-variant">Loading verified merchant account details…</p> :
+            loadError ? <div role="alert" className="mb-3 space-y-2 text-sm text-amber-700">
+              <p>{loadError} No account changes can be saved yet.</p>
+              <button type="button" className="underline font-semibold" onClick={()=>{setLoadingVerified(true);setReloadToken(n=>n+1);}}>Retry verified profile</button>
+            </div> : <p role="status" className="mb-3 text-xs text-on-surface-variant">Changes are saved only after verified server persistence and read-back.</p>}
           <button
             onClick={handleSave}
-            disabled={isSaving || isSuccess}
+            disabled={isSaving || isSuccess || loadingVerified || verifiedRevision===null || uploading}
             className={cn(
               "w-full text-on-primary font-headline font-extrabold text-lg py-5 rounded-full shadow-lg transition-all flex items-center justify-center gap-3 cursor-pointer",
               isSuccess ? "bg-emerald-500 shadow-emerald-500/20 active:scale-[0.98]"
