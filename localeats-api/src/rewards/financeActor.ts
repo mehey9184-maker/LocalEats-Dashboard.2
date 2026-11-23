@@ -30,7 +30,7 @@ export async function verifyFinancialActor(
   const details=decoded as Record<string,unknown>;
   const firebase=details.firebase;
   if(typeof details.uid!=="string" || !details.uid || details.uid.length>160 ||
-     details.uid.trim()!==details.uid || /[\x00-\x1f\x7f\s]/.test(details.uid) ||
+     details.uid.trim()!==details.uid || (/\s/.test(details.uid) || [...details.uid].some(character => { const code = character.charCodeAt(0); return code < 32 || code === 127; })) ||
      !firebase || typeof firebase!=="object" || Array.isArray(firebase) ||
      typeof (firebase as Record<string,unknown>).sign_in_provider!=="string" ||
      !(firebase as Record<string,unknown>).sign_in_provider ||

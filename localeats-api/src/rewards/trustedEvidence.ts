@@ -30,7 +30,7 @@ const object = (value: unknown, code: string): Record<string, unknown> => {
 };
 const id = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= 160 &&
-  value.trim() === value && !/[\x00-\x1f\x7f]/.test(value);
+  value.trim() === value && ![...value].some(character => { const code = character.charCodeAt(0); return code < 32 || code === 127; });
 const int = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 const notBefore = (a: unknown,b: unknown): boolean => {

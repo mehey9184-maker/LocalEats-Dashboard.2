@@ -59,6 +59,7 @@ export const isShopOwnedByUser = (shop: Shop, user: User | null): boolean => {
 };
 
 export const getOwnedShopIds = async (user: User | null, _currentShops: Shop[]): Promise<(number | string)[]> => {
+  void _currentShops; // Unverified browser-provided shops never grant ownership.
   if (!user) return [];
   
   // If we have API-verified shops for this user, return them.

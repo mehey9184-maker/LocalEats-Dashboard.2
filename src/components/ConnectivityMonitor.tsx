@@ -32,7 +32,7 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
   }, []);
 
   useEffect(() => {
-    updatePendingCount();
+    queueMicrotask(() => { void updatePendingCount(); });
 
     const handleQueueUpdated = () => updatePendingCount();
     window.addEventListener("offline_queue_updated", handleQueueUpdated);
@@ -140,7 +140,7 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
     }
 
     // Ping check every 60 seconds (relaxed to prevent pool exhaustion)
-    checkHealth();
+    queueMicrotask(() => { void checkHealth(); });
     const interval = setInterval(checkHealth, 60000);
 
     return () => {

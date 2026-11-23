@@ -41,6 +41,8 @@ const withoutDeliveryProofState = (
     delivery_pin_locked_until: _pinLockedUntil,
     ...safeOrder
   } = order;
+  // Sensitive fields are intentionally dropped from the outward response.
+  void _intentHash; void _pinHash; void _qrHash; void _pinAttempts; void _pinLockedUntil;
   return safeOrder;
 };
 

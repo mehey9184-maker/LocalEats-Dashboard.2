@@ -1,14 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import type {AddressInfo} from "node:net";
 import express from "express";
 import { makeCatalogRouter, SupabaseCatalogRepository, parsePublicCatalogPilotIds } from "./catalog.js";
 
 class FakeSupabase {
-  calls: any[] = [];
-  mockShopData: any = null;
-  mockMenuData: any = null;
-  mockError: any = null;
+  calls: Array<{method:string;args:unknown[];table?:string}> = [];
+  mockShopData: Record<string,unknown>[] | Record<string,unknown> | null = null;
+  mockMenuData: Record<string,unknown>[] | null = null;
+  mockError: unknown = null;
 
   from(table: string) {
     const queryBuilder = {
@@ -18,14 +19,14 @@ class FakeSupabase {
       mockMenuData: this.mockMenuData,
       mockError: this.mockError,
       select(fields: string) { this.calls.push({ method: 'select', args: [fields] }); return this; },
-      eq(col: string, val: any) { this.calls.push({ method: 'eq', args: [col, val] }); return this; },
-      is(col: string, val: any) { this.calls.push({ method: 'is', args: [col, val] }); return this; },
+      eq(col: string, val: unknown) { this.calls.push({ method: 'eq', args: [col, val] }); return this; },
+      is(col: string, val: unknown) { this.calls.push({ method: 'is', args: [col, val] }); return this; },
       maybeSingle() { this.calls.push({ method: 'maybeSingle', args: [] }); return this; },
-      then(resolve: any, reject: any) {
-        this.calls.push({ method: 'execute', table: this.table });
+      then(resolve: (result:{data:unknown;error:null})=>void, reject:(reason:unknown)=>void) {
+        this.calls.push({ method: 'execute', table: this.table, args: [] });
         if (this.mockError) return reject(this.mockError);
         
-        if (this.table === 'shops_with_availability') {const map=(s:any)=>({...s,effective_is_active:s.is_active===true,availability_revision:0});resolve({data:Array.isArray(this.mockShopData)?this.mockShopData.map(map):this.mockShopData?map(this.mockShopData):null,error:null});}
+        if (this.table === 'shops_with_availability') {const map=(s:Record<string,unknown>)=>({...s,effective_is_active:s.is_active===true,availability_revision:0});resolve({data:Array.isArray(this.mockShopData)?this.mockShopData.map(map):this.mockShopData?map(this.mockShopData):null,error:null});}
         else if (this.table === 'menu_items') resolve({ data: this.mockMenuData, error: null });
         else resolve({ data: null, error: null });
       }
@@ -53,7 +54,7 @@ test("Pickup catalog enforces real coordinates, active pilot metadata and maximu
   const noLocation=await fetch(base+"/api/v1/catalog/pickup-shops");assert.equal(noLocation.status,400);
   const result=await fetch(base+"/api/v1/catalog/pickup-shops?lat=-25.98&lng=28.2");assert.equal(result.status,200);
   const body=await result.json();
-  assert.deepEqual(body.shops.map((shop:any)=>shop.id),["eligible","offline","outside-area"]);
+  assert.deepEqual(body.shops.map((shop:{id?:unknown;name?:unknown})=>shop.id),["eligible","offline","outside-area"]);
   assert.equal(body.shops[0].distance_km,0);
   assert.equal(body.shops[1].is_active,false,"Closed shop must remain visibly closed, not orderable");
   assert.equal(body.shops[2].location,"Elsewhere","An approved nearby shop is not blocked by town text");
@@ -68,7 +69,7 @@ async function runWithServer(app: express.Express, fn: (baseUrl: string) => Prom
     const server = http.createServer(app);
     server.listen(0, '127.0.0.1', async () => {
       try {
-        const port = (server.address() as any).port;
+        const port = (server.address() as AddressInfo).port;
         await fn(`http://127.0.0.1:${port}`);
         resolve();
       } catch (e) {
@@ -173,7 +174,7 @@ test("Approved closed shop's real menu remains readable without relaxing approva
   const menu=await fetch(base+"/api/v1/catalog/shops/closed/menu");
   assert.equal(menu.status,200);
   const payload=await menu.json();
-  assert.deepEqual(payload.menu_items.map((item:any)=>item.name),["Real menu item"]);
+  assert.deepEqual(payload.menu_items.map((item:{id?:unknown;name?:unknown})=>item.name),["Real menu item"]);
   assert.equal(fakeDb.calls.some(c=>c.method==="eq"&&c.args[0]==="approval_status"&&c.args[1]==="approved"),true);
   assert.equal(fakeDb.calls.some(c=>c.method==="is"&&c.args[0]==="archived_at"&&c.args[1]===null),true);
  });
@@ -191,7 +192,7 @@ test("Pickup nearby approved shops are distance-ranked across town boundaries, w
   const response=await fetch(base+"/api/v1/catalog/pickup-shops?lat=-25.98&lng=28.2");
   assert.equal(response.status,200);
   const body=await response.json();
-  assert.deepEqual(body.shops.map((x:any)=>x.id),["unknown-area","cosmo-near"]);
+  assert.deepEqual(body.shops.map((x:{id?:unknown;name?:unknown})=>x.id),["unknown-area","cosmo-near"]);
   assert.equal(body.shops[0].is_active,false);
   assert.ok(body.shops[0].distance_km < body.shops[1].distance_km);
  });
@@ -214,10 +215,10 @@ test("Pilot publication filters list, nearby, detail and menu without modifying 
  await runWithServer(app,async base=>{
    const list=await fetch(base+"/api/v1/catalog/shops");
    assert.equal(list.status,200);
-   assert.deepEqual((await list.json()).shops.map((s:any)=>s.id),["my-kota"]);
+   assert.deepEqual((await list.json()).shops.map((s:{id?:unknown;name?:unknown})=>s.id),["my-kota"]);
    const nearby=await fetch(base+"/api/v1/catalog/pickup-shops?lat=-25.983&lng=28.207");
    assert.equal(nearby.status,200);
-   assert.deepEqual((await nearby.json()).shops.map((s:any)=>s.id),["my-kota"]);
+   assert.deepEqual((await nearby.json()).shops.map((s:{id?:unknown;name?:unknown})=>s.id),["my-kota"]);
    fakeDb.mockShopData=other;
    const detailHidden=await fetch(base+"/api/v1/catalog/shops/production-fixture");
    assert.equal(detailHidden.status,404);

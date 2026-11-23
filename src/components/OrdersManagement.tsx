@@ -12,7 +12,6 @@ import {
   Bike,
   RefreshCw,
   Search,
-  Filter,
   Check,
   X,
   Printer,
@@ -3311,7 +3310,7 @@ Notes: "${order.notes || "None"}"
                         transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         key={order.id}
                         draggable={true}
-                        onDragStart={(e: any) => {
+                        onDragStartCapture={(e: React.DragEvent<HTMLDivElement>) => {
                           setDraggedPendingId(order.id);
                           if (e.dataTransfer) {
                             e.dataTransfer.setData("text/plain", order.id);

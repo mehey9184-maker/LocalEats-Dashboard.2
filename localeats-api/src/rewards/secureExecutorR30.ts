@@ -17,10 +17,8 @@ import {
   type RewardEvidenceReader,
 } from "./trustedEvidence.js";
 
-export interface ReadOnlyFinancialTransaction extends RewardEvidenceReader {
-  // Every read MUST use the SAME consistent server-only DB transaction.
-  // The interface deliberately has no credit, transfer, refund or payout writer.
-}
+// Every read MUST use the same consistent transaction; no mutation methods are added.
+export type ReadOnlyFinancialTransaction = RewardEvidenceReader;
 export interface ReadOnlyFinancialTransactionStore {
   readOnlySerializable<T>(
     verify: (transaction: ReadOnlyFinancialTransaction) => Promise<T>

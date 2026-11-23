@@ -534,7 +534,7 @@ export function subscribeToShopsFirestore(
   const q = conditions.length > 1 ? query(coll, or(...conditions)) : query(coll, conditions[0]);
 
   return onSnapshot(q, (snap) => {
-    const shops = snap.docs.map(d => ({ ...(d.data() as any), id: (d.data() as any).id ?? d.id } as Shop));
+    const shops = snap.docs.map(d => ({ ...d.data(), id: d.data().id ?? d.id } as Shop));
     onUpdate(shops);
   }, (error) => {
     handleFirestoreError(error, OperationType.LIST, "shops");
@@ -555,7 +555,7 @@ export async function getFirestoreShops(ownerId?: string): Promise<Shop[]> {
     const q = conditions.length > 1 ? query(coll, or(...conditions)) : query(coll, conditions[0]);
     
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...(d.data() as any), id: (d.data() as any).id ?? d.id } as Shop));
+    return snap.docs.map(d => ({ ...d.data(), id: d.data().id ?? d.id } as Shop));
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, "shops");
     return [];
@@ -622,7 +622,10 @@ export async function getFirestoreMenuItems(shopId: string | number | (string | 
     }
     
     const snap = await getDocs(q);
-    const items = snap.docs.map(d => ({ ...(d.data() as any), id: (d.data() as any).id ?? d.id } as MenuItem));
+    const items = snap.docs.map(d => {
+      const row = d.data() as Record<string, unknown>;
+      return { ...row, id: row.id ?? d.id } as MenuItem;
+    });
     return items;
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, "menu_items");
@@ -801,6 +804,7 @@ export async function getFirestoreOrders(shopId?: string | number | (string | nu
  * Update an Order in Firestore
  */
 export async function updateFirestoreOrder(orderId: string | number, updates: Partial<Order>): Promise<{ error: Error | null }> {
+  void orderId; void updates; // Keep forbidden direct order writes blocked.
   return {error:legacyOrderWriteError()};
 }
 
@@ -808,6 +812,7 @@ export async function updateFirestoreOrder(orderId: string | number, updates: Pa
  * Create an Order in Firestore
  */
 export async function createFirestoreOrder(order: Partial<Order>): Promise<{ data: Order | null; error: Error | null }> {
+  void order;
   return {data:null,error:legacyOrderWriteError()};
 }
 
@@ -877,7 +882,10 @@ export function subscribeToMenuItemsFirestore(
   }
 
   return onSnapshot(q, (snap) => {
-    const items = snap.docs.map(d => ({ ...(d.data() as any), id: (d.data() as any).id ?? d.id } as MenuItem));
+    const items = snap.docs.map(d => {
+      const row = d.data() as Record<string, unknown>;
+      return { ...row, id: row.id ?? d.id } as MenuItem;
+    });
     onUpdate(items);
   }, (error) => {
     handleFirestoreError(error, OperationType.LIST, "menu_items");
@@ -895,7 +903,7 @@ export async function getFirestoreReviews(shopId: string | number): Promise<Revi
       ? query(coll, where("shop_id", "==", shopId))
       : query(coll, where("shop_id", "in", [shopId, numShopId, String(shopId)]));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...(d.data() as any), id: (d.data() as any).id ?? d.id } as Review));
+    return snap.docs.map(d => ({ ...d.data(), id: d.data().id ?? d.id } as Review));
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, "reviews");
     return [];
@@ -910,7 +918,7 @@ export async function getFirestoreCoupons(shopId?: string | number): Promise<Cou
     const coll = collection(db, "coupons");
     const q = shopId ? query(coll, where("shop_id", "==", Number(shopId))) : coll;
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...(d.data() as any), id: (d.data() as any).id ?? d.id } as Coupon));
+    return snap.docs.map(d => ({ ...d.data(), id: d.data().id ?? d.id } as Coupon));
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, "coupons");
     return [];

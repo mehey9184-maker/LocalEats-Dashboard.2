@@ -10,7 +10,8 @@ const shop = read('src/components/ShopProfile.tsx');
 const profile = read('src/components/EditProfile.tsx');
 
 test('merchant missing and failed image states use neutral branded artwork', () => {
-  assert.match(photo, /onError=\{\(\) => setFailed\(true\)\}/);
+  assert.match(photo, /onError=\{\(\) => setFailedSrc\(src \?\? null\)\}/);
+  assert.match(photo, /const failed = !!src && failedSrc === src/);
   assert.match(photo, /missingPhoto\(src\) \|\| failed/);
   assert.match(photo, /No photo yet/);
   assert.match(photo, /Store/);

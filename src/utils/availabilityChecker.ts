@@ -307,7 +307,7 @@ export async function syncShopAvailability(params: {
     catch(error){
       if(!(error instanceof MerchantApiError) || error.code!=="OUTSIDE_HOURS_CONFIRMATION_REQUIRED") throw error;
       if(!window.confirm("Open outside scheduled hours for 1 hour? You can close early. Your normal hours will stay unchanged.")) return {success:false,error:"Opening cancelled. Shop status was not changed."};
-      shop=await MerchantApi.setAvailability(params.shopId,params.isOpen,true,(error as any).expectedRevision);
+      shop=await MerchantApi.setAvailability(params.shopId,params.isOpen,true,("expectedRevision" in error && typeof error.expectedRevision === "number" ? error.expectedRevision : undefined));
     }
     // Clean old browser-only authority only after confirmed server persistence.
     try {
