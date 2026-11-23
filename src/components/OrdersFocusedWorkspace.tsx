@@ -1,8 +1,6 @@
 import React, {useEffect, useMemo, useState} from "react";
-import {Bell, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Clock3, MoreHorizontal, RefreshCw, Search, ShieldCheck, X} from "lucide-react";
+import {Bell, ChevronDown, ClipboardList, Clock3, MoreHorizontal, RefreshCw, Search, ShieldCheck, X} from "lucide-react";
 import type {Order} from "../types";
-import {PickupOrderActions} from "./PickupOrderActions";
-import {isPickupOrder, pickupPaymentLabel} from "../services/merchantPickupPolicy";
 import {PreviewFakeOrderTrigger, type PreviewTestPickupOrder, type PreviewTestPickupAction} from "./PreviewFakeOrders";
 import {OrdersStyleBoard, type OrderBoardStyle, type BoardEntry} from "./OrdersStyleBoard";
 import {isMerchantPreviewSimulatorEnabled} from "../services/merchantPreviewSimulator";
@@ -47,25 +45,9 @@ function readBoardStyle(key:string):OrderBoardStyle{
   try{return window.localStorage.getItem(key)==="expediter"?"expediter":"compact";}catch{return "compact";}
 }
 const priority: Record<string,number>={pending:0,accepted:1,preparing:1,ready:2,completed:3,cancelled:4};
-const statusText: Record<string,string>={
-  pending:"New",accepted:"Preparing",preparing:"Preparing",ready:"Ready",
-  completed:"Completed",cancelled:"Cancelled"
-};
-const statusClass:Record<string,string>={
-  pending:"bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/30 dark:text-amber-200",
-  accepted:"bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-200",
-  preparing:"bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-200",
-  ready:"bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-200",
-  completed:"bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-200",
-  cancelled:"bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-200"
-};
 const entryStatus=(entry:Entry)=>entry.order.status;
 const dateValue=(entry:Entry)=>Date.parse(entry.order.created_at||"")||0;
 const priceValue=(entry:Entry)=>Number(entry.order.total_price)||0;
-const currency=(value:unknown)=> {
-  const number=Number(value);
-  return Number.isFinite(number) && number>=0 ? `R ${number.toFixed(2)}` : "Amount unavailable";
-};
 const stageMatches=(stage:Stage,status:string)=>
   stage==="all" || (stage==="preparing"?status==="accepted"||status==="preparing":status===stage);
 
@@ -80,7 +62,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const [sort,setSort]=useState<SortMode>("priority");
   const [search,setSearch]=useState("");
   const [page,setPage]=useState(1);
-  const [expanded,setExpanded]=useState<string|null>(null);
+  const [,setExpanded]=useState<string|null>(null);
   const [showSearch,setShowSearch]=useState(false);
   const isTestPreview=isMerchantPreviewSimulatorEnabled();
   const [boardStyle,setBoardStyle]=useState<OrderBoardStyle>(()=>readBoardStyle(styleStorageKey));
@@ -88,7 +70,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const chooseBoardStyle=(choice:OrderBoardStyle)=>{
     setBoardStyle(choice);
     // Only a harmless style enum is stored; no order, customer, payment or login data.
-    if(typeof window!=="undefined")try{window.localStorage.setItem(styleStorageKey,choice);}catch{}
+    if(typeof window!=="undefined")try{window.localStorage.setItem(styleStorageKey,choice);}catch{ /* Storage can be unavailable in private browsing. */ }
   };
 
 

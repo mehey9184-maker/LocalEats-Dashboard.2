@@ -21,10 +21,8 @@ import { toast } from "sonner";
 import { MenuItem, Shop, User } from "../types";
 import { supabase } from "../lib/supabase";
 import {
-  getFirestoreMenuItems,
   createFirestoreMenuItem,
   updateFirestoreMenuItem,
-  subscribeToMenuItemsFirestore,
 } from "../lib/firebase";
 import { useAuthGuard } from "../hooks/useAuthGuard";
 import { cn } from "../lib/utils";

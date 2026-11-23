@@ -25,9 +25,7 @@ import {
   Settings,
   HelpCircle,
   Check,
-  Zap,
   ShieldCheck,
-  Sliders,
   MapPin,
   AlertTriangle,
   Sun,
@@ -45,17 +43,14 @@ import {
   Copy,
   Wallet,
   Ticket,
-  Info,
   Rocket,
   Bell,
   BellRing,
   CalendarClock,
   UserRound,
-  Clock3,
   BellOff,
   UtensilsCrossed,
   ReceiptText,
-  Printer,
   User as UserIcon,
   LayoutDashboard,
   PauseCircle,
@@ -74,9 +69,7 @@ import {
   formatFirebaseUserSession,
   onAuthStateChanged,
   getFirestoreShopById,
-  getFirestoreOrders,
   updateFirestoreShop,
-  getFirestoreMenuItems,
 } from "./lib/firebase";
 import { useKitchenAlerter } from "./hooks/useKitchenAlerter";
 import { useAuthGuard } from "./hooks/useAuthGuard";
@@ -145,13 +138,11 @@ import {
 import {
   isValidUUID,
   isShopOwnedByUser,
-  getOwnedShopIds,
   registerVerifiedShopId,
   clearVerifiedShopOwnership,
 } from "./utils/shopOwnership";
 import { MerchantApi, MerchantApiError } from "./services/MerchantApi";
 import { createMerchantOrderReadCoordinator } from "./services/merchantOrderRecovery";
-import { fetchWithRetry } from "./utils/fetchWithRetry";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -633,7 +624,7 @@ function App() {
     try {
       const cachedOrders = localStorage.getItem("le_orders");
       if (cachedOrders) {
-        const parsed = JSON.parse(cachedOrders);
+        JSON.parse(cachedOrders);
         // Cached orders cannot establish API pickup authority; load them only from authenticated reads.
       }
     } catch (e) {
@@ -1132,7 +1123,7 @@ function App() {
       }
     });
 
-    let combinedOrders = Array.from(orderMap.values());
+    const combinedOrders = Array.from(orderMap.values());
 
     // Sort by created_at descending
     combinedOrders.sort((a, b) => {
@@ -2889,7 +2880,7 @@ function App() {
                                  if (!currentShop) return;
                                  const newStatus = !currentShop.is_active; // If we're toggling, newStatus is the opposite of currentShop.is_active
 
-                                 const { success, error } = await syncShopAvailability({shopId:currentShop.id,isOpen:newStatus});
+                                 const { success } = await syncShopAvailability({shopId:currentShop.id,isOpen:newStatus});
 
                                  if (success) {
                                    toast.success(

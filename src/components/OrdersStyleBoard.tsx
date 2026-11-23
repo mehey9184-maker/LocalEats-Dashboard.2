@@ -1,5 +1,5 @@
 import React,{useEffect,useMemo,useState} from "react";
-import {ChevronDown, ChevronUp, Clock3, ClipboardList, ShoppingBag} from "lucide-react";
+import {ChevronDown, ChevronUp, ShoppingBag} from "lucide-react";
 import type {Order} from "../types";
 import {isPickupOrder,pickupPaymentLabel} from "../services/merchantPickupPolicy";
 import {PickupOrderActions} from "./PickupOrderActions";
@@ -35,7 +35,6 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
  const [expanded,setExpanded]=useState(false);
  const roomy=style==="expediter";
  const pickup=isPickupOrder(order);
- const fullStatus=String(order.status||"pending");
  return <article data-testid="styled-real-order" className={
    `min-w-0 overflow-hidden bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 shadow-sm ${roomy?"p-3.5 rounded-2xl space-y-2.5":"p-2.5 rounded-xl space-y-1.5"}`
  }>
