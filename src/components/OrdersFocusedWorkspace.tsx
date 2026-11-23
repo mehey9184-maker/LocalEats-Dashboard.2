@@ -53,7 +53,11 @@ interface OrdersFocusedWorkspaceProps {
 const PAGE_SIZE=12;
 function readBoardStyle(key:string):OrderBoardStyle{
   if(typeof window==="undefined")return "compact";
-  try{return window.localStorage.getItem(key)==="expediter"?"expediter":"compact";}catch{return "compact";}
+  const fallback=isIsolatedCloudflareMerchantPitchPreviewEnabled()?"expediter":"compact";
+  try{
+    const stored=window.localStorage.getItem(key);
+    return stored==="expediter"||stored==="compact"?stored:fallback;
+  }catch{return fallback;}
 }
 const priority: Record<string,number>={pending:0,accepted:1,preparing:1,ready:2,completed:3,cancelled:4};
 const statusText: Record<string,string>={
@@ -214,12 +218,15 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
                   </button>}
                   <div role="group" aria-label="Choose your mobile ticket style" className="space-y-1">
                     <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Ticket display</p>
+                    <p className="text-[11px] leading-4 text-on-surface-variant">
+                      A: full order &amp; actions. B: scan many orders, tap any row for actions.
+                    </p>
                     <div className="flex gap-1.5">
-                      <button type="button" onClick={()=>chooseBoardStyle("expediter")} aria-pressed={boardStyle==="expediter"}
+                      <button type="button" onClick={event=>{chooseBoardStyle("expediter");event.currentTarget.closest("details")?.removeAttribute("open");}} aria-pressed={boardStyle==="expediter"}
                         className={`min-h-11 flex-1 rounded-lg px-2 text-xs font-bold ${boardStyle==="expediter"?"bg-primary text-on-primary":"bg-surface-container-low text-on-surface"}`}>
                         A · Expediter
                       </button>
-                      <button type="button" onClick={()=>chooseBoardStyle("compact")} aria-pressed={boardStyle==="compact"}
+                      <button type="button" onClick={event=>{chooseBoardStyle("compact");event.currentTarget.closest("details")?.removeAttribute("open");}} aria-pressed={boardStyle==="compact"}
                         className={`min-h-11 flex-1 rounded-lg px-2 text-xs font-bold ${boardStyle==="compact"?"bg-primary text-on-primary":"bg-surface-container-low text-on-surface"}`}>
                         B · Compact
                       </button>
@@ -330,7 +337,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
           <label>To <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} className="rounded-lg border border-outline-variant/20 px-2 py-1.5 bg-surface-container-lowest text-on-surface"/></label>
         </div>}
 
-        <div aria-live="polite" className="sr-only">{filtered.length} orders match this filter. Display style: {boardStyle}.</div>
+        <div aria-live="polite" className="sr-only">{filtered.length} orders match this filter. Display style: {boardStyle==="expediter"?"A detailed tickets with visible actions":"B compact rows, tap to show actions"}.</div>
         <OrdersStyleBoard
           entries={filtered}
           completedEntries={viewMode==="active"
