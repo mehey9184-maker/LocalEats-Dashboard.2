@@ -57,6 +57,7 @@ for(const [width,height] of [[320,740],[390,844],[768,1024],[1366,900]]){
      assert.equal(await page.getByRole("group",{name:"Queue status"}).isVisible(),false);
      assert.equal(await page.locator('button[title="Help & Tips"]').isVisible(),false,"floating help must not cover tickets");
      assert.equal(await page.getByRole("button",{name:"Legal & Privacy (POPIA)"}).isVisible(),false,"legal floating chip must not cover the nav");
+     assert.equal(await page.locator('button[title="Open Network & System Diagnostics"]').isVisible(),false,"floating diagnostics must not cover fake tickets");
      assert.equal(await page.getByRole("combobox",{name:"Sort mobile orders"}).count(),1);
      const tabs=page.getByRole("tablist",{name:"Mobile kitchen lane"}).getByRole("tab");
      assert.equal(await tabs.count(),4);
@@ -71,6 +72,7 @@ for(const [width,height] of [[320,740],[390,844],[768,1024],[1366,900]]){
      assert.ok(await page.getByRole("button",{name:"Simulate one fake incoming pickup order"}).isVisible());
      assert.ok(await page.getByRole("button",{name:"Help & Tips"}).isVisible());
      assert.ok(await page.getByRole("button",{name:"Legal & Privacy"}).isVisible());
+     assert.ok(await page.getByRole("button",{name:"System diagnostics"}).isVisible());
      await tool.click();
      item.steps.push("Compact mobile toolbar, four equal-width stages and accessible Help/Legal");
    } else {
@@ -102,9 +104,14 @@ for(const [width,height] of [[320,740],[390,844],[768,1024],[1366,900]]){
      const active=page.getByRole("button",{name:/Current/}).first();
      await active.click();
      await page.getByRole("tab",{name:/New/}).click();
+     const busyHeader=await hdr.boundingBox();
+     item.busyHeaderHeight=busyHeader?.height;
+     assert.ok(busyHeader.height<(width===320?310:270),"busy queue must not add another header row: "+busyHeader.height);
+     assert.ok((await page.locator('[data-sonner-toast]').count())<=1,"only one fictional toast at a time");
+     await page.waitForTimeout(3600); // inspect clean underlying layout, not a temporary toast.
      await page.evaluate(()=>window.scrollTo(0,0));
      await page.screenshot({path:DIR+"/"+width+"-busy-orders.png",animations:"disabled"});
-     item.steps.push("Busy queue remains usable with polished controls");
+     item.steps.push("Busy queue remains usable with polished controls and no mobile overlays");
    }
    const dims=await page.evaluate(()=>({viewport:window.innerWidth,width:document.documentElement.scrollWidth}));
    assert.ok(dims.width<=dims.viewport+2,"horizontal overflow "+JSON.stringify(dims));
