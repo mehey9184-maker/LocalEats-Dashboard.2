@@ -5,6 +5,7 @@ import {isPickupOrder,pickupPaymentLabel} from "../services/merchantPickupPolicy
 import {PickupOrderActions} from "./PickupOrderActions";
 import {OrderCustomerNote} from "./OrderCustomerNote";
 import {PreviewFakeOrderCard,type PreviewTestPickupOrder,type PreviewTestPickupAction} from "./PreviewFakeOrders";
+import {isIsolatedCloudflareMerchantPitchPreviewEnabled} from "../services/cloudflareMerchantPitchGate";
 
 export type OrderBoardStyle="expediter"|"compact";
 export type BoardEntry={kind:"real";order:Order}|{kind:"fake";order:PreviewTestPickupOrder};
@@ -36,8 +37,9 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
  const roomy=style==="expediter";
  const pickup=isPickupOrder(order);
  const fullStatus=String(order.status||"pending");
+ const pitchPolish=isIsolatedCloudflareMerchantPitchPreviewEnabled();
  return <article data-testid="styled-real-order" className={
-   `min-w-0 overflow-hidden bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 shadow-sm ${roomy?"p-3.5 rounded-2xl space-y-2.5":"p-2.5 rounded-xl space-y-1.5"}`
+   `min-w-0 overflow-hidden bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 shadow-sm ${roomy?"p-3.5 rounded-2xl space-y-2.5":"p-2.5 rounded-xl space-y-1.5"} ${pitchPolish?"border-slate-200/70 shadow-[0_7px_22px_-12px_rgba(15,23,42,0.38)] motion-safe:transition-[transform,box-shadow,border-color] motion-safe:duration-200 motion-safe:ease-out motion-safe:active:scale-[0.995] motion-safe:md:hover:-translate-y-0.5 hover:shadow-[0_14px_28px_-13px_rgba(15,23,42,0.33)]":""}`
  }>
    <div className="flex items-start justify-between gap-2 min-w-0">
      <div className="min-w-0">
@@ -81,6 +83,7 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
  useEffect(()=>setVisibleHistory(24),[style,viewMode,stageFilter]);
  const roomy=style==="expediter";
  const compact=style==="compact";
+ const pitchPolish=isIsolatedCloudflareMerchantPitchPreviewEnabled();
  const allEntries=useMemo(()=>{
    // Only view-layer data: these are discriminated objects, never fed to API calls,
    // real counts, notifications or exports.
@@ -126,7 +129,7 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
      {LANES.map(lane=><button key={lane.key} type="button" role="tab"
        aria-label={`${lane.label} stage`}
        aria-selected={mobileStage===lane.key} onClick={()=>setMobileStage(lane.key)}
-       className={`min-w-0 min-h-11 rounded-full border px-1 text-[11px] font-bold whitespace-nowrap ${mobileStage===lane.key?"bg-primary text-on-primary border-primary":"bg-surface-container-low border-outline-variant/10 text-on-surface"}`}>
+       className={`min-w-0 min-h-11 rounded-full border px-1 text-[11px] font-bold whitespace-nowrap ${mobileStage===lane.key?"bg-primary text-on-primary border-primary":"bg-surface-container-low border-outline-variant/10 text-on-surface"} ${pitchPolish?"tracking-tight motion-safe:transition-[background-color,box-shadow,transform] motion-safe:duration-200 motion-safe:active:scale-[0.97]":""} ${pitchPolish&&mobileStage===lane.key?"shadow-[0_5px_13px_-8px_rgba(249,115,22,0.75)]":""}`}>
        {lane.key==="preparing"?"Prep":lane.key==="fulfilled"?"Done":lane.short}
        <span className="ml-1 tabular-nums">{counts[lane.key].real+counts[lane.key].fake}</span>
      </button>)}
@@ -137,7 +140,7 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
        const limited=stageEntries.slice(0,visibleByLane[lane.key]);
        const isMobileHidden=stageFilter==="all"&&mobileStage!==lane.key;
        return <section key={lane.key} data-testid={`lane-${lane.key}`}
-         className={`min-w-0 flex flex-col overflow-hidden border border-outline-variant/15 ${roomy?`rounded-2xl p-3 bg-surface-container-low/80 dark:bg-zinc-900/60`:`rounded-xl p-2 bg-surface-container-low/70 dark:bg-zinc-900/50`} ${isMobileHidden?"hidden md:flex":"flex"}`}>
+         className={`min-w-0 flex flex-col overflow-hidden border border-outline-variant/15 ${roomy?`rounded-2xl p-3 bg-surface-container-low/80 dark:bg-zinc-900/60`:`rounded-xl p-2 bg-surface-container-low/70 dark:bg-zinc-900/50`} ${isMobileHidden?"hidden md:flex":"flex"} ${pitchPolish?"border-slate-200/65 dark:border-zinc-800/80 shadow-[0_8px_20px_-17px_rgba(15,23,42,0.3)]":""}`}>
          <header className={`sticky top-0 z-10 flex items-center justify-between gap-2 min-w-0 ${roomy?"pb-3 px-1":"pb-2 px-0.5"}`}>
            <div className="flex min-w-0 gap-2 items-center">
              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${lane.dot}`}/>
