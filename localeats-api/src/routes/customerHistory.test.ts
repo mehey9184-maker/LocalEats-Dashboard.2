@@ -58,7 +58,7 @@ test("authenticated history reads 101 owned orders without gaps, including tied 
         assert.equal(options.ascending, false); ordering.push(key); return q;
       },
       limit: (value: number) => { limit = value; return q; },
-      then: (resolve: (result: unknown) => void) => {
+      then: (resolve: (result: {data:typeof rows;error:{message:string}|null}) => unknown) => {
         assert.deepEqual(ordering, ["created_at", "id"]);
         assert.equal(limit, 51);
         assert.equal(collectionOnly, true);
