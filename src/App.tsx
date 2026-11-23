@@ -72,7 +72,6 @@ import {
   updateFirestoreShop,
 } from "./lib/firebase";
 import { useKitchenAlerter } from "./hooks/useKitchenAlerter";
-import { useAuthGuard } from "./hooks/useAuthGuard";
 import { useOrderWorkflow } from "./hooks/useOrderWorkflow";
 import { useShopLocation } from "./hooks/useShopLocation";
 import { useAppNavigation } from "./hooks/useAppNavigation";
@@ -199,7 +198,6 @@ L.Icon.Default.mergeOptions({
 
 function App() {
   console.log("[App] App component function executing");
-  const { subscribeWithAuthGuard } = useAuthGuard();
   const [isSessionChecking, setIsSessionChecking] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
@@ -813,7 +811,7 @@ function App() {
       toast.error("Sign in as the registered merchant first.");return;
     }
     let installation:string|null=null;
-    try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch{}
+    try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch { /* Browser storage may be blocked; continue without a cached push device ID. */ }
     if(!installation){
       setPushTestStatus("Register push notifications first.");
       toast.error("Register push notifications first.");return;
@@ -1534,7 +1532,7 @@ function App() {
     const uid=firebaseAuth.currentUser?.uid;
     if(uid && typeof navigator!=="undefined" && navigator.onLine){
       let installation:string|null=null;
-      try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch{}
+      try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch { /* Browser storage may be blocked; continue without a cached push device ID. */ }
       if(installation){
         await Promise.race([
           MerchantApi.revokePushDevice(installation).catch(()=>false),

@@ -10,7 +10,8 @@ import {
   ChevronLeft,
   X,
   Play,
-  PartyPopper
+  PartyPopper,
+  type LucideIcon
 } from "lucide-react";
 
 interface OnboardingTourProps {
@@ -27,7 +28,7 @@ interface TourStep {
   badge: string;
   description: string;
   highlightText: string;
-  icon: any;
+  icon: LucideIcon;
   color: string;
 }
 

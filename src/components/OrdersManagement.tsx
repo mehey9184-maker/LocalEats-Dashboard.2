@@ -12,7 +12,6 @@ import {
   Bike,
   RefreshCw,
   Search,
-  Filter,
   Check,
   X,
   Printer,

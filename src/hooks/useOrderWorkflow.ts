@@ -47,6 +47,7 @@ export const useOrderWorkflow = ({
     _message?: string,
     _estimatedTime?: string,
   ) => {
+    void _estimatedTime; // Legacy display hint is not an authoritative order write.
     try {
       const current=orders.find(order=>String(order.id)===String(id));
       if(!current)throw new MerchantApiError("Refresh the API orders before changing this order.",409);
@@ -87,6 +88,7 @@ export const useOrderWorkflow = ({
     targetRiderName?: string,
     _targetRiderPhone?: string,
   ) => {
+    void _targetRiderPhone;
     try {
       if(orders.find(order=>String(order.id)===String(id))?.delivery_type!=="delivery")throw new MerchantApiError("Pickup orders cannot enter Rider dispatch. Only explicit delivery orders are eligible.",409);
       if (targetRiderId || targetRiderName) {
@@ -111,6 +113,7 @@ export const useOrderWorkflow = ({
     _riderName?: string,
     _riderPhone?: string,
   ) => {
+    void _id; void _riderId; void _riderName; void _riderPhone;
     const error = new MerchantApiError(
       "Rider assignment must be claimed through the LocalEats server and cannot be set by this screen.",
       409,
@@ -120,6 +123,7 @@ export const useOrderWorkflow = ({
   };
 
   const convertOrderToPickup = async (_id: string) => {
+    void _id;
     const error = new MerchantApiError(
       "Changing delivery type is disabled until a server-authorized conversion flow is available.",
       409,
@@ -129,6 +133,7 @@ export const useOrderWorkflow = ({
   };
 
   const unassignRider = async (_id: string) => {
+    void _id;
     const error = new MerchantApiError(
       "Rider reassignment requires a server-authorized transition.",
       409,

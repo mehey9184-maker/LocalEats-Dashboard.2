@@ -20,7 +20,6 @@ import { configureApiCacheSafety } from "./middleware/apiCacheSafety.js";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 4000;
 
 configureApiCacheSafety(app);
 
@@ -70,6 +69,7 @@ app.use((req: Request, res: Response) => {
 
 // Generic Error Handler
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  void next;
   console.error("Unhandled error:", err);
   res.status(500).json({ success: false, error: "Internal Server Error" });
 });
