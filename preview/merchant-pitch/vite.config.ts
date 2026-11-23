@@ -8,5 +8,13 @@ import path from "node:path";
 export default defineConfig({
   plugins:[react(),tailwindcss()],
   build:{outDir:"dist-merchant-pitch",emptyOutDir:true,sourcemap:false,chunkSizeWarningLimit:1500},
-  resolve:{alias:{"@":path.resolve(".")},dedupe:["react","react-dom"]},
+  resolve:{
+    alias:[
+      // No production Firebase project identifiers or API configurations in
+      // this standalone fictional build.
+      {find:"../../firebase-applet-config.json",replacement:path.resolve("preview/merchant-pitch/firebase-demo-config.json")},
+      {find:"@",replacement:path.resolve(".")},
+    ],
+    dedupe:["react","react-dom"],
+  },
 });
