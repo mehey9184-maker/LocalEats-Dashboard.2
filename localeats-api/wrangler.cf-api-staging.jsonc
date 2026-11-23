@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "localeats-api-cf1-staging",
+  "compatibility_date": "2026-11-22",
+  "workers_dev": true,
+  "main": "./cloudflare-staging/worker.mjs",
+  "vars": {
+    "LOCALEATS_PREVIEW_READ_ONLY": "true",
+    "PICKUP_WRITES_ENABLED": "false",
+    "MERCHANT_AVAILABILITY_WRITES_ENABLED": "false",
+    "PICKUP_PAYMENT_SETTINGS_WRITES_ENABLED": "false",
+    "PROFILE_WRITES_ENABLED": "false"
+  }
+}

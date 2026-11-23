@@ -1,5 +1,17 @@
 # LocalEats Platform - Persistent System Instructions
 
+## ACTIVE Founder delegation and durable handoff — approved 2026-11-22
+
+**READ FIRST:** [Founder–AI Operating Charter](docs/LOCALEATS_FOUNDER_CHARTER.md) and [live project handoff memory](docs/LOCALEATS_PROJECT_MEMORY.md). This section is the most recent founder operating decision and takes precedence over older generalized "go live autonomously" instructions.
+
+**Authority:** Founder is CEO, business owner and final Production/finance authority. AI is the delegated technical worker/adviser: proactively investigate, plan, implement, test and document **safe source/CI changes on isolated branches and draft PRs**, report meaningful milestones, and don't make the founder perform routine work already possible through connected tools.
+
+**Stop-and-approve:** Any merge to `main` or release branch, staging cloud resource creation or deployment, Production deploy, live DNS/domain, live data/auth/security rule, order/payment/notification activation, real customer outreach or billable commitment requires **separate explicit founder approval**. All unauthorised action must stay read-only or locally mocked. Earlier broad authorizations do not override the 2026-11-22 approval matrix.
+
+**Memory protocol:** GitHub Markdown is canonical across chat limits, not ChatGPT's transient conversation. After milestones, update `docs/LOCALEATS_PROJECT_MEMORY.md` with exact branch, PR, head, tests, observed hosting state, blockers and safe next steps; also update functionality docs and GitHub issue #223. Canonical new ideas reside only in Customer `docs/LOCALEATS_SCALABLE_IDEA_REGISTER.md`. Next chat starts by reading the charter, handoff, both root AGENTS files and verifying connected state.
+
+**Current release (2026-11-22):** One founder-approved **CF1 API bootstrap Worker** is deployed and verified with read-only negative smoke; it does NOT serve real catalogue/orders. Customer #140 and Merchant/API #222 remain draft (Customer #139 unmerged). CF2-D/E restricted staging SQL and disposable rollback passed; founder has **conditionally approved CF2-E hosted staging permission DDL**, but **execution is HELD** because a **current restorable staging backup after the Nov 20 migrations is not independently verified**. Live CF2-E read-only preflight still passed 19/19; **no hosted permission migration applied**. See `docs/CLOUDFLARE_CF2E_APPROVED_BACKUP_HOLD.md`. Super-LocalAdmin Founder Briefing is in **draft PR #5**, not deployed. Vercel Production outage, real API integration and Android acceptance remain open. No real orders, DB grants/writes, DNS, Production merge or paid changes were authorized. Read canonical handoff for latest exact state.
+
 ## Draft merchant image defaults — 2026-11-22
 On branch `review/merchant-missing-image-defaults-20261122`, missing or failed customer-facing merchant images display `MerchantPhoto` branded defaults for shop/menu, and the merchant account profile displays local initials. Keep uploaded photos primary, never write placeholder URLs to the database, never imply the merchant photographed a generic stock item. Read `Vendor_LocalEats_App_Functionality_Documentation.md` and run `tests/default-image-fallback.test.mjs`. Draft only; no Production or pickup-activation approval.
 

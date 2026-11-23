@@ -1,0 +1,59 @@
+name: CF1 Cloudflare staging safety (no deploy)
+on:
+  push:
+    branches:
+      - cloudflare/cf1-merchant-api-staging-20261122
+  pull_request:
+    paths:
+      - 'wrangler.cf-merchant-staging.jsonc'
+      - 'scripts/build-cloudflare-staging.mjs'
+      - 'tests/cloudflare-staging-gate.test.mjs'
+      - 'vite.config.ts'
+      - 'localeats-api/wrangler.cf-api-staging.jsonc'
+      - 'localeats-api/cloudflare-staging/**'
+      - 'localeats-api/tests/cloudflare-staging-worker.test.mjs'
+      - 'localeats-api/tests/cloudflare-cf2-public-catalog-contract.test.mjs'
+      - 'localeats-api/tests/cloudflare-cf2-staging-postgrest.test.mjs'
+      - 'localeats-api/tests/cloudflare-cf2b-readonly-pg-catalog.test.mjs'
+      - 'localeats-api/tests/cloudflare-cf2-firebase-auth-parity.test.mjs'
+      - 'localeats-api/tests/cloudflare-cf1-live-smoke.mjs'
+      - 'docs/CLOUDFLARE_CF1_MERCHANT_API_STAGING.md'
+      - '.github/workflows/cloudflare-cf1-staging-gate.yml'
+permissions:
+  contents: read
+jobs:
+  staging-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Verify staging flags, CORS, GET-only worker and secret hygiene
+        run: |
+          node --test tests/cloudflare-staging-gate.test.mjs
+          node --test localeats-api/tests/cloudflare-staging-worker.test.mjs
+          node --test localeats-api/tests/cloudflare-cf2-public-catalog-contract.test.mjs
+          node --test localeats-api/tests/cloudflare-cf2-staging-postgrest.test.mjs
+          node --test localeats-api/tests/cloudflare-cf2b-readonly-pg-catalog.test.mjs
+          node --test localeats-api/tests/cloudflare-cf2-firebase-auth-parity.test.mjs
+      - name: Install dependencies for Merchant static build only
+        run: npm ci
+      - name: Build Merchant with synthetic Cloudflare staging URL (not deployed)
+        env:
+          VITE_LOCALEATS_API_URL: https://localeats-api-cf1-staging.example.workers.dev
+          VITE_PICKUP_ORDERING_ENABLED: 'false'
+          VITE_PROFILE_WRITES_ENABLED: 'false'
+          VITE_MERCHANT_PREVIEW_READ_ONLY: 'true'
+        run: node scripts/build-cloudflare-staging.mjs
+      - name: Wrangler dry-run Merchant static assets (no deployment)
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.cf-merchant-staging.jsonc
+      - name: Wrangler dry-run API bootstrap (no deployment)
+        run: cd localeats-api && npx --yes wrangler@4 deploy --dry-run --config wrangler.cf-api-staging.jsonc
+      - name: Bounded live CF1 edge smoke against isolated no-data Worker (no deploy)
+        run: node localeats-api/tests/cloudflare-cf1-live-smoke.mjs
+      - name: Verify static config and deployment separation
+        run: |
+          node -e "const fs=require('node:fs');let a=JSON.parse(fs.readFileSync('wrangler.cf-merchant-staging.jsonc'));let b=JSON.parse(fs.readFileSync('localeats-api/wrangler.cf-api-staging.jsonc'));if(!a.assets || a.assets.not_found_handling!=='single-page-application' || a.main || b.assets || !b.main || a.name===b.name)process.exit(1); console.log('CF1 staging configs isolated, deploy not invoked')"
