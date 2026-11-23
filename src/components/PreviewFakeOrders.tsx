@@ -104,17 +104,17 @@ export function usePreviewFakeOrders(soundAlertsEnabled:boolean){
     if(demoNotifyRef.current){
       demoNotifyRef.current=false;
       setDemoNotificationsEnabled(false);
-      toast.info("DEMO ONLY: browser example alerts turned off.",{duration:2500});
+      toast.info("DEMO ONLY: browser example alerts turned off.",{duration:2500,style:{pointerEvents:"none"}});
       return;
     }
     const permission=await askForDemoBrowserNotificationPermission();
     if(permission!=="granted"){
-      toast.info("Example system alerts unavailable here. Fictional in-app alerts and sound still work.",{duration:4500});
+      toast.info("Example system alerts unavailable here. Fictional in-app alerts and sound still work.",{duration:4500,style:{pointerEvents:"none"}});
       return;
     }
     demoNotifyRef.current=true;
     setDemoNotificationsEnabled(true);
-    toast.info("DEMO ONLY: browser example alerts enabled while this page is open — not real push.",{duration:4500});
+    toast.info("DEMO ONLY: browser example alerts enabled while this page is open — not real push.",{duration:4500,style:{pointerEvents:"none"}});
   };
 
   const simulateIncoming=(soundEnabled:boolean)=>{
@@ -131,7 +131,7 @@ export function usePreviewFakeOrders(soundAlertsEnabled:boolean){
       const next=[makeFakeOrder(countRef.current),...itemsRef.current].slice(0,60);
       itemsRef.current=next;setFakeOrders(next);setIncoming(false);
       notifyDemoArrival(1);
-      toast.info("FAKE pickup order arrived — TEST ONLY. No real order was created.",{duration:3500});
+      toast.info("FAKE pickup order arrived — TEST ONLY. No real order was created.",{duration:3500,style:{pointerEvents:"none"}});
     },600);
   };
   // The original Orders screen stays unchanged. Only the arrival timing is
@@ -154,7 +154,7 @@ export function usePreviewFakeOrders(soundAlertsEnabled:boolean){
     itemsRef.current=next;
     setFakeOrders(next);
     notifyDemoArrival(count);
-    toast.info(`DEMO ONLY: ${count} fictional pickup order${count===1?"":"s"} arrived.`,{duration:2200});
+    toast.info(`DEMO ONLY: ${count} fictional pickup order${count===1?"":"s"} arrived.`,{duration:2200,style:{pointerEvents:"none"}});
   },[notifyDemoArrival]);
 
   useEffect(()=>{
@@ -197,7 +197,7 @@ export function usePreviewFakeOrders(soundAlertsEnabled:boolean){
     const next=[...batch,...itemsRef.current].slice(0,60);
     itemsRef.current=next;
     setFakeOrders(next);
-    toast.info("TEST ONLY: 24 fictional orders added for layout testing.",{duration:3500});
+    toast.info("TEST ONLY: 24 fictional orders added for layout testing.",{duration:3500,style:{pointerEvents:"none"}});
   };
   const clearFakeOrders=()=>{
     setSimulationRunning(false);
