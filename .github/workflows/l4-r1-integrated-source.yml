@@ -6,6 +6,7 @@ on:
       - quality/l4-r1b-safe-cleanup-20261123
       - repair/l4-r1c-functional-contracts-20261123
       - quality/l4-r1d-contract-lint-20261123
+      - release/l4-pickup-core-main-20261123
   pull_request:
     branches: [main]
     paths:
@@ -73,7 +74,8 @@ jobs:
             tests/default-image-fallback.test.mjs \
             tests/merchant-marketing-counter.test.mjs \
             tests/l4-r1-orders-layout-switch.test.mjs \
-            tests/l4-r1c-functional-contracts.test.mjs
+            tests/l4-r1c-functional-contracts.test.mjs \
+            tests/l4-pickup-core-ui-freeze.test.mjs
       - name: Compile original Merchant production-style UI (no deployment)
         run: npm run build
   actual-client-api-loopback:
