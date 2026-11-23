@@ -61,13 +61,13 @@ INSERT INTO public.shops (
  -26.005,28.225,-26.005,28.225,'08:00','22:00','https://res.cloudinary.com/example/image/upload/v1/logo.png','Fresh kota',
  'pending',NULL,NULL,false
 );
-DO $
+DO $$
 BEGIN
  IF NOT EXISTS (SELECT 1 FROM public.shops WHERE id='new-vendor'
    AND owner_id='vendor-B' AND approval_status='pending' AND is_active=false
    AND latitude=lat AND longitude=lng)
  THEN RAISE EXCEPTION 'new merchant registration was not pending, inactive or coordinate-consistent'; END IF;
-END $;
+END $$;
 INSERT INTO public.merchant_profiles (merchant_uid,shop_id,full_name) VALUES ('merchant-A','owned-shop','A');
 DO $$
 DECLARE n bigint;
