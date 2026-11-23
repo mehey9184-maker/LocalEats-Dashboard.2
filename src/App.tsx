@@ -2480,6 +2480,7 @@ function App() {
                   onTabChange={setActiveTab}
                   onOpenHelp={() => setShowHelp(true)}
                   onOpenLegal={() => setShowLegal(true)}
+                  onOpenDiagnostics={() => setIsDiagnosticOpen(true)}
                   currentShop={currentShop}
                   printingFormat={printingFormat}
                   setPrintingFormat={setPrintingFormat}
@@ -4425,7 +4426,8 @@ function App() {
         onClick={() => setIsDiagnosticOpen(true)}
         className={cn(
           "fixed z-[55] right-6 p-3 bg-surface-container-high border border-outline-variant/20 text-on-surface rounded-full shadow-lg hover:shadow-xl hover:bg-surface-container-highest transition-all duration-200 cursor-pointer flex items-center gap-2 group active:scale-95",
-          kitchenMode ? "bottom-8" : "bottom-24 md:bottom-8"
+          kitchenMode ? "bottom-8" : "bottom-24 md:bottom-8",
+          isolatedPitch && activeTab === "orders" && "max-md:hidden"
         )}
         title="Open Network & System Diagnostics"
       >
