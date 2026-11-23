@@ -39,7 +39,6 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
  const pickup=isPickupOrder(order);
  const fullStatus=String(order.status||"pending");
  const pitchPolish=isIsolatedCloudflareMerchantPitchPreviewEnabled();
- const existingPickupActions=pickup?<PickupOrderActions order={order} compact={!roomy}/>:null;
  if(!roomy && pitchPolish){
    const status=fullStatus==="pending"?"NEW":fullStatus==="preparing"||fullStatus==="accepted"?"PREPARING":
      fullStatus==="ready"?"READY":fullStatus==="completed"?"COLLECTED":"CANCELLED";
@@ -71,7 +70,7 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
        <p className="text-[11px] text-on-surface-variant font-semibold">{pickup?pickupPaymentLabel(order):"Existing order"}</p>
        <OrderCustomerNote order={order} compact/>
        {showFull?<div className="border-t border-outline-variant/15 pt-2">{renderRealOrder(order,index)}</div>
-         :pickup?existingPickupActions:<p className="text-xs text-on-surface-variant">Existing order · no rider action</p>}
+         :pickup?renderPickupControls(order,roomy):<p className="text-xs text-on-surface-variant">Existing order · no rider action</p>}
        <button type="button" onClick={()=>setShowFull(current=>!current)}
          aria-expanded={showFull}
          className="min-h-11 inline-flex items-center text-xs font-bold text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
@@ -100,7 +99,7 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
    <OrderCustomerNote order={order} compact={!roomy}/>
    {pickup && !expanded ? <div className={roomy?"rounded-xl bg-surface-container-low/50 p-2":"rounded-lg bg-surface-container-low/50 p-1.5"}>
      {roomy&&<p className="text-[11px] text-on-surface-variant mb-1">{pickupPaymentLabel(order)}</p>}
-     {existingPickupActions}
+     {renderPickupControls(order,roomy)}
    </div>:!pickup && !expanded ? <span className="text-[11px] text-on-surface-variant">Historical / existing order · no new rider action</span> : null}
    {expanded&&<div className="border-t border-outline-variant/15 pt-3 min-w-0" onClick={e=>e.stopPropagation()}>
      {renderRealOrder(order,index)}
@@ -110,6 +109,11 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
      {expanded?"Hide details":"View details"}{expanded?<ChevronUp size={13}/>:<ChevronDown size={13}/>}
    </button>
  </article>;
+}
+
+// One shared actions renderer: neither compact disclosure nor full details duplicates controls.
+function renderPickupControls(order:Order,roomy:boolean){
+ return <PickupOrderActions order={order} compact={!roomy}/>;
 }
 
 export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onDemoAction,renderRealOrder,stageFilter}:{
