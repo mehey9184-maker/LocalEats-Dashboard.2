@@ -21,11 +21,14 @@ REVOKE ALL ON public.merchant_profiles FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE ON public.merchant_profiles TO service_role;
 
 -- Storefront CAS version is independent of availability and approval.
+-- Staging currently lacks shops.phone; Production already has it. Additive and nullable only.
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS phone text;
 ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS merchant_profile_revision bigint NOT NULL DEFAULT 0;
 -- No SECURITY DEFINER functions, public profile grants, account/user role changes or direct browser writes.
 COMMIT;
 
 -- ROLLBACK PLAN (requires verified backups and explicit review; never automatic):
 -- ALTER TABLE public.shops DROP COLUMN merchant_profile_revision;
+-- ALTER TABLE public.shops DROP COLUMN phone; -- ONLY if this migration created it; Production already uses it.
 -- DROP TABLE public.merchant_profiles;
--- Both rollback statements destroy data; only use after backup and formal sign-off.
+-- Rollback can destroy data; scope to the actual environment and sign off after restore proof.
