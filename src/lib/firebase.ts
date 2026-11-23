@@ -622,7 +622,10 @@ export async function getFirestoreMenuItems(shopId: string | number | (string | 
     }
     
     const snap = await getDocs(q);
-    const items = snap.docs.map(d => ({ ...d.data(), id: d.data().id ?? d.id } as MenuItem));
+    const items = snap.docs.map(d => {
+      const row = d.data() as Record<string, unknown>;
+      return { ...row, id: row.id ?? d.id } as MenuItem;
+    });
     return items;
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, "menu_items");
@@ -879,7 +882,10 @@ export function subscribeToMenuItemsFirestore(
   }
 
   return onSnapshot(q, (snap) => {
-    const items = snap.docs.map(d => ({ ...d.data(), id: d.data().id ?? d.id } as MenuItem));
+    const items = snap.docs.map(d => {
+      const row = d.data() as Record<string, unknown>;
+      return { ...row, id: row.id ?? d.id } as MenuItem;
+    });
     onUpdate(items);
   }, (error) => {
     handleFirestoreError(error, OperationType.LIST, "menu_items");
