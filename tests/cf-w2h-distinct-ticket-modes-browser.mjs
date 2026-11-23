@@ -91,6 +91,10 @@ for(const [width,height] of [[320,740],[390,844],[1366,900]]){
   const preparing=await openCompact();
   await preparing.getByRole("button",{name:"Mark Ready"}).click();
   if(mobile)await page.getByRole("tab",{name:/Ready/}).click();
+  // Real updates are lower-priority transitions: wait until the ticket has
+  // reached its destination lane before inspecting its disclosure state.
+  await page.getByTestId("lane-ready").getByTestId("fake-incoming-order")
+    .first().waitFor({state:"visible",timeout:12000});
   const ready=await openCompact();
   await ready.getByRole("button",{name:"Confirm cash received"}).click();
   const paid=await currentTicket();
