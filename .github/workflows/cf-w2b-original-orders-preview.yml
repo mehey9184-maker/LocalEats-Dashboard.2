@@ -1,0 +1,42 @@
+name: CF-W2B — original Merchant Orders simulation (preview-only)
+on:
+  push:
+    branches:
+      - review/cf-w2b-original-orders-simulation-20261123
+    paths:
+      - 'src/components/PreviewFakeOrders.tsx'
+      - 'src/components/OrdersFocusedWorkspace.tsx'
+      - 'src/components/OrdersManagement.tsx'
+      - 'tests/merchant-vendor-arrivals-preview.test.mjs'
+      - '.github/workflows/cf-w2b-original-orders-preview.yml'
+  pull_request:
+    paths:
+      - 'src/components/PreviewFakeOrders.tsx'
+      - 'src/components/OrdersFocusedWorkspace.tsx'
+      - 'src/components/OrdersManagement.tsx'
+      - 'tests/merchant-vendor-arrivals-preview.test.mjs'
+      - '.github/workflows/cf-w2b-original-orders-preview.yml'
+permissions:
+  contents: read
+jobs:
+  source-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Preview-only original Orders UI and no API safety contract
+        run: node --test tests/merchant-vendor-arrivals-preview.test.mjs tests/merchant-riders-coming-soon-main.test.mjs
+      - name: Install existing dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build original Merchant app without deploying
+        env:
+          VITE_MERCHANT_PREVIEW_READ_ONLY: 'true'
+          VITE_MERCHANT_FAKE_ORDERS_ENABLED: 'true'
+          VITE_PICKUP_ORDERING_ENABLED: 'false'
+        run: npx vite build
+      - name: Confirm no deployment, credentials or data changes
+        run: echo "CF_W2B_SOURCE_BUILD_ONLY_NO_DEPLOY_NO_REAL_ORDERS"

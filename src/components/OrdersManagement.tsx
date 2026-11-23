@@ -348,7 +348,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [showMobileActions, setShowMobileActions] = useState(false);
   const [showDesktopActions, setShowDesktopActions] = useState(false);
   const isReadOnlyPreview = import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true";
-  const {allowed:canFakeOrders,fakeOrders,incoming,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction}=usePreviewFakeOrders();
+  const {allowed:canFakeOrders,fakeOrders,incoming,simulationRunning,startSimulation,stopSimulation,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction}=usePreviewFakeOrders();
   const [unlinkedModalOrder, setUnlinkedModalOrder] = useState<Order | null>(null);
   const [dispatchAlertOrder, setDispatchAlertOrder] = useState<Order | null>(null);
   const [dispatchAlertType, setDispatchAlertType] = useState<"rider_dispatch" | "customer_status" | "rider_pairing">("customer_status");
@@ -2725,6 +2725,9 @@ Notes: "${order.notes || "None"}"
         onSimulate={() => simulateIncoming(soundAlerts)}
         onSimulateBatch={simulateBatch}
         onClear={clearFakeOrders}
+        simulationRunning={simulationRunning}
+        onStartSimulation={()=>startSimulation(soundAlerts)}
+        onStopSimulation={stopSimulation}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         renderRealOrder={renderOrderCard}
@@ -3100,7 +3103,10 @@ Notes: "${order.notes || "None"}"
                 {viewMode==="active" && <PreviewFakeOrderTrigger
                   incoming={incoming} count={fakeOrders.length}
                   onSimulate={()=>simulateIncoming(soundAlerts)}
-                  onClear={clearFakeOrders}/>}
+                  onClear={clearFakeOrders}
+                  simulationRunning={simulationRunning}
+                  onStartSimulation={()=>startSimulation(soundAlerts)}
+                  onStopSimulation={stopSimulation}/>}
                 <button
                   onClick={() => setShowSearch(!showSearch)}
                   className={cn(
