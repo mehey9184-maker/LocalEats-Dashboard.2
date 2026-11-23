@@ -304,6 +304,8 @@ export class MerchantApi {
   }
 
   static async createShop(input: MerchantShopCreateInput): Promise<VerifiedMerchantShop> {
+    const uid=auth.currentUser?.uid;
+    if(!uid)throw new MerchantApiError("Sign in before submitting a shop for approval.",401);
     const apiUrl = getApiUrl();
     const headers = await getApiAuthHeaders();
     let response: Response;
@@ -327,10 +329,15 @@ export class MerchantApi {
     }
 
     const shop = data.shop || (data as VerifiedMerchantShop);
-    if (!shop || shop.id === null || shop.id === undefined) {
-      throw new MerchantApiError("LocalEats merchant service returned an invalid shop.", response.status);
-    }
-
+    if(auth.currentUser?.uid!==uid)
+      throw new MerchantApiError("Your account changed while submitting the shop. Refresh before continuing.",409);
+    if(!shop || shop.id===null || shop.id===undefined)
+      throw new MerchantApiError("LocalEats merchant service returned an invalid shop.",response.status);
+    requireOwnedShop(shop,uid);
+    // A newly registered shop is never approved or live merely because a
+    // client signup POST succeeded; only the later approval process may do that.
+    if(shop.approval_status!=="pending" || shop.is_active!==false)
+      throw new MerchantApiError("Shop submission did not confirm pending approval. Refresh before continuing.",503);
     return shop as VerifiedMerchantShop;
   }
 }
