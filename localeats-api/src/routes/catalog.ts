@@ -7,44 +7,57 @@ import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 const PUBLIC_SHOP_FIELDS = "effective_is_active,availability_revision,availability_override_until,id,name,description,location,category,logo_url,rating,opening_time,closing_time,is_active,latitude,longitude,lat,lng,story";
 const PUBLIC_MENU_FIELDS = "id,shop_id,name,price,description,image_url,category,is_available,popularity_score,customizations,created_at";
 
+type CatalogRow = Record<string, unknown>;
+type CatalogResult = {data: unknown; error: unknown};
+type CatalogQuery = PromiseLike<CatalogResult> & {
+  select(columns: string): CatalogQuery;
+  eq(field: string, value: unknown): CatalogQuery;
+  is(field: string, value: null): CatalogQuery;
+  maybeSingle(): PromiseLike<CatalogResult>;
+};
+type CatalogDatabase = { from(table: string): unknown };
+const catalogRows = (value: unknown): CatalogRow[] => {
+  if (!Array.isArray(value)) throw new Error("CATALOG_ROWS_INVALID");
+  return value.map(row => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error("CATALOG_ROW_INVALID");
+    return row as CatalogRow;
+  });
+};
+const catalogRow = (value: unknown): CatalogRow | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "object" || Array.isArray(value)) throw new Error("CATALOG_ROW_INVALID");
+  return value as CatalogRow;
+};
 export interface CatalogRepository {
-  getApprovedShops(): Promise<any[]>;
-  getApprovedShopById(shopId: string): Promise<any | null>;
-  getMenuByShopId(shopId: string): Promise<any[]>;
+  getApprovedShops(): Promise<CatalogRow[]>;
+  getApprovedShopById(shopId: string): Promise<CatalogRow | null>;
+  getMenuByShopId(shopId: string): Promise<CatalogRow[]>;
 }
 
 export class SupabaseCatalogRepository implements CatalogRepository {
-  private supabase: any;
-  constructor(supabase: any) {
-    this.supabase = supabase;
+  constructor(private readonly supabase: CatalogDatabase) {}
+  private from(table: string): CatalogQuery {
+    return this.supabase.from(table) as CatalogQuery;
   }
-  async getApprovedShops(): Promise<any[]> {
-    const { data, error } = await this.supabase
-      .from("shops_with_availability")
-      .select(PUBLIC_SHOP_FIELDS)
-      .eq("approval_status", "approved")
-      .is("archived_at", null);
+  async getApprovedShops(): Promise<CatalogRow[]> {
+    const { data, error } = await this.from("shops_with_availability")
+      .select(PUBLIC_SHOP_FIELDS).eq("approval_status", "approved").is("archived_at", null);
     if (error) throw error;
-    return (data || []).map(effectiveShop);
+    return catalogRows(data ?? []).map(effectiveShop);
   }
-  async getApprovedShopById(shopId: string): Promise<any | null> {
-    const { data, error } = await this.supabase
-      .from("shops_with_availability")
-      .select(PUBLIC_SHOP_FIELDS)
-      .eq("id", shopId)
-      .eq("approval_status", "approved")
-      .is("archived_at", null)
-      .maybeSingle();
+  async getApprovedShopById(shopId: string): Promise<CatalogRow | null> {
+    const { data, error } = await this.from("shops_with_availability")
+      .select(PUBLIC_SHOP_FIELDS).eq("id", shopId).eq("approval_status", "approved")
+      .is("archived_at", null).maybeSingle();
     if (error) throw error;
-    return data ? effectiveShop(data) : null;
+    const shop = catalogRow(data);
+    return shop ? effectiveShop(shop) : null;
   }
-  async getMenuByShopId(shopId: string): Promise<any[]> {
-    const { data, error } = await this.supabase
-      .from("menu_items")
-      .select(PUBLIC_MENU_FIELDS)
-      .eq("shop_id", shopId);
+  async getMenuByShopId(shopId: string): Promise<CatalogRow[]> {
+    const { data, error } = await this.from("menu_items")
+      .select(PUBLIC_MENU_FIELDS).eq("shop_id", shopId);
     if (error) throw error;
-    return data || [];
+    return catalogRows(data ?? []);
   }
 }
 
