@@ -19,8 +19,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { supabase } from "../lib/supabase";
-import { updateFirestoreShop } from "../lib/firebase";
+import {MerchantProfileApi,type MerchantShopChange} from "../services/merchantProfileApi";
 import { Shop, User } from "../types";
 import { LeafletMap } from "./LeafletMap";
 import { LocationSyncIndicator } from "./LocationSyncIndicator";
@@ -29,7 +28,6 @@ import {
   formatSAPhone,
 } from "../utils";
 import { analyzeLocationSync } from "../hooks/useShopLocation";
-import { handleCentralizedError } from "../utils/errorHandler";
 import { MerchantPhoto } from "./MerchantPhoto";
 import imageCompression from "browser-image-compression";
 import { uploadImageToFirebaseStorage } from "../lib/firebase";
@@ -72,8 +70,8 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
   const [showMapPinConfirm, setShowMapPinConfirm] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [operatingHours, setOperatingHours] = useState({
-    open: shop.operating_hours?.open || "08:00",
-    close: shop.operating_hours?.close || "20:00",
+    open: shop.opening_time || shop.operating_hours?.open || "08:00",
+    close: shop.closing_time || shop.operating_hours?.close || "20:00",
   });
   const [formData, setFormData] = useState({
     name: shop.name || "",
@@ -151,8 +149,8 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
       };
 
       setOperatingHours({
-        open: shop.operating_hours?.open || "08:00",
-        close: shop.operating_hours?.close || "20:00",
+        open: shop.opening_time || shop.operating_hours?.open || "08:00",
+        close: shop.closing_time || shop.operating_hours?.close || "20:00",
       });
 
       setFormData({
@@ -274,194 +272,49 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const phoneCleaned = formData.phone.replace(/[\s-]/g, "");
-    const whatsappCleaned = (formData.whatsapp || "").replace(/[\s-]/g, "");
-    const saRegex = /^(?:\+27|0)[0-9]{9}$/;
-
-    if (!saRegex.test(phoneCleaned)) {
-      toast.error("Please enter a valid phone number (like 082 123 4567)");
+    if(isSaving)return;
+    const cleanPhone=formData.phone.replace(/[\\s-]/g,"");
+    if(cleanPhone && !/^(?:\\+27|0)[0-9]{9}$/.test(cleanPhone)){
+      toast.error("Enter a valid South African shop phone number.");
       return;
     }
-    if (formData.whatsapp && !saRegex.test(whatsappCleaned)) {
-      toast.error("Please enter a valid WhatsApp number (like 082 123 4567)");
+    const initialCity=shop.city||parseAndNormalizeZAAddress(shop.location||"Tembisa").city;
+    // Location, rider and social settings need their own reviewed API.
+    // Never discard unsaved edits while claiming success.
+    if(formData.location!==(shop.location||"") || formData.city!==initialCity ||
+      formData.email!==(shop.email||"") || formData.instagram!==(shop.instagram||"") ||
+      formData.facebook!==(shop.facebook||"") || formData.whatsapp!==(shop.whatsapp||"") ||
+      formData.lat!==(shop.lat||-25.9964) || formData.lng!==(shop.lng||28.2268)){
+      toast.error("Location, social and contact-email changes are not enabled yet. Restore those fields before saving basic shop details.");
       return;
     }
-
-    setIsSaving(true);
-    setIsSaveSuccess(false);
-
-    // Versioning & updated_at check to prevent overwriting cloud state with stale local state
-    try {
-      const { data: remoteShop } = await supabase
-        .from("shops")
-        .select("updated_at")
-        .eq("id", shop.id)
-        .maybeSingle();
-
-      const remoteShopData = remoteShop as { updated_at?: string } | null;
-      if (remoteShopData?.updated_at && shop.updated_at) {
-        const remoteTime = new Date(remoteShopData.updated_at).getTime();
-        const localTime = new Date(shop.updated_at).getTime();
-        if (remoteTime > localTime + 2000) {
-          toast.error("Cloud shop profile updated in another session. Syncing latest state to prevent overwrite.", {
-            description: `Remote version (${new Date(remoteShopData.updated_at).toLocaleTimeString()}) is newer than local state.`,
-            duration: 5000,
-          });
-          setIsSaving(false);
-          onRefresh();
-          return;
-        }
-      }
-    } catch (versionErr) {
-      console.warn("Versioning check skipped due to network or schema cache warning:", versionErr);
-    }
-
-    const finalCity = formData.city || parseAndNormalizeZAAddress(formData.location || "Tembisa").city;
-    const nowISO = new Date().toISOString();
-
-    const payload: Record<string, unknown> = {
-      ...formData,
-      operating_hours: operatingHours,
-      city: finalCity,
-      updated_at: nowISO,
+    const fields:MerchantShopChange={
+      name:formData.name.trim(),description:formData.description.trim(),
+      category:formData.category.trim(),phone:cleanPhone,
+      logo_url:formData.logo_url,opening_time:operatingHours.open,closing_time:operatingHours.close,
     };
-
-    // 1. Update Firestore Shop document immediately so client app and subscriptions sync in real time
-    try {
-      await updateFirestoreShop(shop.id, {
-        name: formData.name,
-        description: formData.description,
-        location: formData.location,
-        address: formData.location,
-        city: finalCity,
-        category: formData.category,
-        phone: formData.phone,
-        email: formData.email,
-        instagram: formData.instagram,
-        facebook: formData.facebook,
-        whatsapp: formData.whatsapp,
-        logo_url: formData.logo_url,
-        lat: formData.lat,
-        lng: formData.lng,
-        operating_hours: operatingHours,
-        updated_at: nowISO,
-      });
-    } catch (fsErr) {
-      console.warn("Firestore shop update warning:", fsErr);
-    }
-
-    // 2. Update local cached shops storage
-    try {
-      const cached = localStorage.getItem("localeats_cached_shops");
-      if (cached) {
-        const parsed: Shop[] = JSON.parse(cached);
-        const updated = parsed.map((s) =>
-          s.id === shop.id
-            ? {
-                ...s,
-                ...formData,
-                operating_hours: operatingHours,
-                address: formData.location,
-                city: finalCity,
-                updated_at: nowISO,
-              }
-            : s
-        );
-        localStorage.setItem("localeats_cached_shops", JSON.stringify(updated));
-      }
-    } catch {
-      // ignore
-    }
-
-    try {
-      // First attempt on Supabase
-      let { error } = await supabase
-        .from("shops")
-        .update(payload)
-        .eq("id", shop.id);
-
-      // If it's a "column does not exist" error or schema cache error, try to heal
-      const errObj = error as { code?: string; message?: string } | null;
-      if (errObj && (errObj.code === "42703" || errObj.message?.includes("column") || errObj.message?.includes("schema cache"))) {
-        console.warn("Some columns do not exist in the shops table. Attempting to strip unknown columns...", errObj.message);
-        // List of columns that might not exist in an older schema
-        const optionalCols = ["city", "whatsapp", "instagram", "facebook", "lat", "lng", "location_details", "email", "updated_at"];
-        optionalCols.forEach((col) => delete payload[col]);
-
-        // Try again with safe payload
-        let retry = await supabase
-          .from("shops")
-          .update(payload)
-          .eq("id", shop.id);
-
-        if (retry.error) {
-          // Fallback to essential baseline columns only
-          const fallbackPayload = {
-            name: formData.name,
-            description: formData.description,
-            location: formData.location,
-            phone: formData.phone,
-            category: formData.category,
-            logo_url: formData.logo_url,
-          };
-          retry = await supabase
-            .from("shops")
-            .update(fallbackPayload)
-            .eq("id", shop.id);
-        }
-
-        error = retry.error as unknown as typeof error;
-      }
-
-      if (error) throw error;
-
-      // Sync back to user metadata so phone numbers and locations are consistent throughout the app
-      if (user && (formData.phone || formData.whatsapp || formData.location)) {
-        try {
-          await supabase.auth.updateUser({
-            data: {
-              phone: formData.phone,
-              whatsapp: formData.whatsapp,
-              location: formData.location,
-              address: formData.location,
-              city: finalCity,
-            }
-          });
-        } catch (authErr) {
-          console.warn("User auth metadata update skipped:", authErr);
-        }
-
-        // Also sync to rider profile if it exists
-        try {
-          await supabase
-            .from("rider_profiles")
-            .update({
-              phone: formData.phone,
-              city: finalCity,
-              updated_at: new Date().toISOString()
-            })
-            .eq("id", user.id);
-        } catch (riderErr) {
-          console.warn("Rider profile update skipped:", riderErr);
-        }
-      }
-
-      setIsSaving(false);
+    setIsSaving(true);setIsSaveSuccess(false);
+    try{
+      const verified=await MerchantProfileApi.getShop(shop.id);
+      const original:Partial<MerchantShopChange>={
+        name:shop.name,description:shop.description,category:shop.category,
+        phone:shop.phone,logo_url:shop.logo_url,
+        opening_time:shop.opening_time,closing_time:shop.closing_time,
+      };
+      // Never rebase stale form data onto a newer server profile.
+      const stale=Object.entries(original).some(([field,value])=>
+        value!==undefined && verified[field as keyof MerchantShopChange]!==value);
+      if(stale)throw Error("Your shop profile changed elsewhere. Refresh before saving.");
+      const persisted=await MerchantProfileApi.saveShop(fields,shop.id,verified.merchant_profile_revision);
+      if(String(persisted.id)!==String(shop.id))throw Error("Saved shop identity was not verified.");
       setIsSaveSuccess(true);
-
-      setTimeout(() => {
-        setIsSaveSuccess(false);
-        toast.success("Shop profile updated successfully!");
-        onRefresh();
-        if (onFinished) onFinished();
-      }, 1200);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      setIsSaving(false);
+      toast.success("Shop profile saved and verified by LocalEats.");
+      await Promise.resolve(onRefresh());
+      if(onFinished)onFinished();
+    }catch(error){
       setIsSaveSuccess(false);
-      handleCentralizedError(err, "Shop Profile Update", "Failed to update profile");
-    }
+      toast.error(error instanceof Error?error.message:"Storefront profile was not saved.");
+    }finally{setIsSaving(false);}
   };
 
   const handleImageUpload = async (
@@ -513,7 +366,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
             Storefront Profile
           </h2>
           <p className="text-xs md:text-sm text-on-surface-variant font-medium">
-            Customize how your shop appears to customers.
+            Basic details save through the verified Merchant API. Location, social links and delivery settings need separate activation.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -900,18 +753,7 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={async () => {
-                    try {
-                      const { error } = await supabase
-                        .from("shop_followers")
-                        .insert({ shop_id: shop.id, user_id: user?.id });
-                      if (error) throw error;
-                      toast.success("You are now following this shop! (Test)");
-                      onRefresh();
-                    } catch {
-                      toast.error("Failed to follow shop. (Test)");
-                    }
-                  }}
+                  onClick={() => toast.info("Following shops is not enabled during the pickup pilot.")}
                   className="px-3 py-1 bg-primary text-white text-[10px] font-bold rounded-full shadow-lg hover:bg-primary/90 transition-colors"
                 >
                   Follow

@@ -90,6 +90,7 @@ import { LocalEatsLogo } from "./components/LocalEatsLogo";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
 import { DashboardOverview } from "./components/DashboardOverview";
 import { ShopProfile } from "./components/ShopProfile";
+import {MerchantProfileApi} from "./services/merchantProfileApi";
 import { OrdersManagement } from "./components/OrdersManagement";
 import { MenuManagement } from "./components/MenuManagement";
 import { Coupons } from "./components/Coupons";
@@ -1252,6 +1253,35 @@ function App() {
     return ()=>{clearInterval(timer);window.removeEventListener("focus",refresh);};
   },[user,fetchShops]);
 
+  // A persisted merchant account profile is projected into the existing display
+  // model on sign-in. No account role, Firebase metadata or shop ownership changes.
+  useEffect(()=>{
+    const uid=user?.id;
+    if(!uid || merchantShopGate.status!=="ready")return;
+    let current=true;
+    void MerchantProfileApi.getAccount().then(profile=>{
+      if(!current || profile.merchant_uid!==uid || profile.revision===0)return;
+      setUser(previous=>{
+        if(!previous || previous.id!==uid)return previous;
+        const nextMetadata={...previous.user_metadata,
+          full_name:profile.full_name,phone:profile.phone,
+          avatar_url:profile.avatar_url,
+          marketing_preferences:profile.marketing_opt_in,
+          dark_mode:profile.dark_mode};
+        if(previous.user_metadata?.full_name===profile.full_name &&
+           previous.user_metadata?.phone===profile.phone &&
+           previous.user_metadata?.avatar_url===profile.avatar_url &&
+           previous.user_metadata?.marketing_preferences===profile.marketing_opt_in &&
+           previous.user_metadata?.dark_mode===profile.dark_mode)return previous;
+        return {...previous,user_metadata:nextMetadata};
+      });
+      setDarkMode(profile.dark_mode);
+    }).catch(()=>{
+      // Schema/gate may not have been deployed; never fake a cached profile.
+    });
+    return ()=>{current=false;};
+  },[user?.id,merchantShopGate.status]);
+
   // Animate only the icon for the page to which a verified new alert belongs.
   // The cue is visual only; it never acknowledges messages or changes data.
   const {pulses:navAttention,pulseForTopic:pulseNavNotice}=usePageNotificationAttention({
@@ -1581,42 +1611,33 @@ function App() {
     setIsSaving(true);
     setIsSaveSuccess(false);
     try {
-      const { data: updateRes, error } = await supabase.auth.updateUser({
-        data: {
-          full_name: data.fullName,
-          phone: data.phone,
-          marketing_preferences: data.marketing,
-          dark_mode: data.darkMode,
-          avatar_url: data.avatarUrl,
-        },
-      });
-
-      if (error) throw error;
-      if (updateRes?.user) {
-        setUser(updateRes.user);
-      }
-
-      if (data.darkMode !== undefined) {
-        setDarkMode(data.darkMode);
-      }
-
-      // Show success state
-      setIsSaving(false);
+      if(data.expectedRevision===undefined)throw Error("Verified merchant profile must finish loading before saving.");
+      const saved=await MerchantProfileApi.saveAccount({
+        full_name:data.fullName.trim(),
+        phone:data.phone.replace(/[\\s-]/g,""),
+        avatar_url:data.avatarUrl||"",
+        marketing_opt_in:data.marketing??true,
+        dark_mode:data.darkMode??false,
+      },data.expectedRevision);
+      // This is a display projection from server-confirmed merchant data,
+      // never a Firebase identity/role or another merchant's saved profile.
+      setUser(previous=>previous?.id===saved.merchant_uid?
+        {...previous,user_metadata:{
+          ...(previous.user_metadata??{}),
+          full_name:saved.full_name,
+          phone:saved.phone,
+          avatar_url:saved.avatar_url,
+          marketing_preferences:saved.marketing_opt_in,
+          dark_mode:saved.dark_mode,
+        }}:previous);
+      setDarkMode(saved.dark_mode);
       setIsSaveSuccess(true);
-
-      // Close after delay
-      setTimeout(() => {
-        setIsSaveSuccess(false);
-        setIsEditingProfile(false);
-      }, 1200);
-    } catch (err: unknown) {
-      console.error("Save profile error:", err);
-      setIsSaving(false);
+      setTimeout(()=>{setIsSaveSuccess(false);setIsEditingProfile(false);},1200);
+    }catch(err:unknown){
+      console.error("Verified merchant account save failed:",err);
       setIsSaveSuccess(false);
-      toast.error(
-        err instanceof Error ? err.message : "Failed to update profile settings.",
-      );
-    }
+      toast.error(err instanceof Error?err.message:"Merchant account changes were not saved.");
+    }finally{setIsSaving(false);}
   };
 
   if (isSessionChecking && !user) {
