@@ -30,6 +30,22 @@ jobs:
       - run: npm ci --prefix localeats-api --no-audit --no-fund
       - name: Full pickup API and time-limited public pilot contract suite
         run: npm test --prefix localeats-api
+      - name: Run 90-day, 180-day and 2,500-order synthetic-only pickup rehearsals
+        env:
+          # No hosted DB, auth provider, payment gateway or deploy tokens in this run.
+          SUPABASE_URL: ''
+          SUPABASE_SERVICE_ROLE_KEY: ''
+          DATABASE_URL: ''
+          FIREBASE_ADMIN_CREDENTIALS: ''
+          FIREBASE_PROJECT_ID: ''
+          VERCEL_TOKEN: ''
+        run: |
+          set -euo pipefail
+          test "$PICKUP_WRITES_ENABLED" = false
+          test -z "$SUPABASE_URL" && test -z "$SUPABASE_SERVICE_ROLE_KEY" && test -z "$DATABASE_URL"
+          test -z "$FIREBASE_ADMIN_CREDENTIALS" && test -z "$VERCEL_TOKEN"
+          node --test localeats-api/tests/pickup/synthetic-90day-25x25.test.mjs
+          echo L4_R3_SIX_MONTH_SELF_TEST_SYNTHETIC_ONLY_PASS
       - name: Confirm CI never enables live pickup, merchant or Riders
         run: |
           test "$PICKUP_WRITES_ENABLED" = false
