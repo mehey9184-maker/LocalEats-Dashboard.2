@@ -34,10 +34,12 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
  order:Order;style:OrderBoardStyle;index:number;renderRealOrder:(order:Order,index:number)=>React.ReactNode
 }){
  const [expanded,setExpanded]=useState(false);
+ const [showFull,setShowFull]=useState(false);
  const roomy=style==="expediter";
  const pickup=isPickupOrder(order);
  const fullStatus=String(order.status||"pending");
  const pitchPolish=isIsolatedCloudflareMerchantPitchPreviewEnabled();
+ const existingPickupActions=pickup?<PickupOrderActions order={order} compact={!roomy}/>:null;
  if(!roomy && pitchPolish){
    const status=fullStatus==="pending"?"NEW":fullStatus==="preparing"||fullStatus==="accepted"?"PREPARING":
      fullStatus==="ready"?"READY":fullStatus==="completed"?"COLLECTED":"CANCELLED";
@@ -68,11 +70,13 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
        className="space-y-2 border-t border-outline-variant/15 px-2.5 pb-2.5 pt-2 bg-surface-container-low/30">
        <p className="text-[11px] text-on-surface-variant font-semibold">{pickup?pickupPaymentLabel(order):"Existing order"}</p>
        <OrderCustomerNote order={order} compact/>
-       {pickup?<PickupOrderActions order={order} compact/>:<p className="text-xs text-on-surface-variant">Existing order · no rider action</p>}
-       <details>
-         <summary className="min-h-11 content-center cursor-pointer text-xs font-bold text-primary">Full order details</summary>
-         <div className="border-t border-outline-variant/15 pt-2">{renderRealOrder(order,index)}</div>
-       </details>
+       {showFull?<div className="border-t border-outline-variant/15 pt-2">{renderRealOrder(order,index)}</div>
+         :pickup?existingPickupActions:<p className="text-xs text-on-surface-variant">Existing order · no rider action</p>}
+       <button type="button" onClick={()=>setShowFull(current=>!current)}
+         aria-expanded={showFull}
+         className="min-h-11 inline-flex items-center text-xs font-bold text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+         {showFull?"Back to quick actions":"Full order details"}
+       </button>
      </div>}
    </article>;
  }
@@ -96,7 +100,7 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
    <OrderCustomerNote order={order} compact={!roomy}/>
    {pickup && !expanded ? <div className={roomy?"rounded-xl bg-surface-container-low/50 p-2":"rounded-lg bg-surface-container-low/50 p-1.5"}>
      {roomy&&<p className="text-[11px] text-on-surface-variant mb-1">{pickupPaymentLabel(order)}</p>}
-     <PickupOrderActions order={order} compact={!roomy}/>
+     {existingPickupActions}
    </div>:!pickup && !expanded ? <span className="text-[11px] text-on-surface-variant">Historical / existing order · no new rider action</span> : null}
    {expanded&&<div className="border-t border-outline-variant/15 pt-3 min-w-0" onClick={e=>e.stopPropagation()}>
      {renderRealOrder(order,index)}
@@ -197,7 +201,7 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
          </div>
          {stageEntries.length>limited.length&&<button type="button" onClick={()=>setVisibleByLane(old=>({...old,[lane.key]:old[lane.key]+laneWindow}))}
            className="min-h-10 mt-3 rounded-lg bg-surface-container-lowest dark:bg-zinc-800 text-xs font-bold text-primary border border-outline-variant/15">
-           Show {laneWindow} more · {stageEntries.length-limited.length} remaining
+           {laneWindow===6?"Show 6 more":`Show ${laneWindow} more`} · {stageEntries.length-limited.length} remaining
          </button>}
        </section>;
      })}
