@@ -14,7 +14,7 @@ export default defineConfig({
       // Keep original app images, fonts, and logos from /public, but NEVER
       // publish the real messaging worker or installable PWA files.
       transformIndexHtml(html:string){
-        return html.replace(/<link\\s+rel="manifest"[^>]*>/g,"");
+        return html.replace('<link rel="manifest" href="/manifest.webmanifest" />', "");
       },
       closeBundle(){
         for(const basename of [
