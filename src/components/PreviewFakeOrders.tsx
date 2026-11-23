@@ -63,6 +63,8 @@ function playBrowserTestChime(){
 export function usePreviewFakeOrders(){
   const [fakeOrders,setFakeOrders]=useState<PreviewTestPickupOrder[]>([]);
   const [incoming,setIncoming]=useState(false);
+  const [simulationRunning,setSimulationRunning]=useState(false);
+  const waveIndexRef=useRef(0);
   const itemsRef=useRef<PreviewTestPickupOrder[]>([]);
   const countRef=useRef(0);
   const timerRef=useRef<number|null>(null);
@@ -83,6 +85,55 @@ export function usePreviewFakeOrders(){
       toast.info("FAKE pickup order arrived — TEST ONLY. No real order was created.",{duration:3500});
     },600);
   };
+  // The original Orders screen stays unchanged. Only the arrival timing is
+  // automated; the vendor must manually accept, prepare, confirm fake payment
+  // and hand over each sample using the EXISTING PickupOrderActions buttons.
+  const addSimulationWave=useCallback((requested:number)=>{
+    if(!isMerchantPreviewSimulatorEnabled())return;
+    const active=itemsRef.current.filter(order=>order.status!=="completed"&&order.status!=="cancelled");
+    const awaiting=active.filter(order=>order.status==="pending").length;
+    // Keep the existing board usable when the founder is explaining a step.
+    const count=Math.min(requested,Math.max(0,18-awaiting),Math.max(0,40-active.length));
+    if(count===0)return;
+    const wave=Array.from({length:count},()=>{
+      countRef.current+=1;
+      return makeFakeOrder(countRef.current);
+    });
+    // Never drop an active sample in order to display another new sample.
+    const history=itemsRef.current.filter(order=>order.status==="completed"||order.status==="cancelled");
+    const next=[...wave,...active,...history].slice(0,60);
+    itemsRef.current=next;
+    setFakeOrders(next);
+    toast.info(`TEST ONLY: ${count} fictional pickup order${count===1?"":"s"} arrived.`,{duration:2200});
+  },[]);
+
+  useEffect(()=>{
+    if(!simulationRunning)return;
+    // Missing preview flag or a Production hostname must fail closed.
+    if(!isMerchantPreviewSimulatorEnabled()){setSimulationRunning(false);return;}
+    const arrivals=[3,1,10,1,3,10];
+    const id=window.setInterval(()=>{
+      if(document.visibilityState==="hidden"||!isMerchantPreviewSimulatorEnabled())return;
+      addSimulationWave(arrivals[waveIndexRef.current%arrivals.length]);
+      waveIndexRef.current+=1;
+    },8000);
+    return ()=>window.clearInterval(id);
+  },[simulationRunning,addSimulationWave]);
+
+  const startSimulation=(soundEnabled:boolean)=>{
+    if(!isMerchantPreviewSimulatorEnabled()||simulationRunning)return;
+    if(timerRef.current!==null){
+      window.clearTimeout(timerRef.current);
+      timerRef.current=null;
+      setIncoming(false);
+    }
+    waveIndexRef.current=0;
+    if(soundEnabled)playBrowserTestChime();
+    addSimulationWave(1);
+    setSimulationRunning(true);
+  };
+  const stopSimulation=()=>setSimulationRunning(false);
+
   const simulateBatch=()=>{
     if(!isMerchantPreviewSimulatorEnabled())return;
     // Deliberately create a bounded, local-only volume of sample orders.
@@ -97,6 +148,7 @@ export function usePreviewFakeOrders(){
     toast.info("TEST ONLY: 24 fictional orders added for layout testing.",{duration:3500});
   };
   const clearFakeOrders=()=>{
+    setSimulationRunning(false);
     if(timerRef.current!==null){window.clearTimeout(timerRef.current);timerRef.current=null;}
     itemsRef.current=[];setFakeOrders([]);setIncoming(false);
   };
@@ -111,7 +163,7 @@ export function usePreviewFakeOrders(){
     // This alone does not prove a specific INP value: validate in an actual browser.
     startTransition(()=>setFakeOrders(next));
   },[]);
-  return {allowed,fakeOrders,incoming,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction};
+  return {allowed,fakeOrders,incoming,simulationRunning,startSimulation,stopSimulation,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction};
 }
 
 export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDemoAction,variant="expediter"}:{
@@ -147,15 +199,23 @@ export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDe
   </article>;
 });
 
-export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear}:{
+export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear,simulationRunning,onStartSimulation,onStopSimulation}:{
   incoming:boolean;count:number;onSimulate:()=>void;onClear:()=>void;
+  simulationRunning:boolean;onStartSimulation:()=>void;onStopSimulation:()=>void;
 }){
   if(!isMerchantPreviewSimulatorEnabled())return null;
-  return <div data-testid="fake-incoming-controls" className="flex items-center gap-2">
+  return <div data-testid="fake-incoming-controls" className="flex flex-wrap items-center gap-2">
     <button type="button" onClick={onSimulate} disabled={incoming}
       aria-label="Simulate a fake incoming pickup order"
       className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold disabled:opacity-60">
       <FlaskConical size={14} aria-hidden="true"/> {incoming?"Incoming…":"Simulate order"}
+    </button>
+    <button type="button"
+      onClick={simulationRunning?onStopSimulation:onStartSimulation}
+      aria-pressed={simulationRunning}
+      aria-label={simulationRunning?"Stop fictional order arrivals":"Start fictional order arrivals"}
+      className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold">
+      {simulationRunning?"Stop simulation":"Start simulation"}
     </button>
     {count>0&&<button type="button" onClick={onClear} className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300" aria-label="Clear all fake orders">
       <X size={13} aria-hidden="true"/> Clear tests ({count})
