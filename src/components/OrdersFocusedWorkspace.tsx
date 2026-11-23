@@ -21,6 +21,9 @@ interface OrdersFocusedWorkspaceProps {
   onSimulate: () => void;
   onSimulateBatch: () => void;
   onClear: () => void;
+  simulationRunning: boolean;
+  onStartSimulation: () => void;
+  onStopSimulation: () => void;
   styleStorageKey: string;
   completedRealOrders: Order[];
   viewMode: ViewMode;
@@ -71,7 +74,7 @@ const stageMatches=(stage:Stage,status:string)=>
 
 export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const {
-    realOrders,fakeOrders,onDemoAction,incoming,onSimulate,onSimulateBatch,onClear,styleStorageKey,completedRealOrders,viewMode,onViewModeChange,
+    realOrders,fakeOrders,onDemoAction,incoming,onSimulate,onSimulateBatch,onClear,simulationRunning,onStartSimulation,onStopSimulation,styleStorageKey,completedRealOrders,viewMode,onViewModeChange,
     renderRealOrder,onRefresh,onExportCSV,onExportJSON,
     soundAlerts,setSoundAlerts,kitchenMode,setKitchenMode,maxConcurrentOrders,setMaxConcurrentOrders,
     startDate,endDate,setStartDate,setEndDate
@@ -154,7 +157,8 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
               className={`inline-flex min-h-10 items-center gap-1.5 px-3 rounded-xl border border-outline-variant/20 bg-surface-container-low text-xs font-semibold text-on-surface ${commonFocus}`}>
               <RefreshCw size={15} aria-hidden="true"/><span className="hidden sm:inline">Refresh</span>
             </button>
-            <PreviewFakeOrderTrigger incoming={incoming} count={fakeOrders.length} onSimulate={testArrival} onClear={onClear}/>
+            <PreviewFakeOrderTrigger incoming={incoming} count={fakeOrders.length} onSimulate={testArrival} onClear={onClear}
+              simulationRunning={simulationRunning} onStartSimulation={onStartSimulation} onStopSimulation={onStopSimulation}/>
           </div>
         </div>
 
