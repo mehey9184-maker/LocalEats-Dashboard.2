@@ -4,6 +4,7 @@ import {mkdirSync,writeFileSync} from "node:fs";
 
 const HOST="https://localeats-merchant-dashboard-preview.mehey9184.workers.dev";
 const LOCAL="http://127.0.0.1:4177";
+const LIVE=process.env.CF_W2G_LIVE==="true";
 const DIR="artifacts/cf-w2g-soft-motion";
 mkdirSync(DIR,{recursive:true});
 const browser=await chromium.launch({headless:true});
@@ -21,6 +22,7 @@ for(const [width,height,reduce] of [[320,740,false],[390,844,false],[1366,900,fa
  page.on("pageerror",e=>rec.errors.push(String(e)));
  page.on("request",r=>{if(!["GET","HEAD"].includes(r.method()))rec.writes.push(r.method()+" "+r.url())});
  try {
+   if(!LIVE){
    await page.route("**/*",async route=>{
      const req=route.request(),url=new URL(req.url());
      if(url.origin!==HOST){await route.abort("blockedbyclient");return;}
@@ -29,6 +31,7 @@ for(const [width,height,reduce] of [[320,740,false],[390,844,false],[1366,900,fa
      await route.fulfill({response:res,headers:{...res.headers(),
       "content-security-policy":"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"}});
    });
+   }
    const response=await page.goto(HOST+"/",{waitUntil:"domcontentloaded",timeout:35000});
    assert.equal(response.status(),200);
    await page.getByRole("button",{name:"Orders"}).first().waitFor({timeout:14000});
@@ -85,7 +88,7 @@ for(const [width,height,reduce] of [[320,740,false],[390,844,false],[1366,900,fa
    assert.deepEqual(rec.errors,[]);
    assert.deepEqual(rec.writes,[]);
    rec.pass=true;
-   console.log("PASS CF-W2G "+width+"px reduce="+reduce+" floating original ticket + smooth type + manual order action");
+   console.log("PASS CF-W2G "+width+"px reduce="+reduce+(LIVE?" LIVE HOST":" local build")+" floating original ticket + smooth type + manual order action");
  }catch(e){
    rec.failure=String(e).slice(0,1300);
    console.error("FAIL CF-W2G "+width+"px "+rec.failure);
