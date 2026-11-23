@@ -119,15 +119,16 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
 
  const shownLanes=stageFilter==="all"?LANES:LANES.filter(l=>l.key===stageFilter);
  return <section data-testid="dual-style-kanban" data-style={style} className="min-w-0 space-y-2">
-   <div className="flex items-center justify-between gap-2 md:hidden">
-     <p className="text-[11px] font-bold text-on-surface-variant">Kitchen stages</p>
-     <span className="text-[11px] text-on-surface-variant">Swipe stages to select</span>
-   </div>
-   {stageFilter==="all"&&<div role="tablist" aria-label="Mobile kitchen lane" className="flex md:hidden gap-1.5 overflow-x-auto pb-2 max-w-full">
+   {/* One equal-width mobile stage switcher replaces the clipped horizontal tabs.
+       Stage names remain complete for screen readers and manual pickup tests. */}
+   {stageFilter==="all"&&<div role="tablist" aria-label="Mobile kitchen lane"
+     data-testid="mobile-kitchen-stages" className="grid grid-cols-4 md:hidden min-w-0 gap-1 pb-1">
      {LANES.map(lane=><button key={lane.key} type="button" role="tab"
+       aria-label={`${lane.label} stage`}
        aria-selected={mobileStage===lane.key} onClick={()=>setMobileStage(lane.key)}
-       className={`shrink-0 min-h-11 rounded-full border px-3 text-xs font-bold ${mobileStage===lane.key?"bg-primary text-on-primary border-primary":"bg-surface-container-low border-outline-variant/10 text-on-surface"}`}>
-       {lane.short} {counts[lane.key].real+counts[lane.key].fake}
+       className={`min-w-0 min-h-11 rounded-full border px-1 text-[11px] font-bold whitespace-nowrap ${mobileStage===lane.key?"bg-primary text-on-primary border-primary":"bg-surface-container-low border-outline-variant/10 text-on-surface"}`}>
+       {lane.key==="preparing"?"Prep":lane.key==="fulfilled"?"Done":lane.short}
+       <span className="ml-1 tabular-nums">{counts[lane.key].real+counts[lane.key].fake}</span>
      </button>)}
    </div>}
    <div className={`grid min-w-0 items-start grid-cols-1 ${shownLanes.length===1?"":"md:grid-cols-2 2xl:grid-cols-4"} ${compact?"gap-2 lg:gap-3":"gap-3 lg:gap-4"}`}>
