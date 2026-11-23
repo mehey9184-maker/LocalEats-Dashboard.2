@@ -2478,6 +2478,8 @@ function App() {
                   onRequestRider={requestRider}
                   onUnassignRider={unassignRider}
                   onTabChange={setActiveTab}
+                  onOpenHelp={() => setShowHelp(true)}
+                  onOpenLegal={() => setShowLegal(true)}
                   currentShop={currentShop}
                   printingFormat={printingFormat}
                   setPrintingFormat={setPrintingFormat}
@@ -3935,7 +3937,8 @@ function App() {
         onClick={() => setShowHelp(true)}
         className={cn(
           "fixed z-[60] w-14 h-14 bg-primary text-on-primary rounded-full shadow-2xl shadow-primary/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all group",
-          kitchenMode ? "bottom-8 right-6" : "bottom-24 md:bottom-8 right-6"
+          kitchenMode ? "bottom-8 right-6" : "bottom-24 md:bottom-8 right-6",
+          isolatedPitch && activeTab === "orders" && "max-md:hidden"
         )}
         title="Help & Tips"
       >
@@ -4407,8 +4410,8 @@ function App() {
       </AnimatePresence>
       
       {/* Legal & Privacy POPIA Trigger */}
-      <div className="fixed bottom-2 left-2 z-[9900]">
-        <button 
+      <div className={cn("fixed bottom-2 left-2 z-[9900]", isolatedPitch && activeTab === "orders" && "max-md:hidden")}>
+        <button
           onClick={() => setShowLegal(true)}
           className="text-[9px] text-zinc-500 hover:text-zinc-300 font-medium tracking-wide transition-colors bg-zinc-950/40 px-2.5 py-1 rounded-md backdrop-blur-md cursor-pointer border border-zinc-800/30"
         >
