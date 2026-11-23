@@ -118,6 +118,7 @@ export interface OrdersManagementProps {
   onTabChange: (tab: string) => void;
   onOpenHelp?: () => void;
   onOpenLegal?: () => void;
+  onOpenDiagnostics?: () => void;
   currentShop: Shop | undefined;
   printingFormat?: PrintingFormat;
   setPrintingFormat?: (format: PrintingFormat) => void;
@@ -315,6 +316,7 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   onTabChange,
   onOpenHelp,
   onOpenLegal,
+  onOpenDiagnostics,
   currentShop,
   printingFormat: propPrintingFormat,
   setPrintingFormat: propSetPrintingFormat,
@@ -2734,6 +2736,7 @@ Notes: "${order.notes || "None"}"
         onStopSimulation={stopSimulation}
         onOpenHelp={onOpenHelp}
         onOpenLegal={onOpenLegal}
+        onOpenDiagnostics={onOpenDiagnostics}
         demoNotificationsEnabled={demoNotificationsEnabled}
         onToggleDemoNotifications={()=>{void raiseDemoNotifications();}}
         viewMode={viewMode}
