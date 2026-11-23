@@ -83,10 +83,13 @@ test("L1C-3: actual pickup buttons are shared; simulated actions cannot invoke M
   assert.match(actions, /const simulated=!!onSimulate && isMerchantPreviewSimulatorEnabled\(\)/);
   assert.match(actions, /FAKE-L1C3-/);
   assert.match(actions, /const canAct=simulated \|\| pickupOrderingEnabled\(\)/);
-  assert.match(actions, /const pendingPath=simulated \? null : MerchantApi\.getPendingPickupCommandPath\(order\)/);
+  assert.match(actions, /const apiOrder=order as unknown as Record<string,unknown>/);
+  assert.match(actions, /const pendingPath=simulated \? null : MerchantApi\.getPendingPickupCommandPath\(apiOrder\)/);
   assert.match(actions, /if\(simulated\) \{/);
   assert.match(actions, /await onSimulate!\(action,extra\)/);
-  assert.match(actions, /\} else \{\s*await MerchantApi\.transitionPickupOrder\(order,action,extra\)/);
+  assert.match(actions, /\} else \{\s*await MerchantApi\.transitionPickupOrder\(apiOrder,action,extra\)/);
+  assert.ok(actions.includes('const simulated=!!onSimulate && isMerchantPreviewSimulatorEnabled()'));
+  assert.ok(actions.includes('const canAct=simulated || pickupOrderingEnabled()'));
   assert.match(actions, /TEST ONLY: Simulate a cash\/card payment/);
   assert.match(actions, /TEST ONLY: Simulate food handover/);
 });
@@ -188,7 +191,9 @@ test("L1C-3 polish: Accept and Reject share one safe action row",()=>{
   assert.ok(actions.includes("aria-label={reject ?"));
   assert.ok(actions.includes("const reason=window.prompt"));
   assert.ok(actions.includes("await onSimulate!(action,extra)"));
-  assert.ok(actions.includes("await MerchantApi.transitionPickupOrder(order,action,extra)"));
+  assert.ok(actions.includes("await MerchantApi.transitionPickupOrder(apiOrder,action,extra)"));
+  assert.ok(actions.includes("const apiOrder=order as unknown as Record<string,unknown>"));
+  assert.ok(actions.includes("if(simulated) {"));
   assert.ok(actions.includes("!canAct"));
 });
 
@@ -238,10 +243,12 @@ test("L1C-3 notes: customer instructions are not stored or sent by the fake-tick
 
 test("L1C-3 release: history has an accessible Show more action beyond 24 orders",()=>{
   const board=readFileSync(new URL("../src/components/OrdersStyleBoard.tsx",import.meta.url),"utf8");
-  assert.ok(board.includes("const [visibleHistory,setVisibleHistory]=useState(24)"));
+  assert.ok(board.includes("const [historyState,setHistoryState]=useState<{key:string;count:number}>"));
+  assert.ok(board.includes("const visibleHistory=historyState.key===visibilityKey?historyState.count:24"));
+  assert.ok(board.includes("const [visibleHistory,setVisibleHistory]=useState(24)") === false);
   assert.ok(board.includes("allEntries.slice(0,visibleHistory)"));
   assert.ok(board.includes("allEntries.length>shown.length"));
-  assert.ok(board.includes("setVisibleHistory(count=>count+24)"));
+  assert.ok(board.includes("setHistoryState(state=>({key:visibilityKey,count:(state.key===visibilityKey?state.count:24)+24}))"));
   assert.ok(board.includes("Show 24 more history orders"));
   assert.ok(!board.includes("Showing first 24 history records. Use search or date filters"));
 });
