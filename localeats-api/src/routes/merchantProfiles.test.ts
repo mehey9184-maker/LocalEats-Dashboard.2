@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import express,{type RequestHandler} from "express";
 import {once} from "node:events";
 import type {AddressInfo} from "node:net";
-import {makeMerchantProfilesRouter,type MerchantProfileStore} from "./merchantProfiles.js";
+import {makeMerchantProfilesRouter} from "./merchantProfiles.js";
+import type {MerchantProfileStore} from "./merchantProfileStore.js";
 import {initialAccount,type MerchantAccountRow,type MerchantShopRow} from "./merchantProfileStore.js";
 import {previewReadOnlyGate} from "../middleware/previewReadOnlyGate.js";
 
