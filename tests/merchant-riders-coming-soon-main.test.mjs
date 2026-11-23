@@ -49,7 +49,7 @@ test("L1C-3: Orders queue comes first and secondary settings are collapsed", () 
 test("L1C-3: incoming fake order enters the four Kanban columns without changing real counts", () => {
   const orders = readFileSync(new URL("../src/components/OrdersManagement.tsx", import.meta.url), "utf8");
   assert.match(orders, /SimulateIncoming\(soundAlerts\)/i);
-  assert.match(orders, /usePreviewFakeOrders\(\)/);
+  assert.match(orders, /usePreviewFakeOrders\(soundAlerts\)/);
   assert.match(orders, /<PreviewFakeOrderTrigger/);
   assert.equal((orders.match(/<PreviewFakeOrderCard key=\{order\.id\}/g) ?? []).length, 4);
   assert.match(orders, /displayedOrders\.length === 0 && \(viewMode !== "active" \|\| fakeOrders\.length===0\)/);

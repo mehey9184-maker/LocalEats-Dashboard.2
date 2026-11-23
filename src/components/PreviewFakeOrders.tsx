@@ -1,10 +1,15 @@
-import {memo,startTransition,useCallback,useEffect,useRef,useState} from "react";
-import {FlaskConical,X} from "lucide-react";
+import {memo,startTransition,useCallback,useEffect,useId,useRef,useState} from "react";
+import {ChevronDown,FlaskConical,X} from "lucide-react";
 import {toast} from "sonner";
 import {PickupOrderActions} from "./PickupOrderActions";
-import {OrderCustomerNote} from "./OrderCustomerNote";
+import {getCustomerPreparationNotes,OrderCustomerNote} from "./OrderCustomerNote";
 import {pickupCommand,type PickupAction} from "../services/merchantPickupPolicy";
 import {isMerchantPreviewSimulatorEnabled} from "../services/merchantPreviewSimulator";
+import {isIsolatedCloudflareMerchantPitchPreviewEnabled} from "../services/cloudflareMerchantPitchGate";
+import {
+  askForDemoBrowserNotificationPermission,createDemoAudioContext,
+  playOriginalDemoArrivalChime,showLocalExampleOrderNotification,
+} from "../services/cloudflareDemoIncomingAlerts";
 
 // The fake queue NEVER merges into actual orders, status counts, exports or storage.
 // Only small view-only cards are inserted into the four existing Kanban columns.
@@ -60,21 +65,64 @@ function playBrowserTestChime(){
   } catch { /* Audio is optional; no permission is requested. */ }
 }
 
-export function usePreviewFakeOrders(){
+export function usePreviewFakeOrders(soundAlertsEnabled:boolean){
   const [fakeOrders,setFakeOrders]=useState<PreviewTestPickupOrder[]>([]);
   const [incoming,setIncoming]=useState(false);
   const [simulationRunning,setSimulationRunning]=useState(false);
+  const [demoNotificationsEnabled,setDemoNotificationsEnabled]=useState(false);
   const waveIndexRef=useRef(0);
+  const demoAudioRef=useRef<AudioContext|null>(null);
+  const demoNotifyRef=useRef(false);
+  const soundEnabledRef=useRef(soundAlertsEnabled);
+  soundEnabledRef.current=soundAlertsEnabled;
   const itemsRef=useRef<PreviewTestPickupOrder[]>([]);
   const countRef=useRef(0);
   const timerRef=useRef<number|null>(null);
   const allowed=isMerchantPreviewSimulatorEnabled();
-  useEffect(()=>()=>{if(timerRef.current!==null)window.clearTimeout(timerRef.current);},[]);
+  useEffect(()=>()=> {
+    if(timerRef.current!==null)window.clearTimeout(timerRef.current);
+    const context=demoAudioRef.current;
+    if(context && context.state!=="closed")void context.close().catch(()=>{});
+  },[]);
+
+  // Audio must be unlocked from the merchant's actual tap (browser policy).
+  // It then plays once per fictional arrival wave, never once per fake ticket.
+  const prepareDemoAudio=()=>{
+    if(!isIsolatedCloudflareMerchantPitchPreviewEnabled() || !soundEnabledRef.current)return;
+    if(!demoAudioRef.current || demoAudioRef.current.state==="closed")
+      demoAudioRef.current=createDemoAudioContext();
+    else void demoAudioRef.current.resume().catch(()=>{});
+  };
+  const notifyDemoArrival=useCallback((count:number)=>{
+    if(!isIsolatedCloudflareMerchantPitchPreviewEnabled() || count<1 ||
+       document.visibilityState!=="visible")return;
+    if(soundEnabledRef.current)playOriginalDemoArrivalChime(demoAudioRef.current);
+    if(demoNotifyRef.current)showLocalExampleOrderNotification(count);
+  },[]);
+  const toggleDemoNotifications=async()=>{
+    if(!isIsolatedCloudflareMerchantPitchPreviewEnabled())return;
+    if(demoNotifyRef.current){
+      demoNotifyRef.current=false;
+      setDemoNotificationsEnabled(false);
+      toast.info("DEMO ONLY: browser example alerts turned off.",{duration:2500,id:"localeats-demo-notice",style:{pointerEvents:"none"}});
+      return;
+    }
+    const permission=await askForDemoBrowserNotificationPermission();
+    if(permission!=="granted"){
+      toast.info("Example system alerts unavailable here. Fictional in-app alerts and sound still work.",{duration:4500,id:"localeats-demo-notice",style:{pointerEvents:"none"}});
+      return;
+    }
+    demoNotifyRef.current=true;
+    setDemoNotificationsEnabled(true);
+    toast.info("DEMO ONLY: browser example alerts enabled while this page is open — not real push.",{duration:4500,id:"localeats-demo-notice",style:{pointerEvents:"none"}});
+  };
 
   const simulateIncoming=(soundEnabled:boolean)=>{
     if(!isMerchantPreviewSimulatorEnabled()||timerRef.current!==null)return;
     setIncoming(true);
-    if(soundEnabled)playBrowserTestChime();
+    soundEnabledRef.current=soundEnabled;
+    if(isIsolatedCloudflareMerchantPitchPreviewEnabled())prepareDemoAudio();
+    else if(soundEnabled)playBrowserTestChime();
     // Delay intentionally mimics a new incoming order without calling any API.
     timerRef.current=window.setTimeout(()=>{
       timerRef.current=null;
@@ -82,7 +130,8 @@ export function usePreviewFakeOrders(){
       countRef.current+=1;
       const next=[makeFakeOrder(countRef.current),...itemsRef.current].slice(0,60);
       itemsRef.current=next;setFakeOrders(next);setIncoming(false);
-      toast.info("FAKE pickup order arrived — TEST ONLY. No real order was created.",{duration:3500});
+      notifyDemoArrival(1);
+      toast.info("FAKE pickup order arrived — TEST ONLY. No real order was created.",{duration:3500,id:"localeats-demo-notice",style:{pointerEvents:"none"}});
     },600);
   };
   // The original Orders screen stays unchanged. Only the arrival timing is
@@ -104,8 +153,9 @@ export function usePreviewFakeOrders(){
     const next=[...wave,...active,...history].slice(0,60);
     itemsRef.current=next;
     setFakeOrders(next);
-    toast.info(`TEST ONLY: ${count} fictional pickup order${count===1?"":"s"} arrived.`,{duration:2200});
-  },[]);
+    notifyDemoArrival(count);
+    toast.info(`DEMO ONLY: ${count} fictional pickup order${count===1?"":"s"} arrived.`,{duration:2200,id:"localeats-demo-notice",style:{pointerEvents:"none"}});
+  },[notifyDemoArrival]);
 
   useEffect(()=>{
     if(!simulationRunning)return;
@@ -128,7 +178,9 @@ export function usePreviewFakeOrders(){
       setIncoming(false);
     }
     waveIndexRef.current=0;
-    if(soundEnabled)playBrowserTestChime();
+    soundEnabledRef.current=soundEnabled;
+    if(isIsolatedCloudflareMerchantPitchPreviewEnabled())prepareDemoAudio();
+    else if(soundEnabled)playBrowserTestChime();
     addSimulationWave(1);
     setSimulationRunning(true);
   };
@@ -145,7 +197,7 @@ export function usePreviewFakeOrders(){
     const next=[...batch,...itemsRef.current].slice(0,60);
     itemsRef.current=next;
     setFakeOrders(next);
-    toast.info("TEST ONLY: 24 fictional orders added for layout testing.",{duration:3500});
+    toast.info("TEST ONLY: 24 fictional orders added for layout testing.",{duration:3500,id:"localeats-demo-notice",style:{pointerEvents:"none"}});
   };
   const clearFakeOrders=()=>{
     setSimulationRunning(false);
@@ -163,7 +215,58 @@ export function usePreviewFakeOrders(){
     // This alone does not prove a specific INP value: validate in an actual browser.
     startTransition(()=>setFakeOrders(next));
   },[]);
-  return {allowed,fakeOrders,incoming,simulationRunning,startSimulation,stopSimulation,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction};
+  return {allowed,fakeOrders,incoming,simulationRunning,raiseDemoNotifications:toggleDemoNotifications,
+    demoNotificationsEnabled,startSimulation,stopSimulation,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction};
+}
+
+// Mode B is a scan-first list row, deliberately DIFFERENT from the full
+// Mode A ticket. It never loses the real action component: tapping the row
+// reveals the same TEST ONLY pickup controls without creating an API request.
+function CompactFakeOrderRow({order,onDemoAction}:{
+  order:PreviewTestPickupOrder;onDemoAction:PreviewTestPickupAction;
+}){
+  const [open,setOpen]=useState(false);
+  const detailsId=useId();
+  const shortId=order.id.replace("FAKE-L1C3-","T-");
+  const special=getCustomerPreparationNotes(order).length>0;
+  const status=order.status==="pending"?"NEW":order.status==="preparing"?"PREPARING":
+    order.status==="ready"?"READY":order.status==="completed"?"COLLECTED":"CANCELLED";
+  return <article data-testid="fake-incoming-order" data-style="compact"
+    className="min-w-0 rounded-xl border border-dashed border-amber-300/90 dark:border-amber-700/90 bg-white/95 dark:bg-zinc-950/95 shadow-[0_5px_14px_-10px_rgba(100,51,11,0.25)] overflow-hidden">
+    <button type="button" onClick={()=>setOpen(value=>!value)} aria-expanded={open}
+      aria-controls={detailsId}
+      aria-label={`Order ${shortId} for ${order.customer_name}, ${status}. ${open?"Hide":"Show"} actions`}
+      className="flex w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left min-h-[64px] hover:bg-amber-50/50 dark:hover:bg-amber-950/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary motion-safe:transition-colors motion-safe:duration-150">
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span className="shrink-0 rounded-md bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-amber-900 dark:text-amber-100">Fake · Test only</span>
+          <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400">#{shortId}</span>
+          <span className="text-[9px] font-bold tracking-wide text-orange-700 dark:text-orange-200">{status}</span>
+        </div>
+        <p className="truncate text-[13px] font-extrabold leading-4 tracking-tight text-slate-900 dark:text-zinc-100">{order.customer_name}</p>
+        <p className="flex flex-wrap items-center gap-x-2 text-[11px] leading-4 text-slate-600 dark:text-zinc-300">
+          <span>1× {order.product_name}</span>
+          {special&&<span className="font-bold text-amber-800 dark:text-amber-300">● Special request</span>}
+        </p>
+      </div>
+      <div className="shrink-0 text-right space-y-1">
+        <span className="block text-xs font-extrabold tabular-nums text-slate-900 dark:text-zinc-100">R {order.total_price.toFixed(2)}</span>
+        <span className="flex justify-end items-center gap-1 text-[10px] font-bold text-primary">
+          {open?"Close":"Actions"} <ChevronDown size={13} aria-hidden="true"
+            className={`motion-safe:transition-transform motion-safe:duration-150 ${open?"rotate-180":""}`}/>
+        </span>
+      </div>
+    </button>
+    {open&&<div id={detailsId} data-testid="compact-fake-actions"
+      className="space-y-2 border-t border-amber-200/80 dark:border-amber-800/60 bg-amber-50/30 dark:bg-zinc-900/30 px-2.5 pb-2.5 pt-2">
+      <p className="text-[11px] font-semibold text-slate-600 dark:text-zinc-300">
+        Pickup · {order.payment_status==="paid"?"Payment simulated":"Pay at shop"} · TEST ONLY
+      </p>
+      <OrderCustomerNote order={order} compact/>
+      <PickupOrderActions order={order} compact
+        onSimulate={(action,extra)=>onDemoAction(order.id,action,extra)}/>
+    </div>}
+  </article>;
 }
 
 export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDemoAction,variant="expediter"}:{
@@ -173,13 +276,16 @@ export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDe
 }){
   // One memoized, lightweight ticket. Local demo state never reaches an API.
   if(!isMerchantPreviewSimulatorEnabled())return null;
+  if(variant==="compact" && isIsolatedCloudflareMerchantPitchPreviewEnabled())
+    return <CompactFakeOrderRow order={order} onDemoAction={onDemoAction}/>;
   const roomy=variant==="expediter";
+  const pitchPolish=isIsolatedCloudflareMerchantPitchPreviewEnabled();
   const shortId=order.id.replace("FAKE-L1C3-","T-");
   const payment=order.payment_status==="paid" ? "Payment simulated" : "Pay at shop";
   return <article
     data-testid="fake-incoming-order"
     data-style={variant}
-    className={`min-w-0 overflow-hidden bg-white dark:bg-zinc-950 border-2 border-dashed border-amber-300 dark:border-amber-600/70 shadow-sm ${roomy?"rounded-2xl px-3.5 py-3 space-y-2":"rounded-xl px-3 py-2.5 space-y-1.5"}`}
+    className={`min-w-0 overflow-hidden bg-white dark:bg-zinc-950 border-2 border-dashed border-amber-300 dark:border-amber-600/70 shadow-sm ${roomy?"rounded-2xl px-3.5 py-3 space-y-2":"rounded-xl px-3 py-2.5 space-y-1.5"} ${pitchPolish?"bg-white/95 dark:bg-zinc-950/95 border-amber-300/85 shadow-[0_8px_24px_-12px_rgba(100,51,11,0.28)] motion-safe:transition-[transform,box-shadow,border-color] motion-safe:duration-200 motion-safe:ease-out motion-safe:active:scale-[0.995] motion-safe:md:hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-14px_rgba(100,51,11,0.35)]":""}`}
   >
     <div className="min-w-0 flex items-center justify-between gap-2">
       <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 dark:bg-amber-900/50 text-amber-900 dark:text-amber-100 px-1.5 py-0.5 text-[9px] leading-3 font-extrabold tracking-wide uppercase">
@@ -188,10 +294,10 @@ export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDe
       <span className="shrink-0 font-mono text-[10px] font-bold text-slate-500 dark:text-zinc-400" title={order.id}>#{shortId}</span>
     </div>
     <div className="flex min-w-0 items-start justify-between gap-2">
-      <h4 className={`min-w-0 font-headline font-extrabold text-slate-900 dark:text-zinc-100 break-words leading-5 ${roomy?"text-[15px]":"text-sm"}`}>{order.customer_name}</h4>
-      <span className="shrink-0 font-extrabold text-[13px] text-slate-900 dark:text-zinc-100">R {order.total_price.toFixed(2)}</span>
+      <h4 className={`min-w-0 font-headline font-extrabold text-slate-900 dark:text-zinc-100 break-words leading-5 ${roomy?"text-[15px]":"text-sm"} ${pitchPolish?"tracking-[-0.015em] antialiased":""}`}>{order.customer_name}</h4>
+      <span className={`shrink-0 font-extrabold text-[13px] text-slate-900 dark:text-zinc-100 ${pitchPolish?"text-sm tracking-tight tabular-nums":""}`}>R {order.total_price.toFixed(2)}</span>
     </div>
-    <p className="text-xs font-semibold text-slate-700 dark:text-zinc-300 leading-4 truncate" title={order.product_name}>
+    <p className={`text-xs font-semibold text-slate-700 dark:text-zinc-300 leading-4 truncate ${pitchPolish?"tracking-[0.005em]":""}`} title={order.product_name}>
       1× {order.product_name} <span className="font-normal text-slate-500 dark:text-zinc-400">· {payment}</span>
     </p>
     <OrderCustomerNote order={order} compact={!roomy}/>
@@ -199,25 +305,40 @@ export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDe
   </article>;
 });
 
-export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear,simulationRunning,onStartSimulation,onStopSimulation}:{
+export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear,simulationRunning,onStartSimulation,onStopSimulation,
+  demoNotificationsEnabled,onToggleDemoNotifications}:{
   incoming:boolean;count:number;onSimulate:()=>void;onClear:()=>void;
   simulationRunning:boolean;onStartSimulation:()=>void;onStopSimulation:()=>void;
+  demoNotificationsEnabled:boolean;onToggleDemoNotifications:()=>void;
 }){
   if(!isMerchantPreviewSimulatorEnabled())return null;
-  return <div data-testid="fake-incoming-controls" className="flex flex-wrap items-center gap-2">
+  const pitchPolish=isIsolatedCloudflareMerchantPitchPreviewEnabled();
+  // On mobile, the two primary pitch actions share a single row.
+  // One-off simulation and clearing remain available under existing Orders > Tools.
+  return <div data-testid="fake-incoming-controls" className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
     <button type="button" onClick={onSimulate} disabled={incoming}
       aria-label="Simulate a fake incoming pickup order"
-      className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold disabled:opacity-60">
+      className="hidden sm:inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold disabled:opacity-60">
       <FlaskConical size={14} aria-hidden="true"/> {incoming?"Incoming…":"Simulate order"}
     </button>
     <button type="button"
       onClick={simulationRunning?onStopSimulation:onStartSimulation}
       aria-pressed={simulationRunning}
       aria-label={simulationRunning?"Stop fictional order arrivals":"Start fictional order arrivals"}
-      className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold">
+      className={`inline-flex min-h-11 min-w-0 items-center justify-center rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-2.5 py-2 text-[11px] sm:px-3 sm:text-xs font-bold whitespace-nowrap ${pitchPolish?"shadow-[0_4px_12px_-8px_rgba(249,115,22,0.55)] motion-safe:transition-[transform,box-shadow,background-color] motion-safe:duration-200 motion-safe:active:scale-[0.97] hover:shadow-md":""}`}>
       {simulationRunning?"Stop simulation":"Start simulation"}
     </button>
-    {count>0&&<button type="button" onClick={onClear} className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300" aria-label="Clear all fake orders">
+    {isIsolatedCloudflareMerchantPitchPreviewEnabled()&&
+      <button type="button" onClick={onToggleDemoNotifications}
+        aria-pressed={demoNotificationsEnabled}
+        aria-label={demoNotificationsEnabled?"Disable simulated browser notifications":"Enable simulated browser notifications"}
+        title="Example notification only while the demo is open. Not real push delivery."
+        className={`inline-flex min-h-11 min-w-0 items-center justify-center rounded-full border border-amber-400 bg-amber-50 text-amber-950 px-2.5 py-2 text-[11px] sm:px-3 sm:text-xs font-bold whitespace-nowrap ${pitchPolish?"shadow-[0_4px_12px_-9px_rgba(100,51,11,0.35)] motion-safe:transition-[transform,box-shadow,background-color] motion-safe:duration-200 motion-safe:active:scale-[0.97] hover:shadow-sm":""}`}>
+        {demoNotificationsEnabled?"Demo alerts on":"Try demo alert"}
+      </button>}
+    {count>0&&<button type="button" onClick={onClear}
+      className="hidden sm:inline-flex min-h-11 items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300"
+      aria-label="Clear all fake orders">
       <X size={13} aria-hidden="true"/> Clear tests ({count})
     </button>}
   </div>;

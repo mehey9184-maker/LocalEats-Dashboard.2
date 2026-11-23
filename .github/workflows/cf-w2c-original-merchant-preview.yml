@@ -1,0 +1,82 @@
+name: CF-W2C — Original Merchant Dashboard Cloudflare preview (NO deploy)
+on:
+  push:
+    branches:
+      - review/cf-w2c-original-merchant-cloudflare-20261123
+  pull_request:
+    paths:
+      - 'preview/merchant-pitch/**'
+      - 'wrangler.merchant-pitch-preview.jsonc'
+      - 'src/services/cloudflareMerchantPitchGate.ts'
+      - 'src/services/merchantPreviewSimulator.ts'
+      - 'src/App.tsx'
+      - 'src/components/PreviewFakeOrders.tsx'
+      - 'tests/cf-w2c-merchant-*'
+      - '.github/workflows/cf-w2c-original-merchant-preview.yml'
+permissions:
+  contents: read
+jobs:
+  original-merchant:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 24
+    env:
+      VITE_MERCHANT_CF_DEMO_READ_ONLY: 'true'
+      VITE_MERCHANT_PREVIEW_READ_ONLY: 'true'
+      VITE_MERCHANT_FAKE_ORDERS_ENABLED: 'true'
+      VITE_MERCHANT_ORDERS_FOCUSED_UI: 'true'
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      VITE_LOCALEATS_API_URL: ''
+      VITE_FIREBASE_CONFIG_SOURCE: 'environment'
+      VITE_FIREBASE_API_KEY: 'fictional-local-demo-only'
+      VITE_FIREBASE_AUTH_DOMAIN: 'localeats-fictional-demo.invalid'
+      VITE_FIREBASE_PROJECT_ID: 'localeats-fictional-demo'
+      VITE_FIREBASE_STORAGE_BUCKET: 'localeats-fictional-demo.invalid'
+      VITE_FIREBASE_MESSAGING_SENDER_ID: '000000000000'
+      VITE_FIREBASE_APP_ID: '1:000000000000:web:fictional-demo-only'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Original App, preview host and no-writes static source gate
+        run: node --test tests/cf-w2c-merchant-cloudflare.test.mjs tests/merchant-vendor-arrivals-preview.test.mjs
+      - name: Install existing dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build the real Merchant App using fictional-only configuration
+        run: npx vite build --config preview/merchant-pitch/vite.config.ts
+      - name: Audit public build for production endpoints and Firebase IDs
+        run: |
+          test -f dist-merchant-pitch/index.html
+          test -n "$(find dist-merchant-pitch/assets -type f -name '*.js' -print -quit)"
+          ! grep -RIE 'localeats-api-cf1-staging|dashboard.localeatssa.co.za/api|firebaseapp.com|ai-studio-localeatsvendord|SUPABASE_SERVICE_ROLE_KEY|DATABASE_URL|service_role' dist-merchant-pitch/
+      - name: Workers Static Assets packaging dry run only
+        run: npx --yes wrangler@4.54.0 deploy --dry-run --config wrangler.merchant-pitch-preview.jsonc --outdir artifacts/wrangler-merchant-pitch
+      - name: Install pinned browser automation for local-only acceptance
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.55.1
+          npx playwright install --with-deps chromium
+      - name: Original Home to Orders hosted-style offline browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx vite preview --config preview/merchant-pitch/vite.config.ts --host 127.0.0.1 --port 4177 --strictPort > "$RUNNER_TEMP/cf-merchant-vite.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for i in $(seq 1 40); do
+            if curl --silent --fail http://127.0.0.1:4177/ >/dev/null; then ready=true; break; fi
+            sleep 1
+          done
+          if [[ "$ready" != true ]]; then tail -n 60 "$RUNNER_TEMP/cf-merchant-vite.log"; exit 1; fi
+          node tests/cf-w2c-merchant-browser.mjs
+      - name: Upload fictional screenshot and browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cf-w2c-original-merchant-evidence
+          path: artifacts/cf-w2c-merchant
+          retention-days: 3
+          if-no-files-found: ignore
+      - name: No deployment or production changes
+        run: echo "CF_W2C_SOURCE_ONLY_NOT_DEPLOYED"

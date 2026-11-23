@@ -116,6 +116,9 @@ export interface OrdersManagementProps {
   onRequestRider: (id: string, riderId?: string, riderName?: string, riderPhone?: string) => void;
   onUnassignRider: (id: string) => void;
   onTabChange: (tab: string) => void;
+  onOpenHelp?: () => void;
+  onOpenLegal?: () => void;
+  onOpenDiagnostics?: () => void;
   currentShop: Shop | undefined;
   printingFormat?: PrintingFormat;
   setPrintingFormat?: (format: PrintingFormat) => void;
@@ -311,6 +314,9 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   onRequestRider,
   onUnassignRider,
   onTabChange,
+  onOpenHelp,
+  onOpenLegal,
+  onOpenDiagnostics,
   currentShop,
   printingFormat: propPrintingFormat,
   setPrintingFormat: propSetPrintingFormat,
@@ -347,7 +353,8 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
   const [showMobileActions, setShowMobileActions] = useState(false);
   const [showDesktopActions, setShowDesktopActions] = useState(false);
   const isReadOnlyPreview = import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true";
-  const {allowed:canFakeOrders,fakeOrders,incoming,simulationRunning,startSimulation,stopSimulation,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction}=usePreviewFakeOrders();
+  const {allowed:canFakeOrders,fakeOrders,incoming,simulationRunning,startSimulation,stopSimulation,
+    demoNotificationsEnabled,raiseDemoNotifications,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction}=usePreviewFakeOrders(soundAlerts);
   const [unlinkedModalOrder, setUnlinkedModalOrder] = useState<Order | null>(null);
   const [dispatchAlertOrder, setDispatchAlertOrder] = useState<Order | null>(null);
   const [dispatchAlertType, setDispatchAlertType] = useState<"rider_dispatch" | "customer_status" | "rider_pairing">("customer_status");
@@ -2727,6 +2734,11 @@ Notes: "${order.notes || "None"}"
         simulationRunning={simulationRunning}
         onStartSimulation={()=>startSimulation(soundAlerts)}
         onStopSimulation={stopSimulation}
+        onOpenHelp={onOpenHelp}
+        onOpenLegal={onOpenLegal}
+        onOpenDiagnostics={onOpenDiagnostics}
+        demoNotificationsEnabled={demoNotificationsEnabled}
+        onToggleDemoNotifications={()=>{void raiseDemoNotifications();}}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         renderRealOrder={renderOrderCard}
@@ -3105,7 +3117,9 @@ Notes: "${order.notes || "None"}"
                   onClear={clearFakeOrders}
                   simulationRunning={simulationRunning}
                   onStartSimulation={()=>startSimulation(soundAlerts)}
-                  onStopSimulation={stopSimulation}/>}
+                  onStopSimulation={stopSimulation}
+        demoNotificationsEnabled={demoNotificationsEnabled}
+        onToggleDemoNotifications={()=>{void raiseDemoNotifications();}}/>}
                 <button
                   onClick={() => setShowSearch(!showSearch)}
                   className={cn(
