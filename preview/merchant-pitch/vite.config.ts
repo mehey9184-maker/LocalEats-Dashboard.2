@@ -20,7 +20,7 @@ export default defineConfig({
         for(const basename of [
           "firebase-messaging-sw.js","firebase-messaging-sw.html",
           "sw.js","service-worker.js","manifest.webmanifest",
-          "registerSW.js","workbox-*.js",
+          "registerSW.js","workbox-*.js","_redirects","_headers",
         ]){
           if(basename.includes("*"))continue;
           rmSync(path.resolve("dist-merchant-pitch",basename),{force:true});
