@@ -26,6 +26,7 @@ interface OrdersFocusedWorkspaceProps {
   onStopSimulation: () => void;
   onOpenHelp?: () => void;
   onOpenLegal?: () => void;
+  onOpenDiagnostics?: () => void;
   demoNotificationsEnabled: boolean;
   onToggleDemoNotifications: () => void;
   styleStorageKey: string;
@@ -78,7 +79,7 @@ const stageMatches=(stage:Stage,status:string)=>
 
 export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const {
-    realOrders,fakeOrders,onDemoAction,incoming,onSimulate,onSimulateBatch,onClear,simulationRunning,onStartSimulation,onStopSimulation,onOpenHelp,onOpenLegal,demoNotificationsEnabled,onToggleDemoNotifications,styleStorageKey,completedRealOrders,viewMode,onViewModeChange,
+    realOrders,fakeOrders,onDemoAction,incoming,onSimulate,onSimulateBatch,onClear,simulationRunning,onStartSimulation,onStopSimulation,onOpenHelp,onOpenLegal,onOpenDiagnostics,demoNotificationsEnabled,onToggleDemoNotifications,styleStorageKey,completedRealOrders,viewMode,onViewModeChange,
     renderRealOrder,onRefresh,onExportCSV,onExportJSON,
     soundAlerts,setSoundAlerts,kitchenMode,setKitchenMode,maxConcurrentOrders,setMaxConcurrentOrders,
     startDate,endDate,setStartDate,setEndDate
@@ -193,7 +194,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
           </div>
           <div className="flex flex-wrap gap-1.5 items-center text-[11px]">
             <span className="hidden sm:inline-flex px-2.5 py-1 rounded-full bg-surface-container-low text-on-surface-variant font-bold">{realActive} real</span>
-            {fakeActive>0&&<span className="px-2.5 py-1 rounded-full border border-amber-300 bg-amber-100 text-amber-900 font-bold">{fakeActive} test</span>}
+            {fakeActive>0&&<span className="hidden sm:inline-flex px-2.5 py-1 rounded-full border border-amber-300 bg-amber-100 text-amber-900 font-bold">{fakeActive} test</span>}
             <details className="relative group">
               <summary className={`list-none cursor-pointer min-h-11 inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/20 px-2.5 text-xs font-bold text-on-surface select-none ${commonFocus}`}>
                 <MoreHorizontal size={16} aria-hidden="true"/> Tools <ChevronDown size={12} aria-hidden="true"/>
@@ -232,6 +233,10 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
                       Legal & Privacy
                     </button>
                   </div>
+                  <button type="button" onClick={onOpenDiagnostics}
+                    className="min-h-11 w-full rounded-lg bg-surface-container-low px-3 text-xs font-semibold text-on-surface">
+                    System diagnostics
+                  </button>
                 </div>}
                 {isTestPreview&&<button type="button" onClick={testBatch} className="w-full rounded-lg text-left px-3 py-2 text-xs font-bold bg-amber-50 text-amber-900 hover:bg-amber-100 dark:bg-amber-950/20 dark:text-amber-100">Test busy queue · +24 FAKE orders</button>}
                 <button type="button" onClick={onExportCSV} className="w-full rounded-lg text-left px-3 py-2 text-xs font-semibold hover:bg-surface-container-low">Export spreadsheet</button>
@@ -270,7 +275,12 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
         <div className="flex items-center justify-between gap-2">
           <div>
             <h2 className="font-headline text-base sm:text-lg font-bold text-on-surface">{viewMode==="active"?"Kitchen queue":"Order history"}</h2>
-            <p className="text-[11px] text-on-surface-variant">{viewMode==="active"?"New orders first, ready orders next":isTestPreview?"Completed and cancelled orders, including labelled simulations":"Completed and cancelled orders"}</p>
+            <p className="text-[11px] text-on-surface-variant">
+              {viewMode==="active"?<>
+                <span className="md:hidden">Tap a stage below</span>
+                <span className="hidden md:inline">New orders first, ready orders next</span>
+              </>:isTestPreview?"Completed and cancelled orders, including labelled simulations":"Completed and cancelled orders"}
+            </p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <select value={sort} onChange={e=>setSort(e.target.value as SortMode)}
