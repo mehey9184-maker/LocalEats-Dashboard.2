@@ -1,0 +1,36 @@
+name: Merchant onboarding schema parity — preview only
+on:
+  push:
+    branches:
+      - review/merchant-shop-coordinate-parity-20261123
+  pull_request:
+    paths:
+      - 'localeats-api/src/routes/merchant.ts'
+      - 'localeats-api/src/routes/merchantShopCoordinates.ts'
+      - 'localeats-api/src/routes/merchantShopCoordinates.test.ts'
+      - 'tests/merchant-shop-onboarding-schema.test.mjs'
+      - '.github/workflows/merchant-onboarding-schema-parity.yml'
+permissions:
+  contents: read
+jobs:
+  schema-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify owner/isolation and no live migration
+        run: node --test tests/merchant-shop-onboarding-schema.test.mjs
+      - name: Install API dependencies only
+        working-directory: localeats-api
+        run: npm install --no-package-lock --no-audit --no-fund
+      - name: Compile API TypeScript
+        working-directory: localeats-api
+        run: npm run build
+      - name: Test dual/canonical-only schema helper
+        working-directory: localeats-api
+        run: node --test dist/routes/merchantShopCoordinates.test.js
+      - name: Confirm no database or deployment action
+        run: echo "MERCHANT_SIGNUP_SOURCE_ONLY_NO_DATABASE_WRITES_NO_DEPLOY"

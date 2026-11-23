@@ -2,6 +2,7 @@ import {effectiveShop} from "../orders/shopAvailability.js";
 import { Router, Response } from "express";
 import { AuthenticatedRequest, authenticateFirebase } from "../middleware/authenticateFirebase.js";
 import { supabaseAdmin } from "../lib/supabaseAdmin.js";
+import { createMerchantCoordinates, normalizeVerifiedShopCoordinates, resolveMerchantCoordinateMode } from "./merchantShopCoordinates.js";
 
 const router = Router();
 router.patch("/shop/availability", authenticateFirebase, async (req:AuthenticatedRequest,res:Response):Promise<void>=>{
@@ -257,6 +258,36 @@ router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res
       return;
     }
 
+    // Explicit, server-only schema mode. Default remains Production-compatible
+    // until an independently approved staging runtime selects canonical-only.
+    let coordinateMode: ReturnType<typeof resolveMerchantCoordinateMode>;
+    try {
+      coordinateMode = resolveMerchantCoordinateMode(
+        process.env.MERCHANT_SHOP_COORDINATE_COLUMNS_MODE,
+      );
+    } catch {
+      res.status(503).json({
+        success: false,
+        code: "MERCHANT_SCHEMA_CONFIGURATION_UNVERIFIED",
+        error: "Merchant signup configuration is not ready.",
+      });
+      return;
+    }
+
+    // Profile-Staging is read-only catalogue rehearsal, not a signup DB.
+    // A two-coordinate schema alone does NOT make it merchant-capable:
+    // require independent verification of full shop creation columns, ID
+    // generation, approval fields, ownership and recovery before opt-in.
+    if (coordinateMode === "canonical-only" &&
+        process.env.MERCHANT_CANONICAL_SIGNUP_SCHEMA_VERIFIED !== "true") {
+      res.status(503).json({
+        success: false,
+        code: "MERCHANT_SIGNUP_SCHEMA_NOT_VERIFIED",
+        error: "Merchant registration is not activated in this environment.",
+      });
+      return;
+    }
+
     const {
       data: existingShops,
       error: existingError,
@@ -300,11 +331,7 @@ router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res
         phone,
         location,
 
-        latitude: body.latitude,
-        longitude: body.longitude,
-
-        lat: body.latitude,
-        lng: body.longitude,
+        ...createMerchantCoordinates(body.latitude, body.longitude, coordinateMode),
 
         opening_time: body.opening_time.trim(),
         closing_time: body.closing_time.trim(),
@@ -345,9 +372,34 @@ router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res
       return;
     }
 
+    // A database INSERT response is not sufficient until it confirms the
+    // intended merchant owns a pending, inactive shop. Do not claim signup
+    // succeeded or leak a mismatched server result.
+    if (!newShop || newShop.owner_id !== uid ||
+        newShop.approval_status !== "pending" || newShop.is_active !== false) {
+      res.status(503).json({
+        success: false,
+        code: "MERCHANT_SIGNUP_PERSISTENCE_UNCONFIRMED",
+        error: "Merchant signup could not be confirmed. Refresh before retrying.",
+      });
+      return;
+    }
+
+    let verifiedShop;
+    try {
+      verifiedShop = normalizeVerifiedShopCoordinates(newShop);
+    } catch {
+      res.status(503).json({
+        success: false,
+        code: "MERCHANT_SIGNUP_LOCATION_UNCONFIRMED",
+        error: "Merchant shop location could not be verified. Refresh before retrying.",
+      });
+      return;
+    }
+
     res.status(201).json({
       success: true,
-      shop: newShop,
+      shop: verifiedShop,
     });
   } catch (err) {
     console.error(
