@@ -1,0 +1,39 @@
+name: CF-W2H — LIVE A/B Cloudflare verification (no deploy)
+on:
+  push:
+    branches:
+      - review/cf-w2h-live-a-b-check-20261123
+permissions:
+  contents: read
+jobs:
+  verify-live-preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Source safety contract
+        run: node --test tests/cf-w2h-distinct-ticket-modes.test.mjs
+      - name: Install existing dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install Chromium browser
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.55.1
+          npx playwright install --with-deps chromium
+      - name: Compare A and B on actual Cloudflare HTTPS Worker — 320, 390 and desktop
+        env:
+          CF_W2H_LIVE: 'true'
+        run: node tests/cf-w2h-distinct-ticket-modes-browser.mjs
+      - name: Retain synthetic screenshots and A/B height metrics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cf-w2h-live-host-a-vs-b-visual-evidence
+          path: artifacts/cf-w2h-a-b-modes
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: No Production deployment or live orders
+        run: echo "CF_W2H_LIVE_BROWSER_ONLY_NO_PRODUCTION_ORDERS_NO_DEPLOY"
