@@ -44,7 +44,7 @@ test("Use only one mobile kitchen stage filter; four full-width tabs are never c
  assert.match(orders,/Sort orders/);
  assert.match(board,/data-testid="mobile-kitchen-stages"/);
  assert.match(board,/grid grid-cols-4 md:hidden/);
- assert.match(board,/aria-label={`${lane.label} stage`}/);
+ assert.ok(board.includes('aria-label={`${lane.label} stage`}'));
  assert.match(board,/lane.key==="preparing"\?"Prep"/);
  assert.match(board,/lane.key==="fulfilled"\?"Done"/);
  assert.match(board,/min-h-11 rounded-full/);
