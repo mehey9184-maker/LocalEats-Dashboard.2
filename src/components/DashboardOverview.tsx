@@ -2,7 +2,6 @@ import {pickupHomeOrders,pickupReadyCount,pickupReportCsv,pickupDayKey} from "..
 import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 import { MerchantPhoto } from "../components/MerchantPhoto";
 
-import { updateFirestoreShop } from "../lib/firebase";
 import { syncShopAvailability } from "../utils/availabilityChecker";
 import { Skeleton } from "../components/ui/Skeleton";
 import { RealtimeChannel } from "@supabase/supabase-js";
@@ -1417,8 +1416,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                 const res = await syncShopAvailability({
                   shopId: s.id,
                   isOpen: newStatus,
-                  supabase: supabase as any,
-                  updateFirestoreShop,
                 });
                 if (!res.success) error = res.error;
               }
@@ -1753,8 +1750,6 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   const { success, error } = await syncShopAvailability({
                     shopId: currentShop.id,
                     isOpen: newStatus,
-                    supabase: supabase as any,
-                    updateFirestoreShop,
                   });
 
                   if (success) {
