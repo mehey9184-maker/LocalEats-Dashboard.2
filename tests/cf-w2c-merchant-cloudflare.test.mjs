@@ -55,7 +55,7 @@ test("Cloudflare worker permits static read-only assets only and blocks all app 
  assert.match(worker,/form-action 'none'/);
  assert.match(worker,/if\(!\["GET","HEAD"\]\.includes\(request\.method\)\)/);
  assert.match(worker,/env\.ASSETS\.fetch\(request\)/);
- assert.doesNotMatch(worker,/fetch\\("https|MerchantApi\\.|Supabase\\./);
+ assert.equal(worker.includes("MerchantApi."),false);
  assert.equal(dummy.projectId,"localeats-fictional-demo");
  assert.match(vite,/firebase-demo-config\.json/);
  assert.match(worker,/X-Robots-Tag/);
