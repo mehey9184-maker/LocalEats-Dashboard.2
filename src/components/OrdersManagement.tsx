@@ -12,7 +12,6 @@ import {
   Bike,
   RefreshCw,
   Search,
-  Filter,
   Check,
   X,
   Printer,
@@ -121,9 +120,9 @@ export interface OrdersManagementProps {
   setPrintingFormat?: (format: PrintingFormat) => void;
   failedPrints?: QueuedPrintJob[];
   printingHardwareLoading?: boolean;
-  handlePrintBluetoothDirect?: (order: Order) => Promise<boolean>;
-  handlePrintUSBDirect?: (order: Order) => Promise<boolean>;
-  retryQueuedPrintDirect?: (failedPrintId: string) => Promise<boolean>;
+  handlePrintBluetoothDirect?: (order: Order) => Promise<void>;
+  handlePrintUSBDirect?: (order: Order) => Promise<void>;
+  retryQueuedPrintDirect?: (job: QueuedPrintJob) => Promise<void>;
   clearPrintQueue?: () => void;
 }
 
@@ -323,6 +322,8 @@ export const OrdersManagement: React.FC<OrdersManagementProps> = ({
 }) => {
   const { subscribeWithAuthGuard } = useAuthGuard();
   const [viewMode, setViewMode] = useState<"active" | "history">("active");
+  // Keep the original Kanban layout by default; the existing Switch must work.
+  const [layoutMode, setLayoutMode] = useState<"kanban" | "list">("kanban");
   
   const [printerDiagStatus, setPrinterDiagStatus] = useState<{
     bt: PrinterDiagnosticResult;
@@ -2917,10 +2918,10 @@ Notes: "${order.notes || "None"}"
                     <div className="flex items-center justify-between p-2 rounded-xl bg-on-surface/[0.02] border border-outline-variant/10">
                       <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1.5">
                         <LayoutGrid size={14} />
-                        Layout: {true ? "Kanban Board" : "List View"}
+                        Layout: {layoutMode === "kanban" ? "Kanban Board" : "List View"}
                       </span>
                       <button
-                        onClick={() => setLayoutMode(true ? "list" : "kanban")}
+                        onClick={() => setLayoutMode(current => current === "kanban" ? "list" : "kanban")}
                         className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-primary text-on-primary cursor-pointer"
                       >
                         Switch
@@ -3242,7 +3243,7 @@ Notes: "${order.notes || "None"}"
                 </button>
               )}
             </div>
-          ) : viewMode === "active" && true ? (
+          ) : viewMode === "active" && layoutMode === "kanban" ? (
             <div className="flex overflow-x-auto hide-scrollbar xl:grid xl:grid-cols-4 gap-6 items-start snap-x snap-mandatory pb-4 xl:pb-0">
               {/* Column 1: New Orders */}
               <div className="bg-surface-container-low/60 rounded-[2.5rem] p-5 border border-outline-variant/10 flex flex-col gap-4 min-h-[500px] w-[85vw] md:w-[360px] xl:w-[400px] shrink-0 snap-center">
@@ -3309,7 +3310,7 @@ Notes: "${order.notes || "None"}"
                         transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         key={order.id}
                         draggable={true}
-                        onDragStart={(e: any) => {
+                        onDragStartCapture={(e: React.DragEvent<HTMLDivElement>) => {
                           setDraggedPendingId(order.id);
                           if (e.dataTransfer) {
                             e.dataTransfer.setData("text/plain", order.id);
@@ -4143,9 +4144,11 @@ Notes: "${order.notes || "None"}"
               <div
                 className={cn(
                   "grid gap-4 sm:gap-6 w-full min-w-0",
-                  kitchenMode
-                    ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
-                    : "grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3"
+                  layoutMode === "list" && viewMode === "active"
+                    ? "grid-cols-1"
+                    : kitchenMode
+                      ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+                      : "grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3"
                 )}
               >
                 <AnimatePresence mode="popLayout">
@@ -4703,7 +4706,7 @@ Notes: "${order.notes || "None"}"
                               <button
                                 type="button"
                                 disabled={printingHardwareLoading}
-                                onClick={() => retryQueuedPrintDirect?.(job.id)}
+                                onClick={() => retryQueuedPrintDirect?.(job)}
                                 className="px-2 py-1 bg-[#FF5A36] text-white text-[9px] font-black uppercase tracking-wider rounded-lg hover:opacity-90 active:scale-95 disabled:opacity-50 transition-all shrink-0 cursor-pointer"
                               >
                                 Retry

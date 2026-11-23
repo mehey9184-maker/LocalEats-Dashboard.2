@@ -10,7 +10,6 @@ import {
   Smartphone,
   MessageSquare,
   Store,
-  FileText,
   ExternalLink,
   Flame,
   Utensils,
@@ -27,9 +26,8 @@ import { toast } from "sonner";
 import jsPDF from "jspdf";
 import { CounterSignStudio } from "./marketing/CounterSignStudio";
 import { createCounterQr, shopMenuUrl } from "./marketing/counterSign";
-import { Shop, MenuItem, Order } from "../types";
+import { Shop, MenuItem, Order, type User } from "../types";
 import { isShopOwnedByUser } from "../utils/shopOwnership";
-import type { User } from "@supabase/supabase-js";
 import { CampaignBuilder } from "./marketing/CampaignDrafts";
 import { marketingOrderSummary } from "./marketing/campaignDraft";
 

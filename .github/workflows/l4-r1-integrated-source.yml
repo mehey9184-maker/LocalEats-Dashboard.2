@@ -1,0 +1,124 @@
+name: L4-R1 — integrated Merchant API + real Customer loopback contract (NO DEPLOY)
+on:
+  push:
+    branches:
+      - integration/l4-r1-merchant-api-zero-write-20261123
+      - quality/l4-r1b-safe-cleanup-20261123
+      - repair/l4-r1c-functional-contracts-20261123
+      - quality/l4-r1d-contract-lint-20261123
+      - release/l4-pickup-core-main-20261123
+  pull_request:
+    branches: [main]
+    paths:
+      - 'localeats-api/src/routes/catalog.ts'
+      - 'localeats-api/src/routes/catalog.test.ts'
+      - 'localeats-api/tests/l4-r1-*'
+      - 'localeats-api/tests/l3-n8u-z-preview-readonly-smoke*'
+      - 'src/components/PickupOrderActions.tsx'
+      - 'tests/l3-p4-merchant-confirmation.test.mjs'
+      - '.github/workflows/l4-r1-integrated-source.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: l4-r1-safe-integration
+  cancel-in-progress: true
+jobs:
+  api:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PICKUP_WRITES_ENABLED: 'false'
+      MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+      ADMIN_RIDER_VERIFICATION_WRITES_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - run: npm ci --prefix localeats-api --no-audit --no-fund
+      - name: All real API TypeScript and tests including catalog allowlist
+        run: npm test --prefix localeats-api
+      - name: Mock-only exact Vercel Preview read-only origin safeguards
+        run: node --test localeats-api/tests/l3-n8u-z-preview-readonly-smoke.test.mjs
+  merchant:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      VITE_PICKUP_ORDERING_ENABLED: 'false'
+      PICKUP_WRITES_ENABLED: 'false'
+      MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+      VITE_MERCHANT_FAKE_ORDERS_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Reviewed pickup-confirmation integration + original pickup regressions
+        run: |
+          node --experimental-strip-types --test \
+            tests/l3-p4-merchant-confirmation.test.mjs \
+            tests/merchant-pickup.test.mjs \
+            tests/merchant-handover.test.mjs \
+            tests/merchant-shop-revalidation.test.mjs \
+            tests/merchant-order-inbox-p1.test.mjs \
+            tests/merchant-push-registration.test.mjs \
+            tests/default-image-fallback.test.mjs \
+            tests/merchant-marketing-counter.test.mjs \
+            tests/l4-r1-orders-layout-switch.test.mjs \
+            tests/l4-r1c-functional-contracts.test.mjs \
+            tests/l4-pickup-core-ui-freeze.test.mjs
+      - name: Compile original Merchant production-style UI (no deployment)
+        run: npm run build
+  actual-client-api-loopback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      L4_R1_CUSTOMER_CHECKOUT: ${{ github.workspace }}/customer-candidate
+      PICKUP_WRITES_ENABLED: 'false'
+      MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: mehey9184-maker/LocalEats-app
+          ref: 55251bcd2d96f8bf02348367830013da69a43124
+          path: customer-candidate
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: localeats-api/package-lock.json
+      - name: Build API with no provider credentials
+        run: |
+          npm ci --prefix localeats-api --no-audit --no-fund
+          npm run build --prefix localeats-api
+      - name: Check actual pinned Customer TypeScript client -> real compiled catalog over loopback HTTP only
+        run: node --experimental-strip-types --test localeats-api/tests/l4-r1-crossrepo-catalog-contract.test.mjs
+  gate:
+    needs: [api,merchant,actual-client-api-loopback]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Refuse an integration PASS until all independent source jobs pass
+        env:
+          API_RESULT: ${{ needs.api.result }}
+          MERCHANT_RESULT: ${{ needs.merchant.result }}
+          CONTRACT_RESULT: ${{ needs.actual-client-api-loopback.result }}
+        run: |
+          echo "API=$API_RESULT, Merchant=$MERCHANT_RESULT, Customer-to-API=$CONTRACT_RESULT"
+          test "$API_RESULT" = success
+          test "$MERCHANT_RESULT" = success
+          test "$CONTRACT_RESULT" = success
+          echo "L4_R1_SOURCE_INTEGRATION_PASS — NO DEPLOY; real hosting, backup, real pickup and FCM remain HOLD"

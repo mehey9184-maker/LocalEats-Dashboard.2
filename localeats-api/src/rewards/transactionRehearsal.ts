@@ -51,7 +51,7 @@ export interface RewardsTransactionalStore {
 const fail = (code: string): never => {throw Error("REWARDS_"+code);};
 const id = (value: unknown): value is string =>
   typeof value==="string" && value.length>0 && value.length<=160 &&
-  value.trim()===value && !/[\x00-\x1f\x7f]/.test(value);
+  value.trim()===value && ![...value].some(character => { const code = character.charCodeAt(0); return code < 32 || code === 127; });
 const eq = (a: unknown,b: unknown): boolean => a===b;
 
 /**

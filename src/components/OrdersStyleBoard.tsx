@@ -1,5 +1,5 @@
-import React,{useEffect,useMemo,useState} from "react";
-import {ChevronDown, ChevronUp, Clock3, ClipboardList, ShoppingBag} from "lucide-react";
+import React,{useMemo,useState} from "react";
+import {ChevronDown, ChevronUp, ShoppingBag} from "lucide-react";
 import type {Order} from "../types";
 import {isPickupOrder,pickupPaymentLabel} from "../services/merchantPickupPolicy";
 import {PickupOrderActions} from "./PickupOrderActions";
@@ -35,7 +35,6 @@ function RealOrderTicket({order,style,index,renderRealOrder}:{
  const [expanded,setExpanded]=useState(false);
  const roomy=style==="expediter";
  const pickup=isPickupOrder(order);
- const fullStatus=String(order.status||"pending");
  return <article data-testid="styled-real-order" className={
    `min-w-0 overflow-hidden bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 shadow-sm ${roomy?"p-3.5 rounded-2xl space-y-2.5":"p-2.5 rounded-xl space-y-1.5"}`
  }>
@@ -75,10 +74,12 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
  stageFilter:"all"|"pending"|"preparing"|"ready";
 }){
  const [mobileStage,setMobileStage]=useState<Stage>("pending");
- const [visibleByLane,setVisibleByLane]=useState<Record<Stage,number>>({pending:6,preparing:6,ready:6,fulfilled:6});
- const [visibleHistory,setVisibleHistory]=useState(24);
- useEffect(()=>setVisibleByLane({pending:6,preparing:6,ready:6,fulfilled:6}),[style,viewMode,stageFilter]);
- useEffect(()=>setVisibleHistory(24),[style,viewMode,stageFilter]);
+ const visibilityKey=style+"|"+viewMode+"|"+stageFilter;
+ const initialLanes:Record<Stage,number>={pending:6,preparing:6,ready:6,fulfilled:6};
+ const [laneState,setLaneState]=useState<{key:string;counts:Record<Stage,number>}>(()=>({key:visibilityKey,counts:initialLanes}));
+ const visibleByLane=laneState.key===visibilityKey?laneState.counts:initialLanes;
+ const [historyState,setHistoryState]=useState<{key:string;count:number}>(()=>({key:visibilityKey,count:24}));
+ const visibleHistory=historyState.key===visibilityKey?historyState.count:24;
  const roomy=style==="expediter";
  const compact=style==="compact";
  const allEntries=useMemo(()=>{
@@ -109,7 +110,7 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
      </div>
      {allEntries.length>shown.length&&<button
        type="button"
-       onClick={()=>setVisibleHistory(count=>count+24)}
+       onClick={()=>setHistoryState(state=>({key:visibilityKey,count:(state.key===visibilityKey?state.count:24)+24}))}
        className="min-h-11 w-full rounded-xl border border-outline-variant/20 bg-surface-container-lowest text-xs font-bold text-primary"
      >
        Show 24 more history orders · {allEntries.length-shown.length} remaining
@@ -151,7 +152,7 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
              {lane.key==="pending"?"No new orders":lane.key==="preparing"?"Nothing preparing":lane.key==="ready"?"Nothing ready":"No fulfilled orders here"}
            </p>:limited.map(renderEntry)}
          </div>
-         {stageEntries.length>limited.length&&<button type="button" onClick={()=>setVisibleByLane(old=>({...old,[lane.key]:old[lane.key]+6}))}
+         {stageEntries.length>limited.length&&<button type="button" onClick={()=>setLaneState(state=>{const previous=state.key===visibilityKey?state.counts:initialLanes;return {key:visibilityKey,counts:{...previous,[lane.key]:previous[lane.key]+6}};})}
            className="min-h-10 mt-3 rounded-lg bg-surface-container-lowest dark:bg-zinc-800 text-xs font-bold text-primary border border-outline-variant/15">
            Show 6 more · {stageEntries.length-limited.length} remaining
          </button>}

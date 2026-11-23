@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { SupabaseClient } from "@supabase/supabase-js";
 import { Wifi, WifiOff, RefreshCw, Layers, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
@@ -8,7 +7,7 @@ import { getQueuedMutations } from "../utils/offlineSyncQueue";
 import { logNetworkError } from "../utils/errorHandler";
 
 interface ConnectivityMonitorProps {
-  supabase: SupabaseClient;
+  supabase: typeof import('../lib/supabase').supabase;
   onOpenDiagnostics?: () => void;
   className?: string;
 }
@@ -33,7 +32,7 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
   }, []);
 
   useEffect(() => {
-    updatePendingCount();
+    queueMicrotask(() => { void updatePendingCount(); });
 
     const handleQueueUpdated = () => updatePendingCount();
     window.addEventListener("offline_queue_updated", handleQueueUpdated);
@@ -117,17 +116,19 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
   useEffect(() => {
     if (!isOnline) return;
 
-    let wsChannel: ReturnType<typeof supabase.channel>;
+    let wsChannel: ReturnType<typeof getFreshChannel> | undefined;
 
     try {
       wsChannel = getFreshChannel("system_connectivity_monitor");
-      wsChannel.subscribe((status, err) => {
-        setWsStatus(status);
+      wsChannel.subscribe((status) => {
+        // The Firestore adapter does not implement a Supabase RealtimeChannel.
+        if (status === "SUBSCRIBED" || status === "CONNECTING" || status === "CLOSED" ||
+            status === "CHANNEL_ERROR" || status === "TIMED_OUT") setWsStatus(status);
         if (status === "SUBSCRIBED") {
           setHealthStatus((prev) => (prev === "offline" ? "degraded" : "connected"));
         } else if (status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           setHealthStatus("degraded");
-          logNetworkError("supabase_websocket_closed", err || `WebSocket channel status: ${status}`, {
+          logNetworkError("supabase_websocket_closed", `Realtime adapter status: ${status}`, {
             type: "websocket",
             closeCode: status === "TIMED_OUT" ? 4004 : 1006,
             closeReason: `Channel state transition to ${status}`,
@@ -139,7 +140,7 @@ export function ConnectivityMonitor({ supabase, onOpenDiagnostics, className }: 
     }
 
     // Ping check every 60 seconds (relaxed to prevent pool exhaustion)
-    checkHealth();
+    queueMicrotask(() => { void checkHealth(); });
     const interval = setInterval(checkHealth, 60000);
 
     return () => {

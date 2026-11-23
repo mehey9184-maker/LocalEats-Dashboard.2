@@ -1,4 +1,5 @@
 import {projectCachedMerchantSession} from "./merchantSessionMetadata";
+import type { User } from "../types";
 import {legacyOrderWriteError} from "./legacyOrderWrite";
 /**
  * Firestore Compatibility & Migration Bridge
@@ -541,7 +542,7 @@ export const supabase = {
       return { data: { user: null }, error: null };
     },
 
-    onAuthStateChange(callback: (event: string, session: unknown) => void) {
+    onAuthStateChange(callback: (event: string, session: { user: User } | null) => void) {
       const unsub = auth.onAuthStateChanged((fbUser) => {
         if (fbUser) {
           const session = {
@@ -595,8 +596,14 @@ export const supabase = {
       }
     },
 
-    async updateUser(attributes?: Record<string, unknown>) {
-      return { data: { user: auth.currentUser, ...attributes }, error: null };
+    // No authoritative profile-write endpoint exists in this legacy bridge.
+    // Never report a successful save while no server persistence occurred.
+    async updateUser(attributes?: Record<string, unknown>): Promise<{ data: { user: User | null }; error: Error }> {
+      void attributes;
+      return {
+        data: { user: null },
+        error: new Error("Profile updates are unavailable until the verified merchant API is connected. No changes were saved."),
+      };
     },
 
     async verifyOtp() {

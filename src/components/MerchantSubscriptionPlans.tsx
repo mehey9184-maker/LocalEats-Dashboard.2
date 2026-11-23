@@ -48,7 +48,6 @@ export function countdownParts(deadline:number,now:number){
 export function SubscriptionCountdown({deadline,sample=false}:{deadline:number|null;sample?:boolean}){
   const [now,setNow]=useState(()=>Date.now());
   useEffect(()=>{
-    setNow(Date.now());
     if(deadline===null)return;
     const interval=window.setInterval(()=>setNow(Date.now()),1000);
     return ()=>window.clearInterval(interval);
@@ -77,8 +76,9 @@ function previewExampleAllowed(){
 }
 export function MerchantSubscriptionPlans({shop,verified}:{shop?:Shop;verified:boolean}){
   const current=useMemo(()=>planFromVerifiedShop(verified?shop:undefined),[verified,shop]);
-  const [sampleDeadline,setSampleDeadline]=useState<number|null>(null);
-  useEffect(()=>setSampleDeadline(null),[shop?.id]);
+  // A demo countdown belongs to its shop; switching shop invalidates it automatically.
+  const [demo,setDemo]=useState<{shopId:string|number|undefined;deadline:number|null}>({shopId:shop?.id,deadline:null});
+  const sampleDeadline=demo.shopId===shop?.id?demo.deadline:null;
   const canDemo=previewExampleAllowed();
   return <div data-testid="payments-plan-preview" className="space-y-5">
     <section className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5">
@@ -99,7 +99,7 @@ export function MerchantSubscriptionPlans({shop,verified}:{shop?:Shop;verified:b
         This display does not collect money, create a renewal, change shop approval or notify Super Admin.
       </p>
       {canDemo&&<div className="space-y-2 border-t border-primary/20 pt-3">
-        <button type="button" onClick={()=>setSampleDeadline(sampleDeadline===null?Date.now()+2*86400000:null)}
+        <button type="button" onClick={()=>setDemo({shopId:shop?.id,deadline:sampleDeadline===null?Date.now()+2*86400000:null})}
           className="min-h-10 rounded-lg bg-amber-50 text-amber-950 border border-amber-400 px-3 text-xs font-bold">
           {sampleDeadline===null?"Preview: show sample countdown":"Hide sample countdown"}
         </button>

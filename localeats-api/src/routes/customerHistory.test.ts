@@ -33,12 +33,20 @@ test("authenticated history reads 101 owned orders without gaps, including tied 
   rows.push({ ...rows[0]!, id: id(998), delivery_type: "delivery" });
   let unavailable = false;
   const reads: string[] = [];
-  (authAdmin as any).verifyIdToken = async (token: string) => ({ uid: token });
-  (supabaseAdmin as any).from = (table: string) => {
+  Object.assign(authAdmin,{verifyIdToken:async (token: string) => ({ uid: token })});
+  Object.assign(supabaseAdmin,{from:(table: string) => {
     assert.equal(table, "orders");
     let owner = "", before = "", limit = 0, collectionOnly = false;
     const ordering: string[] = [];
-    const q: any = {
+    type Query = {
+      select:()=>Query;
+      eq:(key:string,value:string)=>Query;
+      or:(value:string)=>Query;
+      order:(key:string,options:{ascending:boolean})=>Query;
+      limit:(value:number)=>Query;
+      then:(resolve:(value:{data:typeof rows;error:{message:string}|null})=>unknown)=>Promise<unknown>;
+    };
+    const q: Query = {
       select: () => q,
       eq: (key: string, value: string) => {
         if (key === "user_id") { owner = value; reads.push(value); }
@@ -50,7 +58,7 @@ test("authenticated history reads 101 owned orders without gaps, including tied 
         assert.equal(options.ascending, false); ordering.push(key); return q;
       },
       limit: (value: number) => { limit = value; return q; },
-      then: (resolve: (result: unknown) => void) => {
+      then: (resolve: (result: {data:typeof rows;error:{message:string}|null}) => unknown) => {
         assert.deepEqual(ordering, ["created_at", "id"]);
         assert.equal(limit, 51);
         assert.equal(collectionOnly, true);
@@ -61,7 +69,7 @@ test("authenticated history reads 101 owned orders without gaps, including tied 
       },
     };
     return q;
-  };
+  }});
   const app = express();
   configureApiCacheSafety(app);
   app.use("/api/v1/orders", customerOrderRoutes);

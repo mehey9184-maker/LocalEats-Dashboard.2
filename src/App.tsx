@@ -10,6 +10,7 @@ import React, {
   useCallback,
 } from "react";
 import L from "leaflet";
+import type { LucideIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -25,9 +26,7 @@ import {
   Settings,
   HelpCircle,
   Check,
-  Zap,
   ShieldCheck,
-  Sliders,
   MapPin,
   AlertTriangle,
   Sun,
@@ -45,17 +44,14 @@ import {
   Copy,
   Wallet,
   Ticket,
-  Info,
   Rocket,
   Bell,
   BellRing,
   CalendarClock,
   UserRound,
-  Clock3,
   BellOff,
   UtensilsCrossed,
   ReceiptText,
-  Printer,
   User as UserIcon,
   LayoutDashboard,
   PauseCircle,
@@ -73,13 +69,9 @@ import {
   firebaseSignOutUser,
   formatFirebaseUserSession,
   onAuthStateChanged,
-  getFirestoreShopById,
-  getFirestoreOrders,
   updateFirestoreShop,
-  getFirestoreMenuItems,
 } from "./lib/firebase";
 import { useKitchenAlerter } from "./hooks/useKitchenAlerter";
-import { useAuthGuard } from "./hooks/useAuthGuard";
 import { useOrderWorkflow } from "./hooks/useOrderWorkflow";
 import { useShopLocation } from "./hooks/useShopLocation";
 import { useAppNavigation } from "./hooks/useAppNavigation";
@@ -143,15 +135,12 @@ import {
   deleteFailedPrint,
 } from "./utils/escPosEngine";
 import {
-  isValidUUID,
   isShopOwnedByUser,
-  getOwnedShopIds,
   registerVerifiedShopId,
   clearVerifiedShopOwnership,
 } from "./utils/shopOwnership";
 import { MerchantApi, MerchantApiError } from "./services/MerchantApi";
 import { createMerchantOrderReadCoordinator } from "./services/merchantOrderRecovery";
-import { fetchWithRetry } from "./utils/fetchWithRetry";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -187,6 +176,14 @@ const getMerchantShopErrorMessage = (error: unknown): string => {
   return "The merchant verification service is temporarily unavailable. Please try again.";
 };
 
+// Read adapter errors defensively: the legacy query bridge can return unknown values.
+const compatErrorCode = (error: unknown): string | undefined =>
+  typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+    ? error.code : undefined;
+const compatErrorMessage = (error: unknown): string | undefined =>
+  typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+    ? error.message : undefined;
+
 // Fix Leaflet marker icons
 // @ts-expect-error - Leaflet Default Icon prototype doesn't have _getIconUrl type
 delete L.Icon.Default.prototype._getIconUrl;
@@ -201,7 +198,6 @@ L.Icon.Default.mergeOptions({
 
 function App() {
   console.log("[App] App component function executing");
-  const { subscribeWithAuthGuard } = useAuthGuard();
   const [isSessionChecking, setIsSessionChecking] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
@@ -224,10 +220,6 @@ function App() {
     message: "",
     onConfirm: () => {},
   });
-
-  const confirmAction = (title: string, message: string, onConfirm: () => void, confirmText = "Delete") => {
-    setConfirmDialog({ isOpen: true, title, message, onConfirm, confirmText });
-  };
 
   const { activeTab, setActiveTab } = useAppNavigation("dashboard");
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
@@ -600,10 +592,10 @@ function App() {
           .eq("id", currentShop.id);
 
         if (error) {
-          if (error.code === '42703' || error.message?.includes('column "updated_at" of relation "shops" does not exist')) {
-            console.warn("Telemetry warning: updated_at column is not yet provisioned in your shops table.", error.message);
+          if (compatErrorCode(error) === '42703' || compatErrorMessage(error)?.includes('column "updated_at" of relation "shops" does not exist')) {
+            console.warn("Telemetry warning: updated_at column is not yet provisioned in your shops table.", compatErrorMessage(error));
           } else {
-            console.warn("Telemetry warning: Failed to push storefront heartbeat.", error.message);
+            console.warn("Telemetry warning: Failed to push storefront heartbeat.", compatErrorMessage(error));
           }
         } else {
           // Update local state smoothly
@@ -633,7 +625,7 @@ function App() {
     try {
       const cachedOrders = localStorage.getItem("le_orders");
       if (cachedOrders) {
-        const parsed = JSON.parse(cachedOrders);
+        JSON.parse(cachedOrders);
         // Cached orders cannot establish API pickup authority; load them only from authenticated reads.
       }
     } catch (e) {
@@ -819,7 +811,7 @@ function App() {
       toast.error("Sign in as the registered merchant first.");return;
     }
     let installation:string|null=null;
-    try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch{}
+    try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch { /* Browser storage may be blocked; continue without a cached push device ID. */ }
     if(!installation){
       setPushTestStatus("Register push notifications first.");
       toast.error("Register push notifications first.");return;
@@ -1102,7 +1094,7 @@ function App() {
     toast.success("NEW PICKUP ORDER RECEIVED",{
       description:newIds.length + " new order" + (newIds.length===1?"":"s") +
         ". Open Orders to accept and start preparation.",
-      duration:15000,important:true,
+      duration:15000,
       icon:<Bell className="text-primary animate-bounce"/>,
       action:{label:"VIEW ORDERS",onClick:()=>{stop();setActiveTab("orders");}},
       onDismiss:stop,onAutoClose:stop,
@@ -1132,7 +1124,7 @@ function App() {
       }
     });
 
-    let combinedOrders = Array.from(orderMap.values());
+    const combinedOrders = Array.from(orderMap.values());
 
     // Sort by created_at descending
     combinedOrders.sort((a, b) => {
@@ -1203,14 +1195,15 @@ function App() {
   useEffect(()=>{
     if(!orderReadScope)return;
     let active=true;
-    let unsubscribe: (()=>void)|void;
+    let unsubscribe: (()=>void)|undefined;
     void onForegroundMessage(payload=>{
       if(!active)return;
       if(payload.data?.type==="pickup_new_order")void fetchOrders();
       if(payload.data?.type==="merchant_push_test")
         toast.success("Test push reached this open dashboard. Background alerts still need a Windows check.");
     }).then(fn=>{
-      if(!active)fn?.();
+      if (typeof fn !== "function") return;
+      if (!active) fn();
       else unsubscribe=fn;
     });
     const fromWorker=(event:MessageEvent)=>{
@@ -1276,7 +1269,6 @@ function App() {
     fetchOrders,
     fetchShops,
     fetchAllMenuItems,
-    supabase,
     authReady: isAuthReady,
     initializeShops: false,
     operationalReady: merchantShopGate.status === "ready" && Boolean(currentShop),
@@ -1303,60 +1295,9 @@ function App() {
     };
   }, [orderReadScope,fetchOrders]);
 
-  const deleteAllOrders = async () => {
-    if (!user) return;
-
-    confirmAction(
-      "Confirm Delete All",
-      "Are you sure you want to delete ALL orders? This action cannot be undone.",
-      async () => {
-        setConfirmDialog(p => ({...p, isOpen: false}));
-
-        if (!isValidUUID(user.id)) {
-          if (!isSupabaseMocked()) {
-            console.warn("Skipping confirmDeleteAll - user ID is not a valid UUID:", user.id);
-          }
-          toast.info("No orders to delete.");
-          return;
-        }
-
-        // First, get the shops owned by this user
-        const { data: ownedShops, error: shopsError } = await supabase
-          .from("shops")
-          .select("id")
-          .eq("owner_id", user.id);
-
-        if (shopsError) {
-          if (!isSupabaseMocked()) {
-            console.warn("Notice fetching owned shops for deletion:", shopsError.message || shopsError);
-          }
-          return;
-        }
-
-        const ownedShopIds = ownedShops?.map((s) => s.id) || [];
-
-        if (ownedShopIds.length === 0) {
-          toast.info("No orders to delete.");
-          return;
-        }
-
-        // Delete only orders belonging to these shops
-        let error = null;
-        try {
-          await OrderService.deleteAllOrdersForShops(ownedShopIds);
-        } catch (err) {
-          error = err;
-        }
-
-        if (error) {
-          console.error("Delete All Orders Error:", error);
-          toast.error("We couldn't delete these orders right now. Please try again.");
-        } else {
-
-          fetchOrders();
-        }
-      }
-    );
+  // The launch pilot has no approved server-authoritative bulk-delete endpoint.
+  const deleteAllOrders = () => {
+    toast.error("Bulk order deletion is unavailable during the pickup pilot. Orders are retained for audit and recovery.");
   };
 
   const { updateOrderStatus, requestRider, dispatchOrderToRider, convertOrderToPickup, unassignRider } = useOrderWorkflow({
@@ -1412,9 +1353,9 @@ function App() {
         const { error } = await supabase.from("shops").select("id").limit(1);
         if (error) {
           const isFetchError =
-            error.message?.includes("Failed to fetch") ||
-            error.message?.includes("NetworkError") ||
-            error.message?.includes("network");
+            compatErrorMessage(error)?.includes("Failed to fetch") ||
+            compatErrorMessage(error)?.includes("NetworkError") ||
+            compatErrorMessage(error)?.includes("network");
           if (isFetchError) {
             setIsHeartbeatFailed(true);
           } else {
@@ -1550,7 +1491,7 @@ function App() {
     try {
       const bytes = new Uint8Array(job.binaryData);
       // Attempt Web Bluetooth or Web USB fallback
-      if (navigator.bluetooth) {
+      if ((navigator as Navigator & { bluetooth?: unknown }).bluetooth) {
         toast.info("Attempting print retry over Bluetooth...");
         await printViaBluetooth(bytes);
       } else {
@@ -1591,7 +1532,7 @@ function App() {
     const uid=firebaseAuth.currentUser?.uid;
     if(uid && typeof navigator!=="undefined" && navigator.onLine){
       let installation:string|null=null;
-      try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch{}
+      try{installation=localStorage.getItem("localeats-merchant-push-installation:"+uid);}catch { /* Browser storage may be blocked; continue without a cached push device ID. */ }
       if(installation){
         await Promise.race([
           MerchantApi.revokePushDevice(installation).catch(()=>false),
@@ -1772,7 +1713,7 @@ function App() {
             email: user?.email || signupEmail,
             phone: user?.user_metadata?.phone || "",
             avatarUrl: user?.user_metadata?.avatar_url || "",
-            marketing: user?.user_metadata?.marketing_preferences ?? true,
+            marketing: user?.user_metadata?.marketing_preferences !== false,
             darkMode: user?.user_metadata?.dark_mode ?? darkMode,
           }}
         />
@@ -1815,7 +1756,7 @@ function App() {
   const lowStockMenuCount = menuReadScope && menuReadStatus.scope===menuReadScope && menuReadStatus.state==="ready"
     ? menuItems.filter(item=>typeof item.stock_quantity==="number" && item.stock_quantity<5).length : 0;
 
-  const navItems = [
+  const navItems: Array<{ id: string; label: string; icon: LucideIcon; badge?: number | null }> = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "menu", label: "Menu", icon: UtensilsCrossed, badge: lowStockMenuCount>0 ? lowStockMenuCount : null },
     {
@@ -2218,9 +2159,6 @@ function App() {
                     const { success, error, freshShop } = await syncShopAvailability({
                       shopId: currentShop.id,
                       isOpen: newStatus,
-                      supabase,
-                      updateFirestoreShop,
-                      getFirestoreShopById,
                     });
 
                     if (success) {
@@ -2355,9 +2293,6 @@ function App() {
                 const { success, error, freshShop } = await syncShopAvailability({
                   shopId: currentShop.id,
                   isOpen: newStatus,
-                  supabase,
-                  updateFirestoreShop,
-                  getFirestoreShopById,
                 });
                 if (success) {
                   toast.success("Shop is now Open and accepting customer orders!");
@@ -2798,9 +2733,6 @@ function App() {
                                    void syncShopAvailability({
                                      shopId: currentShop.id,
                                      isOpen: isActive,
-                                     supabase,
-                                     updateFirestoreShop,
-                                     getFirestoreShopById,
                                      onSuccess: async (freshShop) => {
                                        setStoreStatus(statusOption);
                                        toast.success(`Shop is now ${statusOption === "open" ? "OPEN" : statusOption === "busy" ? "BUSY" : "CLOSED"}`);
@@ -2889,7 +2821,7 @@ function App() {
                                  if (!currentShop) return;
                                  const newStatus = !currentShop.is_active; // If we're toggling, newStatus is the opposite of currentShop.is_active
 
-                                 const { success, error } = await syncShopAvailability({shopId:currentShop.id,isOpen:newStatus});
+                                 const { success } = await syncShopAvailability({shopId:currentShop.id,isOpen:newStatus});
 
                                  if (success) {
                                    toast.success(
@@ -3250,8 +3182,8 @@ function App() {
                               })
                               .eq("id", currentShop.id);
 
-                            if (error && error.code !== "42703") {
-                              console.warn("Supabase delivery settings update warning:", error.message);
+                            if (error && compatErrorCode(error) !== "42703") {
+                              console.warn("Supabase delivery settings update warning:", compatErrorMessage(error));
                             }
 
                             setShops((prev) => {
@@ -3718,10 +3650,10 @@ function App() {
                                 setSoundVolume(v);
                               }}
                               onMouseUp={() => {
-                                playNotificationSound(false, soundStyle);
+                                playNotificationSound(false);
                               }}
                               onTouchEnd={() => {
-                                playNotificationSound(false, soundStyle);
+                                playNotificationSound(false);
                               }}
                               className="flex-1 accent-primary h-1.5 rounded-lg appearance-none bg-outline-variant/40 cursor-pointer"
                             />
@@ -3755,7 +3687,7 @@ function App() {
                       disabled={pushBusy}
                       onClick={() => {
                         if (!pushEnabled) {
-                          void requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
+                          void requestPushPermissions(user?.id, 'merchant');
                         } else {
                           void disablePushNotifications();
                         }

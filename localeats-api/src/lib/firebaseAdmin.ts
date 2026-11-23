@@ -1,5 +1,5 @@
 import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+import { getAuth, type Auth } from "firebase-admin/auth";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -30,8 +30,8 @@ if (projectId && clientEmail && privateKey) {
   console.warn("Missing Firebase Admin configuration. Ensure FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY are set.");
 }
 
-export const authAdmin = getApps().length ? getAuth() : {
+export const authAdmin: Pick<Auth, 'verifyIdToken'> = getApps().length ? getAuth() : {
   verifyIdToken: async () => {
     throw new Error("Firebase Admin not initialized due to missing credentials");
   }
-} as any;
+};

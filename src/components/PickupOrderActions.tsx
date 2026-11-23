@@ -1,5 +1,7 @@
-import React,{useState} from "react";
+import React,{useId,useState} from "react";
 import {Check, X} from "lucide-react";
+import type {Order} from "../types";
+import type {PreviewTestPickupOrder} from "./PreviewFakeOrders";
 import {MerchantApi} from "../services/MerchantApi";
 import {pickupOrderingEnabled,type PickupAction} from "../services/merchantPickupPolicy";
 import {pickupState,pickupPaymentLabel,pickupAmountLabel} from "../services/merchantPickupPolicy";
@@ -16,8 +18,10 @@ function customerCallHref(order:{delivery_type?:unknown;id?:unknown;phone?:unkno
  return /^\+?\d{7,15}$/.test(phone)?`tel:${phone}`:null;
 }
 
-export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=false}:{order:any;onSimulate?:SimulatedTransition;compact?:boolean;recoveryOnly?:boolean}){
+export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=false}:{order:Order|PreviewTestPickupOrder;onSimulate?:SimulatedTransition;compact?:boolean;recoveryOnly?:boolean}){
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
+ const [confirmation,setConfirmation]=useState<{orderId:string;revision:number;action:string}|null>(null);
+ const disabledHintId=useId();
  // ONLY fake order IDs on the guarded no-write Preview may bypass the real pickup write gate.
  const simulated=!!onSimulate && isMerchantPreviewSimulatorEnabled() &&
    typeof order?.id==="string" && /^FAKE-L1C3-[0-9]+$/.test(order.id);
@@ -29,10 +33,14 @@ export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=
  const callHref=simulated?null:customerCallHref(order);
  const actions=status==="pending" ? ["Accept → Preparing","Reject"] : status==="preparing" ? ["Mark Ready"] : status==="ready_for_pickup" ?
   awaitingHandover ? ["Confirm handover"] : ["Confirm cash received","Confirm card-machine payment"] : [];
- const pendingPath=simulated ? null : MerchantApi.getPendingPickupCommandPath(order);
+ const apiOrder=order as unknown as Record<string,unknown>;
+ const pendingPath=simulated ? null : MerchantApi.getPendingPickupCommandPath(apiOrder);
  const pending=pendingPath!==null;
  const handoverPending=pendingPath==="collect";
  const canAct=simulated || pickupOrderingEnabled();
+ // Verification is never carried to another shop, order or revision.
+ const showServerConfirmation=!simulated && !!confirmation &&
+   confirmation.orderId===String(order?.id) && confirmation.revision===order?.revision;
  if(recoveryOnly && (!pending || !canAct))return null;
  const act=async(label:string)=>{
   if(busy || pending || !canAct)return;
@@ -50,19 +58,21 @@ export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=
    if(!window.confirm(simulated ? "TEST ONLY: Simulate food handover? Nothing will be marked collected in the real system." : "Confirm the food has actually been handed to the customer?"))return;
    extra.handover_confirmed=true;
   }
-  setBusy(true);setError("");
+  setBusy(true);setError("");setConfirmation(null);
   try{
    if(simulated) {
     // No MerchantApi call, no server confirmation event, no payment or real-order mutation.
     await onSimulate!(action,extra);
    } else {
-    await MerchantApi.transitionPickupOrder(order,action,extra);
+    await MerchantApi.transitionPickupOrder(apiOrder,action,extra);
+    // Only a verified API response can create a confirmation message.
+    setConfirmation({orderId:String(order.id),revision:Number(order.revision),action:label});
     window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));
    }
   }
   catch(e){
    if(action==="collect" && !simulated){
-    if(MerchantApi.getPendingPickupCommandPath(order)!=="collect")
+    if(MerchantApi.getPendingPickupCommandPath(apiOrder)!=="collect")
      setError("Handover could not be confirmed. Refresh orders before trying again.");
    }else setError(e instanceof Error?e.message:"No change was confirmed. Retry the same action.");
   }
@@ -70,13 +80,14 @@ export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=
  };
  const retry=async()=>{
   if(busy || !canAct || !pending || simulated)return;
-  setBusy(true);setError("");
+  setBusy(true);setError("");setConfirmation(null);
   try{
-   await MerchantApi.retryPendingPickupOrder(order);
+   await MerchantApi.retryPendingPickupOrder(apiOrder);
+   setConfirmation({orderId:String(order.id),revision:Number(order.revision),action:"Previous pickup action"});
    window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));
   }catch(e){
    if(handoverPending){
-    if(MerchantApi.getPendingPickupCommandPath(order)!=="collect")
+    if(MerchantApi.getPendingPickupCommandPath(apiOrder)!=="collect")
      setError("Handover could not be confirmed. Refresh orders before trying again.");
    }else setError(e instanceof Error?e.message:"Outcome unconfirmed.");
   }finally{setBusy(false);}
@@ -104,7 +115,7 @@ export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=
       {pickupUnpaidWaitingMinutes(order)!==null && " · "+pickupUnpaidWaitingMinutes(order)+" min since last status update"}
     </p>
   )}
-  {!recoveryOnly && !needsFollowUp && callHref && <a className="text-xs underline" href={callHref}>Optional call: {order.phone}</a>}
+  {!recoveryOnly && !needsFollowUp && callHref && <a className="text-xs underline" href={callHref}>Optional call: {"phone" in order && typeof order.phone==="string" ? order.phone : ""}</a>}
   {!handoverPending && actions.length>0 && <div role="group" aria-label="Pickup order actions" className="flex w-full items-center gap-2 min-w-0">
     {actions.map(label=>{
       const reject=label==="Reject";
@@ -114,6 +125,7 @@ export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=
         disabled={busy || pending || !canAct}
         onClick={()=>void act(label)}
         aria-label={reject ? (simulated ? "Reject fake order (reason required)" : "Reject order (reason required)") : label}
+        aria-describedby={!canAct ? disabledHintId : undefined}
         title={reject ? "Reject — requires a reason" : simulated ? "TEST ONLY: local sample, no real order" : pickupOrderingEnabled() ? "Confirm actual order facts" : "Requires separately approved pickup database activation"}
         className={`min-h-11 rounded-xl inline-flex items-center justify-center gap-1.5 font-bold text-xs sm:text-sm shadow-sm disabled:opacity-50 disabled:cursor-not-allowed motion-safe:active:scale-[0.98] transition-transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary
           ${reject
@@ -139,7 +151,12 @@ export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=
     </>
   ) : <button type="button" className="min-h-11 px-3 underline text-sm disabled:opacity-50" disabled={busy} onClick={()=>void retry()}>Retry previous action</button>)}
   {error && <p role="alert">{error}</p>}
-  {!!actions.length && !canAct && <p className="text-xs text-on-surface-variant">Pickup changes are disabled pending database activation. Payment and actual handover are separate confirmations.</p>}
+  {showServerConfirmation && !busy && !error && (
+    <p role="status" aria-live="polite" className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+      Shop service confirmed: {confirmation!.action}. Refreshing the order list for current status.
+    </p>
+  )}
+  {!!actions.length && !canAct && <p id={disabledHintId} className="text-xs text-on-surface-variant">Pickup changes are disabled pending database activation. Payment and actual handover are separate confirmations.</p>}
   {simulated && !compact && <p className="text-[10px] text-amber-800 dark:text-amber-200">Test actions stay in this browser; no payment or order is saved.</p>}
  </div>;
 }

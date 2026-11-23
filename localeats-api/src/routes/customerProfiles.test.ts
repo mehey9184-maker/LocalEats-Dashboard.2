@@ -19,9 +19,9 @@ const fakeStore:ProfileStore={
 };
 const fakeIdentity:RequestHandler=(req,res,next)=>{
  const token=req.headers.authorization;
- if(token==="Bearer synthetic-A")((req as any).authUser)={uid:"synthetic-A",email:"a@example.test",isAnonymous:false};
- else if(token==="Bearer synthetic-B")((req as any).authUser)={uid:"synthetic-B",email:"b@example.test",isAnonymous:false};
- else if(token==="Bearer synthetic-anonymous")((req as any).authUser)={uid:"guest",email:null,isAnonymous:true};
+ if(token==="Bearer synthetic-A")Object.assign(req,{authUser:{uid:"synthetic-A",email:"a@example.test",isAnonymous:false}});
+ else if(token==="Bearer synthetic-B")Object.assign(req,{authUser:{uid:"synthetic-B",email:"b@example.test",isAnonymous:false}});
+ else if(token==="Bearer synthetic-anonymous")Object.assign(req,{authUser:{uid:"guest",email:null,isAnonymous:true}});
  else{res.status(401).json({success:false,code:"UNAUTHORIZED"});return;}
  next();
 };
@@ -42,7 +42,7 @@ async function request(url:string,identity:string,method="GET",body?:unknown){
  const response:Awaited<ReturnType<typeof fetch>>=await fetch(url,{method,
    headers:{authorization:"Bearer "+identity,"content-type":"application/json"},
    ...(body===undefined?{}:{body:JSON.stringify(body)})});
- return {response,body:await response.json() as Record<string,any>};
+ return {response,body:await response.json() as {code?:string;success?:boolean;profile:Record<string,unknown>;[key:string]:unknown}};
 }
 test("profile writes are disabled by default even for authenticated customer",async()=>{
  assert.equal(profileWritesEnabled(),false);

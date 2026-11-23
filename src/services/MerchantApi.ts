@@ -1,7 +1,8 @@
 import {createMerchantPickupRecovery} from "./merchantPickupRecovery";
 import {validateMerchantMenu} from "./merchantMenuPolicy";
 import {auth} from "../lib/firebase";
-import {isPickupOrder,mapApiOrder,requireOwnedShop,pickupCommand,pickupMutationsDisabled,pickupOrderingEnabled,type PickupAction} from "./merchantPickupPolicy";
+import type {MenuItem} from "../types";
+import {mapApiOrder,requireOwnedShop,pickupCommand,pickupMutationsDisabled,pickupOrderingEnabled,type PickupAction} from "./merchantPickupPolicy";
 import { getApiAuthHeaders } from "../lib/apiAuth";
 
 export type VerifiedMerchantShop = {
@@ -9,7 +10,7 @@ export type VerifiedMerchantShop = {
   owner_id: string;
   name?: string;
   is_active?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 export type MerchantShopCreateInput = {
@@ -37,6 +38,7 @@ type MerchantApiResponse = {
 export class MerchantApiError extends Error {
   status: number | null;
   code?: string;
+  expectedRevision?: number;
 
   constructor(message: string, status: number | null = null) {
     super(message);
@@ -165,13 +167,13 @@ export class MerchantApi {
     const data=await readJsonResponse(response);
     if(!response.ok || data.success!==true){const error=new MerchantApiError(typeof data.error==="string"?data.error:"Availability was not saved.",response.status);error.code=typeof data.code==="string"?data.code:undefined;
       // Preserve the revision for the explicit outside-hours confirmation, never rebase a stale command.
-      (error as any).expectedRevision=revision;throw error;}
+      error.expectedRevision=revision;throw error;}
     if(auth.currentUser?.uid!==uid || !data.shop || String(data.shop.id)!==String(shopId) || typeof data.shop.is_active!=="boolean") throw new MerchantApiError("Availability persistence was not confirmed. Refresh before retrying.");
     requireOwnedShop(data.shop,uid);
     return data.shop;
   }
 
-  static async getMenuItems(shopId: string | number): Promise<any[]> {
+  static async getMenuItems(shopId: string | number): Promise<MenuItem[]> {
     const uid = auth.currentUser?.uid;
     const shop = await this.getMerchantShop();
     if (!shop || String(shop.id) !== String(shopId)) throw new MerchantApiError("Menu shop ownership could not be verified.");
@@ -179,7 +181,16 @@ export class MerchantApi {
     const data = await readJsonResponse(response);
     if (!response.ok || data.success !== true || !Array.isArray(data.menu_items)) throw new MerchantApiError("Unable to load the authoritative shop menu.", response.status);
     if (!uid || auth.currentUser?.uid !== uid) throw new MerchantApiError("Your session changed. Refresh the menu.");
-    return validateMerchantMenu(data.menu_items, shop.id);
+    return validateMerchantMenu(data.menu_items, shop.id).map(row => {
+      if((typeof row.id!=="string" && typeof row.id!=="number") ||
+         (typeof row.shop_id!=="string" && typeof row.shop_id!=="number") ||
+         typeof row.name!=="string" || typeof row.price!=="number" || typeof row.is_available!=="boolean")
+        throw new MerchantApiError("The API returned an invalid menu item.");
+      return {...row,id:row.id,shop_id:row.shop_id,name:row.name,price:row.price,
+        is_available:row.is_available,
+        image_url:typeof row.image_url==="string"?row.image_url:"",
+        created_at:typeof row.created_at==="string"?row.created_at:""};
+    });
   }
 
   static async getOrders(): Promise<Record<string, unknown>[]> {
@@ -204,13 +215,13 @@ export class MerchantApi {
     return data.orders.map(mapApiOrder);
   }
 
-  static hasPendingPickupCommand(order:any):boolean {
+  static hasPendingPickupCommand(order:Record<string,unknown>):boolean {
     return this.getPendingPickupCommandPath(order)!==null;
   }
   static getPendingPickupCommandPath(order:Record<string,unknown>):string|null {
     return pickupRecovery.pendingPath(order);
   }
-  private static async sendPickupCommand(order:Record<string,unknown>,command:any) {
+  private static async sendPickupCommand(order:Record<string,unknown>,command:ReturnType<typeof pickupCommand>) {
     pickupMutationsDisabled();
     return pickupRecovery.send(order,command);
   }
