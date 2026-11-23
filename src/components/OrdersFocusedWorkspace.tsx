@@ -6,6 +6,7 @@ import {isPickupOrder, pickupPaymentLabel} from "../services/merchantPickupPolic
 import {PreviewFakeOrderTrigger, type PreviewTestPickupOrder, type PreviewTestPickupAction} from "./PreviewFakeOrders";
 import {OrdersStyleBoard, type OrderBoardStyle, type BoardEntry} from "./OrdersStyleBoard";
 import {isMerchantPreviewSimulatorEnabled} from "../services/merchantPreviewSimulator";
+import {isIsolatedCloudflareMerchantPitchPreviewEnabled} from "../services/cloudflareMerchantPitchGate";
 import {pickupOrderingEnabled} from "../services/merchantPickupPolicy";
 
 type ViewMode = "active" | "history";
@@ -91,6 +92,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const [expanded,setExpanded]=useState<string|null>(null);
   const [showSearch,setShowSearch]=useState(false);
   const isTestPreview=isMerchantPreviewSimulatorEnabled();
+  const pitchPolish=isIsolatedCloudflareMerchantPitchPreviewEnabled(); // Strict demo-host-only visual treatment.
   const [boardStyle,setBoardStyle]=useState<OrderBoardStyle>(()=>readBoardStyle(styleStorageKey));
   useEffect(()=>setBoardStyle(readBoardStyle(styleStorageKey)),[styleStorageKey]);
   const chooseBoardStyle=(choice:OrderBoardStyle)=>{
@@ -146,7 +148,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const commonFocus="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
   return (
     <main data-testid="orders-focused-workspace" className="space-y-3 md:space-y-4 pb-28 md:pb-10 min-w-0 max-w-full">
-      <div data-testid="orders-mobile-header" className="rounded-[1.4rem] border border-outline-variant/10 bg-surface-container-lowest dark:bg-zinc-950 px-3 py-3 sm:px-5 sm:py-4 shadow-sm space-y-3">
+      <div data-testid="orders-mobile-header" className={`rounded-[1.4rem] border border-outline-variant/10 bg-surface-container-lowest dark:bg-zinc-950 px-3 py-3 sm:px-5 sm:py-4 shadow-sm space-y-3 ${pitchPolish?"border-white/70 dark:border-zinc-800/80 bg-white/95 shadow-[0_9px_28px_-17px_rgba(15,23,42,0.38)]":""}`}>
         {/* The same original controls, laid out as a compact mobile header. */}
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 sm:flex sm:flex-wrap sm:justify-between sm:gap-3">
           <div className="flex items-center gap-2 min-w-0">
@@ -154,12 +156,12 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
               <ClipboardList size={20} aria-hidden="true"/>
             </div>
             <div className="min-w-0">
-              <h1 className="font-headline font-extrabold text-xl sm:text-2xl tracking-tight text-on-surface">Orders</h1>
-              <p className="text-[11px] sm:text-xs text-on-surface-variant">Pickup-first kitchen queue</p>
+              <h1 className={`font-headline font-extrabold text-xl sm:text-2xl tracking-tight text-on-surface ${pitchPolish?"leading-tight antialiased":""}`}>Orders</h1>
+              <p className={`text-[11px] sm:text-xs text-on-surface-variant ${pitchPolish?"leading-relaxed tracking-[0.005em]":""}`}>Pickup-first kitchen queue</p>
             </div>
           </div>
           <button type="button" onClick={onRefresh} aria-label="Refresh real orders"
-            className={`inline-flex h-11 min-w-11 items-center justify-center gap-1.5 px-3 rounded-xl border border-outline-variant/20 bg-surface-container-low text-xs font-semibold text-on-surface ${commonFocus}`}>
+            className={`inline-flex h-11 min-w-11 items-center justify-center gap-1.5 px-3 rounded-xl border border-outline-variant/20 bg-surface-container-low text-xs font-semibold text-on-surface ${pitchPolish?"motion-safe:transition-[background-color,transform,box-shadow] motion-safe:duration-200 active:scale-[0.98] hover:shadow-sm":""} ${commonFocus}`}>
             <RefreshCw size={15} aria-hidden="true"/><span className="hidden sm:inline">Refresh</span>
           </button>
           <div className="col-span-2 min-w-0 w-full sm:col-span-1 sm:w-auto">
@@ -271,10 +273,10 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
         </p>
       ) : null}
 
-      <div data-testid="orders-queue-card" className="bg-surface-container-lowest dark:bg-zinc-950 border border-outline-variant/10 rounded-[1.4rem] p-3 sm:p-4 shadow-sm space-y-3 min-w-0">
+      <div data-testid="orders-queue-card" className={`bg-surface-container-lowest dark:bg-zinc-950 border border-outline-variant/10 rounded-[1.4rem] p-3 sm:p-4 shadow-sm space-y-3 min-w-0 ${pitchPolish?"bg-white/95 border-white/70 dark:border-zinc-800/80 shadow-[0_10px_30px_-17px_rgba(15,23,42,0.38)]":""}`}>
         <div className="flex items-center justify-between gap-2">
           <div>
-            <h2 className="font-headline text-[15px] sm:text-lg font-bold whitespace-nowrap text-on-surface">{viewMode==="active"?"Kitchen queue":"Order history"}</h2>
+            <h2 className={`font-headline text-[15px] sm:text-lg font-bold whitespace-nowrap text-on-surface ${pitchPolish?"tracking-tight leading-snug antialiased":""}`}>{viewMode==="active"?"Kitchen queue":"Order history"}</h2>
             <p className="text-[11px] text-on-surface-variant">
               {viewMode==="active"?<>
                 <span className="md:hidden">Tap a stage below</span>
@@ -292,7 +294,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
             </select>
             <button type="button" onClick={()=>setShowSearch(!showSearch)}
               aria-pressed={showSearch} aria-label={showSearch?"Close order search":"Search orders"}
-              className={`h-11 w-11 flex items-center justify-center rounded-xl bg-surface-container-low ${commonFocus}`}>
+              className={`h-11 w-11 flex items-center justify-center rounded-xl bg-surface-container-low ${pitchPolish?"motion-safe:transition-[background-color,transform,box-shadow] motion-safe:duration-200 active:scale-[0.98] hover:shadow-sm":""} ${commonFocus}`}>
               {showSearch?<X size={17}/>:<Search size={17}/>}
             </button>
           </div>
