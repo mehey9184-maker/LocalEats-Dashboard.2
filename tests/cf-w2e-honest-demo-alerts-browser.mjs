@@ -4,6 +4,7 @@ import {mkdirSync,writeFileSync} from "node:fs";
 
 const HOST="https://localeats-merchant-dashboard-preview.mehey9184.workers.dev";
 const LOCAL="http://127.0.0.1:4177";
+const LIVE=process.env.CF_W2E_LIVE==="true";
 const DIR="artifacts/cf-w2e-alerts";
 mkdirSync(DIR,{recursive:true});
 const browser=await chromium.launch({headless:true});
@@ -39,6 +40,7 @@ async function run(width,height){
     page.on("request",r=>{
       if(!["GET","HEAD"].includes(r.method()))outcome.writes.push(r.method()+" "+r.url());
     });
+    if(!LIVE){
     await page.route("**/*",async route=>{
       const req=route.request(),u=new URL(req.url());
       if(u.origin!==HOST){
@@ -52,6 +54,7 @@ async function run(width,height){
         "content-security-policy":"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"};
       await route.fulfill({response:rsp,headers});
     });
+    }
     const resp=await page.goto(HOST+"/",{waitUntil:"domcontentloaded",timeout:35000});
     assert.equal(resp.status(),200);
     await page.getByRole("button",{name:"Orders"}).first().waitFor({timeout:14000});
@@ -88,7 +91,7 @@ async function run(width,height){
     assert.deepEqual(outcome.writes,[]);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),true);
     outcome.alerts=p.notifications;outcome.notes=p.notes;outcome.pass=true;
-    console.log("PASS CF-W2E "+width+"px opt-in sound, local system notification, opt-out, no writes");
+    console.log("PASS CF-W2E "+width+"px "+(LIVE?"LIVE HOST":"LOCAL BUILD")+" opt-in sound, local system notification, opt-out, no writes");
   }catch(e){
     failures++;
     outcome.failure=String(e).slice(0,1200);
