@@ -79,7 +79,15 @@ async function run(width,height){
     await page.getByRole("button",{name:"Enable simulated browser notifications"}).waitFor();
     // One-off manual simulation still gives an in-app notification and sound,
     // but system notifications stay disabled after opt-out.
-    await page.getByRole("button",{name:"Simulate a fake incoming pickup order"}).click();
+    if(width<640){
+      // Mobile polish moves the one-shot tool under the existing Tools menu.
+      const tools=page.locator("summary").filter({hasText:"Tools"}).first();
+      await tools.click();
+      await page.getByRole("button",{name:"Simulate one fake incoming pickup order"}).click();
+      await tools.click();
+    }else{
+      await page.getByRole("button",{name:"Simulate a fake incoming pickup order"}).click();
+    }
     await page.getByText(/FAKE pickup order arrived — TEST ONLY/).first().waitFor({timeout:5500});
     p=await page.evaluate(()=>window.__demoAlertProbe);
     assert.equal(p.notifications.length,1,"no system notification after disabling");
