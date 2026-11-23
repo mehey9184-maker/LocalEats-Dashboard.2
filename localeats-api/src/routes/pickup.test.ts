@@ -101,7 +101,7 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
       assert.equal(rpcCalls.length,before);
       orderShop=input.shop_id;orderCustomer="customer";
     }
-    orderShop="other-shop";let before=rpcCalls.length;
+    orderShop="other-shop";const before=rpcCalls.length;
     assert.equal((await call(`/api/v1/orders/${id}/cancel`,"customer",{command_id:id,expected_revision:0,reason:"Fixture reason"})).status,403);
     assert.equal(rpcCalls.length,before);orderShop=input.shop_id;
     assert.equal((await call(`/api/v1/merchant/orders/${id}/payment-confirmation`,"merchant",{command_id:id,expected_revision:2})).status,400);
