@@ -1253,6 +1253,35 @@ function App() {
     return ()=>{clearInterval(timer);window.removeEventListener("focus",refresh);};
   },[user,fetchShops]);
 
+  // A persisted merchant account profile is projected into the existing display
+  // model on sign-in. No account role, Firebase metadata or shop ownership changes.
+  useEffect(()=>{
+    const uid=user?.id;
+    if(!uid || merchantShopGate.status!=="ready")return;
+    let current=true;
+    void MerchantProfileApi.getAccount().then(profile=>{
+      if(!current || profile.merchant_uid!==uid || profile.revision===0)return;
+      setUser(previous=>{
+        if(!previous || previous.id!==uid)return previous;
+        const nextMetadata={...previous.user_metadata,
+          full_name:profile.full_name,phone:profile.phone,
+          avatar_url:profile.avatar_url,
+          marketing_preferences:profile.marketing_opt_in,
+          dark_mode:profile.dark_mode};
+        if(previous.user_metadata?.full_name===profile.full_name &&
+           previous.user_metadata?.phone===profile.phone &&
+           previous.user_metadata?.avatar_url===profile.avatar_url &&
+           previous.user_metadata?.marketing_preferences===profile.marketing_opt_in &&
+           previous.user_metadata?.dark_mode===profile.dark_mode)return previous;
+        return {...previous,user_metadata:nextMetadata};
+      });
+      setDarkMode(profile.dark_mode);
+    }).catch(()=>{
+      // Schema/gate may not have been deployed; never fake a cached profile.
+    });
+    return ()=>{current=false;};
+  },[user?.id,merchantShopGate.status]);
+
   // Animate only the icon for the page to which a verified new alert belongs.
   // The cue is visual only; it never acknowledges messages or changes data.
   const {pulses:navAttention,pulseForTopic:pulseNavNotice}=usePageNotificationAttention({
