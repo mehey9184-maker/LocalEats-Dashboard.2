@@ -51,6 +51,7 @@ try {
    await start.waitFor({timeout:15000});
    record.steps.push("Original Orders route");
    record.measurements.startControl=await start.boundingBox();
+   assert.ok(record.measurements.startControl?.height>=43.5,"Start simulation must have a 44px mobile-friendly touch target");
    assert.equal(await page.getByTestId("fake-incoming-order").count(),0,"no fake ticket before manual Start");
    await start.click({timeout:10000});
    await page.getByTestId("fake-incoming-order").first().waitFor({state:"visible",timeout:15000});
@@ -61,7 +62,12 @@ try {
    record.steps.push("Stop fictional arrivals");
    const pending=page.getByRole("button",{name:"Accept → Preparing"}).first();
    await pending.click({timeout:12000});
-   if(settings.viewport.width<768)await page.getByRole("tab",{name:/Preparing/}).click({timeout:10000});
+   if(settings.viewport.width<768){
+     const stage=page.getByRole("tab",{name:/Preparing/});
+     record.measurements.kitchenTab=await stage.boundingBox();
+     assert.ok(record.measurements.kitchenTab?.height>=43.5,"Mobile kitchen stage tab must have a 44px touch target");
+     await stage.click({timeout:10000});
+   }
    await page.getByRole("button",{name:"Mark Ready"}).first().waitFor({state:"visible",timeout:12000});
    record.steps.push("Accepted → Preparing lane");
    await page.getByRole("button",{name:"Mark Ready"}).first().click({timeout:12000});
