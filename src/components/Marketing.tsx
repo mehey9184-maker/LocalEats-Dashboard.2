@@ -10,7 +10,6 @@ import {
   Smartphone,
   MessageSquare,
   Store,
-  FileText,
   ExternalLink,
   Flame,
   Utensils,

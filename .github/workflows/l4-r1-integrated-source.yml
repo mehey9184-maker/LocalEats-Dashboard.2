@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - integration/l4-r1-merchant-api-zero-write-20261123
+      - quality/l4-r1b-safe-cleanup-20261123
   pull_request:
     branches: [main]
     paths:

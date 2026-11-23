@@ -1,7 +1,6 @@
 import {useState,useCallback,useEffect,useRef} from "react";
 import {toast} from "sonner";
 import {onAuthStateChanged} from "firebase/auth";
-import type {SupabaseClient} from "@supabase/supabase-js";
 import {auth,requestNotificationPermissionAndGetToken} from "../lib/firebase";
 import {MerchantApi} from "../services/MerchantApi";
 
@@ -9,7 +8,7 @@ export type RoleType="rider"|"client"|"merchant";
 interface PushNotificationHook {
   pushEnabled:boolean;
   pushBusy:boolean;
-  requestPushPermissions:(userId:string|undefined,role:RoleType,supabaseClient:SupabaseClient)=>Promise<void>;
+  requestPushPermissions:(userId:string|undefined,role:RoleType)=>Promise<void>;
   disablePushNotifications:()=>Promise<void>;
   urlBase64ToUint8Array:(base64String:string)=>Uint8Array;
 }
@@ -86,7 +85,7 @@ export const usePushNotifications=(initialState=false):PushNotificationHook=>{
   },[revalidate]);
 
   const requestPushPermissions=useCallback(async(
-    userId:string|undefined,role:RoleType,_supabaseClient:SupabaseClient
+    userId:string|undefined,role:RoleType
   )=>{
     if(inFlight.current)return;
     if(role!=="merchant"){

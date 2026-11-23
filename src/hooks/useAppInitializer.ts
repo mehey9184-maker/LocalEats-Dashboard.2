@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { SupabaseClient, User } from "@supabase/supabase-js";
 import { isSupabaseMocked } from "../lib/supabase";
 import { handleCentralizedError } from "../utils/errorHandler";
 
@@ -10,12 +9,11 @@ export interface ServiceLoadingState {
 }
 
 interface UseAppInitializerProps {
-  user: User | null;
+  user: { id: string } | null;
   role: string | null;
   fetchOrders: () => Promise<void>;
   fetchShops: () => Promise<void>;
   fetchAllMenuItems: () => Promise<void>;
-  supabase?: SupabaseClient;
   authReady?: boolean;
   initializeShops?: boolean;
   operationalReady?: boolean;

@@ -51,6 +51,9 @@ export interface Shop {
   longitude?: number | null;
   opening_time?: string | null;
   closing_time?: string | null;
+  require_terminal_sync?: boolean;
+  terminal_provider?: string | null;
+  terminal_serial?: string | null;
 }
 
 export interface RiderProfile {
