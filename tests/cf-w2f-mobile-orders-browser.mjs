@@ -4,6 +4,7 @@ import {mkdirSync,writeFileSync} from "node:fs";
 
 const HOST="https://localeats-merchant-dashboard-preview.mehey9184.workers.dev";
 const LOCAL="http://127.0.0.1:4177";
+const LIVE=process.env.CF_W2F_LIVE==="true";
 const DIR="artifacts/cf-w2f-mobile-orders";
 mkdirSync(DIR,{recursive:true});
 const browser=await chromium.launch({headless:true});
@@ -22,6 +23,7 @@ for(const [width,height] of [[320,740],[390,844],[768,1024],[1366,900]]){
    page.on("pageerror",e=>item.errors.push(String(e)));
    page.on("request",r=>{if(!["GET","HEAD"].includes(r.method()))item.requests.push(r.method()+" "+r.url())});
    page.on("dialog",async d=>{item.steps.push("test confirmation: "+d.message().slice(0,90));await d.accept()});
+   if(!LIVE){
    await page.route("**/*",async route=>{
      const req=route.request(),url=new URL(req.url());
      if(url.origin!==HOST){
@@ -33,6 +35,7 @@ for(const [width,height] of [[320,740],[390,844],[768,1024],[1366,900]]){
        "content-security-policy":"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"};
      await route.fulfill({response:rsp,headers});
    });
+   }
    const response=await page.goto(HOST+"/",{waitUntil:"domcontentloaded",timeout:40000});
    assert.equal(response.status(),200);
    await page.getByRole("button",{name:"Orders"}).first().waitFor({timeout:17000});
@@ -132,5 +135,5 @@ for(const [width,height] of [[320,740],[390,844],[768,1024],[1366,900]]){
 }
 await browser.close();
 writeFileSync(DIR+"/results.json",JSON.stringify({failures,results},null,2));
-console.log("CF_W2F_POLISH="+(results.length-failures)+"/"+results.length);
+console.log("CF_W2F_"+(LIVE?"LIVE":"LOCAL")+"_POLISH="+(results.length-failures)+"/"+results.length);
 if(failures)process.exit(1);
