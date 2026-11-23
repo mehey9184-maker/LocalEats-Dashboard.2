@@ -112,8 +112,35 @@ jobs:
           npm run build --prefix localeats-api
       - name: Check actual pinned Customer TypeScript client -> real compiled catalog over loopback HTTP only
         run: node --experimental-strip-types --test localeats-api/tests/l4-r1-crossrepo-catalog-contract.test.mjs
+  schema-rehearsal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Disposable Postgres schema, RLS and optimistic update rehearsal (NO HOSTED DB)
+        run: |
+          command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+          bash scripts/l4-r1e-disposable-schema-smoke.sh
   gate:
-    needs: [api,merchant,actual-client-api-loopback]
+    needs: [api,merchant,actual-client-api-loopback,schema-rehearsal]
     if: always()
     runs-on: ubuntu-24.04
     steps:
@@ -122,9 +149,11 @@ jobs:
           API_RESULT: ${{ needs.api.result }}
           MERCHANT_RESULT: ${{ needs.merchant.result }}
           CONTRACT_RESULT: ${{ needs.actual-client-api-loopback.result }}
+          SCHEMA_RESULT: ${{ needs.schema-rehearsal.result }}
         run: |
           echo "API=$API_RESULT, Merchant=$MERCHANT_RESULT, Customer-to-API=$CONTRACT_RESULT"
           test "$API_RESULT" = success
           test "$MERCHANT_RESULT" = success
           test "$CONTRACT_RESULT" = success
+          test "$SCHEMA_RESULT" = success
           echo "L4_R1_SOURCE_INTEGRATION_PASS — NO DEPLOY; real hosting, backup, real pickup and FCM remain HOLD"
