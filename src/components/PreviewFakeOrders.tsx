@@ -227,12 +227,13 @@ export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDe
   // One memoized, lightweight ticket. Local demo state never reaches an API.
   if(!isMerchantPreviewSimulatorEnabled())return null;
   const roomy=variant==="expediter";
+  const pitchPolish=isIsolatedCloudflareMerchantPitchPreviewEnabled();
   const shortId=order.id.replace("FAKE-L1C3-","T-");
   const payment=order.payment_status==="paid" ? "Payment simulated" : "Pay at shop";
   return <article
     data-testid="fake-incoming-order"
     data-style={variant}
-    className={`min-w-0 overflow-hidden bg-white dark:bg-zinc-950 border-2 border-dashed border-amber-300 dark:border-amber-600/70 shadow-sm ${roomy?"rounded-2xl px-3.5 py-3 space-y-2":"rounded-xl px-3 py-2.5 space-y-1.5"}`}
+    className={`min-w-0 overflow-hidden bg-white dark:bg-zinc-950 border-2 border-dashed border-amber-300 dark:border-amber-600/70 shadow-sm ${roomy?"rounded-2xl px-3.5 py-3 space-y-2":"rounded-xl px-3 py-2.5 space-y-1.5"} ${pitchPolish?"bg-white/95 dark:bg-zinc-950/95 border-amber-300/85 shadow-[0_8px_24px_-12px_rgba(100,51,11,0.28)] motion-safe:transition-[transform,box-shadow,border-color] motion-safe:duration-200 motion-safe:ease-out motion-safe:active:scale-[0.995] motion-safe:md:hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-14px_rgba(100,51,11,0.35)]":""}`}
   >
     <div className="min-w-0 flex items-center justify-between gap-2">
       <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 dark:bg-amber-900/50 text-amber-900 dark:text-amber-100 px-1.5 py-0.5 text-[9px] leading-3 font-extrabold tracking-wide uppercase">
@@ -241,10 +242,10 @@ export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDe
       <span className="shrink-0 font-mono text-[10px] font-bold text-slate-500 dark:text-zinc-400" title={order.id}>#{shortId}</span>
     </div>
     <div className="flex min-w-0 items-start justify-between gap-2">
-      <h4 className={`min-w-0 font-headline font-extrabold text-slate-900 dark:text-zinc-100 break-words leading-5 ${roomy?"text-[15px]":"text-sm"}`}>{order.customer_name}</h4>
-      <span className="shrink-0 font-extrabold text-[13px] text-slate-900 dark:text-zinc-100">R {order.total_price.toFixed(2)}</span>
+      <h4 className={`min-w-0 font-headline font-extrabold text-slate-900 dark:text-zinc-100 break-words leading-5 ${roomy?"text-[15px]":"text-sm"} ${pitchPolish?"tracking-[-0.015em] antialiased":""}`}>{order.customer_name}</h4>
+      <span className={`shrink-0 font-extrabold text-[13px] text-slate-900 dark:text-zinc-100 ${pitchPolish?"text-sm tracking-tight tabular-nums":""}`}>R {order.total_price.toFixed(2)}</span>
     </div>
-    <p className="text-xs font-semibold text-slate-700 dark:text-zinc-300 leading-4 truncate" title={order.product_name}>
+    <p className={`text-xs font-semibold text-slate-700 dark:text-zinc-300 leading-4 truncate ${pitchPolish?"tracking-[0.005em]":""}`} title={order.product_name}>
       1× {order.product_name} <span className="font-normal text-slate-500 dark:text-zinc-400">· {payment}</span>
     </p>
     <OrderCustomerNote order={order} compact={!roomy}/>
@@ -259,6 +260,7 @@ export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear,simul
   demoNotificationsEnabled:boolean;onToggleDemoNotifications:()=>void;
 }){
   if(!isMerchantPreviewSimulatorEnabled())return null;
+  const pitchPolish=isIsolatedCloudflareMerchantPitchPreviewEnabled();
   // On mobile, the two primary pitch actions share a single row.
   // One-off simulation and clearing remain available under existing Orders > Tools.
   return <div data-testid="fake-incoming-controls" className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
@@ -271,7 +273,7 @@ export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear,simul
       onClick={simulationRunning?onStopSimulation:onStartSimulation}
       aria-pressed={simulationRunning}
       aria-label={simulationRunning?"Stop fictional order arrivals":"Start fictional order arrivals"}
-      className="inline-flex min-h-11 min-w-0 items-center justify-center rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-2.5 py-2 text-[11px] sm:px-3 sm:text-xs font-bold whitespace-nowrap">
+      className={`inline-flex min-h-11 min-w-0 items-center justify-center rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-2.5 py-2 text-[11px] sm:px-3 sm:text-xs font-bold whitespace-nowrap ${pitchPolish?"shadow-[0_4px_12px_-8px_rgba(249,115,22,0.55)] motion-safe:transition-[transform,box-shadow,background-color] motion-safe:duration-200 motion-safe:active:scale-[0.97] hover:shadow-md":""}`}>
       {simulationRunning?"Stop simulation":"Start simulation"}
     </button>
     {isIsolatedCloudflareMerchantPitchPreviewEnabled()&&
@@ -279,7 +281,7 @@ export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear,simul
         aria-pressed={demoNotificationsEnabled}
         aria-label={demoNotificationsEnabled?"Disable simulated browser notifications":"Enable simulated browser notifications"}
         title="Example notification only while the demo is open. Not real push delivery."
-        className="inline-flex min-h-11 min-w-0 items-center justify-center rounded-full border border-amber-400 bg-amber-50 text-amber-950 px-2.5 py-2 text-[11px] sm:px-3 sm:text-xs font-bold whitespace-nowrap">
+        className={`inline-flex min-h-11 min-w-0 items-center justify-center rounded-full border border-amber-400 bg-amber-50 text-amber-950 px-2.5 py-2 text-[11px] sm:px-3 sm:text-xs font-bold whitespace-nowrap ${pitchPolish?"shadow-[0_4px_12px_-9px_rgba(100,51,11,0.35)] motion-safe:transition-[transform,box-shadow,background-color] motion-safe:duration-200 motion-safe:active:scale-[0.97] hover:shadow-sm":""}`}>
         {demoNotificationsEnabled?"Demo alerts on":"Try demo alert"}
       </button>}
     {count>0&&<button type="button" onClick={onClear}
