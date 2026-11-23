@@ -47,7 +47,7 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
   const app=express();configureApiCacheSafety(app);app.use(legacyOrderGuard);app.use(express.json());
   app.use("/api/v1",pickupNotificationRoutes);app.use("/api/v1/orders",customerOrderRoutes);app.use("/api/v1/merchant/orders",merchantOrderRoutes);
   const server=app.listen(0,"127.0.0.1");await once(server,"listening");
-  const call=(path:string,uid?:string,body?:unknown,method="POST"):Promise<{status:number;body:Record<string,unknown>;cache:unknown}>=>new Promise((resolve,reject)=>{
+  const call=(path:string,uid?:string,body?:unknown,method="POST"):Promise<{status:number;body:Record<string,unknown> & {quote:{total_minor:number;pricing_fingerprint:string;[key:string]:unknown};order:Record<string,unknown>};cache:unknown}>=>new Promise((resolve,reject)=>{
     const req=httpRequest({host:"127.0.0.1",port:(server.address() as AddressInfo).port,path,method,headers:{"Content-Type":"application/json",...(uid ? {Authorization:`Bearer fb-${uid}`} : {})}},res=>{
       let text="";res.on("data",chunk=>{text+=chunk;});res.on("end",()=>resolve({status:res.statusCode!,body:JSON.parse(text),cache:res.headers["cache-control"]}));
     });req.on("error",reject);req.end(body ? JSON.stringify(body) : undefined);
