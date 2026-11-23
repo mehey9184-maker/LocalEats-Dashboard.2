@@ -90,6 +90,7 @@ import { LocalEatsLogo } from "./components/LocalEatsLogo";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
 import { DashboardOverview } from "./components/DashboardOverview";
 import { ShopProfile } from "./components/ShopProfile";
+import {MerchantProfileApi} from "./services/merchantProfileApi";
 import { OrdersManagement } from "./components/OrdersManagement";
 import { MenuManagement } from "./components/MenuManagement";
 import { Coupons } from "./components/Coupons";
@@ -1581,42 +1582,33 @@ function App() {
     setIsSaving(true);
     setIsSaveSuccess(false);
     try {
-      const { data: updateRes, error } = await supabase.auth.updateUser({
-        data: {
-          full_name: data.fullName,
-          phone: data.phone,
-          marketing_preferences: data.marketing,
-          dark_mode: data.darkMode,
-          avatar_url: data.avatarUrl,
-        },
-      });
-
-      if (error) throw error;
-      if (updateRes?.user) {
-        setUser(updateRes.user);
-      }
-
-      if (data.darkMode !== undefined) {
-        setDarkMode(data.darkMode);
-      }
-
-      // Show success state
-      setIsSaving(false);
+      if(data.expectedRevision===undefined)throw Error("Verified merchant profile must finish loading before saving.");
+      const saved=await MerchantProfileApi.saveAccount({
+        full_name:data.fullName.trim(),
+        phone:data.phone.replace(/[\\s-]/g,""),
+        avatar_url:data.avatarUrl||"",
+        marketing_opt_in:data.marketing??true,
+        dark_mode:data.darkMode??false,
+      },data.expectedRevision);
+      // This is a display projection from server-confirmed merchant data,
+      // never a Firebase identity/role or another merchant's saved profile.
+      setUser(previous=>previous?.id===saved.merchant_uid?
+        {...previous,user_metadata:{
+          ...(previous.user_metadata??{}),
+          full_name:saved.full_name,
+          phone:saved.phone,
+          avatar_url:saved.avatar_url,
+          marketing_preferences:saved.marketing_opt_in,
+          dark_mode:saved.dark_mode,
+        }}:previous);
+      setDarkMode(saved.dark_mode);
       setIsSaveSuccess(true);
-
-      // Close after delay
-      setTimeout(() => {
-        setIsSaveSuccess(false);
-        setIsEditingProfile(false);
-      }, 1200);
-    } catch (err: unknown) {
-      console.error("Save profile error:", err);
-      setIsSaving(false);
+      setTimeout(()=>{setIsSaveSuccess(false);setIsEditingProfile(false);},1200);
+    }catch(err:unknown){
+      console.error("Verified merchant account save failed:",err);
       setIsSaveSuccess(false);
-      toast.error(
-        err instanceof Error ? err.message : "Failed to update profile settings.",
-      );
-    }
+      toast.error(err instanceof Error?err.message:"Merchant account changes were not saved.");
+    }finally{setIsSaving(false);}
   };
 
   if (isSessionChecking && !user) {
