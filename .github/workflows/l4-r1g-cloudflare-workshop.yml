@@ -1,0 +1,27 @@
+name: L4-R1G — isolated Cloudflare workshop source and safety (NO DEPLOY)
+on:
+  push:
+    branches:
+      - feature/l4-r1g-cloudflare-readonly-workshop-20261123
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  worker-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - name: Static worker contract and offline/zero-write proof
+        run: node --test tests/l4-r1g-cloudflare-workshop.test.mjs
+      - name: Inspect reproducible generated Worker
+        run: |
+          test -s dist/workshop-worker.mjs
+          grep -q "connect-src 'none'" dist/workshop-worker.mjs
+          grep -q 'localeats-r1g-merchant-workshop.mehey9184.workers.dev' dist/workshop-worker.mjs
+          echo 'WORKSHOP_SOURCE_PASS — NO DEPLOY'
