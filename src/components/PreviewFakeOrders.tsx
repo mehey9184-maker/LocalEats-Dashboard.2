@@ -259,17 +259,19 @@ export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear,simul
   demoNotificationsEnabled:boolean;onToggleDemoNotifications:()=>void;
 }){
   if(!isMerchantPreviewSimulatorEnabled())return null;
-  return <div data-testid="fake-incoming-controls" className="flex flex-wrap items-center gap-2">
+  // On mobile, the two primary pitch actions share a single row.
+  // One-off simulation and clearing remain available under existing Orders > Tools.
+  return <div data-testid="fake-incoming-controls" className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
     <button type="button" onClick={onSimulate} disabled={incoming}
       aria-label="Simulate a fake incoming pickup order"
-      className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold disabled:opacity-60">
+      className="hidden sm:inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold disabled:opacity-60">
       <FlaskConical size={14} aria-hidden="true"/> {incoming?"Incoming…":"Simulate order"}
     </button>
     <button type="button"
       onClick={simulationRunning?onStopSimulation:onStartSimulation}
       aria-pressed={simulationRunning}
       aria-label={simulationRunning?"Stop fictional order arrivals":"Start fictional order arrivals"}
-      className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold">
+      className="inline-flex min-h-11 min-w-0 items-center justify-center rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-2.5 py-2 text-[11px] sm:px-3 sm:text-xs font-bold whitespace-nowrap">
       {simulationRunning?"Stop simulation":"Start simulation"}
     </button>
     {isIsolatedCloudflareMerchantPitchPreviewEnabled()&&
@@ -277,10 +279,12 @@ export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear,simul
         aria-pressed={demoNotificationsEnabled}
         aria-label={demoNotificationsEnabled?"Disable simulated browser notifications":"Enable simulated browser notifications"}
         title="Example notification only while the demo is open. Not real push delivery."
-        className="inline-flex min-h-11 items-center gap-1 rounded-full border border-amber-400 bg-amber-50 text-amber-950 px-3 py-2 text-xs font-bold">
+        className="inline-flex min-h-11 min-w-0 items-center justify-center rounded-full border border-amber-400 bg-amber-50 text-amber-950 px-2.5 py-2 text-[11px] sm:px-3 sm:text-xs font-bold whitespace-nowrap">
         {demoNotificationsEnabled?"Demo alerts on":"Try demo alert"}
       </button>}
-    {count>0&&<button type="button" onClick={onClear} className="inline-flex min-h-11 items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300" aria-label="Clear all fake orders">
+    {count>0&&<button type="button" onClick={onClear}
+      className="hidden sm:inline-flex min-h-11 items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300"
+      aria-label="Clear all fake orders">
       <X size={13} aria-hidden="true"/> Clear tests ({count})
     </button>}
   </div>;
