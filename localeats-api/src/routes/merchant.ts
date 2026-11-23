@@ -36,59 +36,31 @@ const ALLOWED_CREATE_FIELDS = new Set([
 const isValidTime = (value: unknown): value is string =>
   typeof value === "string" && /^([01]\d|2[0-3]):([0-5]\d)$/.test(value.trim());
 
-router.get("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  try {
-    const uid = req.authUser?.uid;
-
-    if (!uid) {
-      res.status(401).json({
-        success: false,
-        error: "Unauthorized",
-      });
-      return;
-    }
-
-    const { data: shops, error } = await supabaseAdmin
-      .from("shops_with_availability")
-      .select("*")
-      .eq("owner_id", uid)
-      .is("archived_at", null);
-
-    if (error) {
-      console.error("Supabase merchant shop query error:", error);
-
-      res.status(503).json({success:false,code:"AVAILABILITY_SCHEMA_UNAVAILABLE",error:"Shop availability is not activated or could not be loaded."});
-      return;
-    }
-
-    if (!shops || shops.length === 0) {
-      res.status(404).json({
-        success: false,
-        error: "Merchant shop not mapped",
-      });
-      return;
-    }
-
-    if (shops.length > 1) {
-      res.status(409).json({
-        success: false,
-        error: "Multiple current shops mapped to merchant",
-      });
-      return;
-    }
-
-    res.status(200).json({
-      success: true,
-      shop: effectiveShop(shops[0]),
-    });
-  } catch (err) {
-    console.error("Error fetching merchant shop:", err);
-
-    res.status(500).json({
-      success: false,
-      error: "Internal Server Error",
-    });
+/**
+ * Read identity exclusively from shops.owner_id. Staging's public
+ * shops_with_availability view intentionally omits owner_id, so never use
+ * a view column as the merchant ownership filter.
+ */
+router.get("/shop", authenticateFirebase, async (req:AuthenticatedRequest,res:Response):Promise<void>=>{
+ res.set("Cache-Control","no-store");
+ const uid=req.authUser?.uid;
+ if(!uid || req.authUser?.isAnonymous){res.status(401).json({success:false,code:"MERCHANT_AUTH_REQUIRED"});return;}
+ try{
+  const owned=await supabaseAdmin.from("shops").select("id").eq("owner_id",uid).is("archived_at",null).limit(2);
+  if(owned.error || !Array.isArray(owned.data)){res.status(503).json({success:false,code:"MERCHANT_OWNERSHIP_UNAVAILABLE"});return;}
+  if(owned.data.length===0){res.status(404).json({success:false,error:"Merchant shop not mapped"});return;}
+  if(owned.data.length>1){res.status(409).json({success:false,error:"Multiple current shops mapped to merchant"});return;}
+  const shopId=String(owned.data[0]?.id??"");
+  if(!shopId){res.status(503).json({success:false,code:"MERCHANT_OWNERSHIP_UNCONFIRMED"});return;}
+  const result=await supabaseAdmin.from("shops_with_availability").select("*").eq("id",shopId).maybeSingle();
+  const shop=result.data;
+  if(result.error || !shop || String(shop.id)!==shopId || (shop.owner_id!=null && shop.owner_id!==uid)){
+   res.status(503).json({success:false,code:"MERCHANT_SHOP_READ_UNCONFIRMED"});return;
   }
+  res.status(200).json({success:true,shop:{...effectiveShop(shop),owner_id:uid}});
+ }catch{
+  res.status(503).json({success:false,code:"MERCHANT_SHOP_READ_UNAVAILABLE"});
+ }
 });
 
 router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
