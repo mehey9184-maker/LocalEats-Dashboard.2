@@ -1,8 +1,8 @@
-import {memo,startTransition,useCallback,useEffect,useRef,useState} from "react";
-import {FlaskConical,X} from "lucide-react";
+import {memo,startTransition,useCallback,useEffect,useId,useRef,useState} from "react";
+import {ChevronDown,FlaskConical,X} from "lucide-react";
 import {toast} from "sonner";
 import {PickupOrderActions} from "./PickupOrderActions";
-import {OrderCustomerNote} from "./OrderCustomerNote";
+import {getCustomerPreparationNotes,OrderCustomerNote} from "./OrderCustomerNote";
 import {pickupCommand,type PickupAction} from "../services/merchantPickupPolicy";
 import {isMerchantPreviewSimulatorEnabled} from "../services/merchantPreviewSimulator";
 import {isIsolatedCloudflareMerchantPitchPreviewEnabled} from "../services/cloudflareMerchantPitchGate";
@@ -219,6 +219,56 @@ export function usePreviewFakeOrders(soundAlertsEnabled:boolean){
     demoNotificationsEnabled,startSimulation,stopSimulation,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction};
 }
 
+// Mode B is a scan-first list row, deliberately DIFFERENT from the full
+// Mode A ticket. It never loses the real action component: tapping the row
+// reveals the same TEST ONLY pickup controls without creating an API request.
+function CompactFakeOrderRow({order,onDemoAction}:{
+  order:PreviewTestPickupOrder;onDemoAction:PreviewTestPickupAction;
+}){
+  const [open,setOpen]=useState(false);
+  const detailsId=useId();
+  const shortId=order.id.replace("FAKE-L1C3-","T-");
+  const special=getCustomerPreparationNotes(order).length>0;
+  const status=order.status==="pending"?"NEW":order.status==="preparing"?"PREPARING":
+    order.status==="ready"?"READY":order.status==="completed"?"COLLECTED":"CANCELLED";
+  return <article data-testid="fake-incoming-order" data-style="compact"
+    className="min-w-0 rounded-xl border border-dashed border-amber-300/90 dark:border-amber-700/90 bg-white/95 dark:bg-zinc-950/95 shadow-[0_5px_14px_-10px_rgba(100,51,11,0.25)] overflow-hidden">
+    <button type="button" onClick={()=>setOpen(value=>!value)} aria-expanded={open}
+      aria-controls={detailsId}
+      aria-label={`Order ${shortId} for ${order.customer_name}, ${status}. ${open?"Hide":"Show"} actions`}
+      className="flex w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left min-h-[64px] hover:bg-amber-50/50 dark:hover:bg-amber-950/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary motion-safe:transition-colors motion-safe:duration-150">
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span className="shrink-0 rounded-md bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-amber-900 dark:text-amber-100">Fake · Test only</span>
+          <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400">#{shortId}</span>
+          <span className="text-[9px] font-bold tracking-wide text-orange-700 dark:text-orange-200">{status}</span>
+        </div>
+        <p className="truncate text-[13px] font-extrabold leading-4 tracking-tight text-slate-900 dark:text-zinc-100">{order.customer_name}</p>
+        <p className="flex flex-wrap items-center gap-x-2 text-[11px] leading-4 text-slate-600 dark:text-zinc-300">
+          <span>1× {order.product_name}</span>
+          {special&&<span className="font-bold text-amber-800 dark:text-amber-300">● Special request</span>}
+        </p>
+      </div>
+      <div className="shrink-0 text-right space-y-1">
+        <span className="block text-xs font-extrabold tabular-nums text-slate-900 dark:text-zinc-100">R {order.total_price.toFixed(2)}</span>
+        <span className="flex justify-end items-center gap-1 text-[10px] font-bold text-primary">
+          {open?"Close":"Actions"} <ChevronDown size={13} aria-hidden="true"
+            className={`motion-safe:transition-transform motion-safe:duration-150 ${open?"rotate-180":""}`}/>
+        </span>
+      </div>
+    </button>
+    {open&&<div id={detailsId} data-testid="compact-fake-actions"
+      className="space-y-2 border-t border-amber-200/80 dark:border-amber-800/60 bg-amber-50/30 dark:bg-zinc-900/30 px-2.5 pb-2.5 pt-2">
+      <p className="text-[11px] font-semibold text-slate-600 dark:text-zinc-300">
+        Pickup · {order.payment_status==="paid"?"Payment simulated":"Pay at shop"} · TEST ONLY
+      </p>
+      <OrderCustomerNote order={order} compact/>
+      <PickupOrderActions order={order} compact
+        onSimulate={(action,extra)=>onDemoAction(order.id,action,extra)}/>
+    </div>}
+  </article>;
+}
+
 export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDemoAction,variant="expediter"}:{
   order:PreviewTestPickupOrder;
   onDemoAction:PreviewTestPickupAction;
@@ -226,6 +276,8 @@ export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDe
 }){
   // One memoized, lightweight ticket. Local demo state never reaches an API.
   if(!isMerchantPreviewSimulatorEnabled())return null;
+  if(variant==="compact" && isIsolatedCloudflareMerchantPitchPreviewEnabled())
+    return <CompactFakeOrderRow order={order} onDemoAction={onDemoAction}/>;
   const roomy=variant==="expediter";
   const pitchPolish=isIsolatedCloudflareMerchantPitchPreviewEnabled();
   const shortId=order.id.replace("FAKE-L1C3-","T-");
