@@ -13,7 +13,7 @@ Use your own Android/Chrome and/or iPhone/Safari if available. Keep **mobile dat
 3. Tap **Start simulation**. **Expect:** one amber-bordered **FAKE · TEST ONLY** pickup ticket. Larger incoming waves may appear automatically every 8 seconds until you stop. Do not confuse their values with actual sales.
 4. Tap **Stop simulation** before handling the order so the example remains simple. Tap **Accept & Prep**. Switch the phone's kitchen-stage tab from **New** to **Preparing**. Tap **Mark Ready**.
 5. Switch to **Ready**. Tap **Confirm cash received**. Read the **TEST ONLY** dialog aloud before confirming. Tap **Confirm handover** and read the second **TEST ONLY** dialog. **Expect:** the fictional ticket advances without a real payment, message, or shop update.
-6. Try screen scrolling, touch target accessibility, portrait rotation if possible, and **Clear tests**. Refresh the tab. **Expect:** fictional state resets and Home still opens. Never require a vendor to use a real account for this.
+6. Try screen scrolling, touch target accessibility, portrait rotation if possible, and **Clear tests**. Refresh the tab. **Expect:** fictional state resets and the Merchant app remains usable; it may keep you on the Orders tab so kitchen work is not interrupted. Never require a vendor to use a real account for this.
 7. Repeat on **Wi-Fi** if possible and record whether the original Home, Orders and buttons stay usable on a weak/mobile network. Note approximate seconds to first usable Home and Orders, but do not treat simulator timing as a production speed measurement.
 
 ## Step 2 — One consenting vendor watches or uses it
