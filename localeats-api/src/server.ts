@@ -8,6 +8,7 @@ import dotenv from "dotenv";
 
 import healthRoutes from "./routes/health.js";
 import merchantRoutes from "./routes/merchant.js";
+import {merchantProfilesRouter} from "./routes/merchantProfiles.js";
 import adminRoutes from "./routes/admin.js";
 import catalogRoutes from "./routes/catalog.js";
 import { customerOrderRoutes, merchantOrderRoutes } from "./routes/orders.js";
@@ -51,6 +52,7 @@ app.use(express.json());
 
 // Routes
 app.use("/health", healthRoutes);
+app.use("/api/v1/merchant", merchantProfilesRouter);
 app.use("/api/v1/merchant", merchantRoutes);
 app.use("/api/v1/orders", customerOrderRoutes);
 app.use("/api/v1/merchant/orders", merchantOrderRoutes);

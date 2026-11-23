@@ -6,6 +6,7 @@ on:
       - quality/l4-r1b-safe-cleanup-20261123
       - repair/l4-r1c-functional-contracts-20261123
       - quality/l4-r1d-contract-lint-20261123
+      - feature/l4-r1e-merchant-profile-persistence-20261123
   pull_request:
     branches: [main]
     paths:
@@ -29,6 +30,8 @@ jobs:
     env:
       PICKUP_WRITES_ENABLED: 'false'
       MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_SHOP_PROFILE_WRITES_ENABLED: 'false'
       ADMIN_RIDER_VERIFICATION_WRITES_ENABLED: 'false'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -51,6 +54,8 @@ jobs:
       VITE_PICKUP_ORDERING_ENABLED: 'false'
       PICKUP_WRITES_ENABLED: 'false'
       MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_SHOP_PROFILE_WRITES_ENABLED: 'false'
       VITE_MERCHANT_FAKE_ORDERS_ENABLED: 'false'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -83,6 +88,8 @@ jobs:
       L4_R1_CUSTOMER_CHECKOUT: ${{ github.workspace }}/customer-candidate
       PICKUP_WRITES_ENABLED: 'false'
       MERCHANT_AVAILABILITY_WRITES_ENABLED: 'false'
+      MERCHANT_ACCOUNT_PROFILE_WRITES_ENABLED: 'false'
+      MERCHANT_SHOP_PROFILE_WRITES_ENABLED: 'false'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
