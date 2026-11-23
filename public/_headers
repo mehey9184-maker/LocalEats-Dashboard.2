@@ -1,0 +1,8 @@
+/*
+  Content-Security-Policy: default-src 'self' data: blob:; connect-src 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; worker-src 'self' blob:; frame-src 'none'; manifest-src 'self'
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), notifications=()
+  X-Robots-Tag: noindex, nofollow, noarchive
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Frame-Options: DENY
+  Cache-Control: no-store

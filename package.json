@@ -1,6 +1,7 @@
 {
   "name": "localeats-merchant",
   "private": true,
+  "packageManager": "npm@10.9.2",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
