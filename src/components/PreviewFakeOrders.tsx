@@ -5,6 +5,11 @@ import {PickupOrderActions} from "./PickupOrderActions";
 import {OrderCustomerNote} from "./OrderCustomerNote";
 import {pickupCommand,type PickupAction} from "../services/merchantPickupPolicy";
 import {isMerchantPreviewSimulatorEnabled} from "../services/merchantPreviewSimulator";
+import {isIsolatedCloudflareMerchantPitchPreviewEnabled} from "../services/cloudflareMerchantPitchGate";
+import {
+  askForDemoBrowserNotificationPermission,createDemoAudioContext,
+  playOriginalDemoArrivalChime,showLocalExampleOrderNotification,
+} from "../services/cloudflareDemoIncomingAlerts";
 
 // The fake queue NEVER merges into actual orders, status counts, exports or storage.
 // Only small view-only cards are inserted into the four existing Kanban columns.
@@ -60,21 +65,64 @@ function playBrowserTestChime(){
   } catch { /* Audio is optional; no permission is requested. */ }
 }
 
-export function usePreviewFakeOrders(){
+export function usePreviewFakeOrders(soundAlertsEnabled:boolean){
   const [fakeOrders,setFakeOrders]=useState<PreviewTestPickupOrder[]>([]);
   const [incoming,setIncoming]=useState(false);
   const [simulationRunning,setSimulationRunning]=useState(false);
+  const [demoNotificationsEnabled,setDemoNotificationsEnabled]=useState(false);
   const waveIndexRef=useRef(0);
+  const demoAudioRef=useRef<AudioContext|null>(null);
+  const demoNotifyRef=useRef(false);
+  const soundEnabledRef=useRef(soundAlertsEnabled);
+  soundEnabledRef.current=soundAlertsEnabled;
   const itemsRef=useRef<PreviewTestPickupOrder[]>([]);
   const countRef=useRef(0);
   const timerRef=useRef<number|null>(null);
   const allowed=isMerchantPreviewSimulatorEnabled();
-  useEffect(()=>()=>{if(timerRef.current!==null)window.clearTimeout(timerRef.current);},[]);
+  useEffect(()=>()=> {
+    if(timerRef.current!==null)window.clearTimeout(timerRef.current);
+    const context=demoAudioRef.current;
+    if(context && context.state!=="closed")void context.close().catch(()=>{});
+  },[]);
+
+  // Audio must be unlocked from the merchant's actual tap (browser policy).
+  // It then plays once per fictional arrival wave, never once per fake ticket.
+  const prepareDemoAudio=()=>{
+    if(!isIsolatedCloudflareMerchantPitchPreviewEnabled() || !soundEnabledRef.current)return;
+    if(!demoAudioRef.current || demoAudioRef.current.state==="closed")
+      demoAudioRef.current=createDemoAudioContext();
+    else void demoAudioRef.current.resume().catch(()=>{});
+  };
+  const notifyDemoArrival=useCallback((count:number)=>{
+    if(!isIsolatedCloudflareMerchantPitchPreviewEnabled() || count<1 ||
+       document.visibilityState!=="visible")return;
+    if(soundEnabledRef.current)playOriginalDemoArrivalChime(demoAudioRef.current);
+    if(demoNotifyRef.current)showLocalExampleOrderNotification(count);
+  },[]);
+  const toggleDemoNotifications=async()=>{
+    if(!isIsolatedCloudflareMerchantPitchPreviewEnabled())return;
+    if(demoNotifyRef.current){
+      demoNotifyRef.current=false;
+      setDemoNotificationsEnabled(false);
+      toast.info("DEMO ONLY: browser example alerts turned off.",{duration:2500});
+      return;
+    }
+    const permission=await askForDemoBrowserNotificationPermission();
+    if(permission!=="granted"){
+      toast.info("Example system alerts unavailable here. Fictional in-app alerts and sound still work.",{duration:4500});
+      return;
+    }
+    demoNotifyRef.current=true;
+    setDemoNotificationsEnabled(true);
+    toast.info("DEMO ONLY: browser example alerts enabled while this page is open — not real push.",{duration:4500});
+  };
 
   const simulateIncoming=(soundEnabled:boolean)=>{
     if(!isMerchantPreviewSimulatorEnabled()||timerRef.current!==null)return;
     setIncoming(true);
-    if(soundEnabled)playBrowserTestChime();
+    soundEnabledRef.current=soundEnabled;
+    if(isIsolatedCloudflareMerchantPitchPreviewEnabled())prepareDemoAudio();
+    else if(soundEnabled)playBrowserTestChime();
     // Delay intentionally mimics a new incoming order without calling any API.
     timerRef.current=window.setTimeout(()=>{
       timerRef.current=null;
@@ -82,6 +130,7 @@ export function usePreviewFakeOrders(){
       countRef.current+=1;
       const next=[makeFakeOrder(countRef.current),...itemsRef.current].slice(0,60);
       itemsRef.current=next;setFakeOrders(next);setIncoming(false);
+      notifyDemoArrival(1);
       toast.info("FAKE pickup order arrived — TEST ONLY. No real order was created.",{duration:3500});
     },600);
   };
@@ -104,8 +153,9 @@ export function usePreviewFakeOrders(){
     const next=[...wave,...active,...history].slice(0,60);
     itemsRef.current=next;
     setFakeOrders(next);
-    toast.info(`TEST ONLY: ${count} fictional pickup order${count===1?"":"s"} arrived.`,{duration:2200});
-  },[]);
+    notifyDemoArrival(count);
+    toast.info(`DEMO ONLY: ${count} fictional pickup order${count===1?"":"s"} arrived.`,{duration:2200});
+  },[notifyDemoArrival]);
 
   useEffect(()=>{
     if(!simulationRunning)return;
@@ -128,7 +178,9 @@ export function usePreviewFakeOrders(){
       setIncoming(false);
     }
     waveIndexRef.current=0;
-    if(soundEnabled)playBrowserTestChime();
+    soundEnabledRef.current=soundEnabled;
+    if(isIsolatedCloudflareMerchantPitchPreviewEnabled())prepareDemoAudio();
+    else if(soundEnabled)playBrowserTestChime();
     addSimulationWave(1);
     setSimulationRunning(true);
   };
@@ -163,7 +215,8 @@ export function usePreviewFakeOrders(){
     // This alone does not prove a specific INP value: validate in an actual browser.
     startTransition(()=>setFakeOrders(next));
   },[]);
-  return {allowed,fakeOrders,incoming,simulationRunning,startSimulation,stopSimulation,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction};
+  return {allowed,fakeOrders,incoming,simulationRunning,raiseDemoNotifications:toggleDemoNotifications,
+    demoNotificationsEnabled,startSimulation,stopSimulation,simulateIncoming,simulateBatch,clearFakeOrders,onDemoAction};
 }
 
 export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDemoAction,variant="expediter"}:{
@@ -199,9 +252,11 @@ export const PreviewFakeOrderCard=memo(function PreviewFakeOrderCard({order,onDe
   </article>;
 });
 
-export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear,simulationRunning,onStartSimulation,onStopSimulation}:{
+export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear,simulationRunning,onStartSimulation,onStopSimulation,
+  demoNotificationsEnabled,onToggleDemoNotifications}:{
   incoming:boolean;count:number;onSimulate:()=>void;onClear:()=>void;
   simulationRunning:boolean;onStartSimulation:()=>void;onStopSimulation:()=>void;
+  demoNotificationsEnabled:boolean;onToggleDemoNotifications:()=>void;
 }){
   if(!isMerchantPreviewSimulatorEnabled())return null;
   return <div data-testid="fake-incoming-controls" className="flex flex-wrap items-center gap-2">
@@ -217,6 +272,14 @@ export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear,simul
       className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold">
       {simulationRunning?"Stop simulation":"Start simulation"}
     </button>
+    {isIsolatedCloudflareMerchantPitchPreviewEnabled()&&
+      <button type="button" onClick={onToggleDemoNotifications}
+        aria-pressed={demoNotificationsEnabled}
+        aria-label={demoNotificationsEnabled?"Disable simulated browser notifications":"Enable simulated browser notifications"}
+        title="Example notification only while the demo is open. Not real push delivery."
+        className="inline-flex min-h-11 items-center gap-1 rounded-full border border-amber-400 bg-amber-50 text-amber-950 px-3 py-2 text-xs font-bold">
+        {demoNotificationsEnabled?"Demo alerts on":"Try demo alert"}
+      </button>}
     {count>0&&<button type="button" onClick={onClear} className="inline-flex min-h-11 items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300" aria-label="Clear all fake orders">
       <X size={13} aria-hidden="true"/> Clear tests ({count})
     </button>}
