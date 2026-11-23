@@ -67,10 +67,10 @@ router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res
   try {
     const uid = req.authUser?.uid;
 
-    if (!uid) {
+    if (!uid || req.authUser?.isAnonymous) {
       res.status(401).json({
         success: false,
-        error: "Unauthorized",
+        error: "Merchant sign-in is required before shop submission",
       });
       return;
     }
@@ -313,6 +313,20 @@ router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res
       res.status(500).json({
         success: false,
         error: "Internal Server Error",
+      });
+      return;
+    }
+
+    // Never infer approval or active status from a successful database call.
+    // A newly created shop must be owned by this authenticated merchant and
+    // persist as pending/inactive until the separate approval action.
+    if(!newShop || typeof newShop.id!=="string" || !newShop.id ||
+       newShop.owner_id!==uid || newShop.approval_status!=="pending" ||
+       newShop.is_active!==false || newShop.archived_at!==null){
+      res.status(503).json({
+        success:false,
+        code:"MERCHANT_SHOP_CREATE_UNCONFIRMED",
+        error:"Shop submission could not be verified. Refresh before trying again.",
       });
       return;
     }
