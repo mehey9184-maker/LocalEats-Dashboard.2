@@ -126,7 +126,7 @@ export function OrdersStyleBoard({entries,completedEntries=[],style,viewMode,onD
    {stageFilter==="all"&&<div role="tablist" aria-label="Mobile kitchen lane" className="flex md:hidden gap-1.5 overflow-x-auto pb-2 max-w-full">
      {LANES.map(lane=><button key={lane.key} type="button" role="tab"
        aria-selected={mobileStage===lane.key} onClick={()=>setMobileStage(lane.key)}
-       className={`shrink-0 min-h-10 rounded-full border px-3 text-xs font-bold ${mobileStage===lane.key?"bg-primary text-on-primary border-primary":"bg-surface-container-low border-outline-variant/10 text-on-surface"}`}>
+       className={`shrink-0 min-h-11 rounded-full border px-3 text-xs font-bold ${mobileStage===lane.key?"bg-primary text-on-primary border-primary":"bg-surface-container-low border-outline-variant/10 text-on-surface"}`}>
        {lane.short} {counts[lane.key].real+counts[lane.key].fake}
      </button>)}
    </div>}
