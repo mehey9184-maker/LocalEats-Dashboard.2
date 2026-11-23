@@ -83,9 +83,13 @@ try {
    assert.ok(record.externalResponses.every(r=>!/localeatssa|firebase|supabase|google\.com/.test(r.url)),"unexpected external data exchange");
    await page.screenshot({path:DIR+"/"+id+"-pickup-completed.png",animations:"disabled"});
    await page.reload({waitUntil:"domcontentloaded",timeout:30000});
-   await assertVisible(page);
-   await page.getByRole("button",{name:"Orders"}).first().click({timeout:10000});
-   await start.waitFor({timeout:12000});
+   // A merchant should be able to resume the Orders tab after refresh.
+   // Unlike a new session, this may not return to Home automatically.
+   await page.getByRole("button",{name:"Orders"}).first().waitFor({state:"visible",timeout:15000});
+   if(await start.count()===0){
+     await page.getByRole("button",{name:"Orders"}).first().click({timeout:10000});
+   }
+   await start.waitFor({state:"visible",timeout:12000});
    assert.equal(await page.getByTestId("fake-incoming-order").count(),0,"fake orders must reset on refresh");
    record.steps.push("Refresh clears fictional state");
    const res=await page.request.get(HOST+"/api/v1/merchant/orders");
