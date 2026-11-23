@@ -1,0 +1,39 @@
+name: CF-W2F — LIVE Cloudflare original Merchant mobile layout acceptance
+on:
+  push:
+    branches:
+      - review/cf-w2f-live-preview-acceptance-20261123
+permissions:
+  contents: read
+jobs:
+  live-responsive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Verify source guards and original Orders layout
+        run: node --test tests/cf-w2f-mobile-orders-polish.test.mjs
+      - name: Install pinned dependencies
+        run: |
+          npm ci --no-audit --no-fund
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.55.1
+      - name: Install Chromium for live viewport checks
+        run: npx playwright install --with-deps chromium
+      - name: Actual deployed Cloudflare URL, fake-order manual flow and no writes
+        env:
+          CF_W2F_LIVE: 'true'
+        run: node tests/cf-w2f-mobile-orders-browser.mjs
+      - name: Retain screenshots of fake-only public preview
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cf-w2f-live-mobile-vendor-screenshots
+          path: artifacts/cf-w2f-mobile-orders
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: No merge or deployment
+        run: echo "CF_W2F_LIVE_HOST_BROWSER_ONLY_NO_DEPLOYMENT_NO_REAL_ORDERS"
