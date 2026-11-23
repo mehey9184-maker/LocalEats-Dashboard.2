@@ -85,6 +85,9 @@ import { useShopLocation } from "./hooks/useShopLocation";
 import { useAppNavigation } from "./hooks/useAppNavigation";
 import { usePageNotificationAttention } from "./hooks/usePageNotificationAttention";
 import { isMerchantPreviewSimulatorEnabled } from "./services/merchantPreviewSimulator";
+import {
+  CF_PITCH_DEMO_SHOP,CF_PITCH_DEMO_USER,isIsolatedCloudflareMerchantPitchPreviewEnabled,
+} from "./services/cloudflareMerchantPitchGate";
 import { useAppInitializer } from "./hooks/useAppInitializer";
 import { usePushNotifications } from "./hooks/usePushNotifications";
 import { onForegroundMessage } from "./lib/firebase";
@@ -200,12 +203,13 @@ L.Icon.Default.mergeOptions({
 });
 
 function App() {
+  const isolatedPitch=isIsolatedCloudflareMerchantPitchPreviewEnabled();
   console.log("[App] App component function executing");
   const { subscribeWithAuthGuard } = useAuthGuard();
-  const [isSessionChecking, setIsSessionChecking] = useState(true);
-  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isSessionChecking, setIsSessionChecking] = useState(!isolatedPitch);
+  const [isAuthReady, setIsAuthReady] = useState(isolatedPitch);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isolatedPitch);
   const [authView, setAuthView] = useState<"signin" | "signup">("signin");
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [signupEmail] = useState<string>("");
@@ -326,10 +330,20 @@ function App() {
     isAudioEnabled,
     enableAudio,
   } = useKitchenAlerter(orders);
-  const [shops, setShops] = useState<Shop[]>([]);
+  const [shops, setShops] = useState<Shop[]>(()=>{
+    if(isolatedPitch){
+      // Register only a synthetic, non-existent shop identity on the exact
+      // read-only Cloudflare demo host. No API authorization is implied.
+      registerVerifiedShopId(CF_PITCH_DEMO_USER.id,CF_PITCH_DEMO_SHOP.id);
+      return [CF_PITCH_DEMO_SHOP];
+    }
+    return [];
+  });
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [user, setUser] = useState<User | null>(null);
-  const [merchantShopGate, setMerchantShopGate] = useState<MerchantShopGateState>({ status: "checking" });
+  const [user, setUser] = useState<User | null>(isolatedPitch?CF_PITCH_DEMO_USER:null);
+  const [merchantShopGate, setMerchantShopGate] = useState<MerchantShopGateState>(
+    isolatedPitch?{status:"ready",shop:CF_PITCH_DEMO_SHOP}:{status:"checking"},
+  );
     const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [isPwaInstalled, setIsPwaInstalled] = useState(() => appAlreadyInstalled());
   const [isPwaInstallAvailable, setIsPwaInstallAvailable] = useState(() => Boolean(availableInstallEvent()));
@@ -429,6 +443,7 @@ function App() {
   }, [acceptAuthoritativeMerchantShop]);
 
   const refreshAuthoritativeMerchantShop = useCallback(async () => {
+    if(isolatedPitch)return; // Never resolve a live shop during an isolated pitch.
     const firebaseUid = firebaseAuth.currentUser?.uid;
     if (!firebaseUid) {
       setOrders([]);
@@ -527,6 +542,7 @@ function App() {
 
   // --- Persistent Auth Session Sync ---
   useEffect(() => {
+    if(isolatedPitch)return; // Do not open a real Firebase/Supabase user session.
     const syncUserSession = (u: User) => {
       setUser(u);
       try {
@@ -670,6 +686,7 @@ function App() {
   }, [soundVolume]);
 
   useEffect(() => {
+    if(isolatedPitch)return; // Only fictitious in-memory identity in this preview.
     // Read cached UX preferences (like dark mode) without restoring the user session
     try {
       const cached = localStorage.getItem("localeats_user_session");
@@ -1166,6 +1183,11 @@ function App() {
   },[orderReadScope]);
 
   const fetchOrders = useCallback(async () => {
+    if(isolatedPitch){
+      setOrders([]);
+      setOrderReadStatus({state:"fresh",lastSuccessAt:Date.now()});
+      return;
+    }
     if (!orderReadScope || !orderReadShopId) {
       setOrders([]);
       return;
@@ -1226,6 +1248,11 @@ function App() {
 
 
   const fetchAllMenuItems = useCallback(async () => {
+    if(isolatedPitch){
+      setMenuItems([]);
+      setMenuReadStatus({scope:menuReadScope,state:"ready"});
+      return;
+    }
     const request = ++menuReadRequest.current;
     if (!user || merchantShopGate.status !== "ready" || !currentShop) { setMenuItems([]);setMenuReadStatus({scope:null,state:"loading"});return; }
     // Keep same-shop verified menu facts visible during a background refresh.
@@ -1238,6 +1265,7 @@ function App() {
   useEffect(()=>{void fetchAllMenuItems();return ()=>{menuReadRequest.current++;};},[fetchAllMenuItems]);
 
   const fetchShops = useCallback(async () => {
+    if(isolatedPitch)return; // Never fetch authenticated live merchant data.
     if (!user) {
       clearVerifiedShopOwnership();
       clearMerchantShopOperationalCache();
