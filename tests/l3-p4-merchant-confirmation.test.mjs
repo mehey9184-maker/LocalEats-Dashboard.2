@@ -12,11 +12,11 @@ const order={id:"fixture-order-1",shop_id:"fixture-owned-shop",delivery_type:"co
   items:[{name:"Kota",quantity:1,unit_price:25,line_total:25}]};
 
 test("only a resolved, authenticated merchant API transition can announce server confirmation",()=>{
- const transition=code.indexOf("await MerchantApi.transitionPickupOrder(order,action,extra);");
- const confirmation=code.indexOf("setConfirmation({orderId:String(order.id),revision:order.revision,action:label});");
+ const transition=code.indexOf("await MerchantApi.transitionPickupOrder(apiOrder,action,extra);");
+ const confirmation=code.indexOf("setConfirmation({orderId:String(order.id),revision:Number(order.revision),action:label});");
  const event=code.indexOf('window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));');
  assert.ok(transition>=0&&confirmation>transition&&event>confirmation);
- const retry=code.indexOf("await MerchantApi.retryPendingPickupOrder(order);");
+ const retry=code.indexOf("await MerchantApi.retryPendingPickupOrder(apiOrder);");
  const retryConfirmation=code.indexOf('action:"Previous pickup action"');
  assert.ok(retry>=0&&retryConfirmation>retry);
  assert.match(code,/catch\(e\)/);
