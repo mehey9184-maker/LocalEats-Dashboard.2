@@ -75,7 +75,7 @@ export function usePageNotificationAttention({
     stockBaseline.current=null;
     for(const timer of timers.current.values())clearTimeout(timer);
     timers.current.clear();
-    setPulses({});
+    queueMicrotask(()=>{if(scopeRef.current===scope)setPulses({});});
   },[scope]);
 
   useEffect(()=>{
@@ -102,7 +102,7 @@ export function usePageNotificationAttention({
     if(last!==activeTab && Object.values(TOPIC_PAGE).includes(activeTab as AttentionPage)){
       // A navigation tap stops the attention movement. Underlying order/stock
       // counts remain authoritative and are not marked read merely by visiting.
-      stopPage(activeTab as AttentionPage);
+      queueMicrotask(()=>{if(previousTab.current===activeTab)stopPage(activeTab as AttentionPage);});
     }
   },[activeTab,stopPage]);
 
