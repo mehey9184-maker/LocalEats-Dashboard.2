@@ -207,17 +207,17 @@ export function PreviewFakeOrderTrigger({incoming,count,onSimulate,onClear,simul
   return <div data-testid="fake-incoming-controls" className="flex flex-wrap items-center gap-2">
     <button type="button" onClick={onSimulate} disabled={incoming}
       aria-label="Simulate a fake incoming pickup order"
-      className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold disabled:opacity-60">
+      className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold disabled:opacity-60">
       <FlaskConical size={14} aria-hidden="true"/> {incoming?"Incoming…":"Simulate order"}
     </button>
     <button type="button"
       onClick={simulationRunning?onStopSimulation:onStartSimulation}
       aria-pressed={simulationRunning}
       aria-label={simulationRunning?"Stop fictional order arrivals":"Start fictional order arrivals"}
-      className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold">
+      className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 text-amber-950 px-3 py-2 text-xs font-bold">
       {simulationRunning?"Stop simulation":"Start simulation"}
     </button>
-    {count>0&&<button type="button" onClick={onClear} className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300" aria-label="Clear all fake orders">
+    {count>0&&<button type="button" onClick={onClear} className="inline-flex min-h-11 items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300" aria-label="Clear all fake orders">
       <X size={13} aria-hidden="true"/> Clear tests ({count})
     </button>}
   </div>;
