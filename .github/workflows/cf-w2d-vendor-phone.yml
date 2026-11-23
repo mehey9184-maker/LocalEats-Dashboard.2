@@ -1,0 +1,43 @@
+name: CF-W2D — Live vendor phone emulation (NO deploy)
+on:
+  push:
+    branches:
+      - review/cf-w2d-vendor-phone-rehearsal-20261123
+  pull_request:
+    paths:
+      - 'docs/CF-W2D-vendor-phone-rehearsal.md'
+      - 'tests/cf-w2d-live-vendor-phone.mjs'
+      - '.github/workflows/cf-w2d-vendor-phone.yml'
+permissions:
+  contents: read
+jobs:
+  live-vendor-phone:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Verify review script never uses real merchant auth, endpoints or update tools
+        run: |
+          node -e "const fs=require('fs');const p=fs.readFileSync('tests/cf-w2d-live-vendor-phone.mjs','utf8');if(!p.includes('localeats-merchant-dashboard-preview.mehey9184.workers.dev')||/github\.com\/repos|dashboard\.localeatssa\.co\.za|createClient\(|MerchantApi|firebase\.auth|\b(?:POST|PUT|PATCH|DELETE)\b/.test(p))process.exit(1)"
+      - name: Install existing front-end dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install pinned Playwright chromium and WebKit only
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.55.1
+          npx playwright install --with-deps chromium webkit
+      - name: Independently verify actual deployed Cloudflare URL across touch/mobile/desktop
+        run: node tests/cf-w2d-live-vendor-phone.mjs
+      - name: Save synthetic screenshots and validation results (no personal data)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cf-w2d-vendor-device-rehearsal
+          path: artifacts/cf-w2d-phone
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Do not deploy or modify Production
+        run: echo "CF_W2D_IS_BROWSER_EMULATION_ONLY_NO_DEPLOY_NO_PRODUCTION_CHANGES_REAL_PHONE_PENDING"
