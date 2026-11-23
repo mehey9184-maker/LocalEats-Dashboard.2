@@ -34,7 +34,7 @@ export function mapApiOrder(order:unknown):Record<string,unknown> {
   throw new Error("The API returned an invalid pickup total.");
  if(!Array.isArray(value.items) || !value.items.length || value.items.length>50)
   throw new Error("Pickup item details are unavailable. Refresh before preparing the order.");
- const items=value.items.map((item:unknown)=>{
+ const items=value.items.map((item:unknown): PickupSnapshot & {price:number} =>{
   const line=asSnapshot(item);
   if(typeof line.name!=="string" || typeof line.quantity!=="number" || !Number.isSafeInteger(line.quantity) || line.quantity<1 ||
    typeof line.unit_price!=="number" || !Number.isFinite(line.unit_price) || line.unit_price<0 ||
