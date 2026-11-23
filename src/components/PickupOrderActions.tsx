@@ -115,7 +115,7 @@ export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=
       {pickupUnpaidWaitingMinutes(order)!==null && " · "+pickupUnpaidWaitingMinutes(order)+" min since last status update"}
     </p>
   )}
-  {!recoveryOnly && !needsFollowUp && callHref && <a className="text-xs underline" href={callHref}>Optional call: {order.phone}</a>}
+  {!recoveryOnly && !needsFollowUp && callHref && <a className="text-xs underline" href={callHref}>Optional call: {"phone" in order && typeof order.phone==="string" ? order.phone : ""}</a>}
   {!handoverPending && actions.length>0 && <div role="group" aria-label="Pickup order actions" className="flex w-full items-center gap-2 min-w-0">
     {actions.map(label=>{
       const reject=label==="Reject";
