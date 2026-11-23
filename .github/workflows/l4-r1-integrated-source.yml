@@ -8,6 +8,7 @@ on:
       - quality/l4-r1d-contract-lint-20261123
       - feature/l4-r1e-merchant-profile-persistence-20261123
       - feature/l4-r1f-vendor-pitch-acceptance-20261123
+      - feature/l4-r1g-cloudflare-readonly-workshop-20261123
   pull_request:
     branches: [main]
     paths:

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en-ZA">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#fff9f3">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <title>LocalEats · Fictional Merchant Workshop</title>
+  <link rel="stylesheet" href="./workshop.css">
+  <script src="./workshop.js" defer></script>
+</head>
+<body>
+  <div class="ribbon" role="status"><span class="dot"></span> READ-ONLY WORKSHOP <span class="sep">·</span> FICTIONAL ORDERS ONLY <span class="sep">·</span> NO CUSTOMER DATA</div>
+  <div class="app">
+    <aside class="sidebar" aria-label="Workshop navigation">
+      <a class="logo" href="#home" aria-label="LocalEats workshop home"><span class="mark">LE</span><span>Local<span class="orange">Eats</span><small>MERCHANT WORKSHOP</small></span></a>
+      <div class="sidebar-group">
+        <p class="eyebrow">YOUR DEMONSTRATION</p>
+        <a class="nav active" href="#home" aria-current="page"><span aria-hidden="true">⌂</span> Overview</a>
+        <a class="nav" href="#orders"><span aria-hidden="true">▤</span> Practice orders</a>
+        <a class="nav" href="#menu"><span aria-hidden="true">☷</span> Sample menu</a>
+        <a class="nav" href="#pitch"><span aria-hidden="true">✦</span> Vendor briefing</a>
+      </div>
+      <div class="side-note"><strong>Preview only</strong><p>No sign-in. No merchant accounts. No Supabase, Firebase, payment, or real-order connection.</p></div>
+    </aside>
+    <main id="home" class="main">
+      <header class="topbar"><span class="eyebrow">LOCAL FOOD. LOCAL BUSINESS.</span><span class="preview-pill">Demo environment</span></header>
+      <section class="hero" aria-labelledby="welcome-heading">
+        <div class="hero-copy"><span class="eyebrow light">PICKUP-FIRST PILOT</span><h1 id="welcome-heading">Your food.<br>More neighbours.</h1><p>See how LocalEats can help customers browse a neighbourhood food shop, place a pickup order and pay at the counter—after public launch approval.</p><a class="button primary" href="#orders">Try a fictional order <span aria-hidden="true">→</span></a></div>
+        <div class="hero-illustration" aria-hidden="true"><div class="food-art"><span class="bread">◕</span><span class="filling">🥪</span></div><span class="hero-tag">R25 Kota · Example only</span></div>
+      </section>
+      <section class="shop-card" aria-label="Sample shop"><div class="shop-icon" aria-hidden="true">🏪</div><div><p class="eyebrow">SYNTHETIC SHOP</p><h2>Neighbourhood Kota Kitchen</h2><p>Ivory Park · Illustrative business profile</p></div><span class="pending">Not a live shop</span></section>
+      <section id="orders" class="section" aria-labelledby="orders-heading"><div class="section-heading"><div><p class="eyebrow">LEARN THE PICKUP FLOW</p><h2 id="orders-heading">Practice orders</h2><p>Click a stage to see the journey. Every order exists only in this browser session.</p></div><button id="create-order" class="button primary" type="button">+ Simulate order</button></div>
+        <div class="metrics"><div><small>New</small><strong id="count-pending">0</strong></div><div><small>Preparing</small><strong id="count-preparing">0</strong></div><div><small>Ready</small><strong id="count-ready">0</strong></div><div><small>Collected</small><strong id="count-collected">0</strong></div></div>
+        <div class="orders-head"><span>FICTIONAL TICKETS</span><button id="clear-orders" type="button" class="text-button">Reset demo</button></div>
+        <div id="orders-list" class="order-list"><div class="empty"><div class="empty-icon" aria-hidden="true">🧾</div><h3>No example orders yet</h3><p>Simulate an order to practise the shop's pickup workflow.</p></div></div>
+        <p class="safety-note">Nothing here creates a real order, takes a payment, contacts a customer, sends a notification, or dispatches a rider.</p>
+      </section>
+      <section id="menu" class="section" aria-labelledby="menu-heading"><div class="section-heading"><div><p class="eyebrow">SAMPLE CATALOGUE</p><h2 id="menu-heading">What your menu could look like</h2><p>Illustrative items and prices—not a real vendor's menu.</p></div></div><div class="menu-grid"><article><div class="food-emoji">🥪</div><h3>Classic Kota</h3><p>Bread, potato chips &amp; favourites</p><strong>R25.00</strong></article><article><div class="food-emoji">🍟</div><h3>Street Chips</h3><p>A quick neighbourhood snack</p><strong>R20.00</strong></article><article><div class="food-emoji">🥤</div><h3>Cold Drink</h3><p>Refreshing with your meal</p><strong>R15.00</strong></article></div></section>
+      <section id="pitch" class="section" aria-labelledby="pitch-heading"><div class="section-heading"><div><p class="eyebrow">VENDOR BRIEFING</p><h2 id="pitch-heading">What happens when you join?</h2><p>An accurate preview of the pickup-first pilot.</p></div></div><div class="steps"><article><span>01</span><h3>Register a shop</h3><p>Enter business information, confirm the map location, upload a photo and submit for review.</p></article><article><span>02</span><h3>Get approved</h3><p>LocalEats must approve the real shop before customers can see it. Approval is never automatic.</p></article><article><span>03</span><h3>Prepare for pickup</h3><p>After live release, customers can order approved menu items for collection and pay at the shop.</p></article><article><span>04</span><h3>Grow carefully</h3><p>Share a verified shop link or QR flyer. Delivery riders and LocalPay are future features.</p></article></div></section>
+      <footer>LocalEats · Vendor workshop · This standalone preview is not the customer app or a live merchant dashboard.</footer>
+    </main>
+  </div>
+  <div id="announcement" class="sr-only" role="status" aria-live="polite"></div>
+</body>
+</html>
