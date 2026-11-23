@@ -48,8 +48,25 @@ export class SupabaseCatalogRepository implements CatalogRepository {
   }
 }
 
-export const makeCatalogRouter = (repository: CatalogRepository): Router => {
+/**
+ * Optional PUBLIC_CATALOG_PILOT_SHOP_IDS (comma separated IDs).
+ * Absent: existing approved/nonarchived catalog behavior.
+ * Present but empty/invalid: publish no shops (fail closed, never all shops).
+ * This controls public discovery only; it is NOT an order-admission gate.
+ */
+export function parsePublicCatalogPilotIds(value:string|undefined):ReadonlySet<string>|null {
+  if(value===undefined)return null;
+  return new Set(value.split(",").map(id=>id.trim())
+    .filter(id=>/^[A-Za-z0-9_-]{1,128}$/.test(id)));
+}
+
+export const makeCatalogRouter = (
+  repository: CatalogRepository,
+  pilotIds:ReadonlySet<string>|null=parsePublicCatalogPilotIds(process.env.PUBLIC_CATALOG_PILOT_SHOP_IDS)
+): Router => {
   const router = Router();
+  const isPublished = (id:unknown):boolean =>
+    typeof id==="string" && (pilotIds===null || pilotIds.has(id));
 
   router.get("/pickup-shops", async (req:Request,res:Response):Promise<void>=>{
     const rawLat=req.query.lat,rawLng=req.query.lng;
@@ -60,6 +77,7 @@ export const makeCatalogRouter = (repository: CatalogRepository): Router => {
     }
     try {
       const shops=(await repository.getApprovedShops()).flatMap(shop=>{
+        if(!isPublished(shop.id))return [];
         const lat=shop.lat ?? shop.latitude,lng=shop.lng ?? shop.longitude;
         // Approved closed shops remain discoverable for menu browsing, but
         // pickup quote/create still require the authoritative open state.
@@ -74,7 +92,7 @@ export const makeCatalogRouter = (repository: CatalogRepository): Router => {
 
   router.get("/shops", async (req: Request, res: Response): Promise<void> => {
     try {
-      const shops = await repository.getApprovedShops();
+      const shops = (await repository.getApprovedShops()).filter(shop=>isPublished(shop.id));
       res.status(200).json({
         success: true,
         shops,
@@ -96,7 +114,7 @@ export const makeCatalogRouter = (repository: CatalogRepository): Router => {
         return;
       }
 
-      const shop = await repository.getApprovedShopById(shopId.trim());
+      const shop = isPublished(shopId.trim()) ? await repository.getApprovedShopById(shopId.trim()) : null;
 
       if (!shop) {
         res.status(404).json({
@@ -128,7 +146,7 @@ export const makeCatalogRouter = (repository: CatalogRepository): Router => {
       }
 
       // First, verify the shop exists and is public
-      const shop = await repository.getApprovedShopById(shopId.trim());
+      const shop = isPublished(shopId.trim()) ? await repository.getApprovedShopById(shopId.trim()) : null;
 
       if (!shop) {
         res.status(404).json({
