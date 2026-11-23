@@ -1,0 +1,39 @@
+name: CF-W2E — LIVE Cloudflare demo alert verification (no deploy)
+on:
+  push:
+    branches:
+      - review/cf-w2e-live-smoke-20261123
+permissions:
+  contents: read
+jobs:
+  actual-cloudflare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Original fictional alert contract
+        run: node --test tests/cf-w2e-honest-demo-alerts.test.mjs
+      - name: Install only existing test dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install Chromium for actual live Cloudflare tests
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.55.1
+          npx playwright install --with-deps chromium
+      - name: Test real deployed Cloudflare Worker with browser and mock OS notification sink
+        env:
+          CF_W2E_LIVE: 'true'
+        run: node tests/cf-w2e-honest-demo-alerts-browser.mjs
+      - name: Retain fictional screenshots and local notification-call evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cf-w2e-live-demo-alerts-browser
+          path: artifacts/cf-w2e-alerts
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: No live production orders or deploys
+        run: echo "CF_W2E_LIVE_BROWSER_ONLY_NO_CLOUDFLARE_DEPLOY_NO_REAL_PUSH"
