@@ -145,7 +145,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const commonFocus="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
   return (
     <main data-testid="orders-focused-workspace" className="space-y-3 md:space-y-4 pb-28 md:pb-10 min-w-0 max-w-full">
-      <div className="rounded-[1.4rem] border border-outline-variant/10 bg-surface-container-lowest dark:bg-zinc-950 px-3 py-3 sm:px-5 sm:py-4 shadow-sm space-y-3">
+      <div data-testid="orders-mobile-header" className="rounded-[1.4rem] border border-outline-variant/10 bg-surface-container-lowest dark:bg-zinc-950 px-3 py-3 sm:px-5 sm:py-4 shadow-sm space-y-3">
         {/* The same original controls, laid out as a compact mobile header. */}
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 sm:flex sm:flex-wrap sm:justify-between sm:gap-3">
           <div className="flex items-center gap-2 min-w-0">
@@ -266,7 +266,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
         </p>
       ) : null}
 
-      <div className="bg-surface-container-lowest dark:bg-zinc-950 border border-outline-variant/10 rounded-[1.4rem] p-3 sm:p-4 shadow-sm space-y-3 min-w-0">
+      <div data-testid="orders-queue-card" className="bg-surface-container-lowest dark:bg-zinc-950 border border-outline-variant/10 rounded-[1.4rem] p-3 sm:p-4 shadow-sm space-y-3 min-w-0">
         <div className="flex items-center justify-between gap-2">
           <div>
             <h2 className="font-headline text-base sm:text-lg font-bold text-on-surface">{viewMode==="active"?"Kitchen queue":"Order history"}</h2>
