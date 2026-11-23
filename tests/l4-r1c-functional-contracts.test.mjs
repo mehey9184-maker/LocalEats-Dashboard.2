@@ -9,37 +9,37 @@ const bridge = read("src/lib/supabase.ts");
 const monitor = read("src/components/ConnectivityMonitor.tsx");
 const marketing = read("src/components/Marketing.tsx");
 
-test("L4-R1C queued printer retry receives actual queued receipt bytes", () => {
-  assert.match(orders, /retryQueuedPrintDirect\\?: \\(job: QueuedPrintJob\\) => Promise<void>/);
-  assert.match(orders, /onClick=\\{\\(\\) => retryQueuedPrintDirect\\?\\.\\(job\\)\\}/);
-  assert.doesNotMatch(orders, /retryQueuedPrintDirect\\?\\.\\(job\\.id\\)/);
-  assert.match(app, /const bytes = new Uint8Array\\(job\\.binaryData\\)/);
+test("L4-R1C queued printer retry receives the queued receipt bytes", () => {
+  assert.ok(orders.includes("retryQueuedPrintDirect?: (job: QueuedPrintJob) => Promise<void>"));
+  assert.ok(orders.includes("onClick={() => retryQueuedPrintDirect?.(job)}"));
+  assert.ok(!orders.includes("retryQueuedPrintDirect?.(job.id)"));
+  assert.ok(app.includes("const bytes = new Uint8Array(job.binaryData)"));
 });
 
-test("L4-R1C bulk delete cannot call unaudited direct-database order deletion", () => {
-  assert.match(app, /Bulk order deletion is unavailable during the pickup pilot/);
-  assert.doesNotMatch(app, /OrderService\\.deleteAllOrdersForShops/);
-  assert.doesNotMatch(app, /Confirm Delete All/);
+test("L4-R1C bulk delete is unavailable without an approved retention API", () => {
+  assert.ok(app.includes("Bulk order deletion is unavailable during the pickup pilot"));
+  assert.ok(!app.includes("OrderService.deleteAllOrdersForShops"));
+  assert.ok(!app.includes("Confirm Delete All"));
 });
 
-test("L4-R1C legacy profile updates fail closed rather than falsely report saved", () => {
-  assert.match(bridge, /async updateUser\\(attributes\\?: Record<string, unknown>\\)/);
-  assert.match(bridge, /data: \\{ user: null \\}/);
-  assert.match(bridge, /No changes were saved/);
-  assert.doesNotMatch(bridge, /data: \\{ user: auth\\.currentUser, \\.\\.\\.attributes \\}, error: null/);
+test("L4-R1C legacy profile updates fail closed instead of falsely saving", () => {
+  assert.ok(bridge.includes("async updateUser(attributes?: Record<string, unknown>)"));
+  assert.ok(bridge.includes("data: { user: null }"));
+  assert.ok(bridge.includes("No changes were saved."));
+  assert.ok(!bridge.includes("data: { user: auth.currentUser, ...attributes }, error: null"));
 });
 
-test("L4-R1C availability uses API authority, not injected Firestore writes", () => {
-  assert.doesNotMatch(app, /getFirestoreShopById/);
-  assert.match(app, /syncShopAvailability\\(\\{/);
+test("L4-R1C availability only invokes the server-authoritative API", () => {
+  assert.ok(!app.includes("getFirestoreShopById"));
+  assert.ok(app.includes("syncShopAvailability({"));
   const availability = read("src/utils/availabilityChecker.ts");
-  assert.match(availability, /MerchantApi\\.setAvailability\\(/);
+  assert.ok(availability.includes("MerchantApi.setAvailability("));
 });
 
-test("L4-R1C source interfaces are typed to their actual adapters", () => {
-  assert.match(monitor, /typeof import\\('\\.\\.\\/lib\\/supabase'\\)\\.supabase/);
-  assert.match(monitor, /ReturnType<typeof getFreshChannel>/);
-  assert.doesNotMatch(monitor, /supabase: SupabaseClient;/);
-  assert.match(marketing, /import \\{ Shop, MenuItem, Order, type User \\} from "\\.\\.\\/types"/);
-  assert.doesNotMatch(marketing, /import type \\{ User \\} from "@supabase\\/supabase-js"/);
+test("L4-R1C type interfaces reflect actual Firebase and merchant adapters", () => {
+  assert.ok(monitor.includes("typeof import('../lib/supabase').supabase"));
+  assert.ok(monitor.includes("ReturnType<typeof getFreshChannel>"));
+  assert.ok(!monitor.includes("supabase: SupabaseClient;"));
+  assert.ok(marketing.includes('import { Shop, MenuItem, Order, type User } from "../types"'));
+  assert.ok(!marketing.includes('import type { User } from "@supabase/supabase-js"'));
 });
