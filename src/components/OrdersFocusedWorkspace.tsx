@@ -184,11 +184,11 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="inline-flex items-center rounded-xl bg-surface-container-low p-1 gap-1">
             <button type="button" onClick={()=>enterView("active")} aria-pressed={viewMode==="active"}
-              className={`min-h-9 rounded-lg px-3 text-xs font-bold transition-colors ${viewMode==="active"?"bg-surface-container-lowest text-primary shadow-sm":"text-on-surface-variant"} ${commonFocus}`}>
+              className={`min-h-11 rounded-lg px-2 sm:px-3 text-xs font-bold transition-colors ${viewMode==="active"?"bg-surface-container-lowest text-primary shadow-sm":"text-on-surface-variant"} ${commonFocus}`}>
               Current <span className="opacity-75">{viewMode==="active"?realActive:""}</span>
             </button>
             <button type="button" onClick={()=>enterView("history")} aria-pressed={viewMode==="history"}
-              className={`min-h-9 rounded-lg px-3 text-xs font-bold transition-colors ${viewMode==="history"?"bg-surface-container-lowest text-primary shadow-sm":"text-on-surface-variant"} ${commonFocus}`}>
+              className={`min-h-11 rounded-lg px-2 sm:px-3 text-xs font-bold transition-colors ${viewMode==="history"?"bg-surface-container-lowest text-primary shadow-sm":"text-on-surface-variant"} ${commonFocus}`}>
               History
             </button>
           </div>
@@ -274,7 +274,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
       <div data-testid="orders-queue-card" className="bg-surface-container-lowest dark:bg-zinc-950 border border-outline-variant/10 rounded-[1.4rem] p-3 sm:p-4 shadow-sm space-y-3 min-w-0">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <h2 className="font-headline text-base sm:text-lg font-bold text-on-surface">{viewMode==="active"?"Kitchen queue":"Order history"}</h2>
+            <h2 className="font-headline text-[15px] sm:text-lg font-bold whitespace-nowrap text-on-surface">{viewMode==="active"?"Kitchen queue":"Order history"}</h2>
             <p className="text-[11px] text-on-surface-variant">
               {viewMode==="active"?<>
                 <span className="md:hidden">Tap a stage below</span>
@@ -284,7 +284,7 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <select value={sort} onChange={e=>setSort(e.target.value as SortMode)}
-              aria-label="Sort mobile orders" className="md:hidden min-h-11 max-w-[100px] rounded-xl bg-surface-container-low text-on-surface text-[11px] font-semibold px-1.5 border border-outline-variant/10">
+              aria-label="Sort mobile orders" className="md:hidden min-h-11 max-w-[90px] rounded-xl bg-surface-container-low text-on-surface text-[11px] font-semibold px-1.5 border border-outline-variant/10">
               <option value="priority">Priority</option>
               <option value="newest">Newest</option>
               <option value="oldest">Oldest</option>
