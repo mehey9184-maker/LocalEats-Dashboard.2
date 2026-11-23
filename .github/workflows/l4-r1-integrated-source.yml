@@ -68,7 +68,8 @@ jobs:
             tests/merchant-order-inbox-p1.test.mjs \
             tests/merchant-push-registration.test.mjs \
             tests/default-image-fallback.test.mjs \
-            tests/merchant-marketing-counter.test.mjs
+            tests/merchant-marketing-counter.test.mjs \
+            tests/l4-r1-orders-layout-switch.test.mjs
       - name: Compile original Merchant production-style UI (no deployment)
         run: npm run build
   actual-client-api-loopback:

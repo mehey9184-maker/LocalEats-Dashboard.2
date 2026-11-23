@@ -21,3 +21,11 @@ CI must pass API TypeScript, complete API suite, UI tests and build, mock previe
 
 ## Allowed release continuation
 Only after CI and human validation: integrate Customer candidate, API pilot gate and Merchant feedback as one reviewed release matrix; freeze SHAs; practice read-only hosted Customer↔API acceptance; founder signs off on genuine shops, pilot owner device, backups, and compliant hosting. Public pickup remains HARD OFF pending explicit approval.
+
+## 2026-11-23 quality audit and focused Orders correction
+
+The first integrated functional run passed `234/234` API tests, `5/5` read-only Preview safety tests, `47/47` Merchant selected tests and `4/4` **actual Customer TypeScript client → compiled API loopback HTTP** tests. All triggered current-PR pickup, identity and availability workflows were green.
+
+**Distinct quality gate FAILED** on the integrated branch: full-root ESLint reported **198 errors + 22 warnings**; TypeScript `--noEmit` reported **44 errors** (41 in `src/App.tsx`, 2 in `OrdersManagement.tsx`, 1 in `ConnectivityMonitor.tsx`). These are meaningful baseline/legacy errors and may include runtime issues despite a successful Vite build. This release branch **must remain draft** until cleanup is reviewed. The separate older lint-cleaning PR #191 cannot be merged blindly because it is stacked on obsolete draft code and current `main` contains newer Merchant UX.
+
+A targeted source fix in `src/components/OrdersManagement.tsx` restores the existing **Switch** button (previously referenced undefined `setLayoutMode` at line 2923) and correctly chooses the original default Kanban view versus a one-column list. The default Kanban, original tickets and handover/payment semantics are preserved. A source regression `tests/l4-r1-orders-layout-switch.test.mjs` now asserts a real state setter and conditional rendering rather than the old hardcoded `true`. **This still requires browser/visual acceptance on a real Merchant account before release.** Recheck the next quality-audit run for the new TS count; no broad lint suppression or unrelated auth/type rewrites are permitted.
