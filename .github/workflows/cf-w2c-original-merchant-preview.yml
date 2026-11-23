@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx vite preview --config preview/merchant-pitch/vite.config.ts --port 4177 --strictPort > "$RUNNER_TEMP/cf-merchant-vite.log" 2>&1 &
+          npx vite preview --config preview/merchant-pitch/vite.config.ts --host 127.0.0.1 --port 4177 --strictPort > "$RUNNER_TEMP/cf-merchant-vite.log" 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           ready=false
