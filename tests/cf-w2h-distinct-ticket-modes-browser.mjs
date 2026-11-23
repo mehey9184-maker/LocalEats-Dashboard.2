@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {mkdirSync,writeFileSync} from "node:fs";
 const HOST="https://localeats-merchant-dashboard-preview.mehey9184.workers.dev";
 const LOCAL="http://127.0.0.1:4177";
+const LIVE=process.env.CF_W2H_LIVE==="true";
 const DIR="artifacts/cf-w2h-a-b-modes";
 mkdirSync(DIR,{recursive:true});
 const browser=await chromium.launch({headless:true});
@@ -47,6 +48,7 @@ for(const [width,height] of [[320,740],[390,844],[1366,900]]){
   return card;
  }
  try{
+  if(!LIVE){
   await page.route("**/*",async route=>{
     const request=route.request(),url=new URL(request.url());
     if(url.origin!==HOST){await route.abort("blockedbyclient");return;}
@@ -54,6 +56,7 @@ for(const [width,height] of [[320,740],[390,844],[1366,900]]){
     const response=await route.fetch({url:LOCAL+url.pathname+url.search,maxRedirects:0});
     await route.fulfill({response,headers:{...response.headers(),"content-security-policy":"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"}});
   });
+  }
   const resp=await page.goto(HOST+"/",{waitUntil:"domcontentloaded",timeout:35000});
   assert.equal(resp.status(),200);
   await page.getByRole("button",{name:"Orders"}).first().waitFor({timeout:16000});
@@ -107,7 +110,7 @@ for(const [width,height] of [[320,740],[390,844],[1366,900]]){
   assert.deepEqual(result.writes,[],"no application HTTP writes");
   result.dimensions=dims;
   result.success=true;
-  console.log("PASS CF-W2H "+width+"px A="+result.fullHeight+"px B="+result.compactHeight+"px full fake pickup flow");
+  console.log("PASS CF-W2H "+(LIVE?"LIVE HOST":"local build")+" "+width+"px A="+result.fullHeight+"px B="+result.compactHeight+"px full fake pickup flow");
  }catch(e){
   result.failure=String(e).slice(0,1200);
   report.failures++;console.error("FAIL CF-W2H "+width+"px "+result.failure);
