@@ -57,8 +57,11 @@ test("Preview mobile Help and POPIA actions remain reachable without obscuring o
  assert.match(management,/onOpenLegal\?: \(\) => void/);
  assert.match(orders,/Help & Tips/);
  assert.match(orders,/Legal & Privacy/);
+ assert.match(orders,/System diagnostics/);
+ assert.match(management,/onOpenDiagnostics\?: \(\) => void/);
+ assert.match(app,/onOpenDiagnostics={\(\) => setIsDiagnosticOpen\(true\)}/);
  assert.match(app,/isolatedPitch && activeTab === "orders" && "max-md:hidden"/);
- assert.equal((app.match(/isolatedPitch && activeTab === "orders" && "max-md:hidden"/g)||[]).length,2);
+ assert.equal((app.match(/isolatedPitch && activeTab === "orders" && "max-md:hidden"/g)||[]).length,3);
  assert.match(app,/title="Help & Tips"/);
  assert.match(app,/LegalDocsModal isOpen={showLegal}/);
 });
