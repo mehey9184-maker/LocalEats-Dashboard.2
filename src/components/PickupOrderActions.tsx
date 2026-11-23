@@ -1,5 +1,7 @@
 import React,{useId,useState} from "react";
 import {Check, X} from "lucide-react";
+import type {Order} from "../types";
+import type {PreviewTestPickupOrder} from "./PreviewFakeOrders";
 import {MerchantApi} from "../services/MerchantApi";
 import {pickupOrderingEnabled,type PickupAction} from "../services/merchantPickupPolicy";
 import {pickupState,pickupPaymentLabel,pickupAmountLabel} from "../services/merchantPickupPolicy";
@@ -16,7 +18,7 @@ function customerCallHref(order:{delivery_type?:unknown;id?:unknown;phone?:unkno
  return /^\+?\d{7,15}$/.test(phone)?`tel:${phone}`:null;
 }
 
-export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=false}:{order:any;onSimulate?:SimulatedTransition;compact?:boolean;recoveryOnly?:boolean}){
+export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=false}:{order:Order|PreviewTestPickupOrder;onSimulate?:SimulatedTransition;compact?:boolean;recoveryOnly?:boolean}){
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
  const [confirmation,setConfirmation]=useState<{orderId:string;revision:number;action:string}|null>(null);
  const disabledHintId=useId();
@@ -31,7 +33,8 @@ export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=
  const callHref=simulated?null:customerCallHref(order);
  const actions=status==="pending" ? ["Accept → Preparing","Reject"] : status==="preparing" ? ["Mark Ready"] : status==="ready_for_pickup" ?
   awaitingHandover ? ["Confirm handover"] : ["Confirm cash received","Confirm card-machine payment"] : [];
- const pendingPath=simulated ? null : MerchantApi.getPendingPickupCommandPath(order);
+ const apiOrder=order as unknown as Record<string,unknown>;
+ const pendingPath=simulated ? null : MerchantApi.getPendingPickupCommandPath(apiOrder);
  const pending=pendingPath!==null;
  const handoverPending=pendingPath==="collect";
  const canAct=simulated || pickupOrderingEnabled();
@@ -61,15 +64,15 @@ export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=
     // No MerchantApi call, no server confirmation event, no payment or real-order mutation.
     await onSimulate!(action,extra);
    } else {
-    await MerchantApi.transitionPickupOrder(order,action,extra);
+    await MerchantApi.transitionPickupOrder(apiOrder,action,extra);
     // Only a verified API response can create a confirmation message.
-    setConfirmation({orderId:String(order.id),revision:order.revision,action:label});
+    setConfirmation({orderId:String(order.id),revision:Number(order.revision),action:label});
     window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));
    }
   }
   catch(e){
    if(action==="collect" && !simulated){
-    if(MerchantApi.getPendingPickupCommandPath(order)!=="collect")
+    if(MerchantApi.getPendingPickupCommandPath(apiOrder)!=="collect")
      setError("Handover could not be confirmed. Refresh orders before trying again.");
    }else setError(e instanceof Error?e.message:"No change was confirmed. Retry the same action.");
   }
@@ -79,12 +82,12 @@ export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=
   if(busy || !canAct || !pending || simulated)return;
   setBusy(true);setError("");setConfirmation(null);
   try{
-   await MerchantApi.retryPendingPickupOrder(order);
-   setConfirmation({orderId:String(order.id),revision:order.revision,action:"Previous pickup action"});
+   await MerchantApi.retryPendingPickupOrder(apiOrder);
+   setConfirmation({orderId:String(order.id),revision:Number(order.revision),action:"Previous pickup action"});
    window.dispatchEvent(new Event("merchant-pickup-order-confirmed"));
   }catch(e){
    if(handoverPending){
-    if(MerchantApi.getPendingPickupCommandPath(order)!=="collect")
+    if(MerchantApi.getPendingPickupCommandPath(apiOrder)!=="collect")
      setError("Handover could not be confirmed. Refresh orders before trying again.");
    }else setError(e instanceof Error?e.message:"Outcome unconfirmed.");
   }finally{setBusy(false);}
