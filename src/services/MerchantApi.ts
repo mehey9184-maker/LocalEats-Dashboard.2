@@ -9,7 +9,7 @@ export type VerifiedMerchantShop = {
   owner_id: string;
   name?: string;
   is_active?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 export type MerchantShopCreateInput = {
@@ -37,6 +37,7 @@ type MerchantApiResponse = {
 export class MerchantApiError extends Error {
   status: number | null;
   code?: string;
+  expectedRevision?: number;
 
   constructor(message: string, status: number | null = null) {
     super(message);
@@ -165,7 +166,7 @@ export class MerchantApi {
     const data=await readJsonResponse(response);
     if(!response.ok || data.success!==true){const error=new MerchantApiError(typeof data.error==="string"?data.error:"Availability was not saved.",response.status);error.code=typeof data.code==="string"?data.code:undefined;
       // Preserve the revision for the explicit outside-hours confirmation, never rebase a stale command.
-      (error as any).expectedRevision=revision;throw error;}
+      error.expectedRevision=revision;throw error;}
     if(auth.currentUser?.uid!==uid || !data.shop || String(data.shop.id)!==String(shopId) || typeof data.shop.is_active!=="boolean") throw new MerchantApiError("Availability persistence was not confirmed. Refresh before retrying.");
     requireOwnedShop(data.shop,uid);
     return data.shop;
@@ -204,13 +205,13 @@ export class MerchantApi {
     return data.orders.map(mapApiOrder);
   }
 
-  static hasPendingPickupCommand(order:any):boolean {
+  static hasPendingPickupCommand(order:Record<string,unknown>):boolean {
     return this.getPendingPickupCommandPath(order)!==null;
   }
   static getPendingPickupCommandPath(order:Record<string,unknown>):string|null {
     return pickupRecovery.pendingPath(order);
   }
-  private static async sendPickupCommand(order:Record<string,unknown>,command:any) {
+  private static async sendPickupCommand(order:Record<string,unknown>,command:ReturnType<typeof pickupCommand>) {
     pickupMutationsDisabled();
     return pickupRecovery.send(order,command);
   }

@@ -1,5 +1,5 @@
-export function validateMerchantMenu(rows: any[], shopId: string | number): any[] {
- const items = new Map<string, any>();
+export function validateMerchantMenu(rows: Record<string, unknown>[], shopId: string | number): Record<string, unknown>[] {
+ const items = new Map<string, Record<string, unknown>>();
  for (const row of rows) {
   if (!row || row.id == null || String(row.shop_id) !== String(shopId) || typeof row.name !== "string" || typeof row.price !== "number" || !Number.isFinite(row.price) || row.price < 0 || typeof row.is_available !== "boolean") throw new Error("The API returned invalid menu data.");
   const key = String(row.id);
