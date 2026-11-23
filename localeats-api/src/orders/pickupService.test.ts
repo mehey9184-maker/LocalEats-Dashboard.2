@@ -120,14 +120,14 @@ test("missing schema RPC or database legacy-write rejection never confirms creat
  }
 });
 
-import {pickupReadQuote} from './pickupRead.js';
+import {pickupReadQuote,type PickupReadRepository} from './pickupRead.js';
 test("R25 and two R25 pickup items quote and persist identical zero-fee menu totals",async()=>{
  for(const quantity of [1,2]){
   const repository=repo();const body={...raw(),items:[{menu_item_id:"item",quantity}]};
   const parsed=parsePickupInput(body,false),price=await pickupPricing(repository,"customer",parsed),quote=pickupQuote(price);
   assert.equal(quote.total_minor,quantity*2500);assert.equal(quote.subtotal_minor,quantity*2500);
   assert.equal(quote.service_fee_minor,0);assert.equal(quote.delivery_fee_minor,0);assert.equal(quote.discount_minor,0);
-  assert.deepEqual(await pickupReadQuote(repository,"customer",body),quote);
+  assert.deepEqual(await pickupReadQuote(repository as unknown as PickupReadRepository,"customer",body),quote);
   let calls=0;
   const client=rpc(async(name,args)=>{
    calls++;assert.equal(name,"pickup_create_order");const record=args.p_record as Record<string,unknown>;
