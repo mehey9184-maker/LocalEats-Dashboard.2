@@ -31,6 +31,12 @@ export const initialAccount=(uid:string,shopId:string):MerchantAccountRow=>({
  */
 export class SupabaseMerchantProfileStore implements MerchantProfileStore {
  constructor(private readonly db:Pick<SupabaseClient,"from">){}
+ private normalizeShop(data:Record<string,unknown>):MerchantShopRow{
+  const string=(value:unknown)=>typeof value==="string"?value:"";
+  return {...data,id:String(data.id),owner_id:String(data.owner_id),
+   description:string(data.description),phone:string(data.phone),logo_url:string(data.logo_url),
+   opening_time:string(data.opening_time),closing_time:string(data.closing_time)} as MerchantShopRow;
+ }
  async ownedShop(uid:string):Promise<OwnedMerchantShop|null>{
   const {data,error}=await this.db.from("shops").select("id,owner_id").eq("owner_id",uid).is("archived_at",null).limit(2);
   if(error)throw error;
@@ -59,14 +65,14 @@ export class SupabaseMerchantProfileStore implements MerchantProfileStore {
   const {data,error}=await this.db.from("shops").select(SHOP_SELECT)
    .eq("id",shopId).eq("owner_id",uid).is("archived_at",null).maybeSingle();
   if(error)throw error;
-  return data ? {...data,id:String(data.id)} as MerchantShopRow : null;
+  return data ? this.normalizeShop(data) : null;
  }
  async writeShop(uid:string,shopId:string,revision:number,changes:Partial<MerchantShopFields>):Promise<MerchantShopRow|null>{
   const {data,error}=await this.db.from("shops")
-   .update({...changes,merchant_profile_revision:revision+1,updated_at:new Date().toISOString()})
+   .update({...changes,merchant_profile_revision:revision+1})
    .eq("id",shopId).eq("owner_id",uid).eq("merchant_profile_revision",revision).is("archived_at",null)
    .select(SHOP_SELECT).maybeSingle();
   if(error)throw error;
-  return data ? {...data,id:String(data.id)} as MerchantShopRow : null;
+  return data ? this.normalizeShop(data) : null;
  }
 }
