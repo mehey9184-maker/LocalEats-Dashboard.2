@@ -596,8 +596,14 @@ export const supabase = {
       }
     },
 
-    async updateUser(attributes?: Record<string, unknown>) {
-      return { data: { user: auth.currentUser, ...attributes }, error: null };
+    // No authoritative profile-write endpoint exists in this legacy bridge.
+    // Never report a successful save while no server persistence occurred.
+    async updateUser(attributes?: Record<string, unknown>): Promise<{ data: { user: User | null }; error: Error }> {
+      void attributes;
+      return {
+        data: { user: null },
+        error: new Error("Profile updates are unavailable until the verified merchant API is connected. No changes were saved."),
+      };
     },
 
     async verifyOtp() {

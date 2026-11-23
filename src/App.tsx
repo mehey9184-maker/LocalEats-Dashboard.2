@@ -69,7 +69,6 @@ import {
   firebaseSignOutUser,
   formatFirebaseUserSession,
   onAuthStateChanged,
-  getFirestoreShopById,
   updateFirestoreShop,
 } from "./lib/firebase";
 import { useKitchenAlerter } from "./hooks/useKitchenAlerter";
@@ -137,7 +136,6 @@ import {
   deleteFailedPrint,
 } from "./utils/escPosEngine";
 import {
-  isValidUUID,
   isShopOwnedByUser,
   registerVerifiedShopId,
   clearVerifiedShopOwnership,
@@ -1303,65 +1301,9 @@ function App() {
     };
   }, [orderReadScope,fetchOrders]);
 
-  const deleteAllOrders = async () => {
-    if (!user) return;
-
-    confirmAction(
-      "Confirm Delete All",
-      "Are you sure you want to delete ALL orders? This action cannot be undone.",
-      async () => {
-        setConfirmDialog(p => ({...p, isOpen: false}));
-
-        if (!isValidUUID(user.id)) {
-          if (!isSupabaseMocked()) {
-            console.warn("Skipping confirmDeleteAll - user ID is not a valid UUID:", user.id);
-          }
-          toast.info("No orders to delete.");
-          return;
-        }
-
-        // First, get the shops owned by this user
-        const { data: ownedShops, error: shopsError } = await supabase
-          .from("shops")
-          .select("id")
-          .eq("owner_id", user.id);
-
-        if (shopsError) {
-          if (!isSupabaseMocked()) {
-            console.warn("Notice fetching owned shops for deletion:", compatErrorMessage(shopsError) || shopsError);
-          }
-          return;
-        }
-
-        const ownedShopIds = Array.isArray(ownedShops)
-          ? ownedShops.filter((shop: unknown): shop is { id: string | number } =>
-              typeof shop === "object" && shop !== null && "id" in shop &&
-              (typeof shop.id === "string" || typeof shop.id === "number")
-            ).map(shop => shop.id)
-          : [];
-
-        if (ownedShopIds.length === 0) {
-          toast.info("No orders to delete.");
-          return;
-        }
-
-        // Delete only orders belonging to these shops
-        let error = null;
-        try {
-          await OrderService.deleteAllOrdersForShops(ownedShopIds);
-        } catch (err) {
-          error = err;
-        }
-
-        if (error) {
-          console.error("Delete All Orders Error:", error);
-          toast.error("We couldn't delete these orders right now. Please try again.");
-        } else {
-
-          fetchOrders();
-        }
-      }
-    );
+  // The launch pilot has no approved server-authoritative bulk-delete endpoint.
+  const deleteAllOrders = () => {
+    toast.error("Bulk order deletion is unavailable during the pickup pilot. Orders are retained for audit and recovery.");
   };
 
   const { updateOrderStatus, requestRider, dispatchOrderToRider, convertOrderToPickup, unassignRider } = useOrderWorkflow({
@@ -2223,9 +2165,6 @@ function App() {
                     const { success, error, freshShop } = await syncShopAvailability({
                       shopId: currentShop.id,
                       isOpen: newStatus,
-                      supabase,
-                      updateFirestoreShop,
-                      getFirestoreShopById,
                     });
 
                     if (success) {
@@ -2360,9 +2299,6 @@ function App() {
                 const { success, error, freshShop } = await syncShopAvailability({
                   shopId: currentShop.id,
                   isOpen: newStatus,
-                  supabase,
-                  updateFirestoreShop,
-                  getFirestoreShopById,
                 });
                 if (success) {
                   toast.success("Shop is now Open and accepting customer orders!");
@@ -2803,9 +2739,6 @@ function App() {
                                    void syncShopAvailability({
                                      shopId: currentShop.id,
                                      isOpen: isActive,
-                                     supabase,
-                                     updateFirestoreShop,
-                                     getFirestoreShopById,
                                      onSuccess: async (freshShop) => {
                                        setStoreStatus(statusOption);
                                        toast.success(`Shop is now ${statusOption === "open" ? "OPEN" : statusOption === "busy" ? "BUSY" : "CLOSED"}`);

@@ -121,9 +121,9 @@ export interface OrdersManagementProps {
   setPrintingFormat?: (format: PrintingFormat) => void;
   failedPrints?: QueuedPrintJob[];
   printingHardwareLoading?: boolean;
-  handlePrintBluetoothDirect?: (order: Order) => Promise<boolean>;
-  handlePrintUSBDirect?: (order: Order) => Promise<boolean>;
-  retryQueuedPrintDirect?: (failedPrintId: string) => Promise<boolean>;
+  handlePrintBluetoothDirect?: (order: Order) => Promise<void>;
+  handlePrintUSBDirect?: (order: Order) => Promise<void>;
+  retryQueuedPrintDirect?: (job: QueuedPrintJob) => Promise<void>;
   clearPrintQueue?: () => void;
 }
 
@@ -4707,7 +4707,7 @@ Notes: "${order.notes || "None"}"
                               <button
                                 type="button"
                                 disabled={printingHardwareLoading}
-                                onClick={() => retryQueuedPrintDirect?.(job.id)}
+                                onClick={() => retryQueuedPrintDirect?.(job)}
                                 className="px-2 py-1 bg-[#FF5A36] text-white text-[9px] font-black uppercase tracking-wider rounded-lg hover:opacity-90 active:scale-95 disabled:opacity-50 transition-all shrink-0 cursor-pointer"
                               >
                                 Retry
