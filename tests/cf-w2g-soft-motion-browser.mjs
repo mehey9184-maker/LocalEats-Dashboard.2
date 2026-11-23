@@ -69,9 +69,14 @@ for(const [width,height,reduce] of [[320,740,false],[390,844,false],[1366,900,fa
    if(width>=768){
      await card.hover();
      await page.waitForTimeout(270);
-     const matrix=await card.evaluate(el=>getComputedStyle(el).transform);
-     rec.hoverTransform=matrix;
-     assert.notEqual(matrix,"none","mouse hover provides gentle lift");
+     const lift=await card.evaluate(el=>{
+       const css=getComputedStyle(el);
+       // Tailwind v4 prefers CSS individual translate over transform.
+       return {translate:css.translate,transform:css.transform};
+     });
+     rec.hoverTransform=lift;
+     assert.ok(lift.translate!=="none"||lift.transform!=="none",
+       "mouse hover provides gentle lift using CSS translate or transform");
    }
    await page.screenshot({path:DIR+"/"+width+(reduce?"-reduced":"")+"-soft-order-card.png",animations:"disabled"});
    await page.getByRole("button",{name:"Accept → Preparing"}).first().click();
