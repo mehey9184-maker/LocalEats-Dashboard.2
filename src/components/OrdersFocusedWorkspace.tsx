@@ -24,6 +24,8 @@ interface OrdersFocusedWorkspaceProps {
   simulationRunning: boolean;
   onStartSimulation: () => void;
   onStopSimulation: () => void;
+  onOpenHelp?: () => void;
+  onOpenLegal?: () => void;
   demoNotificationsEnabled: boolean;
   onToggleDemoNotifications: () => void;
   styleStorageKey: string;
@@ -76,7 +78,7 @@ const stageMatches=(stage:Stage,status:string)=>
 
 export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
   const {
-    realOrders,fakeOrders,onDemoAction,incoming,onSimulate,onSimulateBatch,onClear,simulationRunning,onStartSimulation,onStopSimulation,demoNotificationsEnabled,onToggleDemoNotifications,styleStorageKey,completedRealOrders,viewMode,onViewModeChange,
+    realOrders,fakeOrders,onDemoAction,incoming,onSimulate,onSimulateBatch,onClear,simulationRunning,onStartSimulation,onStopSimulation,onOpenHelp,onOpenLegal,demoNotificationsEnabled,onToggleDemoNotifications,styleStorageKey,completedRealOrders,viewMode,onViewModeChange,
     renderRealOrder,onRefresh,onExportCSV,onExportJSON,
     soundAlerts,setSoundAlerts,kitchenMode,setKitchenMode,maxConcurrentOrders,setMaxConcurrentOrders,
     startDate,endDate,setStartDate,setEndDate
@@ -219,6 +221,16 @@ export function OrdersFocusedWorkspace(props:OrdersFocusedWorkspaceProps){
                         B · Compact
                       </button>
                     </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button type="button" onClick={onOpenHelp}
+                      className="min-h-11 rounded-lg bg-surface-container-low px-2 text-xs font-semibold text-on-surface">
+                      Help & Tips
+                    </button>
+                    <button type="button" onClick={onOpenLegal}
+                      className="min-h-11 rounded-lg bg-surface-container-low px-2 text-xs font-semibold text-on-surface">
+                      Legal & Privacy
+                    </button>
                   </div>
                 </div>}
                 {isTestPreview&&<button type="button" onClick={testBatch} className="w-full rounded-lg text-left px-3 py-2 text-xs font-bold bg-amber-50 text-amber-900 hover:bg-amber-100 dark:bg-amber-950/20 dark:text-amber-100">Test busy queue · +24 FAKE orders</button>}
