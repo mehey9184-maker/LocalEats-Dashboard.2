@@ -1093,7 +1093,7 @@ function App() {
     toast.success("NEW PICKUP ORDER RECEIVED",{
       description:newIds.length + " new order" + (newIds.length===1?"":"s") +
         ". Open Orders to accept and start preparation.",
-      duration:15000,important:true,
+      duration:15000,
       icon:<Bell className="text-primary animate-bounce"/>,
       action:{label:"VIEW ORDERS",onClick:()=>{stop();setActiveTab("orders");}},
       onDismiss:stop,onAutoClose:stop,
@@ -1194,14 +1194,15 @@ function App() {
   useEffect(()=>{
     if(!orderReadScope)return;
     let active=true;
-    let unsubscribe: (()=>void)|void;
+    let unsubscribe: (()=>void)|undefined;
     void onForegroundMessage(payload=>{
       if(!active)return;
       if(payload.data?.type==="pickup_new_order")void fetchOrders();
       if(payload.data?.type==="merchant_push_test")
         toast.success("Test push reached this open dashboard. Background alerts still need a Windows check.");
     }).then(fn=>{
-      if(!active)fn?.();
+      if (typeof fn !== "function") return;
+      if (!active) fn();
       else unsubscribe=fn;
     });
     const fromWorker=(event:MessageEvent)=>{
@@ -1267,7 +1268,6 @@ function App() {
     fetchOrders,
     fetchShops,
     fetchAllMenuItems,
-    supabase,
     authReady: isAuthReady,
     initializeShops: false,
     operationalReady: merchantShopGate.status === "ready" && Boolean(currentShop),
@@ -1541,7 +1541,7 @@ function App() {
     try {
       const bytes = new Uint8Array(job.binaryData);
       // Attempt Web Bluetooth or Web USB fallback
-      if (navigator.bluetooth) {
+      if ((navigator as Navigator & { bluetooth?: unknown }).bluetooth) {
         toast.info("Attempting print retry over Bluetooth...");
         await printViaBluetooth(bytes);
       } else {
@@ -1763,7 +1763,7 @@ function App() {
             email: user?.email || signupEmail,
             phone: user?.user_metadata?.phone || "",
             avatarUrl: user?.user_metadata?.avatar_url || "",
-            marketing: user?.user_metadata?.marketing_preferences ?? true,
+            marketing: user?.user_metadata?.marketing_preferences !== false,
             darkMode: user?.user_metadata?.dark_mode ?? darkMode,
           }}
         />
@@ -3709,10 +3709,10 @@ function App() {
                                 setSoundVolume(v);
                               }}
                               onMouseUp={() => {
-                                playNotificationSound(false, soundStyle);
+                                playNotificationSound(false);
                               }}
                               onTouchEnd={() => {
-                                playNotificationSound(false, soundStyle);
+                                playNotificationSound(false);
                               }}
                               className="flex-1 accent-primary h-1.5 rounded-lg appearance-none bg-outline-variant/40 cursor-pointer"
                             />
@@ -3746,7 +3746,7 @@ function App() {
                       disabled={pushBusy}
                       onClick={() => {
                         if (!pushEnabled) {
-                          void requestPushPermissions(user?.id, activeTab === 'rider' ? 'rider' : 'merchant', supabase);
+                          void requestPushPermissions(user?.id, 'merchant');
                         } else {
                           void disablePushNotifications();
                         }
