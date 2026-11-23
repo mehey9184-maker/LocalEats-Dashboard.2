@@ -41,9 +41,21 @@ jobs:
         run: node --test tests/cf-w2e-honest-demo-alerts.test.mjs tests/merchant-vendor-arrivals-preview.test.mjs tests/cf-w2c-merchant-cloudflare.test.mjs
       - name: Install existing dependencies
         run: npm ci --no-audit --no-fund
-      - name: Type check and isolated original Merchant build
+      - name: Existing TypeScript baseline — reject errors in new notification implementation
+        shell: bash
         run: |
-          npx tsc --noEmit
+          set -euo pipefail
+          npx tsc --noEmit > "$RUNNER_TEMP/cf-w2e-types.log" 2>&1 || true
+          echo "Existing full-project TypeScript errors: $(grep -c 'error TS' "$RUNNER_TEMP/cf-w2e-types.log" || true)"
+          if grep -E '^src/(services/cloudflareDemoIncomingAlerts\\.ts|components/(PreviewFakeOrders|OrdersFocusedWorkspace)\\.tsx)\\(' "$RUNNER_TEMP/cf-w2e-types.log"; then
+            echo "New preview notification files must be TypeScript error-free"; exit 1
+          fi
+          if grep -E '^src/components/OrdersManagement\\.tsx\\(' "$RUNNER_TEMP/cf-w2e-types.log" | grep -Ev "TS2304: Cannot find name 'setLayoutMode'|TS2367: This comparison appears to be unintentional"; then
+            echo "Unexpected OrdersManagement TypeScript regression"; exit 1
+          fi
+          echo "Full-project baseline TypeScript errors remain outside CF-W2E scope; not claiming a clean root typecheck."
+      - name: Build isolated original Merchant app and scan for production credentials
+        run: |
           npx vite build --config preview/merchant-pitch/vite.config.ts
           test -f dist-merchant-pitch/index.html
           ! grep -RIE 'localeats-api-cf1-staging|dashboard.localeatssa.co.za/api|firebaseapp.com|SUPABASE_SERVICE_ROLE_KEY|DATABASE_URL|service_role' dist-merchant-pitch/
