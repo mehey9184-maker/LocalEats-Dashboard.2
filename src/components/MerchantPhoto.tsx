@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Store, UtensilsCrossed } from "lucide-react";
 
 interface MerchantPhotoProps {
@@ -20,8 +20,8 @@ export function MerchantPhoto({
   compact = false,
   className = "",
 }: MerchantPhotoProps) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [src]);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const failed = !!src && failedSrc === src;
   const isShop = kind === "shop";
 
   if (missingPhoto(src) || failed) {
@@ -46,7 +46,7 @@ export function MerchantPhoto({
       src={src!}
       alt={alt}
       className={`w-full h-full object-cover ${className}`}
-      onError={() => setFailed(true)}
+      onError={() => setFailedSrc(src ?? null)}
       loading="lazy"
       decoding="async"
     />
