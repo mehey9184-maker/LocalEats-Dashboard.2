@@ -43,7 +43,7 @@ Log results with device/OS/browser, exact URL, date/time, steps, any screenshots
 
 - The actual LocalEats Merchant Dashboard, sign-in, new merchant approval, live FCM, GPS, pickup/customer quotation, QR, payout/reporting, restored backup and compliant hosting remain separate from this synthetic demo.
 - The staging and Production Supabase schema candidates from PR #237/#238 remain **review-only**; no hosted DDL was applied.
-- A Cloudflare Browser Rendering acceptance attempt was rate-limited (HTTP 429), and ordinary browser access through the available automated environment could not resolve the Workers hostname. **No successful remote visual or public HTTP request to this new Worker has been observed here**. Deployment settings are confirmed; external HTTP reachability remains for the real-device test.
+- GitHub Actions independently accessed the deployed Worker through external HTTPS, checked the fictional banner, CSP and no-store headers, received **405 for POST**, **404 for an order API path**, and **200 for the workshop script**. [Hosted HTTP run #45247780680](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/45247780680) **PASSED**. This proves remote HTTP reachability and the tested write restrictions, **not** browser rendering or real-device behavior. A separate Cloudflare Browser Rendering request was rate-limited (HTTP 429), and ordinary browser access within the local tool environment could not resolve the hostname; no remote visual screenshot has been accepted.
 - Do not merge drafts, activate real orders, connect the preview to live data or claim customer release readiness.
 
-**Release decision:** isolated Cloudflare training preview DEPLOYED and source safe; live visual and real-device acceptance **UNVERIFIED/HOLD**.
+**Release decision:** isolated Cloudflare training preview DEPLOYED, source and hosted no-write HTTP **PASSED**; actual screen rendering, navigation and real-device acceptance **UNVERIFIED/HOLD**.
