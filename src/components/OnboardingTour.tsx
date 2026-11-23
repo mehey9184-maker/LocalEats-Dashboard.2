@@ -3,7 +3,7 @@ import {
   LayoutDashboard,
   UtensilsCrossed,
   ReceiptText,
-  Bike,
+  Megaphone,
   Bell,
   Sparkles,
   ChevronRight,
@@ -34,74 +34,53 @@ interface TourStep {
 
 const TOUR_STEPS: TourStep[] = [
   {
-    id: 0,
-    tab: "dashboard",
-    title: "Welcome to LocalEats Merchant!",
-    badge: "ONBOARDING TOUR",
-    description: "Welcome back! This is your ultimate control bureau for managing your culinary business, adjusting orders, and coordinating deliveries. Let's run through a quick 1-minute visual guide to get you setup for success.",
-    highlightText: "Press Start to witness the storefront capabilities.",
-    icon: Sparkles,
-    color: "from-orange-500 to-amber-500"
+    id: 0, tab: "dashboard", title: "Welcome to LocalEats Merchant",
+    badge: "PICKUP-FIRST TOUR",
+    description: "Explore how an approved shop can prepare food for customer collection and take payment at the shop. This walkthrough is not a live order or a release approval.",
+    highlightText: "During a vendor pitch, practise only with clearly labelled fake orders on a read-only preview.",
+    icon: Sparkles, color: "from-orange-500 to-amber-500"
   },
   {
-    id: 1,
-    tab: "dashboard",
-    title: "1. The Live Dashboard Command",
-    badge: "COMMAND HUB",
-    description: "Keep a pulse on your storefront performance. This is where you toggle your live merchant status, track hourly revenue charts, view quick alerts, and observe ongoing trends.",
-    highlightText: "Toggle 'Online' in the header to receive live customer requests.",
-    icon: LayoutDashboard,
-    color: "from-amber-500 to-yellow-500"
+    id: 1, tab: "dashboard", title: "1. Your Shop Dashboard",
+    badge: "SHOP OVERVIEW",
+    description: "See your verified storefront and its current availability. Opening the dashboard does not automatically publish a shop or enable public pickup orders.",
+    highlightText: "Do not toggle live shop availability just to demonstrate the product.",
+    icon: LayoutDashboard, color: "from-amber-500 to-yellow-500"
   },
   {
-    id: 2,
-    tab: "menu",
-    title: "2. Culinary Delicacies (Menu)",
-    badge: "MENU EDITOR",
-    description: "Your digital catalog. Create, catalog, and refine your dishes. Adjust stock levels with instant inventory decrementers, toggle item availability, and set pricing on the fly.",
-    highlightText: "Keeping menu items fresh directly increases customer orders.",
-    icon: UtensilsCrossed,
-    color: "from-emerald-500 to-teal-500"
+    id: 2, tab: "menu", title: "2. Show Your Food Menu",
+    badge: "MENU BROWSING",
+    description: "Customers can browse an approved shop's food names and prices. Menu edits are protected server operations and may remain unavailable until separate launch testing.",
+    highlightText: "Use approved sample items. Do not promise that menu or stock edits save until persistence has been verified.",
+    icon: UtensilsCrossed, color: "from-emerald-500 to-teal-500"
   },
   {
-    id: 3,
-    tab: "orders",
-    title: "3. Real-Time Incoming Orders",
-    badge: "ORDER STREAM",
-    description: "Incoming customer orders wait for your action here. Moving a receipt to 'Preparing' prompts our intelligent rider pool immediately to prepare for pickup.",
-    highlightText: "Fulfill orders rapidly to secure standard high merchant ratings.",
-    icon: ReceiptText,
-    color: "from-blue-500 to-sky-500"
+    id: 3, tab: "orders", title: "3. Practise a Pickup Order",
+    badge: "FAKE TICKETS ONLY",
+    description: "In the read-only workshop, practise Accept, Preparing, Ready, payment at the shop and Collected using clearly labelled fictional tickets. No real order or payment is created.",
+    highlightText: "Customers collect from the shop. Rider dispatch and delivery are not enabled in this pickup-first pilot.",
+    icon: ReceiptText, color: "from-blue-500 to-sky-500"
   },
   {
-    id: 4,
-    tab: "riders",
-    title: "4. Rider Logistics Track",
-    badge: "DELIVERY CONTROL",
-    description: "Coordinate your dispatchers instantly. Observe assigned courier status, calibrate live coordinates, track dispatch connections, and send urgent alerts to nearby riders.",
-    highlightText: "See couriers live on the active operations map.",
-    icon: Bike,
-    color: "from-violet-500 to-purple-500"
+    id: 4, tab: "marketing", title: "4. Invite Customers to Your Shop",
+    badge: "SHOP MARKETING",
+    description: "Review the shop-sharing, poster and QR-flyer options. These can help customers discover an approved shop; they do not guarantee visits, sales or advertising reach.",
+    highlightText: "Show the vendor their own shop link only after approval and a real QR-scan check.",
+    icon: Megaphone, color: "from-violet-500 to-purple-500"
   },
   {
-    id: 5,
-    tab: "settings",
-    title: "5. High-Fidelity Notification Alerts",
-    badge: "ENVIRONMENT SETTINGS",
-    description: "Custom notification signals. Toggle sound alerts, select from 3 soothing audio melodies (Calm, Cozy, or Sparkle), and slider-control buzzer volume for custom store comfort.",
-    highlightText: "Fine-tune alert decibels so your kitchen never misses an order.",
-    icon: Bell,
-    color: "from-pink-500 to-rose-500"
+    id: 5, tab: "settings", title: "5. Notifications & Settings",
+    badge: "DEVICE READINESS",
+    description: "Review notification permissions and settings. Actual alerts depend on device permissions, network connectivity and confirmed push delivery on the merchant's own phone.",
+    highlightText: "A simulated alert is not proof that a real push notification will arrive.",
+    icon: Bell, color: "from-pink-500 to-rose-500"
   },
   {
-    id: 6,
-    tab: "dashboard",
-    title: "All Systems Set!",
-    badge: "TOUR COMPLETED",
-    description: "Awesome job. You are now ready to stream delivery dispatches, serve your community, and scale your brand with the LocalEats network.",
-    highlightText: "You can restart this walkthrough anytime under Settings.",
-    icon: PartyPopper,
-    color: "from-amber-500 to-orange-600"
+    id: 6, tab: "dashboard", title: "Ready to Practise, Not Yet Live",
+    badge: "TOUR COMPLETE",
+    description: "You have explored LocalEats' planned pickup-first vendor workflow. Real ordering, payments, availability changes and public launch still require separate acceptance and approval.",
+    highlightText: "Tour completion is not shop approval, a production deployment or proof of real customer readiness.",
+    icon: PartyPopper, color: "from-amber-500 to-orange-600"
   }
 ];
 
@@ -171,14 +150,17 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
   return (
     <div
       key="onboarding-tour-overlay"
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs transition-opacity duration-300"
+      role="dialog"
+      aria-modal="true"
+      aria-label="LocalEats pickup-first merchant tour"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs transition-opacity duration-300"
     >
       {/* Background Mask to highlight current active panel */}
       <div className="absolute inset-0 pointer-events-none" />
 
       <div
         id="onboarding-tour-card"
-        className="relative w-full max-w-lg bg-surface dark:bg-surface-container-high rounded-3xl shadow-2xl border border-outline-variant/20 overflow-hidden flex flex-col transform scale-100 opacity-100 transition-all duration-300"
+        className="relative w-full max-w-lg max-h-[calc(100dvh-1.5rem)] overflow-y-auto bg-surface dark:bg-surface-container-high rounded-3xl shadow-2xl border border-outline-variant/20 flex flex-col transform scale-100 opacity-100 transition-all duration-300"
       >
         {/* Top colored aesthetic bar styled dynamically */}
         <div className={`h-2 bg-gradient-to-r ${step.color} w-full`} />
@@ -192,7 +174,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
           <X size={16} />
         </button>
 
-        <div className="p-6 md:p-8 space-y-6 flex-1">
+        <div className="p-4 pt-12 sm:p-6 sm:pt-9 md:p-8 space-y-4 sm:space-y-6 flex-1">
           {/* Header section with icon, badge & title */}
           <div className="flex items-start gap-4">
             <div className={`p-3.5 rounded-2xl bg-gradient-to-tr ${step.color} text-white shadow-md shrink-0`}>
@@ -235,7 +217,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
         </div>
 
         {/* Action button bar */}
-        <div className="bg-surface-container-low dark:bg-surface-container-highest/50 px-6 py-4 flex items-center justify-between border-t border-outline-variant/10">
+        <div className="bg-surface-container-low dark:bg-surface-container-highest/50 px-3 py-3 sm:px-6 sm:py-4 flex flex-wrap items-center justify-between gap-2 border-t border-outline-variant/10">
           <button
             onClick={handleSkip}
             className="text-xs text-on-surface-variant/70 hover:text-primary font-bold transition-colors select-none"

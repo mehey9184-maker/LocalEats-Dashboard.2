@@ -1951,7 +1951,7 @@ function App() {
           onComplete={() => {
             setOnboardingOpen(false);
             localStorage.setItem("localeats_onboard_v1", "true");
-            toast.success("🎉 Guided onboarding completed! You are fully configured.");
+            toast.success("Guided tour completed. Shop approval and live pickup require separate checks.");
           }}
         />
 
