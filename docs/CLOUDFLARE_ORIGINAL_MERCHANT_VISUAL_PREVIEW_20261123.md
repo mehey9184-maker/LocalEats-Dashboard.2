@@ -9,3 +9,7 @@ Cloudflare Pages project uses GitHub branch `preview/cf-merchant-original-ui-rea
 **Hosting acceptance:** verify Pages deployment branch+SHA; external HTTP 200 from `/index.html`, JS/CSS asset HTTP 200; CSP prevents outbound fetch and CORS; 320px/390px/desktop actual React rendering; no UI redesign. Separate gated API-backed staging is needed later for real order flow.
 
 **Cost/PR policy:** reuse one branch and an existing GitHub launch issue; do **not** merge these preview-only headers or build settings into main. No extra UI PRs needed.
+
+## Cloudflare preview project
+
+The isolated Cloudflare Pages project was created and connected to this exact GitHub branch. The intended URL is https://localeats-original-merchant-preview.pages.dev/ . **Do not claim that it loads until an actual deployed HTTP smoke passes.** This is deliberately an authenticated-API-disabled visual review, and the source original UI remains unchanged.
