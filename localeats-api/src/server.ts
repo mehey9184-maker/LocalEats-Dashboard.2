@@ -3,7 +3,8 @@ import {pickupNotificationRoutes} from "./routes/pickupNotifications.js";
 import {pickupWriteGate} from "./middleware/pickupWriteGate.js";
 import {launchCapabilityGate} from "./middleware/launchCapabilityGate.js";
 import { previewReadOnlyGate } from "./middleware/previewReadOnlyGate.js";
-import express, { Request, Response, NextFunction } from "express";
+import express, { Request, Response } from "express";
+import {createApiAdmission,safeApiError} from "./middleware/apiAdmission.js";
 import cors from "cors";
 import dotenv from "dotenv";
 
@@ -45,11 +46,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+app.use(createApiAdmission());
 app.use(previewReadOnlyGate);
 app.use(legacyOrderGuard);
 app.use(pickupWriteGate);
 app.use(launchCapabilityGate);
-app.use(express.json());
+app.use(express.json({limit:"100kb",inflate:false}));
 
 // Routes
 app.use("/health", healthRoutes);
@@ -70,10 +72,6 @@ app.use((req: Request, res: Response) => {
 });
 
 // Generic Error Handler
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  void next;
-  console.error("Unhandled error:", err);
-  res.status(500).json({ success: false, error: "Internal Server Error" });
-});
+app.use(safeApiError);
 
 export default app;
