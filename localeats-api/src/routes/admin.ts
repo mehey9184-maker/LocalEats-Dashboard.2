@@ -189,10 +189,7 @@ const sendApprovalRpcError = (
   res: Response,
   error: { code: string; message: string }
 ): void => {
-  console.error("Supabase shop approval RPC failed:", {
-    code: error.code,
-    message: error.message,
-  });
+  console.error("Supabase shop approval RPC failed");
 
   if (error.code === "LE403") {
     res.status(403).json({ success: false, error: "Forbidden" });
@@ -300,7 +297,7 @@ router.get(
         .range(offset, offset + limit - 1);
 
       if (error || shops === null) {
-        console.error("Supabase admin shop list query failed:", error);
+        console.error("Supabase admin shop list query failed");
         res.status(500).json({
           success: false,
           error: "Internal Server Error",
@@ -318,7 +315,7 @@ router.get(
         },
       });
     } catch (error) {
-      console.error("Unexpected admin shop list error:", error);
+      console.error("Unexpected admin shop list error");
       res.status(500).json({
         success: false,
         error: "Internal Server Error",
@@ -351,7 +348,7 @@ router.get(
         .maybeSingle();
 
       if (error) {
-        console.error("Supabase admin shop detail query failed:", error);
+        console.error("Supabase admin shop detail query failed");
         res.status(500).json({
           success: false,
           error: "Internal Server Error",
@@ -372,7 +369,7 @@ router.get(
         shop,
       });
     } catch (error) {
-      console.error("Unexpected admin shop detail error:", error);
+      console.error("Unexpected admin shop detail error");
       res.status(500).json({
         success: false,
         error: "Internal Server Error",
@@ -493,7 +490,7 @@ router.post(
         shop: projectAdminShopDetail(updatedShop),
       });
     } catch (error) {
-      console.error("Unexpected shop approval transition error:", error);
+      console.error("Unexpected shop approval transition error");
       res.status(500).json({
         success: false,
         error: "Internal Server Error",
