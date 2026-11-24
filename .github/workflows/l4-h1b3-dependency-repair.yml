@@ -1,0 +1,94 @@
+name: L4-H1B.3 dependency repair rehearsal (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/l4-h1b3-dependency-repair.yml','package.json','package-lock.json','.npmrc']
+permissions:
+  contents: read
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - name: Confirm test-tool reachability and prepare minimal candidate
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
+          git grep -in -E 'vitest|@vitest/' -- src tests scripts .github ':!.github/workflows/l4-h1b3-dependency-repair.yml' > /tmp/h1b3-refs || test "$?" = 1
+          if test -s /tmp/h1b3-refs; then
+            echo "HOLD: Vitest references need review"
+            cat /tmp/h1b3-refs
+            exit 1
+          fi
+          cp package-lock.json /tmp/h1b3-before-lock.json
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const p=JSON.parse(fs.readFileSync('package.json','utf8'));
+          delete p.devDependencies.vitest;
+          p.devDependencies.ajv='8.20.0';
+          p.devDependencies=Object.fromEntries(Object.entries(p.devDependencies).sort(([a],[b])=>a.localeCompare(b,'en')));
+          fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');
+          JS
+          npm install --package-lock-only --ignore-scripts --legacy-peer-deps=false --no-audit --no-fund
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const old=JSON.parse(fs.readFileSync('/tmp/h1b3-before-lock.json','utf8'));
+          const now=JSON.parse(fs.readFileSync('package-lock.json','utf8'));
+          const root={...now}; delete root.packages;
+          console.log('H1B3_LOCK_ROOT '+JSON.stringify(root));
+          console.log('H1B3_MANIFEST '+JSON.stringify(JSON.parse(fs.readFileSync('package.json','utf8'))));
+          for(const k of Object.keys(old.packages)) if(!(k in now.packages)) console.log('H1B3_LOCK_DELETE '+JSON.stringify(k));
+          for(const [k,v] of Object.entries(now.packages)) if(JSON.stringify(old.packages[k])!==JSON.stringify(v)) console.log('H1B3_LOCK_SET '+JSON.stringify([k,v]));
+          console.log('H1B3_LOCK_ORDER '+JSON.stringify(Object.keys(now.packages)));
+          JS
+          sha256sum package-lock.json
+          npm ci --legacy-peer-deps=false --no-audit --no-fund
+      - name: Fail closed offline dependency and regression tests
+        run: |
+          set -euo pipefail
+          script="$RUNNER_TEMP/h1b3-test.sh"
+          cat > "$script" <<'BASH'
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test "$(ip -o link show | wc -l)" -eq 1
+          test -z "$(ip route show default)"
+          npm ls --all --json > /tmp/h1b3-tree.json
+          echo H1B3_DEPENDENCY_TREE_PASS
+          npm explain vite
+          npm explain ajv
+          npm run lint
+          ./node_modules/.bin/tsc --noEmit --pretty false
+          node --experimental-strip-types --test \
+            tests/l3-p4-merchant-confirmation.test.mjs \
+            tests/merchant-pickup.test.mjs \
+            tests/merchant-handover.test.mjs \
+            tests/merchant-shop-revalidation.test.mjs \
+            tests/merchant-order-inbox-p1.test.mjs \
+            tests/merchant-push-registration.test.mjs \
+            tests/default-image-fallback.test.mjs \
+            tests/merchant-marketing-counter.test.mjs \
+            tests/l4-r1-orders-layout-switch.test.mjs \
+            tests/l4-r1c-functional-contracts.test.mjs \
+            tests/l4-pickup-core-ui-freeze.test.mjs
+          npm run build
+          python3 - <<'PY'
+          from pathlib import Path
+          import gzip
+          for ext in ('.js','.css'):
+              files=[p for p in Path('dist/assets').rglob('*') if p.is_file() and p.suffix==ext]
+              print(f'H1B3_BUNDLE {ext} files={len(files)} raw_bytes={sum(p.stat().st_size for p in files)} gzip9_bytes={sum(len(gzip.compress(p.read_bytes(),compresslevel=9,mtime=0)) for p in files)}')
+          PY
+          echo H1B3_REHEARSAL_PASS
+          BASH
+          chmod 700 "$script"
+          sudo unshare --net -- bash -euc '
+            ip link set lo up
+            exec setpriv --reuid="$1" --regid="$2" --init-groups env -i PATH="$3" HOME="$4" CI=true PICKUP_WRITES_ENABLED=false VITE_PICKUP_ORDERING_ENABLED=false VITE_PROFILE_WRITES_ENABLED=false MERCHANT_AVAILABILITY_WRITES_ENABLED=false ADMIN_RIDER_VERIFICATION_WRITES_ENABLED=false VITE_MERCHANT_FAKE_ORDERS_ENABLED=false bash "$5"
+          ' _ "$(id -u)" "$(id -g)" "$PATH" "$HOME" "$script"
