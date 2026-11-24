@@ -43,7 +43,8 @@ app.use(cors({
   // CORS only permits the preflight; Firebase auth and shop ownership still
   // authorize the actual write on the API.
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Retry-After']
 }));
 
 app.use(createApiAdmission());
