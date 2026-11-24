@@ -145,3 +145,95 @@ test("unverified pickup discounts and additional VAT cannot affect server prices
  for(const fields of [{promo_code:"LOCAL10"},{discount_amount:5},{vat:3.75},{service_fee:2.5}])
   assert.throws(()=>parsePickupInput({...raw(),...fields},false));
 });
+
+/** H2D: synthetic API/contract boundary checks; the real database must be rehearsed separately. */
+test("H2D: price consent protects every cent, even when a changed menu has the same total",async()=>{
+ const repository=repo();
+ const body={...raw(),items:[{menu_item_id:"item",quantity:1},{menu_item_id:"other",quantity:1}]};
+ repository.findMenuItems=async()=>[
+  {id:"item",shop_id:"shop",name:"Meal",price:"12.34",is_available:true},
+  {id:"other",shop_id:"shop",name:"Side",price:"12.66",is_available:true}
+ ];
+ const quote=pickupQuote(await pickupPricing(repository,"customer",parsePickupInput(body,false)));
+ assert.equal(quote.total_minor,2500);assert.deepEqual(quote.lines.map(l=>l.line_minor),[1234,1266]);
+ const creation=parsePickupInput({...body,consent:{currency:"ZAR",total_minor:quote.total_minor,pricing_fingerprint:quote.pricing_fingerprint}},true);
+ repository.findMenuItems=async()=>[
+  {id:"item",shop_id:"shop",name:"Meal",price:"12.35",is_available:true},
+  {id:"other",shop_id:"shop",name:"Side",price:"12.65",is_available:true}
+ ];
+ const changed=pickupQuote(await pickupPricing(repository,"customer",parsePickupInput(body,false)));
+ assert.equal(changed.total_minor,quote.total_minor);assert.notEqual(changed.pricing_fingerprint,quote.pricing_fingerprint);
+ let writes=0;
+ await assert.rejects(()=>createPickup(rpc(async()=>{writes++;throw Error("unexpected write");}),repository,"customer",creation),/PRICE_CHANGED/);
+ assert.equal(writes,0);
+});
+test("H2D: GPS boundary admits 3999m, denies 4001m before catalog and writes",async()=>{
+ const repository=repo();const original=repository.findMenuItems;let reads=0;
+ repository.findMenuItems=async(...args)=>{reads++;return original(...args);};
+ const location=(km:number)=>({lat:-26+km/6371*180/Math.PI,lng:28});
+ const input=parsePickupInput({...raw(),launch_location:location(3.999)},false);
+ assert.equal(pickupQuote(await pickupPricing(repository,"customer",input)).total_minor,2500);
+ assert.equal(reads,1);
+ await assert.rejects(()=>pickupPricing(repository,"customer",{...input,location:location(4.001)}),/OUTSIDE_PICKUP_RADIUS/);
+ assert.equal(reads,1);
+ for(const launch_location of [{lat:91,lng:28},{lat:-26,lng:181},{lat:"-26",lng:28},{lat:NaN,lng:28}])
+  assert.throws(()=>parsePickupInput({...raw(),launch_location},false),/INVALID_COORDINATES/);
+});
+test("H2D: UUID case is normalized; changed quantity, notes or payment cannot reuse saved intent",async()=>{
+ const original=await request(),repository=repo();
+ const upper=parsePickupInput({...raw(),idempotency_key:id.toUpperCase(),consent:{currency:"ZAR",total_minor:original.consent!.totalMinor,pricing_fingerprint:original.consent!.pricingFingerprint}},true);
+ assert.equal(creationHash("customer",upper),creationHash("customer",original));
+ const saved:StoredOrder={id,user_id:"customer",shop_id:"shop",rider_id:null,status:"pending",
+  delivery_status:"none",payment_method:"cash",price:25,total_price:25,delivery_fee:0,service_fee:0,
+  discount_amount:0,tip_amount:0,items:[{menu_item_id:"item",quantity:1,unit_price:25,line_total:25}],
+  lat:null,lng:null,delivery_type:"collection",payment_status:"unpaid",revision:0,
+  create_intent_hash:creationHash("customer",original)};
+ repository.findOrderByIdempotencyKey=async()=>saved;
+ repository.findShop=async()=>{throw Error("replay must not reprice");};
+ const never=rpc(async()=>{throw Error("replay must not write");});
+ assert.equal((await createPickup(never,repository,"customer",upper)).replayed,true);
+ for(const changed of [{...original.input,items:[{menu_item_id:"item",quantity:2}]},{...original.input,items:[{menu_item_id:"item",quantity:1,notes:"changed"}]},{...original.input,payment_method:"card_machine" as const}])
+  await assert.rejects(()=>createPickup(never,repository,"customer",{...original,input:changed}),/IDEMPOTENCY_CONFLICT/);
+});
+test("H2D: malformed payment methods and nonboolean handover never reach RPC",async()=>{
+ let calls=0;const client=rpc(async()=>{calls++;return {data:{order:{id},replayed:false},error:null};});
+ const body={command_id:id,expected_revision:2};
+ for(const payment_method of [["cash"],["card_machine"],{},null,1,true,"Cash","cash_on_arrival","online"])
+  await assert.rejects(()=>commandPickup(client,"merchant",id,"confirm_payment",{...body,payment_method}),/INVALID_PAYMENT_METHOD/);
+ for(const handover_confirmed of [false,1,"true",null,["true"]])
+  await assert.rejects(()=>commandPickup(client,"merchant",id,"collect",{...body,handover_confirmed}),/HANDOVER_CONFIRMATION_REQUIRED/);
+ assert.equal(calls,0);
+ for(const payment_method of ["cash","card_machine"])
+  await commandPickup(client,"merchant",id,"confirm_payment",{...body,payment_method});
+ assert.equal(calls,2);
+});
+test("H2D: exhaustive pickup model state/action/actor/ownership matrix",()=>{
+ const states=[
+  {status:"pending",payment:"unpaid",allowed:["accept","reject","cancel"]},
+  {status:"preparing",payment:"unpaid",allowed:["ready"]},
+  {status:"ready_for_pickup",payment:"unpaid",allowed:["confirm_payment"]},
+  {status:"ready_for_pickup",payment:"paid",allowed:["collect"]},
+  {status:"collected",payment:"paid",allowed:[]},
+  {status:"cancelled",payment:"unpaid",allowed:[]}
+ ] as const;
+ const actions=["accept","ready","reject","cancel","confirm_payment","collect"] as const;
+ const expected={accept:["preparing","unpaid","accepted"],ready:["ready_for_pickup","unpaid","ready"],reject:["cancelled","unpaid","merchant_rejected"],cancel:["cancelled","unpaid","customer_cancelled"],confirm_payment:["ready_for_pickup","paid","payment_confirmed"],collect:["collected","paid","collected"]} as const;
+ let cases=0,accepted=0;
+ for(const entry of states)for(const action of actions)for(const actor of ["customer","merchant"] as const)for(const authorized of [false,true]){
+  const state={status:entry.status,payment:entry.payment,revision:4};
+  const command={action,actor,authorized,orderId:id,actorUid:actor,commandId:id,expectedRevision:4,
+   ...(action==="confirm_payment"?{paymentMethod:"cash" as const}:{}),
+   ...(action==="collect"?{handoverConfirmed:true}:{}),
+   ...(action==="cancel"||action==="reject"?{reason:"Synthetic cancellation"}:{})};
+  const allowed=authorized&&actor===(action==="cancel"?"customer":"merchant")&&(entry.allowed as readonly string[]).includes(action);
+  cases++;
+  if(!allowed){assert.throws(()=>draftTransition(state,command));continue;}
+  accepted++;
+  const result=draftTransition(state,command);
+  assert.deepEqual([result.state.status,result.state.payment,result.event.kind],expected[action]);
+  assert.equal(result.state.revision,5);assert.equal(state.revision,4);
+  assert.equal(draftTransition(result.state,command,result.event).replayed,true);
+  assert.throws(()=>draftTransition(result.state,command),/ORDER_STATE_CHANGED/);
+ }
+ assert.equal(cases,144);assert.equal(accepted,6);
+});
