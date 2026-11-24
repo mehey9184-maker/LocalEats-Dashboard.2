@@ -17,7 +17,12 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
   const originalFrom=supabaseAdmin.from,originalRpc=supabaseAdmin.rpc,originalVerify=authAdmin.verifyIdToken;
   const reads:Array<{table:string;filters:Array<[string,unknown]>}>=[],rpcCalls:Array<[string,Record<string,unknown>]> = [];
   let persisted=false,unavailable=false,orderShop="shop-my-kota-ivory-park",orderCustomer="customer",subscription:Record<string,unknown>|undefined;
-  Object.assign(authAdmin,{verifyIdToken:async(token:string)=>{if(token==="expired") throw Error("expired");return {uid:token};}});
+  const checkedTokens:Array<{token:string;checkRevoked:boolean|undefined}>=[];
+  Object.assign(authAdmin,{verifyIdToken:async(token:string,checkRevoked?:boolean)=>{
+    checkedTokens.push({token,checkRevoked});
+    if(token==="expired" || (checkRevoked===true && ["revoked","disabled"].includes(token))) throw Error("synthetic provider denial");
+    return {uid:token};
+  }});
   Object.assign(supabaseAdmin,{rpc:async(name:string,args:Record<string,unknown>)=>{
     rpcCalls.push([name,args]);
     if(unavailable) return {data:null,error:{message:"offline"}};
@@ -57,6 +62,25 @@ test("mounted pickup API authenticates, scopes inbox/subscriptions and uses atom
   try {
     assert.equal((await call("/api/v1/orders/quote",undefined,input)).status,401);
     assert.equal((await call("/api/v1/orders/quote","expired",input)).status,401);
+    // Revoked and disabled identities must be rejected before any business read or RPC.
+    for(const token of ["revoked","disabled"]){
+      const beforeReads=reads.length,beforeWrites=rpcCalls.length;
+      for(const [path,method,body] of [
+        ["/api/v1/orders/quote","POST",input],
+        ["/api/v1/orders","POST",input],
+        ["/api/v1/orders","GET",undefined],
+        ["/api/v1/merchant/orders/"+id+"/payment-confirmation","POST",{command_id:id,expected_revision:2,payment_method:"cash"}],
+        ["/api/v1/notifications","GET",undefined],
+        ["/api/v1/push-subscriptions/"+id,"PUT",{fcm_token:"synthetic-device-token-123",permission_granted:true}]
+      ] as const){
+        assert.equal((await call(path,token,body,method)).status,401);
+      }
+      assert.equal(reads.length,beforeReads);assert.equal(rpcCalls.length,beforeWrites);
+      assert.equal(checkedTokens.filter(x=>x.token===token&&x.checkRevoked===true).length,6);
+    }
+    const beforeMalformed=checkedTokens.length;
+    for(const token of [" ","two tokens"]) assert.equal((await call("/api/v1/orders/quote",token,input)).status,401);
+    assert.equal(checkedTokens.length,beforeMalformed);
     // Old deployed API clients must fail before catalog reads or any persistence attempt.
     for (const path of ["/api/v1/orders", "/api/v1/orders/quote"]) {
       const beforeReads=reads.length, beforeWrites=rpcCalls.length;
