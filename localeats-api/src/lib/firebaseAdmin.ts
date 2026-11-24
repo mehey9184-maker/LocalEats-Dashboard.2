@@ -23,7 +23,7 @@ if (projectId && clientEmail && privateKey) {
         }),
       });
     } catch (e) {
-      console.error("Failed to initialize Firebase app:", e);
+      console.error("Failed to initialize Firebase app");
     }
   }
 } else {
