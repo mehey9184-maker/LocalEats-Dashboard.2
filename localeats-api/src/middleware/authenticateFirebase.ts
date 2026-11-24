@@ -18,7 +18,7 @@ export const getFirebaseBearerToken = (
   }
 
   const token = authorizationHeader.slice("Bearer fb-".length);
-  return token && !/\s/.test(token) ? token : null;
+  return token && token.length<=8192 && !/\s/.test(token) ? token : null;
 };
 
 export const authenticateFirebase = async (
