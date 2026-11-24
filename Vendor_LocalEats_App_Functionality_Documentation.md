@@ -1,5 +1,8 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L4-H3A / H3B — 2026-11-25
+H3A verified 252/252 API/Preview tests (45504206209). H3B [ADR-018](docs/LOCALEATS_L4_H3B_CATALOG_ACL.md) records raw Supabase catalog exposure, legacy anon diagnostic and Firestore compatibility bridge distinction. Review-only SQL revokes direct browser catalog privileges and policies, preserves API service role; disposable PG17 real-role and policy-drift rollback tests pending. No hosted grants, UI or runtime changes. Complete consumer and release review required before any apply.
+
 ## L4-H2E / H3A — security hardening, 2026-11-25
 H2E combined isolated run 45502520316 passed 4/4 jobs, 665 test entries plus browser and database transaction assertions. H3A draft requires Firebase revoked/disabled checks on ordinary protected API routes and redacts provider denial logs. See [ADR-017](docs/LOCALEATS_L4_H3A_SECURITY_BASELINE.md) for exact candidate, read-only hosted RLS/grant findings and outstanding catalog security work. No hosted grants or rules altered. API tests pending; real provider latency/quota and devices unverified.
 
