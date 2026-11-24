@@ -627,9 +627,11 @@ export const supabase = {
     from() {
       return {
         getPublicUrl(_path: string) {
+          void _path; // Retain the compatibility signature without fabricating a URL.
           return { data: { publicUrl: null } };
         },
         async upload(_path: string) {
+          void _path; // Retain the compatibility signature without uploading.
           return { data: null, error: new Error("Storage upload requires the verified media service. No file was uploaded.") };
         }
       };
