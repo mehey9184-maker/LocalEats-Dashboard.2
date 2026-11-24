@@ -101,7 +101,7 @@ export const createAdminRiderRouter = (
         pagination: { limit, offset, returned: riders.length },
       });
     } catch (error) {
-      console.error("Admin Rider list error:", error);
+      console.error("Admin Rider list error");
       res.status(500).json({ success: false, error: "Internal Server Error" });
     }
   });
@@ -121,7 +121,7 @@ export const createAdminRiderRouter = (
       }
       res.status(200).json({ success: true, rider: projectRider(rider) });
     } catch (error) {
-      console.error("Admin Rider detail error:", error);
+      console.error("Admin Rider detail error");
       res.status(500).json({ success: false, error: "Internal Server Error" });
     }
   });
@@ -180,7 +180,7 @@ export const createAdminRiderRouter = (
       }
       res.status(200).json({ success: true, rider: projectRider(rider) });
     } catch (error) {
-      console.error("Admin Rider verification error:", error);
+      console.error("Admin Rider verification error");
       res.status(500).json({ success: false, error: "Internal Server Error" });
     }
   });
