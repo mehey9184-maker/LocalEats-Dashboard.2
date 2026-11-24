@@ -148,7 +148,7 @@ test("pickup enabled does not permit legacy nonpickup transitions; anonymous cre
 test("capability gate mounted before body parser and all routes; role gates remain",()=>{
  const src=readFileSync("src/server.ts","utf8");
  assert.ok(src.indexOf("app.use(launchCapabilityGate);")>src.indexOf("app.use(pickupWriteGate);"));
- assert.ok(src.indexOf("app.use(launchCapabilityGate);")<src.indexOf("app.use(express.json());"));
+ assert.ok(src.indexOf("app.use(launchCapabilityGate);")<src.indexOf("app.use(express.json("));
  assert.match(src,/app\.use\(previewReadOnlyGate\);/);
  assert.match(readFileSync("src/routes/admin.ts","utf8"),/authenticateAdminFirebase,\s*authorizeSuperAdmin/);
  assert.match(readFileSync("src/routes/customerProfiles.ts","utf8"),/REGISTERED_ACCOUNT_REQUIRED/);
