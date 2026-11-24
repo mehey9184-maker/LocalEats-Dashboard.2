@@ -30,17 +30,18 @@ const server=createServer((req,res)=>{
  else{res.statusCode=404;res.end();}
 });
 const profile=mkdtempSync(path.join(tmpdir(),'h1d3-browser-'));
-let chrome,ws;
+let chrome,ws,chromeDiagnostics='';
 try{
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
  const origin='http://127.0.0.1:'+server.address().port;
  const binary=['google-chrome','google-chrome-stable','chromium','chromium-browser'].map(name=>{try{return execFileSync('which',[name],{encoding:'utf8'}).trim();}catch{return '';}}).find(Boolean);
  assert.ok(binary,'A preinstalled Chrome/Chromium executable is required; do not skip browser gate');
  console.log('H1D3_BROWSER_VERSION '+execFileSync(binary,['--version'],{encoding:'utf8'}).trim());
- chrome=spawn(binary,['--headless','--no-sandbox','--disable-dev-shm-usage','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:'ignore',detached:true});
+ chrome=spawn(binary,['--headless','--no-sandbox','--disable-dev-shm-usage','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:['ignore','ignore','pipe'],detached:true});
+ chrome.stderr.on('data',chunk=>{chromeDiagnostics=(chromeDiagnostics+chunk.toString()).slice(-4000);});
  let port;
- for(let n=0;n<100;n++){const file=path.join(profile,'DevToolsActivePort');if(existsSync(file)){port=Number(readFileSync(file,'utf8').split('\n')[0]);if(port)break;}if(chrome.exitCode!==null)throw Error('Chrome exited');await delay(100);}
- assert.ok(port,'Chrome debug port unavailable');
+ for(let n=0;n<450;n++){const file=path.join(profile,'DevToolsActivePort');if(existsSync(file)){port=Number(readFileSync(file,'utf8').split('\n')[0]);if(port)break;}if(chrome.exitCode!==null)throw Error('Chrome exited');await delay(100);}
+ assert.ok(port,'Chrome debug port unavailable after 45s');
  const targets=await (await fetch('http://127.0.0.1:'+port+'/json/list')).json();
  const target=targets.find(t=>t.type==='page');assert.ok(target);
  ws=new WebSocket(target.webSocketDebuggerUrl);
@@ -105,6 +106,7 @@ try{
  console.log('H1D3_BROWSER_PARITY_PASS screenshots='+images+' keyboard_sequences=2');
 }catch(error){
  console.error('H1D3_BROWSER_FAILURE '+String(error?.stack||error).slice(0,3000));
+ if(chromeDiagnostics)console.error('H1D3_CHROME_DIAGNOSTICS '+chromeDiagnostics);
  process.exitCode=1;
 }finally{
  if(ws)ws.close();
