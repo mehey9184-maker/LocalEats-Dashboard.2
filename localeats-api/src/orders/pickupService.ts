@@ -126,7 +126,7 @@ export async function commandPickup(client:RpcClient,uid:string,orderId:string,a
   if (!UUID.test(orderId) || typeof body.command_id!=="string" || !UUID.test(body.command_id) ||
     !Number.isSafeInteger(body.expected_revision) || Number(body.expected_revision)<0 || Number(body.expected_revision)>=Number.MAX_SAFE_INTEGER) return fail(400,"INVALID_COMMAND");
   if ((action==="reject" || action==="cancel") && (typeof body.reason!=="string" || !body.reason.trim() || body.reason.trim().length>500)) return fail(400,"INVALID_CANCELLATION");
-  if (action==="confirm_payment" && !["cash","card_machine"].includes(String(body.payment_method))) return fail(400,"INVALID_PAYMENT_METHOD");
+  if (action==="confirm_payment" && body.payment_method!=="cash" && body.payment_method!=="card_machine") return fail(400,"INVALID_PAYMENT_METHOD");
   if (action==="collect" && body.handover_confirmed!==true) return fail(400,"HANDOVER_CONFIRMATION_REQUIRED");
   return persistedResult(await pickupRpc(client,"pickup_order_command",{p_uid:uid,p_order_id:orderId,p_action:action,p_command_id:body.command_id,
     p_expected_revision:body.expected_revision,p_reason:typeof body.reason==="string" ? body.reason.trim() : null,
