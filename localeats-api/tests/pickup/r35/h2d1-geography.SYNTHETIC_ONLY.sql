@@ -24,7 +24,7 @@ BEGIN
  FOREACH label IN ARRAY ARRAY[NULL::text,'','Cosmo City','Soweto','Pretoria','Tembisa'] LOOP
    UPDATE public.shops SET location=label WHERE id=shop;
    key := gen_random_uuid();
-   record := r34_fixture.make_record(key,25,25,0,shop,-26.0100+3.999/6371*180/pi(),28.1900);
+   record := r34_fixture.make_record(key,25,25,0,shop,(-26.0100+3.999/6371*180/pi())::numeric,28.1900);
    answer := public.pickup_create_order('synthetic-customer',repeat('b',64),record);
    IF answer->>'replayed' IS DISTINCT FROM 'false' OR
       (answer->'order'->>'total_price')::numeric IS DISTINCT FROM 25 OR
@@ -36,7 +36,7 @@ BEGIN
    END IF;
    BEGIN
      PERFORM public.pickup_create_order('synthetic-customer',repeat('c',64),
-        r34_fixture.make_record(gen_random_uuid(),25,25,0,shop,-26.0100+4.001/6371*180/pi(),28.1900));
+        r34_fixture.make_record(gen_random_uuid(),25,25,0,shop,(-26.0100+4.001/6371*180/pi())::numeric,28.1900));
      RAISE EXCEPTION 'H2D1_OUTSIDE_RADIUS_ACCEPTED';
    EXCEPTION WHEN OTHERS THEN
      IF SQLERRM NOT LIKE '%OUTSIDE_PICKUP_RADIUS%' THEN RAISE; END IF;
