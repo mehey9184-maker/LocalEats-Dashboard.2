@@ -729,3 +729,5 @@ Run 45511701899 inventory 138860768157 PASS: only .env.example files in matched 
 
 ### H3D lint recovery
 Run 45511871887: Customer, API 255/255 and source inventory passed; Merchant job 138861361630 failed root lint on 13 unused catch bindings after log redaction; 179/179 tests, TypeScript, build and browser all passed. Removed exactly those 13 unused catch bindings across six API files (no ESLint suppressions or logic changes). Corrected Merchant pin 36aac4b5d2289f7a4e29e53e4c2fcf1a9bf7b962; workflow f0422aae7ec2075ff9ae37be336e401d0452bbcf. H3D gate not passed until rerun completes. No hosted changes.
+
+**H3D corrected combined acceptance PASS:** run 45512242750, all four jobs succeeded. Exact Customer 74189becece0530471ece0ede58df7c9d66c2d0e, Merchant/API 36aac4b5d2289f7a4e29e53e4c2fcf1a9bf7b962. Customer 234/234, Merchant 179/179, API 255/255 = 668 entries, plus source inventory; build/browser/TypeScript and lint gate passed. All earlier release blockers, distributed rate limiting, actual traffic and credential-history/hosted configuration gates retained. H3E may begin offline. No production release approval.
