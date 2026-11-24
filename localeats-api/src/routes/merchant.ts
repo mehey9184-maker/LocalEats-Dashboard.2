@@ -81,7 +81,7 @@ router.get("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res:
       success: true,
       shop: effectiveShop(shops[0]),
     });
-  } catch (err) {
+  } catch {
     console.error("Error fetching merchant shop");
 
     res.status(500).json({
@@ -343,7 +343,7 @@ router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res
       success: true,
       shop: newShop,
     });
-  } catch (err) {
+  } catch {
     console.error("Error creating merchant shop:");
 
     res.status(500).json({
