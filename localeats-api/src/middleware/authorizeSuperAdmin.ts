@@ -30,7 +30,7 @@ export const authorizeSuperAdmin = async (
       .maybeSingle();
 
     if (error) {
-      console.error("Supabase admin authorization query error:", error);
+      console.error("Supabase admin authorization query error");
       res.status(500).json({
         success: false,
         error: "Internal Server Error",
@@ -54,7 +54,7 @@ export const authorizeSuperAdmin = async (
 
     next();
   } catch (error) {
-    console.error("Unexpected admin authorization error:", error);
+    console.error("Unexpected admin authorization error");
     res.status(500).json({
       success: false,
       error: "Internal Server Error",
