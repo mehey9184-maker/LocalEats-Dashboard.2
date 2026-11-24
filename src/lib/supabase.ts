@@ -500,7 +500,7 @@ export const supabase = {
   },
 
   rpc() {
-    return Promise.resolve({ data: { success: true }, error: null });
+    return Promise.resolve({ data: null, error: new Error("RPC is unavailable in the legacy bridge. No changes were saved.") });
   },
 
   auth: {
@@ -626,11 +626,11 @@ export const supabase = {
   storage: {
     from() {
       return {
-        getPublicUrl(path: string) {
-          return { data: { publicUrl: path } };
+        getPublicUrl(_path: string) {
+          return { data: { publicUrl: null } };
         },
-        async upload(path: string) {
-          return { data: { path }, error: null };
+        async upload(_path: string) {
+          return { data: null, error: new Error("Storage upload requires the verified media service. No file was uploaded.") };
         }
       };
     }

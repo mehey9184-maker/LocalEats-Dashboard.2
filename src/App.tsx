@@ -558,68 +558,8 @@ function App() {
     }
   }, [currentShop]);
 
-  // --- Shop Live Heartbeat & Inactivity Tracker ---
-  useEffect(() => {
-    // Preview may reuse Production Supabase credentials. Opening a read-only
-    // Preview must not update shops.updated_at in the live database.
-    if (import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true") return;
-    if (merchantShopGate.status !== "ready" || !user || !currentShop) return;
-
-    const syncHeartbeat = async () => {
-      try {
-        const timeNow = new Date().toISOString();
-        const lastUpdated = currentShop.updated_at ? new Date(currentShop.updated_at).getTime() : 0;
-        const oneHourMs = 60 * 60 * 1000;
-        const fourDaysMs = 4 * 24 * 60 * 60 * 1000;
-
-        // Custom welcoming alerts if they were offline or inactive for more than 4 days
-        if (currentShop.updated_at && (Date.now() - lastUpdated > fourDaysMs)) {
-          toast.warning("⚠️ Welcome Back! Dashboard Inactive for 4+ Days", {
-            description: "We've synchronized your cloud connection status and verified that your online storefront is active and ready for orders!",
-            duration: 12000,
-          });
-        }
-
-        // Defensive check: only update if current local state is outdated by at least 1 hour, to prevent excessive DB writes
-        if (Date.now() - lastUpdated < oneHourMs) {
-          return;
-        }
-
-        // Quietly update the database
-        const { error } = await supabase
-          .from("shops")
-          .update({ updated_at: timeNow })
-          .eq("id", currentShop.id);
-
-        if (error) {
-          if (compatErrorCode(error) === '42703' || compatErrorMessage(error)?.includes('column "updated_at" of relation "shops" does not exist')) {
-            console.warn("Telemetry warning: updated_at column is not yet provisioned in your shops table.", compatErrorMessage(error));
-          } else {
-            console.warn("Telemetry warning: Failed to push storefront heartbeat.", compatErrorMessage(error));
-          }
-        } else {
-          // Update local state smoothly
-          setShops((prev) =>
-            prev.map((s) => (s.id === currentShop.id ? { ...s, updated_at: timeNow } : s))
-          );
-        }
-      } catch (err) {
-        console.warn("Defensive catch: Failed to push storefront heartbeat. internet or Supabase schema:", err);
-      }
-    };
-
-    // Trigger heartbeat check
-    void syncHeartbeat();
-
-    // every 10 minutes to maintain active signal in active session
-    const interval = setInterval(() => {
-      void syncHeartbeat();
-    }, 10 * 60 * 1000);
-
-    return () => clearInterval(interval);
-  }, [user, currentShop, merchantShopGate.status]);
-
-
+  // Shop timestamps are authoritative API data, not browser heartbeat telemetry.
+  // Existing authenticated inbox refresh and availability controls remain independent.
 
   useEffect(() => {
     try {
