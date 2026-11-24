@@ -1,0 +1,94 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // H3C: pickup business state belongs to the API. No role from client documents.
+    function isAuthenticated() { return request.auth != null; }
+    function ownsPath(uid) { return isAuthenticated() && request.auth.uid == uid; }
+    function isShopOwner(shopId) {
+      return isAuthenticated() && shopId is string &&
+        exists(/databases/$(database)/documents/shops/$(shopId)) &&
+        get(/databases/$(database)/documents/shops/$(shopId)).data.owner_id == request.auth.uid;
+    }
+    function isOrderParticipant(orderId) {
+      let orderPath = /databases/$(database)/documents/orders/$(orderId);
+      return isAuthenticated() && orderId is string && exists(orderPath) &&
+        (get(orderPath).data.user_id == request.auth.uid ||
+         isShopOwner(get(orderPath).data.shop_id));
+    }
+    function profileFields() {
+      return ['name','full_name','phone','updated_at'];
+    }
+    function safeProfileText(data) {
+      return data.get('name','') is string && data.get('name','').size() <= 200 &&
+        data.get('full_name','') is string && data.get('full_name','').size() <= 200 &&
+        data.get('phone','') is string && data.get('phone','').size() <= 40 &&
+        data.get('updated_at','') is string && data.get('updated_at','').size() <= 64;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    // No public raw shop/menu data. The central API projects approved catalog rows.
+    // Retain owner-scoped reads for legacy merchant compatibility only.
+    match /shops/{shopId} {
+      allow read: if isAuthenticated() && resource.data.owner_id == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+    match /menu_items/{itemId} {
+      allow read: if isShopOwner(resource.data.shop_id);
+      allow create, update, delete: if false;
+    }
+    match /orders/{orderId} {
+      // Pickup customer/merchant history only; no rider pool or rider telemetry access.
+      allow read: if isAuthenticated() &&
+        (resource.data.user_id == request.auth.uid || isShopOwner(resource.data.shop_id));
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+    match /users/{userId} {
+      allow read: if ownsPath(userId);
+      // Merchant signup currently creates a plain self profile, never a merchant/admin role.
+      allow create: if ownsPath(userId) &&
+        request.resource.data.keys().hasOnly(['uid','email','name','full_name','phone','created_at','updated_at','role']) &&
+        request.resource.data.get('uid',userId) == userId &&
+        request.resource.data.get('role','customer') in ['customer','user'] &&
+        request.resource.data.get('email','') is string &&
+        request.resource.data.get('email','').size() <= 320 &&
+        request.resource.data.get('created_at','') is string &&
+        request.resource.data.get('created_at','').size() <= 64 &&
+        safeProfileText(request.resource.data);
+      // Positive field allowlist also denies addition/deletion of unknown privileged fields.
+      allow update: if ownsPath(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(profileFields()) &&
+        safeProfileText(request.resource.data);
+      allow delete: if false;
+    }
+    match /rider_profiles/{riderId} {
+      allow read: if ownsPath(riderId);
+      // Rider onboarding, telemetry and financial state are deferred, not client-authoritative.
+      allow create, update, delete: if false;
+    }
+    match /rider_connections/{connId} {
+      allow read: if isAuthenticated() &&
+        (resource.data.rider_id == request.auth.uid || isShopOwner(resource.data.shop_id));
+      allow create, update, delete: if false;
+    }
+    // Preserve scoped historical reads, but new business chat writes must use
+    // a reviewed participant-authorized service. No legacy sender authority.
+    match /chat_messages/{messageId} {
+      allow read: if isOrderParticipant(resource.data.order_id);
+      allow create, update, delete: if false;
+    }
+    match /shop_followers/{followId} {
+      allow read: if isAuthenticated() &&
+        (resource.data.user_id == request.auth.uid || isShopOwner(resource.data.shop_id));
+      allow create, update, delete: if false;
+    }
+    match /payments/{paymentId} {
+      allow read: if isShopOwner(resource.data.shop_id);
+      allow write: if false;
+    }
+    // profiles, reviews, follows, messages, push tokens, contact messages,
+    // rider_locations, nested menus and every other unreviewed collection: default deny.
+  }
+}
