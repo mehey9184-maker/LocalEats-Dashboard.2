@@ -1,5 +1,9 @@
 # LocalEats Platform - Persistent System Instructions
 
+## L4-H1 engineering handover — 2026-11-24 (documentation review)
+Read [the AI handover](docs/LOCALEATS_AI_HANDOVER.md) for the dated cross-app orientation, decision log, source evidence and remaining launch gates. Use `.agents/skills/localeats-engineering-handover/SKILL.md` for engineering continuity and code health, in addition to existing pickup-specific instructions. Historical notes below are not authorization to revive legacy flows. Verify live source and environment; no Production deployment, merge, real orders, live writes, paid services or deletion of deferred features from this audit. Record important decisions and update relevant functionality documentation with exact test evidence.
+
+
 ## Draft merchant image defaults — 2026-11-22
 On branch `review/merchant-missing-image-defaults-20261122`, missing or failed customer-facing merchant images display `MerchantPhoto` branded defaults for shop/menu, and the merchant account profile displays local initials. Keep uploaded photos primary, never write placeholder URLs to the database, never imply the merchant photographed a generic stock item. Read `Vendor_LocalEats_App_Functionality_Documentation.md` and run `tests/default-image-fallback.test.mjs`. Draft only; no Production or pickup-activation approval.
 
