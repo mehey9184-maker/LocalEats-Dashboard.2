@@ -183,7 +183,11 @@ test("H2D: UUID case is normalized; changed quantity, notes or payment cannot re
  const original=await request(),repository=repo();
  const upper=parsePickupInput({...raw(),idempotency_key:id.toUpperCase(),consent:{currency:"ZAR",total_minor:original.consent!.totalMinor,pricing_fingerprint:original.consent!.pricingFingerprint}},true);
  assert.equal(creationHash("customer",upper),creationHash("customer",original));
- const saved={id,user_id:"customer",create_intent_hash:creationHash("customer",original)} as StoredOrder;
+ const saved:StoredOrder={id,user_id:"customer",shop_id:"shop",rider_id:null,status:"pending",
+  delivery_status:"none",payment_method:"cash",price:25,total_price:25,delivery_fee:0,service_fee:0,
+  discount_amount:0,tip_amount:0,items:[{menu_item_id:"item",quantity:1,unit_price:25,line_total:25}],
+  lat:null,lng:null,delivery_type:"collection",payment_status:"unpaid",revision:0,
+  create_intent_hash:creationHash("customer",original)};
  repository.findOrderByIdempotencyKey=async()=>saved;
  repository.findShop=async()=>{throw Error("replay must not reprice");};
  const never=rpc(async()=>{throw Error("replay must not write");});
