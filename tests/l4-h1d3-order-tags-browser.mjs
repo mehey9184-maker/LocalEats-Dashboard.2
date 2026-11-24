@@ -24,7 +24,7 @@ const css=readdirSync('dist/assets').filter(f=>f.endsWith('.css')).map(f=>readFi
 assert.ok(css.length>0);
 const html='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/style.css"><style>body{margin:0}*{animation:none!important;transition:none!important;caret-color:transparent!important}</style></head><body tabindex="-1"><div id="root"></div><script src="/fixture.js"></script></body></html>';
 const server=createServer((req,res)=>{
- const p=req.url;
+ const p=new URL(req.url,'http://127.0.0.1').pathname;
  if(p==='/fixture.js'){res.setHeader('Content-Type','application/javascript');res.end(js);}
  else if(p==='/style.css'){res.setHeader('Content-Type','text/css');res.end(css);}
  else if(p==='/'){res.setHeader('Content-Type','text/html');res.end(html);}
@@ -94,16 +94,26 @@ try{
   }
   throw Error('Unstable browser fixture: three consecutive identical decoded frames required');
  }
- const key=async(k,code,vk)=>{await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:k,code,windowsVirtualKeyCode:vk,nativeVirtualKeyCode:vk});await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:k,code,windowsVirtualKeyCode:vk,nativeVirtualKeyCode:vk});};
+ // CDP Enter needs its native character event; sending key codes alone omits keypress.
+ const key=async(k,code,vk)=>{
+  const base={key:k,code,windowsVirtualKeyCode:vk,nativeVirtualKeyCode:vk};
+  const text=k==='Enter'?'\r':k===' '?' ':'';
+  await cdp('Input.dispatchKeyEvent',{type:'keyDown',...base,...(text?{text,unmodifiedText:text}:{})});
+  await cdp('Input.dispatchKeyEvent',{type:'keyUp',...base});
+  await evaluate(settle);
+ };
  for(const mode of ['old','new']){
   await evaluate('window.harness.mount('+JSON.stringify(mode)+',[],false)');
-  await key('Tab','Tab',9);assert.equal(await evaluate('window.harness.focus()'),'Toggle Rush');
-  await key('Enter','Enter',13);
-  await key('Tab','Tab',9);assert.equal(await evaluate('window.harness.focus()'),'Toggle VIP');
-  await key(' ','Space',32);
-  await key('Tab','Tab',9);assert.equal(await evaluate('window.harness.focus()'),'Toggle Special');
-  await key('Enter','Enter',13);
-  assert.deepEqual(await evaluate('window.harness.events()'),[['toggle','fixture','Rush'],['toggle','fixture','VIP'],['toggle','fixture','Special']]);
+  const expected=[];
+  for(const [tag,k,code,vk] of [['Rush','Enter','Enter',13],['VIP',' ','Space',32],['Special','Enter','Enter',13]]){
+   await key('Tab','Tab',9);
+   assert.equal(await evaluate('window.harness.focus()'),'Toggle '+tag,mode+' focus '+tag);
+   await key(k,code,vk);
+   expected.push(['toggle','fixture',tag]);
+   const observed=await evaluate('window.harness.events()');
+   console.log('H1D3_KEYBOARD_STEP '+mode+' '+tag+' '+JSON.stringify(observed));
+   assert.deepEqual(observed,expected,mode+' native activation '+tag);
+  }
  }
  console.log('H1D3_KEYBOARD_PASS sequences=2');
  let images=0,captureSerial=0;
