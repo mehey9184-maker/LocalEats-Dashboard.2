@@ -314,7 +314,7 @@ router.get(
           returned: shops.length,
         },
       });
-    } catch (error) {
+    } catch {
       console.error("Unexpected admin shop list error");
       res.status(500).json({
         success: false,
@@ -368,7 +368,7 @@ router.get(
         success: true,
         shop,
       });
-    } catch (error) {
+    } catch {
       console.error("Unexpected admin shop detail error");
       res.status(500).json({
         success: false,
@@ -489,7 +489,7 @@ router.post(
         success: true,
         shop: projectAdminShopDetail(updatedShop),
       });
-    } catch (error) {
+    } catch {
       console.error("Unexpected shop approval transition error");
       res.status(500).json({
         success: false,
