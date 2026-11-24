@@ -69,13 +69,13 @@ test("the authoritative API and safe pickup release flags remain separate from l
   assert.doesNotMatch(queue,/supabase\.from\("orders"\)/);
 });
 
-test("read-only Merchant Preview does not auto-write a shop heartbeat on page load",()=>{
-  assert.match(app,/VITE_MERCHANT_PREVIEW_READ_ONLY === "true"/);
-  const heartbeat=app.slice(app.indexOf("// --- Shop Live Heartbeat & Inactivity Tracker ---"));
-  assert.match(heartbeat,/useEffect\(\(\) => \{\s*\/\/ Preview may reuse Production Supabase credentials/);
-  const block=heartbeat.slice(0,heartbeat.indexOf("// --- Real-Time"));
-  assert.match(block,/if \(import\.meta\.env\.VITE_MERCHANT_PREVIEW_READ_ONLY === "true"\) return;/);
-  assert.match(block,/\.update\(\{ updated_at: timeNow \}\)/);
+test("Merchant never writes a shop heartbeat on page load, including read-only Preview",()=>{
+  // The heartbeat was removed entirely; neither production nor Preview needs it.
+  assert.doesNotMatch(app,/syncHeartbeat|Shop Live Heartbeat & Inactivity Tracker/);
+  assert.doesNotMatch(app,/\.update\(\{\s*updated_at:\s*timeNow\s*\}\)/);
+  assert.doesNotMatch(app,/Dashboard Inactive for 4\+ Days|online storefront is active and ready for orders/);
+  assert.match(app,/MerchantApi\.getOrders\(\)/);
+  assert.match(app,/MerchantApi\.getMerchantShop\(\)/);
   // Direct writes from other settings remain and require separate write-path review.
   assert.match(app,/\.update\(\{ require_terminal_sync: newValue \}\)/);
 });
