@@ -1,0 +1,60 @@
+name: L4-H1D.3 order-tag component parity (NO DEPLOY)
+on:
+  pull_request:
+    paths: ['src/components/OrdersManagement.tsx','src/components/OrderTags.tsx','tests/l4-h1d3-order-tags.test.mjs','.github/workflows/l4-h1d3-order-tags.yml']
+permissions:
+  contents: read
+jobs:
+  parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Offline parity and regression checks
+        run: |
+          set -euo pipefail
+          script="$RUNNER_TEMP/h1d3.sh"
+          cat > "$script" <<'BASH'
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test "$(ip -o link show | wc -l)" -eq 1
+          test -z "$(ip route show default)"
+          npm ls --all --json > /tmp/h1d3-tree.json
+          npm run lint
+          ./node_modules/.bin/tsc --noEmit --pretty false
+          node --experimental-strip-types --test \
+            tests/l4-h1d3-order-tags.test.mjs \
+            tests/l3-p4-merchant-confirmation.test.mjs \
+            tests/merchant-pickup.test.mjs \
+            tests/merchant-handover.test.mjs \
+            tests/merchant-shop-revalidation.test.mjs \
+            tests/merchant-order-inbox-p1.test.mjs \
+            tests/merchant-push-registration.test.mjs \
+            tests/default-image-fallback.test.mjs \
+            tests/merchant-marketing-counter.test.mjs \
+            tests/l4-r1-orders-layout-switch.test.mjs \
+            tests/l4-r1c-functional-contracts.test.mjs \
+            tests/l4-pickup-core-ui-freeze.test.mjs
+          npm run build
+          python3 - <<'PY'
+          from pathlib import Path
+          import gzip
+          for ext in ('.js','.css'):
+              files=[p for p in Path('dist/assets').rglob('*') if p.is_file() and p.suffix==ext]
+              print(f'H1D3_BUNDLE {ext} files={len(files)} raw_bytes={sum(p.stat().st_size for p in files)} gzip9_bytes={sum(len(gzip.compress(p.read_bytes(),compresslevel=9,mtime=0)) for p in files)}')
+          PY
+          echo H1D3_REGRESSION_PASS
+          BASH
+          chmod 700 "$script"
+          sudo unshare --net -- bash -euc '
+            ip link set lo up
+            exec setpriv --reuid="$1" --regid="$2" --init-groups env -i PATH="$3" HOME="$4" CI=true PICKUP_WRITES_ENABLED=false VITE_PICKUP_ORDERING_ENABLED=false VITE_PROFILE_WRITES_ENABLED=false MERCHANT_AVAILABILITY_WRITES_ENABLED=false ADMIN_RIDER_VERIFICATION_WRITES_ENABLED=false VITE_MERCHANT_FAKE_ORDERS_ENABLED=false bash "$5"
+          ' _ "$(id -u)" "$(id -g)" "$PATH" "$HOME" "$script"

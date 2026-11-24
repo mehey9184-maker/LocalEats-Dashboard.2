@@ -1,3 +1,4 @@
+import { OrderTagBadges, QuickOrderTags } from "./OrderTags";
 import {receiptText} from "../utils/receiptText";
 import {PickupOrderActions} from "./PickupOrderActions";
 import {PreviewFakeOrderCard,PreviewFakeOrderTrigger,usePreviewFakeOrders} from "./PreviewFakeOrders";
@@ -3398,27 +3399,7 @@ Notes: "${order.notes || "None"}"
                               </div>
                               <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
                               {/* Custom Tags display */}
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {getOrderTags(order).map((tag) => {
-                                  const colors: Record<string, string> = {
-                                    "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-                                    "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-                                    "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
-                                    "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
-                                  };
-                                  return (
-                                    <span
-                                      key={tag}
-                                      className={cn(
-                                        "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
-                                        colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
-                                      )}
-                                    >
-                                      {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
-                                    </span>
-                                  );
-                                })}
-                              </div>
+                              <OrderTagBadges tags={getOrderTags(order)} />
                             </div>
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
@@ -3522,37 +3503,7 @@ Notes: "${order.notes || "None"}"
                         )}
 
                         {/* Quick Tag Toggles */}
-                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
-                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
-                          <div className="flex items-center gap-1">
-                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
-                              const isActive = (orderTags[order.id] || []).includes(tag);
-                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
-                              return (
-                                <button
-                                  key={tag}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleOrderTag(order.id, tag);
-                                  }}
-                                  title={`Toggle ${tag}`}
-                                  className={cn(
-                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
-                                    isActive
-                                      ? tag === "Rush"
-                                        ? "bg-rose-500 text-white"
-                                        : tag === "VIP"
-                                          ? "bg-amber-500 text-white"
-                                          : "bg-teal-500 text-white"
-                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
-                                  )}
-                                >
-                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
+                        <QuickOrderTags orderId={order.id} manualTags={orderTags[order.id] || []} onToggle={toggleOrderTag} />
                       </motion.div>
                     );
                   })}
@@ -3612,27 +3563,7 @@ Notes: "${order.notes || "None"}"
                             </span>
                             <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
                             {/* Custom Tags display */}
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {getOrderTags(order).map((tag) => {
-                                const colors: Record<string, string> = {
-                                  "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-                                  "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-                                  "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
-                                  "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
-                                };
-                                return (
-                                  <span
-                                    key={tag}
-                                    className={cn(
-                                      "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
-                                      colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
-                                    )}
-                                  >
-                                    {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
-                                  </span>
-                                );
-                              })}
-                            </div>
+                            <OrderTagBadges tags={getOrderTags(order)} />
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
                             {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -3787,37 +3718,7 @@ Notes: "${order.notes || "None"}"
                         )}
 
                         {/* Quick Tag Toggles */}
-                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
-                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
-                          <div className="flex items-center gap-1">
-                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
-                              const isActive = (orderTags[order.id] || []).includes(tag);
-                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
-                              return (
-                                <button
-                                  key={tag}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleOrderTag(order.id, tag);
-                                  }}
-                                  title={`Toggle ${tag}`}
-                                  className={cn(
-                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
-                                    isActive
-                                      ? tag === "Rush"
-                                        ? "bg-rose-500 text-white"
-                                        : tag === "VIP"
-                                          ? "bg-amber-500 text-white"
-                                          : "bg-teal-500 text-white"
-                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
-                                  )}
-                                >
-                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
+                        <QuickOrderTags orderId={order.id} manualTags={orderTags[order.id] || []} onToggle={toggleOrderTag} />
                       </motion.div>
                     );
                   })}
@@ -3877,27 +3778,7 @@ Notes: "${order.notes || "None"}"
                             </span>
                             <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
                             {/* Custom Tags display */}
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {getOrderTags(order).map((tag) => {
-                                const colors: Record<string, string> = {
-                                  "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-                                  "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-                                  "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
-                                  "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
-                                };
-                                return (
-                                  <span
-                                    key={tag}
-                                    className={cn(
-                                      "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
-                                      colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
-                                    )}
-                                  >
-                                    {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
-                                  </span>
-                                );
-                              })}
-                            </div>
+                            <OrderTagBadges tags={getOrderTags(order)} />
                           </div>
                           <span className="text-[9px] font-mono text-on-surface-variant/70 bg-surface-container-high px-2 py-0.5 rounded-md">
                             {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -3956,37 +3837,7 @@ Notes: "${order.notes || "None"}"
                         </div>
 
                         {/* Quick Tag Toggles */}
-                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
-                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
-                          <div className="flex items-center gap-1">
-                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
-                              const isActive = (orderTags[order.id] || []).includes(tag);
-                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
-                              return (
-                                <button
-                                  key={tag}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleOrderTag(order.id, tag);
-                                  }}
-                                  title={`Toggle ${tag}`}
-                                  className={cn(
-                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
-                                    isActive
-                                      ? tag === "Rush"
-                                        ? "bg-rose-500 text-white"
-                                        : tag === "VIP"
-                                          ? "bg-amber-500 text-white"
-                                          : "bg-teal-500 text-white"
-                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
-                                  )}
-                                >
-                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
+                        <QuickOrderTags orderId={order.id} manualTags={orderTags[order.id] || []} onToggle={toggleOrderTag} />
                       </motion.div>
                     );
                   })}
@@ -4029,27 +3880,7 @@ Notes: "${order.notes || "None"}"
                             </span>
                             <h4 className="font-bold text-sm text-on-surface mt-0.5">{order.customer_name}</h4>
                             {/* Custom Tags display */}
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {getOrderTags(order).map((tag) => {
-                                const colors: Record<string, string> = {
-                                  "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-                                  "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-                                  "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
-                                  "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
-                                };
-                                return (
-                                  <span
-                                    key={tag}
-                                    className={cn(
-                                      "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
-                                      colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
-                                    )}
-                                  >
-                                    {tag === "Rush" && "⚡ "}{tag === "VIP" && "⭐ "}{tag === "Large Order" && "📦 "}{tag}
-                                  </span>
-                                );
-                              })}
-                            </div>
+                            <OrderTagBadges tags={getOrderTags(order)} />
                           </div>
                           <span className={cn(
                             "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md",
@@ -4083,37 +3914,7 @@ Notes: "${order.notes || "None"}"
                         {isPickupOrder(order) && <PickupOrderActions order={order} compact recoveryOnly/>}
 
                         {/* Quick Tag Toggles */}
-                        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
-                          <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
-                          <div className="flex items-center gap-1">
-                            {(["Rush", "VIP", "Special"] as const).map((tag) => {
-                              const isActive = (orderTags[order.id] || []).includes(tag);
-                              const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
-                              return (
-                                <button
-                                  key={tag}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleOrderTag(order.id, tag);
-                                  }}
-                                  title={`Toggle ${tag}`}
-                                  className={cn(
-                                    "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
-                                    isActive
-                                      ? tag === "Rush"
-                                        ? "bg-rose-500 text-white"
-                                        : tag === "VIP"
-                                          ? "bg-amber-500 text-white"
-                                          : "bg-teal-500 text-white"
-                                      : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
-                                  )}
-                                >
-                                  {icons[tag]} {tag === "Special" ? "Spec" : tag}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
+                        <QuickOrderTags orderId={order.id} manualTags={orderTags[order.id] || []} onToggle={toggleOrderTag} />
                       </motion.div>
                     );
                   })}
