@@ -1,5 +1,12 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L4-H2D.1 transaction and geographic parity follow-up — 2026-11-25
+Disposable PostgreSQL run 45501668363 passed all observed-lock races, rollback, archive and restore checks. Read-only hosted catalog confirmed the legacy town guard in pickup_create_order while API uses distance-only eligibility. See [ADR-015/016](docs/LOCALEATS_L4_H2D1_DB_INTEGRITY.md). Review-only SQL candidate and corrected lab run 45502262793 remain pending; no hosted application, UI change, pilot expansion, or release authorization.
+
+## L4-H2D / H2D.1 authoritative pickup verification — 2026-11-25 (draft)
+The corrected H2D API run [45501245385](https://github.com/mehey9184-maker/LocalEats-app/actions/runs/45501245385) passed 247/247 API and 5/5 Preview tests, including a 144-case pure lifecycle matrix. The test-only compile defect was repaired with a fully typed synthetic order; the strict cash/card-machine input validation remains. No UI or hosted change. See [ADR-014](docs/LOCALEATS_L4_H2D_AUTHORITATIVE_RULES.md).
+[ADR-015](docs/LOCALEATS_L4_H2D1_DB_INTEGRITY.md) adds an isolated, network-disabled PostgreSQL 17 rehearsal of archived pickup SQL, with actual lock-observation checks for duplicate creation, competing payments and duplicate collection; explicit rollback and stale pricing/availability rejection checks. Pinned lab source 2f23f64139fa8882f68a43dbd3f9254652b27d9b; [run 45501515737](https://github.com/mehey9184-maker/LocalEats-app/actions/runs/45501515737) pending at writing. Historical town-text restriction differs from current distance-only API policy; effective deployed SQL parity remains unverified. Neither archived migrations nor hosted rules changed. Drafts #250 Merchant and #150 Customer, no main merge or deployment.
+
 ## L4-H1 engineering handover — 2026-11-24 (documentation review)
 Read [the AI handover](docs/LOCALEATS_AI_HANDOVER.md) for the dated cross-app orientation, decision log, source evidence and remaining launch gates. Use `.agents/skills/localeats-engineering-handover/SKILL.md` for engineering continuity and code health, in addition to existing pickup-specific instructions. Historical notes below are not authorization to revive legacy flows. Verify live source and environment; no Production deployment, merge, real orders, live writes, paid services or deletion of deferred features from this audit. Record important decisions and update relevant functionality documentation with exact test evidence.
 
