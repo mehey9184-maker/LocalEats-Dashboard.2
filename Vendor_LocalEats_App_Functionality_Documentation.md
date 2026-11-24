@@ -1,5 +1,9 @@
 # LocalEats Vendor App - Functionality & Architecture Documentation
 
+## L4-H1 engineering handover — 2026-11-24 (documentation review)
+Read [the AI handover](docs/LOCALEATS_AI_HANDOVER.md) for the dated cross-app orientation, decision log, source evidence and remaining launch gates. Use `.agents/skills/localeats-engineering-handover/SKILL.md` for engineering continuity and code health, in addition to existing pickup-specific instructions. Historical notes below are not authorization to revive legacy flows. Verify live source and environment; no Production deployment, merge, real orders, live writes, paid services or deletion of deferred features from this audit. Record important decisions and update relevant functionality documentation with exact test evidence.
+
+
 ## Default merchant pictures — 2026-11-22 (draft, UI-only)
 The Merchant Dashboard uses reusable `MerchantPhoto` across Menu, Home inventory and Shop Profile. Uploaded item/merchant images remain primary; missing, known legacy placeholder and failed URLs render a neutral branded food/store icon instead of a broken photo or unrelated stock image. The Storefront banner retains the shop name adjacent to its default store icon. The account profile falls back to local initials (or a person glyph when no name is supplied), including when an uploaded URL fails, without altering saved URLs. `tests/default-image-fallback.test.mjs` checks these display contracts. No item data or imagery is inserted into Supabase, Firebase, R2 or Cloudinary; the original upload controls and layout remain. Pickup ordering, payments, production flags, CORS, GPS, and API writes are unchanged. Preview/draft only, subject to owner visual review.
 
