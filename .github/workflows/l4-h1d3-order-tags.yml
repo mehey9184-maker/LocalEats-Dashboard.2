@@ -1,7 +1,7 @@
 name: L4-H1D.3 order-tag component parity (NO DEPLOY)
 on:
   pull_request:
-    paths: ['src/components/OrdersManagement.tsx','src/components/OrderTags.tsx','tests/l4-h1d3-order-tags.test.mjs','.github/workflows/l4-h1d3-order-tags.yml']
+    paths: ['src/components/OrdersManagement.tsx','src/components/OrderTags.tsx','tests/l4-h1d3-order-tags.test.mjs','tests/l4-h1d3-order-tags-browser.mjs','.github/workflows/l4-h1d3-order-tags.yml']
 permissions:
   contents: read
 jobs:
@@ -51,6 +51,7 @@ jobs:
               files=[p for p in Path('dist/assets').rglob('*') if p.is_file() and p.suffix==ext]
               print(f'H1D3_BUNDLE {ext} files={len(files)} raw_bytes={sum(p.stat().st_size for p in files)} gzip9_bytes={sum(len(gzip.compress(p.read_bytes(),compresslevel=9,mtime=0)) for p in files)}')
           PY
+          node tests/l4-h1d3-order-tags-browser.mjs
           echo H1D3_REGRESSION_PASS
           BASH
           chmod 700 "$script"
