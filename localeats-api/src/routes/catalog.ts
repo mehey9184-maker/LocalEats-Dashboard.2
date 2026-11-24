@@ -110,8 +110,8 @@ export const makeCatalogRouter = (
         success: true,
         shops,
       });
-    } catch (err) {
-      console.error("Error fetching catalog shops:", err);
+    } catch {
+      console.error("Error fetching catalog shops");
       res.status(500).json({
         success: false,
         error: "Internal Server Error",
@@ -141,8 +141,8 @@ export const makeCatalogRouter = (
         success: true,
         shop,
       });
-    } catch (err) {
-      console.error("Error fetching catalog shop detail:", err);
+    } catch {
+      console.error("Error fetching catalog shop detail");
       res.status(500).json({
         success: false,
         error: "Internal Server Error",
@@ -175,8 +175,8 @@ export const makeCatalogRouter = (
         success: true,
         menu_items: menuItems,
       });
-    } catch (err) {
-      console.error("Error fetching catalog menu items:", err);
+    } catch {
+      console.error("Error fetching catalog menu items");
       res.status(500).json({
         success: false,
         error: "Internal Server Error",

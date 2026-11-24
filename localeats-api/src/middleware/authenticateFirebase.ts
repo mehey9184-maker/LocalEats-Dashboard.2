@@ -1,3 +1,4 @@
+import {beforeFirebaseVerification,afterFirebaseVerification} from "./apiAdmission.js";
 import { Request, Response, NextFunction } from "express";
 import { authAdmin } from "../lib/firebaseAdmin.js";
 
@@ -17,7 +18,7 @@ export const getFirebaseBearerToken = (
   }
 
   const token = authorizationHeader.slice("Bearer fb-".length);
-  return token && !/\s/.test(token) ? token : null;
+  return token && token.length<=8192 && !/\s/.test(token) ? token : null;
 };
 
 export const authenticateFirebase = async (
@@ -32,7 +33,9 @@ export const authenticateFirebase = async (
       return;
     }
 
+    if (!beforeFirebaseVerification(res)) return;
     const decoded = await authAdmin.verifyIdToken(token, true);
+    if (!afterFirebaseVerification(res,decoded.uid)) return;
 
     req.authUser = {
       uid: decoded.uid,
