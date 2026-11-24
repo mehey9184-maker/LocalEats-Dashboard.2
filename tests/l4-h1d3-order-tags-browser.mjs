@@ -5,6 +5,7 @@ import {createServer} from 'node:http';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {build} from 'esbuild';
 import {setTimeout as delay} from 'node:timers/promises';
 const old=execFileSync('git',['show','6d25d111f7faa7794013b6979a3cc4126b6a530a:src/components/OrdersManagement.tsx'],{encoding:'utf8',maxBuffer:2*1024*1024});
@@ -36,7 +37,7 @@ try{
  const binary=['google-chrome','google-chrome-stable','chromium','chromium-browser'].map(name=>{try{return execFileSync('which',[name],{encoding:'utf8'}).trim();}catch{return '';}}).find(Boolean);
  assert.ok(binary,'A preinstalled Chrome/Chromium executable is required; do not skip browser gate');
  console.log('H1D3_BROWSER_VERSION '+execFileSync(binary,['--version'],{encoding:'utf8'}).trim());
- chrome=spawn(binary,['--headless','--no-sandbox','--disable-dev-shm-usage','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:'ignore'});
+ chrome=spawn(binary,['--headless','--no-sandbox','--disable-dev-shm-usage','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:'ignore',detached:true});
  let port;
  for(let n=0;n<100;n++){const file=path.join(profile,'DevToolsActivePort');if(existsSync(file)){port=Number(readFileSync(file,'utf8').split('\n')[0]);if(port)break;}if(chrome.exitCode!==null)throw Error('Chrome exited');await delay(100);}
  assert.ok(port,'Chrome debug port unavailable');
@@ -57,7 +58,9 @@ try{
   await cdp('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:dark?'dark':'light'}]});
   const shot=async mode=>{await evaluate('window.harness.mount('+JSON.stringify(mode)+','+JSON.stringify(tags)+','+dark+')');await evaluate(settle);return (await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:false})).data;};
   const before=await shot('old'),after=await shot('new');
-  assert.equal(after,before,'Pixel snapshot mismatch '+width+' dark='+dark+' tags='+tags.join(','));
+  const digest=x=>createHash('sha256').update(Buffer.from(x,'base64')).digest('hex');
+  assert.equal(digest(after),digest(before),'Pixel snapshot mismatch '+width+' dark='+dark+' tags='+tags.join(','));
+  console.log('H1D3_PIXEL_PASS width='+width+' dark='+dark+' manual='+tags.length);
   images++;
  }
  const key=async(k,code,vk)=>{await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:k,code,windowsVirtualKeyCode:vk,nativeVirtualKeyCode:vk});await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:k,code,windowsVirtualKeyCode:vk,nativeVirtualKeyCode:vk});};
@@ -72,8 +75,18 @@ try{
   assert.deepEqual(await evaluate('window.harness.events()'),[['toggle','fixture','Rush'],['toggle','fixture','VIP'],['toggle','fixture','Special']]);
  }
  console.log('H1D3_BROWSER_PARITY_PASS screenshots='+images+' keyboard_sequences=2');
+}catch(error){
+ console.error('H1D3_BROWSER_FAILURE '+String(error?.stack||error).slice(0,3000));
+ process.exitCode=1;
 }finally{
  if(ws)ws.close();
- if(chrome){chrome.kill('SIGTERM');await Promise.race([new Promise(r=>chrome.once('exit',r)),delay(2000)]);if(chrome.exitCode===null)chrome.kill('SIGKILL');}
- server.closeAllConnections();await new Promise(r=>server.close(r));rmSync(profile,{recursive:true,force:true,maxRetries:3});
+ if(chrome?.pid){
+  try{process.kill(-chrome.pid,'SIGTERM');}catch(error){if(error.code!=='ESRCH')console.warn('Chrome shutdown: '+error.code);}
+  await delay(700);
+  try{process.kill(-chrome.pid,'SIGKILL');}catch(error){if(error.code!=='ESRCH')console.warn('Chrome forced shutdown: '+error.code);}
+ }
+ server.closeAllConnections();await new Promise(r=>server.close(r));
+ try{rmSync(profile,{recursive:true,force:true,maxRetries:10,retryDelay:250});}catch(error){
+  console.warn('Disposable synthetic browser profile cleanup: '+error.code);
+ }
 }
