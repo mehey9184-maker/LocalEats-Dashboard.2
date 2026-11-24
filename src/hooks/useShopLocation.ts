@@ -223,7 +223,7 @@ export function analyzeLocationSync(
  * Centralized Unified Hook for Shop Geolocation & Client-Side Area Syncing.
  * Strictly avoids recursive re-renders by performing deep/primitive equality checks.
  */
-export function useShopLocation({ shop, onLocationSaved }: UseShopLocationOptions = {}) {
+export function useShopLocation({ shop }: UseShopLocationOptions = {}) {
   const [locationState, setLocationState] = useState<ShopLocationState>(() => {
     const lat = shop?.lat ?? -25.9964;
     const lng = shop?.lng ?? 28.2268;
@@ -516,13 +516,6 @@ export function useShopLocation({ shop, onLocationSaved }: UseShopLocationOption
     },
     [
       shop?.id,
-      locationState.lat,
-      locationState.lng,
-      locationState.address,
-      locationState.city,
-      locationState.deliveryRadiusKm,
-      locationState.deliveryRadiusEnabled,
-      onLocationSaved,
     ]
   );
 
