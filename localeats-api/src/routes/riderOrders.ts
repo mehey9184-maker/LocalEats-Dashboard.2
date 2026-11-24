@@ -126,7 +126,7 @@ const sendError = (res: Response, error: unknown): void => {
     res.status(error.status).json({ success: false, code: error.code, error: error.message });
     return;
   }
-  console.error("Rider order API error:", error instanceof Error ? error.message : "unknown error");
+  console.error("Rider order API error");
   res.status(500).json({ success: false, code: "INTERNAL_ERROR", error: "Internal Server Error" });
 };
 
