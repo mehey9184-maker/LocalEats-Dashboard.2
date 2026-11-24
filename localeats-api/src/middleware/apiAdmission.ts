@@ -57,7 +57,7 @@ export function afterFirebaseVerification(res:Response,uid:string):boolean{
 // Never echo body-parser errors, request contents, stack traces or provider payloads.
 export const safeApiError:ErrorRequestHandler=(err,req,res,next)=>{
  void req;
- if(res.headersSent){next(err);return;}
+ if(res.headersSent){next(new Error("API response interrupted"));return;}
  const type=typeof err==="object" && err!==null ? (err as {type?:unknown}).type:undefined;
  if(type==="entity.too.large"){res.status(413).json({success:false,code:"PAYLOAD_TOO_LARGE",error:"Request body too large."});return;}
  if(type==="entity.parse.failed" || type==="request.size.invalid" || type==="request.aborted"){res.status(400).json({success:false,code:"INVALID_JSON",error:"Invalid request body."});return;}
