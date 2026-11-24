@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Shop } from "../types";
 import { parseAndNormalizeZAAddress } from "../utils";
 import { calculateHaversineDistanceKm } from "../utils/deliveryRadius";
-import { supabase } from "../lib/supabase";
-import { updateFirestoreShop } from "../lib/firebase";
 import { toast } from "sonner";
 
 export interface RegionalHub {
@@ -246,8 +244,8 @@ export function useShopLocation({ shop, onLocationSaved }: UseShopLocationOption
   });
 
   const [isLocating, setIsLocating] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [isSaving] = useState(false);
+  const [lastSyncedAt] = useState<string | null>(null);
 
   const prevShopRef = useRef<{
     id?: string | number;
@@ -513,61 +511,8 @@ export function useShopLocation({ shop, onLocationSaved }: UseShopLocationOption
         return false;
       }
 
-      setIsSaving(true);
-      const nowISO = new Date().toISOString();
-
-      try {
-        const payload = {
-          lat: locationState.lat,
-          lng: locationState.lng,
-          location: locationState.address,
-          city: locationState.city,
-          delivery_radius_km: locationState.deliveryRadiusKm,
-          delivery_radius_enabled: locationState.deliveryRadiusEnabled,
-          updated_at: nowISO,
-        };
-
-        // 1. Update Firestore
-        try {
-          await updateFirestoreShop(activeShopId, payload);
-        } catch (fsErr) {
-          console.warn("[useShopLocation] Firestore update warning:", fsErr);
-        }
-
-        // 2. Update Supabase
-        const { error: sbError } = await supabase
-          .from("shops")
-          .update(payload)
-          .eq("id", activeShopId);
-
-        const sbErr = sbError as { code?: string; message?: string } | null;
-        if (sbErr && sbErr.code !== "42703") {
-          console.warn("[useShopLocation] Supabase update warning:", sbErr.message);
-        }
-
-        // 3. Update localStorage cached shops
-        try {
-          const rawCached = localStorage.getItem("localeats_cached_shops");
-          if (rawCached) {
-            const cachedShops: Shop[] = JSON.parse(rawCached);
-            const updated = cachedShops.map((s) => (String(s.id) === String(activeShopId) ? { ...s, ...payload } : s));
-            localStorage.setItem("localeats_cached_shops", JSON.stringify(updated));
-          }
-        } catch {
-          // ignore
-        }
-
-        setLastSyncedAt(nowISO);
-        onLocationSaved?.(payload);
-        toast.success(`Shop location & area filter saved! (${locationState.city} • ${locationState.deliveryRadiusKm} KM radius)`);
-        return true;
-      } catch (err: unknown) {
-        const e = err as Error;
-        toast.error(`Failed to save location: ${e.message}`);
-        return false;
-      } finally {
-        setIsSaving(false);
-      }
+      toast.error("Shop location changes require the verified API. No changes were saved.");
+      return false;
     },
     [
       shop?.id,
