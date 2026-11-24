@@ -53,7 +53,7 @@ export const authorizeSuperAdmin = async (
     };
 
     next();
-  } catch (error) {
+  } catch {
     console.error("Unexpected admin authorization error");
     res.status(500).json({
       success: false,
