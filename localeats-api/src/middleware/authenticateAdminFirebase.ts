@@ -1,3 +1,4 @@
+import {beforeFirebaseVerification,afterFirebaseVerification} from "./apiAdmission.js";
 import { Response, NextFunction } from "express";
 import { authAdmin } from "../lib/firebaseAdmin.js";
 import {
@@ -17,7 +18,9 @@ export const authenticateAdminFirebase = async (
       return;
     }
 
+    if (!beforeFirebaseVerification(res)) return;
     const decoded = await authAdmin.verifyIdToken(token, true);
+    if (!afterFirebaseVerification(res,decoded.uid)) return;
 
     req.authUser = {
       uid: decoded.uid,
@@ -26,7 +29,8 @@ export const authenticateAdminFirebase = async (
 
     next();
   } catch (error) {
-    console.error("Admin Firebase auth error:", error);
+    void error;
+    console.warn("Admin Firebase authentication rejected");
     res.status(401).json({ success: false, error: "Unauthorized" });
   }
 };
