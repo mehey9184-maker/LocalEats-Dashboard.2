@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {inflateSync} from 'node:zlib';
 import {build} from 'esbuild';
 import {setTimeout as delay} from 'node:timers/promises';
 const old=execFileSync('git',['show','6d25d111f7faa7794013b6979a3cc4126b6a530a:src/components/OrdersManagement.tsx'],{encoding:'utf8',maxBuffer:2*1024*1024});
@@ -55,44 +56,43 @@ try{
  const settle='new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>document.fonts.ready.then(()=>resolve(true)))))';
  const domState='JSON.stringify([...document.querySelectorAll("#root, #root *")].map(el=>{const c=getComputedStyle(el),r=el.getBoundingClientRect();return [el.tagName,el.className,el.getAttribute("title"),el.childElementCount?null:el.textContent,[r.x,r.y,r.width,r.height],Array.from(c,p=>[p,c.getPropertyValue(p)])]}))';
  const digest=x=>createHash('sha256').update(x).digest('hex');
- async function pixels(){
-  const png=(await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:false,fromSurface:true})).data;
-  // Compare decoded RGBA pixels, not PNG encoder metadata or compression.
-  const result=await evaluate('(async()=>{const image=new Image();image.src='+JSON.stringify('data:image/png;base64,'+png)+';await image.decode();const canvas=document.createElement("canvas");canvas.width=image.width;canvas.height=image.height;const ctx=canvas.getContext("2d");ctx.drawImage(image,0,0);const data=ctx.getImageData(0,0,canvas.width,canvas.height).data;const hash=await crypto.subtle.digest("SHA-256",data);return [canvas.width,canvas.height,Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,"0")).join("")]})()');
-  return JSON.stringify(result);
+ // Decode Chrome PNG outside the browser, avoiding canvas readback and extra page activity.
+ function decodePNG(encoded){
+  const png=Buffer.from(encoded,'base64');assert.equal(png.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+  let w,h,bpp;const idat=[];
+  for(let p=8;p+12<=png.length;){
+   const len=png.readUInt32BE(p),type=png.toString('ascii',p+4,p+8),data=png.subarray(p+8,p+8+len);
+   if(type==='IHDR'){w=data.readUInt32BE(0);h=data.readUInt32BE(4);assert.equal(data[8],8);assert.ok([2,6].includes(data[9]));bpp=data[9]===2?3:4;assert.equal(data[12],0);}
+   if(type==='IDAT')idat.push(data);if(type==='IEND')break;p+=len+12;
+  }
+  assert.ok(w&&h&&bpp);const stride=w*bpp,raw=inflateSync(Buffer.concat(idat)),out=Buffer.alloc(stride*h);
+  assert.equal(raw.length,(stride+1)*h);
+  function paeth(a,b,c){const p=a+b-c,pa=Math.abs(p-a),pb=Math.abs(p-b),pc=Math.abs(p-c);return pa<=pb&&pa<=pc?a:pb<=pc?b:c;}
+  for(let y=0;y<h;y++){const filter=raw[y*(stride+1)];assert.ok(filter<=4);for(let x=0;x<stride;x++){
+   const j=y*stride+x,a=x>=bpp?out[j-bpp]:0,b=y?out[j-stride]:0,c=y&&x>=bpp?out[j-stride-bpp]:0;
+   out[j]=(raw[y*(stride+1)+1+x]+[0,a,b,Math.floor((a+b)/2),paeth(a,b,c)][filter])&255;
+  }}
+  return {w,h,bpp,out,hash:digest(out)};
+ }
+ async function pixels(){return decodePNG((await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:false,fromSurface:true})).data);}
+ function difference(a,b){
+  assert.deepEqual([a.w,a.h,a.bpp],[b.w,b.h,b.bpp]);
+  let changed=0,maxDelta=0,minX=a.w,minY=a.h,maxX=-1,maxY=-1;const samples=[];
+  for(let p=0;p<a.w*a.h;p++){let delta=0;for(let c=0;c<a.bpp;c++)delta=Math.max(delta,Math.abs(a.out[p*a.bpp+c]-b.out[p*b.bpp+c]));if(!delta)continue;
+   const x=p%a.w,y=Math.floor(p/a.w);changed++;maxDelta=Math.max(maxDelta,delta);minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);
+   if(samples.length<8)samples.push({x,y,before:[...a.out.subarray(p*a.bpp,(p+1)*a.bpp)],after:[...b.out.subarray(p*b.bpp,(p+1)*b.bpp)]});
+  }
+  return {changed,maxDelta,bounds:changed?[minX,minY,maxX,maxY]:null,samples};
  }
  async function stableFrame(){
-  // No cross-implementation retry: each frame must settle independently.
   await evaluate(settle);await delay(250);
-  let last=await pixels(), consecutive=1;
+  let last=await pixels(),consecutive=1;
   for(let attempt=0;attempt<8;attempt++){
    await evaluate(settle);await delay(100);
-   const next=await pixels();consecutive=next===last?consecutive+1:1;last=next;
+   const next=await pixels();consecutive=next.hash===last.hash?consecutive+1:1;last=next;
    if(consecutive===3)return {pixels:last,dom:digest(await evaluate(domState))};
   }
   throw Error('Unstable browser fixture: three consecutive identical decoded frames required');
- }
- let images=0;
- for(const width of [320,390,1280])for(const dark of [false,true])for(const tags of [[],['Rush','VIP','Special']]){
-  await cdp('Emulation.setDeviceMetricsOverride',{width,height:240,deviceScaleFactor:1,mobile:false});
-  await cdp('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:dark?'dark':'light'}]});
-  const label='width='+width+' dark='+dark+' manual='+tags.length;
-  const mount=async mode=>{
-   await evaluate('window.harness.mount('+JSON.stringify(mode)+','+JSON.stringify(tags)+','+dark+')');
-   assert.equal(await evaluate('matchMedia("(prefers-color-scheme: dark)").matches'),dark);
-   assert.equal(await evaluate('document.documentElement.classList.contains("dark")'),dark);
-   assert.equal(await evaluate('innerWidth'),width);
-   return stableFrame();
-  };
-  // Require identical controls, then exact equality. No tolerance or selecting matching retries.
-  const before=await mount('old'),control=await mount('old'),after=await mount('new'),recheck=await mount('old');
-  console.log('H1D3_CONTROL '+label+' '+JSON.stringify({before,control,after,recheck}));
-  assert.deepEqual(control,before,'Legacy self-control unstable: '+label);
-  assert.deepEqual(recheck,before,'Legacy post-comparison control unstable: '+label);
-  assert.equal(after.dom,before.dom,'Computed style/layout mismatch: '+label);
-  assert.equal(after.pixels,before.pixels,'Decoded pixel mismatch: '+label);
-  console.log('H1D3_PIXEL_PASS '+label+' old_controls=2 computed_styles=match');
-  images++;
  }
  const key=async(k,code,vk)=>{await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:k,code,windowsVirtualKeyCode:vk,nativeVirtualKeyCode:vk});await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:k,code,windowsVirtualKeyCode:vk,nativeVirtualKeyCode:vk});};
  for(const mode of ['old','new']){
@@ -104,6 +104,33 @@ try{
   await key('Tab','Tab',9);assert.equal(await evaluate('window.harness.focus()'),'Toggle Special');
   await key('Enter','Enter',13);
   assert.deepEqual(await evaluate('window.harness.events()'),[['toggle','fixture','Rush'],['toggle','fixture','VIP'],['toggle','fixture','Special']]);
+ }
+ console.log('H1D3_KEYBOARD_PASS sequences=2');
+ let images=0,captureSerial=0;
+ for(const width of [320,390,1280])for(const dark of [false,true])for(const tags of [[],['Rush','VIP','Special']]){
+  await cdp('Emulation.setDeviceMetricsOverride',{width,height:240,deviceScaleFactor:1,mobile:false});
+  await cdp('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:dark?'dark':'light'}]});
+  const label='width='+width+' dark='+dark+' manual='+tags.length;
+  const mount=async mode=>{
+   // Fresh navigation for every sample; no prior React remount or compositor history.
+   await cdp('Page.navigate',{url:origin+'/?fixture='+String(++captureSerial)});
+   let mounted=false;
+   for(let n=0;n<100;n++){try{mounted=await evaluate('location.search==="?fixture='+captureSerial+'" && !!window.harness?.ready()');}catch{}if(mounted)break;await delay(100);}
+   assert.ok(mounted,'Fresh synthetic fixture not ready');
+   await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:width-1,y:239});
+   await evaluate('window.harness.mount('+JSON.stringify(mode)+','+JSON.stringify(tags)+','+dark+')');
+   assert.equal(await evaluate('matchMedia("(prefers-color-scheme: dark)").matches'),dark);
+   assert.equal(await evaluate('document.documentElement.classList.contains("dark")'),dark);
+   assert.equal(await evaluate('innerWidth'),width);
+   return stableFrame();
+  };
+  // Require identical controls, then exact equality. No tolerance or selecting matching retries.
+  const before=await mount('old'),control=await mount('old'),after=await mount('new'),recheck=await mount('old');
+  const pairs=[['old-control',before,control],['old-post',before,recheck],['old-new',before,after]];
+  for(const [name,x,y] of pairs)console.log('H1D3_PIXEL_DIFF '+label+' '+name+' '+JSON.stringify({stylesEqual:x.dom===y.dom,...difference(x.pixels,y.pixels)}));
+  for(const [name,x,y] of pairs){assert.equal(y.dom,x.dom,'Computed style/layout mismatch '+name+' '+label);assert.equal(y.pixels.hash,x.pixels.hash,'Exact pixel mismatch '+name+' '+label);}
+  console.log('H1D3_PIXEL_PASS '+label+' old_controls=2 computed_styles=match');
+  images++;
  }
  console.log('H1D3_BROWSER_PARITY_PASS screenshots='+images+' keyboard_sequences=2');
 }catch(error){
