@@ -46,3 +46,12 @@ test('unavailable retry storage stops before transport',async()=>{
  const api=createMerchantPickupRecovery({identity:()=> 'merchant',enabled:()=>true,mapOrder:mapApiOrder,storage:{getItem:()=>null,setItem:()=>{throw Error('quota');},removeItem:()=>{}},transport:async()=>{calls++;return reply();}});
  await assert.rejects(api.send(order,command),/storage/);assert.equal(calls,0);
 });
+
+test('rate limited merchant command retains exact consent and does not report saved until receipt',async()=>{
+ const requests=[];let limited=true;
+ const f=setup(async(_order,body)=>{requests.push(body);return limited?{status:429,data:{success:false,code:'RATE_LIMITED',error:'Too many requests'}}:reply();});
+ await assert.rejects(f.api.send(order,command),/Too many requests/);assert.equal(f.saved.size,1);
+ assert.equal(f.api.pendingPath(order),'accept');
+ limited=false;assert.equal((await f.api.retry(order)).status,'preparing');
+ assert.deepEqual(requests,[command,command]);assert.equal(f.saved.size,0);
+});
