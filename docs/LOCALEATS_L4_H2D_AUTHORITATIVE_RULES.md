@@ -10,3 +10,6 @@ Decision: preserve existing pickup-v1 contract, pay-at-shop cash/card terminal, 
 - Existing approved architecture: frontend through central API for authoritative business data, Firebase Auth/FCM retained. Do not introduce dependencies, C++ or paid services for this small validation change. No schema, deployment, main merge or UI changes.
 ## Verification
 API source candidate 4975cc492418c3f73443e8e4de82282bb263c8d2. Run full existing API suite and preview smoke test in isolated no-network namespace with synthetic fixtures; no hosted access. Record exact tested SHA. Existing UI not changed; combined frontend acceptance belongs to H2E. CI result pending.
+
+## Regression recovery
+Run 45500401039 failed at TS2352 in the new synthetic StoredOrder fixture; five independent Preview smoke tests passed. Replaced the partial cast with a complete typed order fixture (no cast suppression), source 0b2f4832eae81b07b39638d8a629155c1a7d91dd. Verification workflow commit 96321714a83061723737ae17505c89116f68d01b; run https://github.com/mehey9184-maker/LocalEats-app/actions/runs/45501245385. No runtime code changed in recovery. Database rehearsal remains gated on API acceptance.
