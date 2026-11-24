@@ -1,5 +1,6 @@
 import {assertControlledPickup, canSubmitControlledPickup} from "../middleware/controlledPickup.js";
 import {assertPickupWritesDisabled} from "../middleware/pickupWriteGate.js";
+import {assertDeliveryWritesEnabled} from "../middleware/launchCapabilityGate.js";
 import { Router, type Response } from "express";
 import { authenticateFirebase, type AuthenticatedRequest } from "../middleware/authenticateFirebase.js";
 import { supabaseAdmin } from "../lib/supabaseAdmin.js";
@@ -95,6 +96,7 @@ router.post("/", authenticateFirebase, async (req: AuthenticatedRequest, res: Re
     if (!userId) throw new OrderContractError(401, "UNAUTHORIZED", "Authentication is required.");
 
     assertPickupWritesDisabled({delivery_type:"collection"});
+    if(req.authUser?.isAnonymous)throw new OrderContractError(403,"REGISTERED_ACCOUNT_REQUIRED","Sign in with a registered account to order.");
     const request=parsePickupInput(req.body,true);
     assertControlledPickup({shop_id:request.input.shop_id,user_id:userId});
     const result = await createPickup(supabaseAdmin, repository, userId, request);
@@ -213,6 +215,7 @@ router.post("/:id/cancel", authenticateFirebase, async (req: AuthenticatedReques
       res.status(200).json({success:true,replayed:result.replayed,order:customerOrderResponse(result.order)});
       return;
     }
+    assertDeliveryWritesEnabled(); // Non-pickup legacy mutations require a separate capability.
     if (lifecycleStateFromOrder(existing as StoredOrder) !== "pending") {
       throw new OrderContractError(
         409,
@@ -330,6 +333,7 @@ const updateMerchantOrder = async (
     if (action === "ready") await drainPickupPush(supabaseAdmin,uid);
     return {order:result.order,replayed:result.replayed,command_receipt:merchantCommandReceipt(result)};
   }
+  assertDeliveryWritesEnabled(); // Pickup activation must not activate legacy delivery.
   const current = lifecycleStateFromOrder(order);
 
   let update: Record<string, unknown>;

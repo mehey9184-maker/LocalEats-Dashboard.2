@@ -1,0 +1,40 @@
+name: L4-H2B capability isolation (NO DEPLOY)
+on:
+  pull_request:
+    paths: ['localeats-api/**','.github/workflows/l4-h2b-capabilities.yml']
+permissions:
+  contents: read
+jobs:
+  capability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - name: Install locked API dependencies
+        working-directory: localeats-api
+        run: npm ci --no-audit --no-fund --fetch-retries=3 --fetch-retry-mintimeout=2000 --fetch-retry-maxtimeout=15000
+      - name: Execute API tests without external network or credentials
+        working-directory: localeats-api
+        run: |
+          set -euo pipefail
+          script="$RUNNER_TEMP/h2b.sh"
+          cat > "$script" <<'BASH'
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test "$(ip -o link show | wc -l)" -eq 1
+          test -z "$(ip route show default)"
+          npm ls --all --json > /tmp/h2b-deps.json
+          npm test
+          node --test tests/l3-n8u-z-preview-readonly-smoke.test.mjs
+          echo H2B_GATE_PASS
+          BASH
+          chmod 700 "$script"
+          sudo unshare --net -- bash -euc '
+            ip link set lo up
+            exec setpriv --reuid="$1" --regid="$2" --init-groups env -i PATH="$3" HOME="$4" CI=true PICKUP_WRITES_ENABLED=false DELIVERY_WRITES_ENABLED=false PROFILE_WRITES_ENABLED=false MERCHANT_AVAILABILITY_WRITES_ENABLED=false ADMIN_RIDER_VERIFICATION_WRITES_ENABLED=false bash "$5"
+          ' _ "$(id -u)" "$(id -g)" "$PATH" "$HOME" "$script"
