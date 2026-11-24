@@ -252,6 +252,9 @@ class FirestoreQueryBuilder {
     if(this.collectionName === "orders" && (this.insertData !== undefined || this.updateData !== undefined || this.isDelete)) {
       return {data:null,error:legacyOrderWriteError()};
     }
+    if (this.insertData !== undefined || this.updateData !== undefined || this.isDelete) {
+      return {data:null,error:new Error("This change requires the verified LocalEats API. No changes were saved.")};
+    }
     try {
       const collRef = collection(db, this.collectionName);
 
