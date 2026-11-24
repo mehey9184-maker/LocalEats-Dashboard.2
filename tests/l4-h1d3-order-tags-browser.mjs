@@ -52,15 +52,43 @@ try{
  await cdp('Page.enable');await cdp('Runtime.enable');await cdp('Page.navigate',{url:origin});
  let ready=false;for(let n=0;n<100;n++){try{ready=await evaluate('!!window.harness?.ready()');}catch{}if(ready)break;await delay(100);}assert.ok(ready,'Synthetic fixture did not mount');
  const settle='new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>document.fonts.ready.then(()=>resolve(true)))))';
+ const domState='JSON.stringify([...document.querySelectorAll("#root, #root *")].map(el=>{const c=getComputedStyle(el),r=el.getBoundingClientRect();return [el.tagName,el.className,el.getAttribute("title"),el.childElementCount?null:el.textContent,[r.x,r.y,r.width,r.height],Array.from(c,p=>[p,c.getPropertyValue(p)])]}))';
+ const digest=x=>createHash('sha256').update(x).digest('hex');
+ async function pixels(){
+  const png=(await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:false,fromSurface:true})).data;
+  // Compare decoded RGBA pixels, not PNG encoder metadata or compression.
+  const result=await evaluate('(async()=>{const image=new Image();image.src='+JSON.stringify('data:image/png;base64,'+png)+';await image.decode();const canvas=document.createElement("canvas");canvas.width=image.width;canvas.height=image.height;const ctx=canvas.getContext("2d");ctx.drawImage(image,0,0);const data=ctx.getImageData(0,0,canvas.width,canvas.height).data;const hash=await crypto.subtle.digest("SHA-256",data);return [canvas.width,canvas.height,Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,"0")).join("")]})()');
+  return JSON.stringify(result);
+ }
+ async function stableFrame(){
+  // No cross-implementation retry: each frame must settle independently.
+  await evaluate(settle);await delay(250);
+  let last=await pixels(), consecutive=1;
+  for(let attempt=0;attempt<8;attempt++){
+   await evaluate(settle);await delay(100);
+   const next=await pixels();consecutive=next===last?consecutive+1:1;last=next;
+   if(consecutive===3)return {pixels:last,dom:digest(await evaluate(domState))};
+  }
+  throw Error('Unstable browser fixture: three consecutive identical decoded frames required');
+ }
  let images=0;
  for(const width of [320,390,1280])for(const dark of [false,true])for(const tags of [[],['Rush','VIP','Special']]){
   await cdp('Emulation.setDeviceMetricsOverride',{width,height:240,deviceScaleFactor:1,mobile:false});
   await cdp('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:dark?'dark':'light'}]});
-  const shot=async mode=>{await evaluate('window.harness.mount('+JSON.stringify(mode)+','+JSON.stringify(tags)+','+dark+')');await evaluate(settle);return (await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:false})).data;};
-  const before=await shot('old'),after=await shot('new');
-  const digest=x=>createHash('sha256').update(Buffer.from(x,'base64')).digest('hex');
-  assert.equal(digest(after),digest(before),'Pixel snapshot mismatch '+width+' dark='+dark+' tags='+tags.join(','));
-  console.log('H1D3_PIXEL_PASS width='+width+' dark='+dark+' manual='+tags.length);
+  const label='width='+width+' dark='+dark+' manual='+tags.length;
+  const mount=async mode=>{
+   await evaluate('window.harness.mount('+JSON.stringify(mode)+','+JSON.stringify(tags)+','+dark+')');
+   assert.equal(await evaluate('matchMedia("(prefers-color-scheme: dark)").matches'),dark);
+   assert.equal(await evaluate('document.documentElement.classList.contains("dark")'),dark);
+   assert.equal(await evaluate('innerWidth'),width);
+   return stableFrame();
+  };
+  const before=await mount('old'),control=await mount('old'),after=await mount('new'),recheck=await mount('old');
+  assert.deepEqual(control,before,'Legacy self-control unstable: '+label);
+  assert.deepEqual(recheck,before,'Legacy post-comparison control unstable: '+label);
+  assert.equal(after.dom,before.dom,'Computed style/layout mismatch: '+label);
+  assert.equal(after.pixels,before.pixels,'Decoded pixel mismatch: '+label);
+  console.log('H1D3_PIXEL_PASS '+label+' old_controls=2 computed_styles=match');
   images++;
  }
  const key=async(k,code,vk)=>{await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:k,code,windowsVirtualKeyCode:vk,nativeVirtualKeyCode:vk});await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:k,code,windowsVirtualKeyCode:vk,nativeVirtualKeyCode:vk});};
