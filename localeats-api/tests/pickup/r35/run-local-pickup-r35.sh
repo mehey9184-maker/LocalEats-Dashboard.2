@@ -45,7 +45,7 @@ for file in \
  fi
 done
 
-docker run -d --name "$name" --rm \
+docker run -d --name "$name" --rm --network none --label localeats.h2d1=synthetic \
  -e POSTGRES_PASSWORD=isolated_ci_only \
  -e POSTGRES_DB=pickup_r35_lab postgres:17-alpine >/dev/null
 ready=0
@@ -160,3 +160,9 @@ restore_expect "SELECT c.relrowsecurity FROM pg_catalog.pg_class c
  WHERE c.oid='public.pickup_order_events'::regclass;" "t"
 
 echo "R35_OFFLINE_EFFECTIVE_PAYMENT_SOURCE_AND_SCHEMA_ONLY_RESTORE_PASS"
+
+# Optional H2D.1 extension runs only after historical replay and restore verification.
+if [[ "${H2D1_CONCURRENCY:-false}" == true ]]; then
+ [[ "${R36_PICKUP_REPLAY_MODE:-}" == recorded_applied ]] || exit 1
+ bash "$here/h2d1-concurrency.SYNTHETIC_ONLY.sh" "$name"
+fi
