@@ -25,11 +25,23 @@ test("R3.5: applied migration history inventoried, not silently reconstructed",(
   assert.ok(manifest.manually_pending.length>=5);
 });
 
-test("R3.5: original four versioned migration files exist, later versions not impersonated",()=>{
+test("R3.5: historical four and explicitly inventoried later L2 files exist; archived versions stay inert",()=>{
   const list=readdirSync(resolve(root,"supabase/migrations")).filter(x=>x.endsWith(".sql"));
   const declared=manifest.applied.filter(x=>x.state==="versioned-migration-present");
-  assert.deepEqual(list.sort(),declared.map(x=>x.repo_source.split("/").at(-1)).sort(),
+  // Historical ledger is a dated 8 November snapshot. Three later L2 security files
+  // are explicitly inventoried by exact repository blob hash, NOT asserted applied.
+  // They are not part of the reduced pickup fixture and are never run in this lab.
+  const later={
+    "20261111060000_l2_private_chat_payment_acl.sql":"0ecef55bccb6374447636320380961405f4680bc",
+    "20261111061500_l2_signup_customer_role_guard.sql":"c3f5204c6dbb2b4e223c2a0c5afb7905e86868aa",
+    "20261111061600_l2_rider_notification_acl.sql":"6975e7df126b5e39dd98f00cfc7f7e5a09603c36",
+  };
+  assert.deepEqual(list.sort(),[...declared.map(x=>x.repo_source.split("/").at(-1)),...Object.keys(later)].sort(),
     "Mismatch: versioned SQL list must be reconciled before claiming parity");
+  for(const [name,sha] of Object.entries(later)){
+    const raw=readFileSync(resolve(root,"supabase/migrations",name));
+    assert.equal(createHash("sha1").update("blob "+raw.length+"\0").update(raw).digest("hex"),sha,"Later L2 source drift: "+name);
+  }
   for(const m of declared){
     assert.ok(read(m.repo_source).length>200,"Missing migration "+m.version);
     assert.ok(m.repo_source.endsWith(m.version+"_"+m.name+".sql"));
