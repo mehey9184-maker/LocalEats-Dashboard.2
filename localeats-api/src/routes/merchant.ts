@@ -55,7 +55,7 @@ router.get("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res:
       .is("archived_at", null);
 
     if (error) {
-      console.error("Supabase merchant shop query error:", error);
+      console.error("Supabase merchant shop query error");
 
       res.status(503).json({success:false,code:"AVAILABILITY_SCHEMA_UNAVAILABLE",error:"Shop availability is not activated or could not be loaded."});
       return;
@@ -82,7 +82,7 @@ router.get("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res:
       shop: effectiveShop(shops[0]),
     });
   } catch (err) {
-    console.error("Error fetching merchant shop:", err);
+    console.error("Error fetching merchant shop");
 
     res.status(500).json({
       success: false,
@@ -268,10 +268,7 @@ router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res
       .limit(1);
 
     if (existingError) {
-      console.error(
-        "Supabase merchant shop pre-check error:",
-        existingError,
-      );
+      console.error("Supabase merchant shop pre-check error:");
 
       res.status(500).json({
         success: false,
@@ -333,10 +330,7 @@ router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res
         return;
       }
 
-      console.error(
-        "Supabase merchant shop insert error:",
-        insertError,
-      );
+      console.error("Supabase merchant shop insert error:");
 
       res.status(500).json({
         success: false,
@@ -350,10 +344,7 @@ router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res
       shop: newShop,
     });
   } catch (err) {
-    console.error(
-      "Error creating merchant shop:",
-      err,
-    );
+    console.error("Error creating merchant shop:");
 
     res.status(500).json({
       success: false,
