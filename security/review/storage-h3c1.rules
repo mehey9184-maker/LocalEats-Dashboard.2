@@ -1,0 +1,10 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Review-only pickup candidate. Media authority moves to verified server API/R2.
+    // No new direct browser upload or download grants, including authenticated users.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

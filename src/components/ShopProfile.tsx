@@ -20,7 +20,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { supabase } from "../lib/supabase";
-import { updateFirestoreShop } from "../lib/firebase";
 import { Shop, User } from "../types";
 import { LeafletMap } from "./LeafletMap";
 import { LocationSyncIndicator } from "./LocationSyncIndicator";
@@ -29,7 +28,6 @@ import {
   formatSAPhone,
 } from "../utils";
 import { analyzeLocationSync } from "../hooks/useShopLocation";
-import { handleCentralizedError } from "../utils/errorHandler";
 import { MerchantPhoto } from "./MerchantPhoto";
 import imageCompression from "browser-image-compression";
 import { uploadImageToFirebaseStorage } from "../lib/firebase";
@@ -57,7 +55,6 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
   setIsSaveSuccess,
   isSaving = false,
   isSuccess = false,
-  onFinished,
 }: {
   shop: Shop;
   onRefresh: () => void;
@@ -288,180 +285,9 @@ export const ShopProfile: React.FC<ShopProfileProps> = ({
       return;
     }
 
-    setIsSaving(true);
+    setIsSaving(false);
     setIsSaveSuccess(false);
-
-    // Versioning & updated_at check to prevent overwriting cloud state with stale local state
-    try {
-      const { data: remoteShop } = await supabase
-        .from("shops")
-        .select("updated_at")
-        .eq("id", shop.id)
-        .maybeSingle();
-
-      const remoteShopData = remoteShop as { updated_at?: string } | null;
-      if (remoteShopData?.updated_at && shop.updated_at) {
-        const remoteTime = new Date(remoteShopData.updated_at).getTime();
-        const localTime = new Date(shop.updated_at).getTime();
-        if (remoteTime > localTime + 2000) {
-          toast.error("Cloud shop profile updated in another session. Syncing latest state to prevent overwrite.", {
-            description: `Remote version (${new Date(remoteShopData.updated_at).toLocaleTimeString()}) is newer than local state.`,
-            duration: 5000,
-          });
-          setIsSaving(false);
-          onRefresh();
-          return;
-        }
-      }
-    } catch (versionErr) {
-      console.warn("Versioning check skipped due to network or schema cache warning:", versionErr);
-    }
-
-    const finalCity = formData.city || parseAndNormalizeZAAddress(formData.location || "Tembisa").city;
-    const nowISO = new Date().toISOString();
-
-    const payload: Record<string, unknown> = {
-      ...formData,
-      operating_hours: operatingHours,
-      city: finalCity,
-      updated_at: nowISO,
-    };
-
-    // 1. Update Firestore Shop document immediately so client app and subscriptions sync in real time
-    try {
-      await updateFirestoreShop(shop.id, {
-        name: formData.name,
-        description: formData.description,
-        location: formData.location,
-        address: formData.location,
-        city: finalCity,
-        category: formData.category,
-        phone: formData.phone,
-        email: formData.email,
-        instagram: formData.instagram,
-        facebook: formData.facebook,
-        whatsapp: formData.whatsapp,
-        logo_url: formData.logo_url,
-        lat: formData.lat,
-        lng: formData.lng,
-        operating_hours: operatingHours,
-        updated_at: nowISO,
-      });
-    } catch (fsErr) {
-      console.warn("Firestore shop update warning:", fsErr);
-    }
-
-    // 2. Update local cached shops storage
-    try {
-      const cached = localStorage.getItem("localeats_cached_shops");
-      if (cached) {
-        const parsed: Shop[] = JSON.parse(cached);
-        const updated = parsed.map((s) =>
-          s.id === shop.id
-            ? {
-                ...s,
-                ...formData,
-                operating_hours: operatingHours,
-                address: formData.location,
-                city: finalCity,
-                updated_at: nowISO,
-              }
-            : s
-        );
-        localStorage.setItem("localeats_cached_shops", JSON.stringify(updated));
-      }
-    } catch {
-      // ignore
-    }
-
-    try {
-      // First attempt on Supabase
-      let { error } = await supabase
-        .from("shops")
-        .update(payload)
-        .eq("id", shop.id);
-
-      // If it's a "column does not exist" error or schema cache error, try to heal
-      const errObj = error as { code?: string; message?: string } | null;
-      if (errObj && (errObj.code === "42703" || errObj.message?.includes("column") || errObj.message?.includes("schema cache"))) {
-        console.warn("Some columns do not exist in the shops table. Attempting to strip unknown columns...", errObj.message);
-        // List of columns that might not exist in an older schema
-        const optionalCols = ["city", "whatsapp", "instagram", "facebook", "lat", "lng", "location_details", "email", "updated_at"];
-        optionalCols.forEach((col) => delete payload[col]);
-
-        // Try again with safe payload
-        let retry = await supabase
-          .from("shops")
-          .update(payload)
-          .eq("id", shop.id);
-
-        if (retry.error) {
-          // Fallback to essential baseline columns only
-          const fallbackPayload = {
-            name: formData.name,
-            description: formData.description,
-            location: formData.location,
-            phone: formData.phone,
-            category: formData.category,
-            logo_url: formData.logo_url,
-          };
-          retry = await supabase
-            .from("shops")
-            .update(fallbackPayload)
-            .eq("id", shop.id);
-        }
-
-        error = retry.error as unknown as typeof error;
-      }
-
-      if (error) throw error;
-
-      // Sync back to user metadata so phone numbers and locations are consistent throughout the app
-      if (user && (formData.phone || formData.whatsapp || formData.location)) {
-        try {
-          await supabase.auth.updateUser({
-            data: {
-              phone: formData.phone,
-              whatsapp: formData.whatsapp,
-              location: formData.location,
-              address: formData.location,
-              city: finalCity,
-            }
-          });
-        } catch (authErr) {
-          console.warn("User auth metadata update skipped:", authErr);
-        }
-
-        // Also sync to rider profile if it exists
-        try {
-          await supabase
-            .from("rider_profiles")
-            .update({
-              phone: formData.phone,
-              city: finalCity,
-              updated_at: new Date().toISOString()
-            })
-            .eq("id", user.id);
-        } catch (riderErr) {
-          console.warn("Rider profile update skipped:", riderErr);
-        }
-      }
-
-      setIsSaving(false);
-      setIsSaveSuccess(true);
-
-      setTimeout(() => {
-        setIsSaveSuccess(false);
-        toast.success("Shop profile updated successfully!");
-        onRefresh();
-        if (onFinished) onFinished();
-      }, 1200);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      setIsSaving(false);
-      setIsSaveSuccess(false);
-      handleCentralizedError(err, "Shop Profile Update", "Failed to update profile");
-    }
+    toast.error("Shop profile changes require the verified API. No changes were saved.");
   };
 
   const handleImageUpload = async (

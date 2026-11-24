@@ -5,8 +5,8 @@ import {legacyOrderWriteError} from "./legacyOrderWrite";
  * Firestore Compatibility & Migration Bridge
  * 
  * This module seamlessly adapts Supabase-style query chaining (.from(...).select(...).eq(...))
- * to Google Cloud Firestore operations (getDocs, setDoc, updateDoc, onSnapshot) and Firebase Auth.
- * All operations interact directly with the provisioned Firebase Project & Firestore database.
+ * to read-only Firestore queries and subscriptions, plus Firebase Auth.
+ * Generic mutations fail closed; business persistence requires the LocalEats API.
  */
 
 import { 
@@ -14,15 +14,11 @@ import {
   doc, 
   getDoc, 
   getDocs, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
   query, 
   where, 
   orderBy, 
   limit, 
   onSnapshot,
-  runTransaction,
   Unsubscribe
 } from "firebase/firestore";
 import { db, auth, firebaseSignIn, firebaseSignUp, firebaseSignOutUser, firebaseResetPassword } from "./firebase";
@@ -35,39 +31,6 @@ interface QueryFilter {
   field: string;
   op: "==" | "!=" | "<" | "<=" | ">" | ">=" | "in";
   value: unknown;
-}
-
-function matchesFilter(docData: Record<string, unknown>, f: QueryFilter): boolean {
-  const actualVal = docData ? docData[f.field] : undefined;
-  const targetVal = f.value;
-
-  switch (f.op) {
-    case "==":
-      if (targetVal === null || targetVal === undefined) {
-        return actualVal === null || actualVal === undefined;
-      }
-      return actualVal === targetVal || String(actualVal) === String(targetVal);
-    case "!=":
-      if (targetVal === null || targetVal === undefined) {
-        return actualVal !== null && actualVal !== undefined;
-      }
-      return actualVal !== targetVal && String(actualVal) !== String(targetVal);
-    case ">":
-      return Number(actualVal) > Number(targetVal);
-    case ">=":
-      return Number(actualVal) >= Number(targetVal);
-    case "<":
-      return Number(actualVal) < Number(targetVal);
-    case "<=":
-      return Number(actualVal) <= Number(targetVal);
-    case "in":
-      if (Array.isArray(targetVal)) {
-        return targetVal.includes(actualVal) || targetVal.map(String).includes(String(actualVal));
-      }
-      return false;
-    default:
-      return true;
-  }
 }
 
 class FirestoreQueryBuilder {
@@ -252,114 +215,11 @@ class FirestoreQueryBuilder {
     if(this.collectionName === "orders" && (this.insertData !== undefined || this.updateData !== undefined || this.isDelete)) {
       return {data:null,error:legacyOrderWriteError()};
     }
+    if (this.insertData !== undefined || this.updateData !== undefined || this.isDelete) {
+      return {data:null,error:new Error("This change requires the verified LocalEats API. No changes were saved.")};
+    }
     try {
       const collRef = collection(db, this.collectionName);
-
-      // INSERT / UPSERT
-      if (this.insertData) {
-        const items = Array.isArray(this.insertData) ? this.insertData : [this.insertData];
-        const insertedList: unknown[] = [];
-        for (const item of items) {
-          const docId = item.id ? String(item.id) : `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-          const docRef = doc(db, this.collectionName, docId);
-          const payload = {
-            ...item,
-            id: item.id ?? docId,
-            updated_at: new Date().toISOString(),
-            created_at: item.created_at || new Date().toISOString(),
-          };
-          await setDoc(docRef, payload, { merge: true });
-          insertedList.push(payload);
-        }
-        return { data: Array.isArray(this.insertData) ? insertedList : insertedList[0], error: null };
-      }
-
-      // UPDATE
-      if (this.updateData) {
-        // If updating by direct ID equality filter
-        const idFilter = this.filters.find(f => f.field === "id");
-        if (idFilter) {
-          const otherFilters = this.filters.filter(f => f.field !== "id");
-          const docRef = doc(db, this.collectionName, String(idFilter.value));
-
-          // If conditional guards are present (e.g. .eq('delivery_status', 'finding_rider')),
-          // enforce strict atomic transactional consistency to prevent race conditions.
-          if (otherFilters.length > 0) {
-            try {
-              const updatedResult = await runTransaction(db, async (transaction) => {
-                const docSnap = await transaction.get(docRef);
-                if (!docSnap.exists()) {
-                  throw new Error(`Document with ID "${idFilter.value}" not found in "${this.collectionName}".`);
-                }
-                const currentData = docSnap.data() as Record<string, unknown>;
-
-                for (const f of otherFilters) {
-                  if (!matchesFilter(currentData, f)) {
-                    throw new Error(`Optimistic lock failed: condition on "${f.field}" (${f.op} ${JSON.stringify(f.value)}) did not match current value ${JSON.stringify(currentData[f.field])}.`);
-                  }
-                }
-
-                const payload = {
-                  ...this.updateData,
-                  updated_at: new Date().toISOString(),
-                };
-                transaction.update(docRef, payload);
-                return { id: idFilter.value, ...currentData, ...payload };
-              });
-              return { data: this.isSingle ? updatedResult : [updatedResult], error: null };
-            } catch (err: unknown) {
-              const errorMsg = err instanceof Error ? err.message : String(err);
-              console.warn(`[Firestore Bridge] Transactional update on "${this.collectionName}" rejected:`, errorMsg);
-              return { data: null, error: err };
-            }
-          }
-
-          // Single ID update without conditional constraints
-          const payload = {
-            ...this.updateData,
-            updated_at: new Date().toISOString()
-          };
-          await setDoc(docRef, payload, { merge: true });
-          return { data: this.isSingle ? { id: idFilter.value, ...payload } : [{ id: idFilter.value, ...payload }], error: null };
-        }
-
-        // Multiple documents update
-        let q = query(collRef);
-        for (const f of this.filters) {
-          q = query(q, where(f.field, f.op, f.value));
-        }
-        const snap = await getDocs(q);
-        const updatedList: Record<string, unknown>[] = [];
-        for (const docSnap of snap.docs) {
-          const payload = {
-            ...this.updateData,
-            updated_at: new Date().toISOString()
-          };
-          await updateDoc(docSnap.ref, payload).catch(() => setDoc(docSnap.ref, payload, { merge: true }));
-          updatedList.push({ id: docSnap.id, ...docSnap.data(), ...payload });
-        }
-        return { data: this.isSingle ? (updatedList[0] || null) : updatedList, error: null };
-      }
-
-      // DELETE
-      if (this.isDelete) {
-        const idFilter = this.filters.find(f => f.field === "id");
-        if (idFilter) {
-          const docRef = doc(db, this.collectionName, String(idFilter.value));
-          await deleteDoc(docRef);
-          return { data: null, error: null };
-        }
-
-        let q = query(collRef);
-        for (const f of this.filters) {
-          q = query(q, where(f.field, f.op, f.value));
-        }
-        const snap = await getDocs(q);
-        for (const docSnap of snap.docs) {
-          await deleteDoc(docSnap.ref);
-        }
-        return { data: null, error: null };
-      }
 
       // SELECT / QUERY
       // Check if it's a single document get by id

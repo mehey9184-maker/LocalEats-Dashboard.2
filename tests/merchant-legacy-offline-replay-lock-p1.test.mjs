@@ -76,6 +76,7 @@ test("Merchant never writes a shop heartbeat on page load, including read-only P
   assert.doesNotMatch(app,/Dashboard Inactive for 4\+ Days|online storefront is active and ready for orders/);
   assert.match(app,/MerchantApi\.getOrders\(\)/);
   assert.match(app,/MerchantApi\.getMerchantShop\(\)/);
-  // Direct writes from other settings remain and require separate write-path review.
-  assert.match(app,/\.update\(\{ require_terminal_sync: newValue \}\)/);
+  // Deferred terminal settings now fail closed instead of writing to Firestore.
+  assert.doesNotMatch(app,/\.update\(\{\s*(require_terminal_sync|terminal_provider|terminal_serial)\s*:/);
+  assert.match(app,/Terminal linking is not active\. No changes were saved/);
 });

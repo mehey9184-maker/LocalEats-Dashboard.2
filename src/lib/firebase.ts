@@ -20,20 +20,15 @@ import {
   getDoc, 
   getDocFromServer,
   setDoc, 
-  deleteDoc,
   getDocs, 
   query, 
   where,
   or,
-  writeBatch,
   onSnapshot,
   Unsubscribe
 } from "firebase/firestore";
 import { 
   getStorage, 
-  ref as storageRef, 
-  uploadBytes, 
-  getDownloadURL 
 } from "firebase/storage";
 import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
 import firebaseConfigData from "../../firebase-applet-config.json";
@@ -151,18 +146,8 @@ export async function uploadImageToFirebaseStorage(
   folder: "avatars" | "shop-assets" | "menu-items", 
   fileName?: string
 ): Promise<string> {
-  const ext = file instanceof File ? (file.name.split(".").pop() || "jpg") : "jpg";
-  const name = fileName || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
-  const fileRef = storageRef(storage, `${folder}/${name}`);
-
-  console.log(`[Firebase Storage] Uploading to path: ${folder}/${name}...`);
-  const snapshot = await uploadBytes(fileRef, file, {
-    contentType: file.type || "image/jpeg",
-  });
-  
-  const downloadUrl = await getDownloadURL(snapshot.ref);
-  console.log(`[Firebase Storage] Upload success! Download URL:`, downloadUrl);
-  return downloadUrl;
+  void file; void folder; void fileName;
+  throw new Error("Verified media uploads are unavailable. No file was uploaded.");
 }
 
 /**
@@ -377,134 +362,8 @@ export async function migrateDataToFirestore(params: {
   shops?: Shop[];
   shopId?: string | number;
 }): Promise<{ ordersMigrated: number; menuItemsMigrated: number; shopsMigrated: number }> {
-  const { orders, menuItems, shops = [], shopId } = params;
-  let ordersCount = 0;
-  let menuCount = 0;
-  let shopsCount = 0;
-  const hasShopId = (value: unknown): value is string | number =>
-    (typeof value === "string" && value.trim().length > 0) ||
-    (typeof value === "number" && Number.isFinite(value));
-
-  console.log(`[Firestore Migration] Executing data transfer for shopId=${shopId || "all"}...`);
-
-  // 1. Migrate Shops (with normalized fields)
-  if (shops.length > 0) {
-    const shopBatch = writeBatch(db);
-    for (const shop of shops) {
-      if (!shop.owner_id || !shop.owner_id.trim()) {
-        console.warn(`[Firestore Migration] Skipping shop ${shop.id}: no explicit owner ID provided.`);
-        continue;
-      }
-      const sId = String(shop.id);
-      const sRef = doc(db, "shops", sId);
-      const shopData = {
-        id: Number(shop.id) || shop.id,
-        name: shop.name || "LocalEats Partner",
-        owner_id: shop.owner_id,
-        email: shop.email || "",
-        phone: shop.phone || "",
-        address: shop.address || "",
-        city: shop.city || "Cape Town",
-        is_active: shop.is_active ?? true,
-        lat: Number(shop.lat) || -33.9249,
-        lng: Number(shop.lng) || 18.4241,
-        delivery_fee: Number(shop.delivery_fee) || 25,
-        rating: Number(shop.rating) || 4.8,
-        logo_url: shop.logo_url || "",
-        banner_url: shop.banner_url || "",
-        description: shop.description || "",
-        operating_hours: shop.operating_hours || "08:00 - 22:00",
-        created_at: shop.created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      shopBatch.set(sRef, shopData, { merge: true });
-      shopsCount++;
-    }
-    await shopBatch.commit().catch(e => console.warn("[Firestore Migration] Shops batch error:", e));
-  }
-
-  // 2. Migrate Menu Items (with normalized fields)
-  if (menuItems.length > 0) {
-    const menuBatch = writeBatch(db);
-    for (const item of menuItems) {
-      const resolvedShopId = hasShopId(item.shop_id)
-        ? item.shop_id
-        : hasShopId(shopId)
-          ? shopId
-          : null;
-      if (resolvedShopId === null) {
-        console.warn(`[Firestore Migration] Skipping menu item ${item.id}: no shop ID provided.`);
-        continue;
-      }
-      const mId = String(item.id);
-      const mRef = doc(db, "menu_items", mId);
-      const menuData = {
-        id: item.id,
-        shop_id: resolvedShopId,
-        name: item.name || "Menu Item",
-        price: Number(item.price) || 0,
-        description: item.description || "",
-        category: item.category || "Main Course",
-        image_url: item.image_url || "",
-        is_available: item.is_available ?? true,
-        stock_quantity: item.stock_quantity ?? 10,
-        is_unlimited: item.is_unlimited ?? false,
-        created_at: item.created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      menuBatch.set(mRef, menuData, { merge: true });
-      menuCount++;
-    }
-    await menuBatch.commit().catch(e => console.warn("[Firestore Migration] Menu items batch error:", e));
-  }
-
-  // 3. Migrate Orders (with normalized fields)
-  if (orders.length > 0) {
-    const orderBatch = writeBatch(db);
-    for (const order of orders) {
-      const resolvedShopId = hasShopId(order.shop_id)
-        ? order.shop_id
-        : hasShopId(shopId)
-          ? shopId
-          : null;
-      if (resolvedShopId === null) {
-        console.warn(`[Firestore Migration] Skipping order ${order.id}: no shop ID provided.`);
-        continue;
-      }
-      const oId = String(order.id);
-      const oRef = doc(db, "orders", oId);
-      const orderData = {
-        id: order.id,
-        shop_id: resolvedShopId,
-        user_id: order.user_id || "",
-        rider_id: order.rider_id || null,
-        product_name: order.product_name || "Order Item",
-        total_price: Number(order.total_price) || 0,
-        subtotal: Number(order.subtotal) || Number(order.total_price) || 0,
-        delivery_fee: Number(order.delivery_fee) || 25,
-        status: order.status || "pending",
-        delivery_status: order.delivery_status || "finding_rider",
-        payment_method: order.payment_method || "cash_on_delivery",
-        pairing_cipher: order.pairing_cipher || "",
-        customer_name: order.customer_name || "Customer",
-        phone: order.phone || "",
-        email: order.email || "",
-        address: order.address || "",
-        city: order.city || "Cape Town",
-        lat: Number(order.lat) || -33.9249,
-        lng: Number(order.lng) || 18.4241,
-        notes: order.notes || "",
-        created_at: order.created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      orderBatch.set(oRef, orderData, { merge: true });
-      ordersCount++;
-    }
-    await orderBatch.commit().catch(e => console.warn("[Firestore Migration] Orders batch error:", e));
-  }
-
-  console.log(`[Firestore Migration] Migration Complete! Shops: ${shopsCount}, Menu: ${menuCount}, Orders: ${ordersCount}`);
-  return { ordersMigrated: ordersCount, menuItemsMigrated: menuCount, shopsMigrated: shopsCount };
+  void params;
+  throw new Error("Client migration is disabled. No records were migrated.");
 }
 
 // =========================================================================
@@ -583,17 +442,8 @@ export async function getFirestoreShopById(shopId: string | number): Promise<Sho
  * Update shop details in Firestore
  */
 export async function updateFirestoreShop(shopId: string | number, updates: Partial<Shop>): Promise<{ error: Error | null }> {
-  try {
-    const sRef = doc(db, "shops", String(shopId));
-    await setDoc(sRef, {
-      ...updates,
-      updated_at: new Date().toISOString(),
-    }, { merge: true });
-    return { error: null };
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `shops/${shopId}`);
-    return { error: err as Error };
-  }
+  void shopId; void updates;
+  return {error:new Error("Shop changes require the verified API. No changes were saved.")};
 }
 
 /**
@@ -637,52 +487,24 @@ export async function getFirestoreMenuItems(shopId: string | number | (string | 
  * Update a Menu Item in Firestore
  */
 export async function updateFirestoreMenuItem(itemId: string | number, updates: Partial<MenuItem>): Promise<{ error: Error | null }> {
-  try {
-    const mRef = doc(db, "menu_items", String(itemId));
-    await setDoc(mRef, {
-      ...updates,
-      updated_at: new Date().toISOString(),
-    }, { merge: true });
-    return { error: null };
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `menu_items/${itemId}`);
-    return { error: err as Error };
-  }
+  void itemId; void updates;
+  return {error:new Error("Menu changes require the verified API. No changes were saved.")};
 }
 
 /**
  * Create a Menu Item in Firestore
  */
 export async function createFirestoreMenuItem(item: Partial<MenuItem>): Promise<{ data: MenuItem | null; error: Error | null }> {
-  try {
-    const itemId = item.id ? String(item.id) : String(Date.now());
-    const mRef = doc(db, "menu_items", itemId);
-    const payload = {
-      ...item,
-      id: itemId,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    await setDoc(mRef, payload, { merge: true });
-    return { data: payload as unknown as MenuItem, error: null };
-  } catch (err) {
-    handleFirestoreError(err, OperationType.CREATE, "menu_items");
-    return { data: null, error: err as Error };
-  }
+  void item;
+  return {data:null,error:new Error("Menu changes require the verified API. No changes were saved.")};
 }
 
 /**
  * Delete a Menu Item from Firestore
  */
 export async function deleteFirestoreMenuItem(itemId: string | number): Promise<{ error: Error | null }> {
-  try {
-    const mRef = doc(db, "menu_items", String(itemId));
-    await deleteDoc(mRef);
-    return { error: null };
-  } catch (err) {
-    handleFirestoreError(err, OperationType.DELETE, `menu_items/${itemId}`);
-    return { error: err as Error };
-  }
+  void itemId;
+  return {error:new Error("Menu changes require the verified API. No changes were saved.")};
 }
 
 /**

@@ -69,7 +69,6 @@ import {
   firebaseSignOutUser,
   formatFirebaseUserSession,
   onAuthStateChanged,
-  updateFirestoreShop,
 } from "./lib/firebase";
 import { useKitchenAlerter } from "./hooks/useKitchenAlerter";
 import { useOrderWorkflow } from "./hooks/useOrderWorkflow";
@@ -177,9 +176,6 @@ const getMerchantShopErrorMessage = (error: unknown): string => {
 };
 
 // Read adapter errors defensively: the legacy query bridge can return unknown values.
-const compatErrorCode = (error: unknown): string | undefined =>
-  typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
-    ? error.code : undefined;
 const compatErrorMessage = (error: unknown): string | undefined =>
   typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
     ? error.message : undefined;
@@ -3095,62 +3091,7 @@ function App() {
                     <div className="pt-4 border-t border-outline-variant/10 flex justify-end">
                       <button
                         type="button"
-                        onClick={async () => {
-                          if (!currentShop?.id) {
-                            toast.error("No active shop found to save delivery settings.");
-                            return;
-                          }
-                          const nowISO = new Date().toISOString();
-                          try {
-                            // Update Firestore
-                            try {
-                              await updateFirestoreShop(currentShop.id, {
-                                delivery_radius_enabled: deliverySettings.radiusEnabled,
-                                delivery_radius_km: deliverySettings.maxDistanceKm,
-                                updated_at: nowISO,
-                              });
-                            } catch (fsErr) {
-                              console.warn("Firestore delivery settings update warning:", fsErr);
-                            }
-
-                            const { error } = await supabase
-                              .from("shops")
-                              .update({
-                                delivery_radius_enabled: deliverySettings.radiusEnabled,
-                                delivery_radius_km: deliverySettings.maxDistanceKm,
-                                updated_at: nowISO,
-                              })
-                              .eq("id", currentShop.id);
-
-                            if (error && compatErrorCode(error) !== "42703") {
-                              console.warn("Supabase delivery settings update warning:", compatErrorMessage(error));
-                            }
-
-                            setShops((prev) => {
-                              const updated = prev.map((s) =>
-                                s.id === currentShop.id
-                                  ? {
-                                      ...s,
-                                      delivery_radius_enabled: deliverySettings.radiusEnabled,
-                                      delivery_radius_km: deliverySettings.maxDistanceKm,
-                                      updated_at: nowISO,
-                                    }
-                                  : s
-                              );
-                              try {
-                                localStorage.setItem("localeats_cached_shops", JSON.stringify(updated));
-                              } catch {
-                                // ignore
-                              }
-                              return updated;
-                            });
-
-                            toast.success(`Delivery settings saved! (${deliverySettings.radiusEnabled ? `${deliverySettings.maxDistanceKm} KM radius active` : "Radius restriction disabled"})`);
-                          } catch (err: unknown) {
-                            const e = err as Error;
-                            toast.error("Error saving delivery settings: " + e.message);
-                          }
-                        }}
+                        onClick={() => toast.error("Delivery settings are unavailable during pickup-only launch. No changes were saved.")}
                         className="px-6 py-2.5 bg-primary text-on-primary font-bold text-xs uppercase tracking-wider rounded-xl shadow-md active:scale-95 transition-all hover:bg-primary/90"
                       >
                         Save Delivery Settings
@@ -3180,18 +3121,7 @@ function App() {
                            <input
                              type="checkbox"
                              checked={currentShop?.require_terminal_sync || false}
-                             onChange={async (e) => {
-                               const newValue = e.target.checked;
-                               setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, require_terminal_sync: newValue } : s));
-                               try {
-                                 const { error } = await supabase.from("shops").update({ require_terminal_sync: newValue }).eq("id", currentShop?.id);
-                                 if (error) throw error;
-                                 toast.success(newValue ? "Terminal sync now required for card payments" : "Terminal sync requirement disabled");
-                               } catch {
-                                 toast.error("Failed to update terminal sync requirement");
-                                 setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, require_terminal_sync: !newValue } : s));
-                               }
-                             }}
+                             onChange={() => toast.error("Terminal linking is not active. No changes were saved.")}
                              className="w-5 h-5 rounded accent-primary border-outline-variant/30 text-primary focus:ring-primary focus:ring-offset-surface-container-high"
                            />
                            <span className="text-sm font-bold text-on-surface select-none">Require Card Number Match</span>
@@ -3204,15 +3134,7 @@ function App() {
                          </label>
                          <select
                            value={currentShop?.terminal_provider || ""}
-                           onChange={async (e) => {
-                             const newValue = e.target.value;
-                             setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, terminal_provider: newValue } : s));
-                             try {
-                               await supabase.from("shops").update({ terminal_provider: newValue }).eq("id", currentShop?.id);
-                             } catch (error) {
-                               console.error(error);
-                             }
-                           }}
+                           onChange={() => toast.error("Terminal linking is not active. No changes were saved.")}
                            className="bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50"
                          >
                            <option value="" disabled>Select Provider...</option>
@@ -3230,18 +3152,7 @@ function App() {
                            type="text"
                            placeholder="e.g. SN-12345678"
                            value={currentShop?.terminal_serial || ""}
-                           onChange={(e) => {
-                             const newValue = e.target.value;
-                             setShops(prev => prev.map(s => s.id === currentShop?.id ? { ...s, terminal_serial: newValue } : s));
-                           }}
-                           onBlur={async (e) => {
-                             const newValue = e.target.value;
-                             try {
-                               await supabase.from("shops").update({ terminal_serial: newValue }).eq("id", currentShop?.id);
-                             } catch (error) {
-                               console.error(error);
-                             }
-                           }}
+                           onChange={() => toast.error("Terminal linking is not active. No changes were saved.")}
                            className="bg-surface-container-high border border-outline-variant/10 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50"
                          />
                       </div>
