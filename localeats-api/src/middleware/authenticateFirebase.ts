@@ -16,7 +16,8 @@ export const getFirebaseBearerToken = (
     return null;
   }
 
-  return authorizationHeader.slice("Bearer fb-".length);
+  const token = authorizationHeader.slice("Bearer fb-".length);
+  return token && !/\s/.test(token) ? token : null;
 };
 
 export const authenticateFirebase = async (
@@ -31,7 +32,7 @@ export const authenticateFirebase = async (
       return;
     }
 
-    const decoded = await authAdmin.verifyIdToken(token);
+    const decoded = await authAdmin.verifyIdToken(token, true);
 
     req.authUser = {
       uid: decoded.uid,
@@ -41,7 +42,9 @@ export const authenticateFirebase = async (
 
     next();
   } catch (error) {
-    console.error("Firebase auth error:", error);
+    // Never log token contents or provider error payloads.
+    void error;
+    console.warn("Firebase authentication rejected");
     res.status(401).json({ success: false, error: "Unauthorized" });
   }
 };
