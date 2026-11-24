@@ -1,3 +1,4 @@
+import {beforeFirebaseVerification,afterFirebaseVerification} from "./apiAdmission.js";
 import { Request, Response, NextFunction } from "express";
 import { authAdmin } from "../lib/firebaseAdmin.js";
 
@@ -32,7 +33,9 @@ export const authenticateFirebase = async (
       return;
     }
 
+    if (!beforeFirebaseVerification(res)) return;
     const decoded = await authAdmin.verifyIdToken(token, true);
+    if (!afterFirebaseVerification(res,decoded.uid)) return;
 
     req.authUser = {
       uid: decoded.uid,
