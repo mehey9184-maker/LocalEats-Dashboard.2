@@ -288,7 +288,9 @@ export const createOrder = async (
 };
 
 const throwDatabaseError = (operation: string, error: { message: string } | null): never => {
-  console.error(`Supabase ${operation} failed:`, error?.message ?? "unknown database error");
+  void error;
+  console.error("Supabase order repository operation failed");
+  void operation;
   throw new OrderContractError(503, "DATABASE_UNAVAILABLE", "The order service is temporarily unavailable.");
 };
 
