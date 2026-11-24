@@ -1,3 +1,8 @@
 # L4-H1D.3 — shared Merchant order tag presentation
 2026-11-24 | Candidate pending CI. Base 6d25d111f7faa7794013b6979a3cc4126b6a530a (housekeeping #243, stacked on #242).
 Four byte-equivalent badge wrappers and four byte-equivalent quick-tag wrappers (after indentation normalization) extracted from OrdersManagement.tsx into OrderTags.tsx. Preserve actual HTML, classes, icons, labels, button order, callback order and native buttons; no change to parent tag state, localStorage persistence, automatic tag derivation, order actions, pickup flags, layout wrappers or motion. No shared cross-repo dependency introduced. Existing four call sites each now use one of two components. Tests compare exact source transformation against pinned Git baseline, rendered HTML across tag combinations and original click handlers. CI installs locked dependencies then runs offline with write flags false, regression tests, type/lint, build and asset measurements. No live account/order, deployment, merge or cost authorized. Browser screenshot/physical keyboard parity remains separate from HTML/handler equivalence; do not claim it until tested. Rollback by reverting this isolated commit. 
+
+
+
+**H1D.3A PASS:** Run 45486157277 attempt 2, job 138774775087, head 7a5c1d1e4d27400dcca0ec5d7242d66d3efffeae: 65/65 tests, build, 12/12 exact decoded pixel comparisons with stable original controls and computed style/layout parity, native keyboard sequences 2/2 (six activations). Synthetic component fixture, not full Dashboard/real phone. No production changes. Stacked review remains; H1D.4 next.
+[Acceptance evidence](https://github.com/mehey9184-maker/LocalEats-Dashboard.2/actions/runs/45486157277).
