@@ -16,40 +16,15 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: '22'
-      - name: Confirm test-tool reachability and prepare minimal candidate
+      - name: Verify committed lockfile and install without bypass
         run: |
           set -euo pipefail
           node --version
           npm --version
-          git grep -in -E 'vitest|@vitest/' -- src tests scripts .github ':!.github/workflows/l4-h1b3-dependency-repair.yml' > /tmp/h1b3-refs || test "$?" = 1
-          if test -s /tmp/h1b3-refs; then
-            echo "HOLD: Vitest references need review"
-            cat /tmp/h1b3-refs
-            exit 1
-          fi
-          cp package-lock.json /tmp/h1b3-before-lock.json
-          node --input-type=module <<'JS'
-          import fs from 'node:fs';
-          const p=JSON.parse(fs.readFileSync('package.json','utf8'));
-          delete p.devDependencies.vitest;
-          p.devDependencies.ajv='8.20.0';
-          p.devDependencies=Object.fromEntries(Object.entries(p.devDependencies).sort(([a],[b])=>a.localeCompare(b,'en')));
-          fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');
-          JS
-          npm install --package-lock-only --ignore-scripts --legacy-peer-deps=false --no-audit --no-fund
-          node --input-type=module <<'JS'
-          import fs from 'node:fs';
-          const old=JSON.parse(fs.readFileSync('/tmp/h1b3-before-lock.json','utf8'));
-          const now=JSON.parse(fs.readFileSync('package-lock.json','utf8'));
-          const root={...now}; delete root.packages;
-          console.log('H1B3_LOCK_ROOT '+JSON.stringify(root));
-          console.log('H1B3_MANIFEST '+JSON.stringify(JSON.parse(fs.readFileSync('package.json','utf8'))));
-          for(const k of Object.keys(old.packages)) if(!(k in now.packages)) console.log('H1B3_LOCK_DELETE '+JSON.stringify(k));
-          for(const [k,v] of Object.entries(now.packages)) if(JSON.stringify(old.packages[k])!==JSON.stringify(v)) console.log('H1B3_LOCK_SET '+JSON.stringify([k,v]));
-          console.log('H1B3_LOCK_ORDER '+JSON.stringify(Object.keys(now.packages)));
-          JS
-          sha256sum package-lock.json
-          npm ci --legacy-peer-deps=false --no-audit --no-fund
+          test "$(npm config get legacy-peer-deps)" = false
+          echo '5fadd349192179edfdb0857f1fd9f2aaa6bb026c7b6ecd8b861a7a138b9bc891  package-lock.json' | sha256sum -c -
+          npm ci --no-audit --no-fund
+          git diff --exit-code -- package.json package-lock.json .npmrc
       - name: Fail closed offline dependency and regression tests
         run: |
           set -euo pipefail
