@@ -1,6 +1,7 @@
 import {legacyOrderGuard} from "./legacyOrderGuard.js";
 import {pickupNotificationRoutes} from "./routes/pickupNotifications.js";
 import {pickupWriteGate} from "./middleware/pickupWriteGate.js";
+import {launchCapabilityGate} from "./middleware/launchCapabilityGate.js";
 import { previewReadOnlyGate } from "./middleware/previewReadOnlyGate.js";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
@@ -47,6 +48,7 @@ app.use(cors({
 app.use(previewReadOnlyGate);
 app.use(legacyOrderGuard);
 app.use(pickupWriteGate);
+app.use(launchCapabilityGate);
 app.use(express.json());
 
 // Routes
