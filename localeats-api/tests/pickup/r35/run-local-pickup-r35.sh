@@ -193,3 +193,9 @@ if [[ "${H6B_FIXED_LOAD:-false}" == true ]]; then
  [[ "${H6A_LOAD_BASELINE:-false}" == true ]] || exit 1
  bash "$here/h6b-fixed-load.SYNTHETIC_ONLY.sh" "$name"
 fi
+
+# H6C queue rehearsal is disposable only, after the exact H6A seed.
+if [[ "${H6C_QUEUE_REHEARSAL:-false}" == true ]]; then
+ [[ "${H6A_LOAD_BASELINE:-false}" == true && "${H5E_RESTART_INTEGRITY:-false}" == true ]] || exit 1
+ bash "$here/h6c-queue.SYNTHETIC_ONLY.sh" "$name"
+fi
