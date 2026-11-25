@@ -46,7 +46,7 @@ try{
  let ready=false;for(let n=0;n<100;n++){try{ready=await evaluate('!!window.harness?.ready()');}catch{}if(ready)break;await delay(100);}assert.ok(ready,'Synthetic fixture did not mount');
 
  const state=()=>evaluate('harness.state()');
- const until=async(predicate)=>{for(let i=0;i<100;i++){const s=await state();if(predicate(s))return s;await delay(50);}throw Error('fixture condition timed out');};
+ const until=async(predicate)=>{for(let i=0;i<100;i++){const s=await state();if(predicate(s))return s;await delay(50);}throw Error('fixture condition timed out: '+JSON.stringify(await state()));};
  const click=t=>evaluate('harness.click('+JSON.stringify(t)+')');
  const fill=(sel,val)=>evaluate('harness.fill('+JSON.stringify(sel)+','+JSON.stringify(val)+')');
  async function setup(mode){
@@ -59,7 +59,7 @@ try{
  }
  await cdp('Emulation.setDeviceMetricsOverride',{width:320,height:640,deviceScaleFactor:1,mobile:true});
  await setup('ok');await until(s=>s.created.length===1);assert.equal((await state()).posts,1);
- await setup('foreign');await until(s=>s.text.includes('verified')||s.text.includes('Refresh'));assert.equal((await state()).created.length,0);
+ await setup('foreign');await until(s=>s.text.includes("We couldn't create your shop right now."));assert.equal((await state()).posts,1);assert.equal((await state()).created.length,0);console.log('R2A1_FOREIGN_RECEIPT_REJECTED');
  await setup('upload');await until(s=>s.waiting);await evaluate("harness.switchUser('B');harness.release()");await until(s=>!s.text.includes('Submitting your shop'));assert.equal((await state()).posts,0);assert.equal((await state()).created.length,0);
  await setup('response');await until(s=>s.waiting);await evaluate("harness.switchUser('B');harness.switchUser('A');harness.release()");await until(s=>!s.text.includes('Submitting your shop'));assert.equal((await state()).posts,1);assert.equal((await state()).created.length,0);
  await setup('duplicate');await until(s=>s.waiting&&s.reads===1);await evaluate("harness.switchUser('B');harness.release()");await until(s=>!s.text.includes('Submitting your shop'));assert.equal((await state()).posts,1);assert.equal((await state()).created.length,0);
