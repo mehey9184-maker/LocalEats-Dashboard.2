@@ -142,6 +142,7 @@ import {
 } from "./utils/shopOwnership";
 import { MerchantApi, MerchantApiError } from "./services/MerchantApi";
 import { createMerchantOrderReadCoordinator } from "./services/merchantOrderRecovery";
+import {captureMerchantReadSession} from "./services/merchantReadSession";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -350,6 +351,7 @@ function App() {
   );
 
   const merchantShopRequest=useRef(0);
+  const merchantShopAbort=useRef<AbortController|null>(null);
   const verifiedMerchantUid=useRef<string|null>(null);
   const acceptAuthoritativeMerchantShop = useCallback((firebaseUid: string, shop: Shop) => {
     if(firebaseAuth.currentUser?.uid!==firebaseUid)return;
@@ -371,12 +373,14 @@ function App() {
   const resolveMerchantShop = useCallback(async (firebaseUid: string,background=false): Promise<Shop | null> => {
     if(firebaseAuth.currentUser?.uid!==firebaseUid)return null;
     const request=++merchantShopRequest.current;
+    merchantShopAbort.current?.abort();
+    const controller=new AbortController();merchantShopAbort.current=controller;
+    const session=captureMerchantReadSession();
     const sameVerifiedAccount=background && verifiedMerchantUid.current===firebaseUid && firebaseAuth.currentUser?.uid===firebaseUid;
     if(!sameVerifiedAccount){setOrders([]);setMerchantShopGate({ status: "checking" });}
-    const current=()=>request===merchantShopRequest.current && firebaseAuth.currentUser?.uid===firebaseUid;
-    let deadline:ReturnType<typeof setTimeout>|undefined;
+    const current=()=>request===merchantShopRequest.current && session.current() && firebaseAuth.currentUser?.uid===firebaseUid;
     try {
-      const verifiedShop = await Promise.race([MerchantApi.getMerchantShop(),new Promise<never>((_resolve,reject)=>{deadline=setTimeout(()=>reject(Error("Shop verification timed out. Retry verification.")),15000);})]);
+      const verifiedShop = await MerchantApi.getMerchantShop(controller.signal);
       if(!current())return null;
       if (!verifiedShop || verifiedShop.id === null || verifiedShop.id === undefined) {
         verifiedMerchantUid.current=null;
@@ -403,7 +407,7 @@ function App() {
       setOrders([]);
       setMerchantShopGate({ status: "error", message: getMerchantShopErrorMessage(error) });
       return null;
-    }finally{clearTimeout(deadline);}
+    }finally{if(merchantShopAbort.current===controller)merchantShopAbort.current=null;}
   }, [acceptAuthoritativeMerchantShop]);
 
   const handleCreatedMerchantShop = useCallback(async (shop: Shop) => {
@@ -1098,17 +1102,19 @@ function App() {
     return ()=>orderReadCoordinator.current.activate(null);
   },[orderReadScope]);
 
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async (wake=false) => {
     if (!orderReadScope || !orderReadShopId) {
       setOrders([]);
       return;
     }
 
-    const result = await orderReadCoordinator.current.refresh(orderReadScope, async()=>{
-      const data = await MerchantApi.getOrders();
+    const session=captureMerchantReadSession();
+    if(!session.current() || session.uid!==user?.id)return;
+    const result = await orderReadCoordinator.current.refresh(orderReadScope, async(signal)=>{
+      const data = await MerchantApi.getOrders(signal);
       return data;
-    });
-    if (result.kind === "stale") return;
+    },{wake,canFollowup:()=>session.current() && document.visibilityState==="visible" && navigator.onLine});
+    if (!session.current() || result.kind === "stale") return;
     if (result.kind === "failed") {
       // Keep the last verified rows visible, but clearly label them stale.
       // Polling must not flood the merchant with a new toast every 15 seconds.
@@ -1125,12 +1131,12 @@ function App() {
       })) as Order[];
     processAndSetOrders([], apiOrders);
     setOrderReadStatus({state:"fresh",lastSuccessAt:Date.now()});
-  }, [orderReadScope,orderReadShopId,processAndSetOrders]);
+  }, [orderReadScope,orderReadShopId,processAndSetOrders,user?.id]);
 
   const menuReadScope=user && merchantShopGate.status==="ready" && currentShop ? `${user.id}:${currentShop.id}` : null;
   const [menuReadStatus,setMenuReadStatus]=useState<{scope:string|null;state:"loading"|"ready"|"failed"}>({scope:null,state:"loading"});
   const menuReadRequest = useRef(0);
-  useEffect(()=>{const refresh=()=>{void fetchOrders();};window.addEventListener("merchant-pickup-order-confirmed",refresh);return()=>window.removeEventListener("merchant-pickup-order-confirmed",refresh);},[fetchOrders]);
+  useEffect(()=>{const refresh=()=>{void fetchOrders(true);};window.addEventListener("merchant-pickup-order-confirmed",refresh);return()=>window.removeEventListener("merchant-pickup-order-confirmed",refresh);},[fetchOrders]);
   // FCM may wake an open page, but never trust the payload as an order:
   // always fetch the verified, shop-scoped authoritative API inbox.
   useEffect(()=>{
@@ -1139,7 +1145,7 @@ function App() {
     let unsubscribe: (()=>void)|undefined;
     void onForegroundMessage(payload=>{
       if(!active)return;
-      if(payload.data?.type==="pickup_new_order")void fetchOrders();
+      if(payload.data?.type==="pickup_new_order")void fetchOrders(true);
       if(payload.data?.type==="merchant_push_test")
         toast.success("Test push reached this open dashboard. Background alerts still need a Windows check.");
     }).then(fn=>{
@@ -1148,7 +1154,7 @@ function App() {
       else unsubscribe=fn;
     });
     const fromWorker=(event:MessageEvent)=>{
-      if(event.data?.type==="merchant-pickup-order-push")void fetchOrders();
+      if(event.data?.type==="merchant-pickup-order-push")void fetchOrders(true);
     };
     navigator.serviceWorker?.addEventListener("message",fromWorker);
     return()=>{
@@ -1328,7 +1334,7 @@ function App() {
   useEffect(() => {
     const reconcileFromServer = () => {
       if (merchantShopGate.status !== "ready" || !currentShop) return;
-      void fetchOrders();
+      void fetchOrders(true);
       void fetchShops();
       void fetchAllMenuItems();
     };
