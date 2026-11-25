@@ -76,11 +76,12 @@ const readJsonResponse = async (response: Response): Promise<MerchantApiResponse
 };
 
 const pickupRecovery=createMerchantPickupRecovery({
- identity:()=>auth.currentUser?.uid,enabled:pickupOrderingEnabled,mapOrder:mapApiOrder,
+ identity:()=>auth.currentUser?.uid,captureSession:()=>captureMerchantReadSession().current,enabled:pickupOrderingEnabled,mapOrder:mapApiOrder,
  storage:{getItem:key=>sessionStorage.getItem(key),setItem:(key,value)=>sessionStorage.setItem(key,value),removeItem:key=>sessionStorage.removeItem(key)},
- transport:async(order,command,signal,uid)=>{
+ transport:async(order,command,signal,uid,current)=>{
+  if(signal.aborted || !current() || auth.currentUser?.uid!==uid)throw new MerchantApiError("Your session changed or the action timed out. Retry previous action.");
   const headers=await getApiAuthHeaders();
-  if(signal.aborted || auth.currentUser?.uid!==uid)throw new MerchantApiError("Your session changed or the action timed out. Retry previous action.");
+  if(signal.aborted || !current() || auth.currentUser?.uid!==uid)throw new MerchantApiError("Your session changed or the action timed out. Retry previous action.");
   const response=await fetch(`${getApiUrl()}/api/v1/merchant/orders/${encodeURIComponent(String(order.id))}/${command.path}`,{method:"POST",headers,body:JSON.stringify(command.body),signal});
   return {status:response.status,data:await readJsonResponse(response)};
  },
