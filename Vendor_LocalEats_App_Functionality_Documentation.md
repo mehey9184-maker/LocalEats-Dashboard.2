@@ -754,3 +754,21 @@ Read-only hosted catalog metadata inspected 2026-11-25, no business rows: menu_i
 Security follow-up found during Vite inspection: Merchant vite.config.ts explicitly defines process.env.GEMINI_API_KEY from loadEnv(mode,'.','') for client bundle substitution. No actual value examined, no claim of leaked credential; trace reachability and built artifacts safely, remove if unnecessary; rotate only if exposure verified and authorized. Google Maps browser key separate restricted-public-key review. Keep all ADR-023 blockers.
 Proposed targets (not measured outcomes): initial compressed JS+CSS -25% Customer and -35% Merchant from measured cold-shell baseline, total JS+CSS gzip9 <=570kB and <=750kB respectively (stretch); cold mobile profile median FCP -25% same runner profile; first verified card remains progressive, no visual regressions; catalog bounded batch/lazy menu target <=3 HTTP and <=4 DB reads for 4-shop initial view, never bypass publication/4km/price; >=50% reduction idle protected polls while keeping ready/order fallback within existing 15s merchant/30s customer when active or pending, explicit stale data states; 429 no new automatic mutation, respect Retry-After; query tuning aim >=80% fewer scanned rows/shared buffers for history/menu at 25k synthetic orders/10k menu rows, same ordered rows, preserve security/transaction gates, assess write overhead. API mock p95 no >10% regression on same runner; real device/hosted p95/TTFB, actual provider and DB spend remain unverified. Targets may be revised on evidence.
 New isolated benchmark pins Customer 8e39f6ff8f01ac1ec573b87b16afd67395ad702e, Merchant 130ae5146a749b3cea76e2e94c52b0212231db8a, workflow f261f3173a0dbcbe7173b77dfafd295f87f75cd8, run 45514576070. Browser locally served gzip level6, fresh context/service workers blocked, 390x844, CPU4x, 150ms/1.6Mbps simulated profile, 3 samples each, external requests blocked; cold shell only not genuine authenticated workflow. API mock repository, 10 warmups + 100 measured requests per route, concurrency 5, p50/p95/max, payload bytes and call counts; no provider/DB latency. PG17 isolated network none. Draft #159/#258. Results pending. R0 new spend; no architecture change.
+
+### H4A verified API and PostgreSQL baseline
+Run 45514576070 API job 138870599787 PASS. Four cases, 10 warmups then 100 samples each, concurrency 5 (400 measured HTTP), loopback Node22 and mocked providers/repository:
+| Case | p50 ms | p95 ms | max ms | response bytes | repository calls per 100 | auth mocks per 100 |
+|---|---:|---:|---:|---:|---:|---:|
+| health fixture | 3.321 | 5.233 | 5.958 | 15 | 0 | 0 |
+| catalog 100 shops | 2.183 | 3.627 | 4.142 | 11206 | 100 | 0 |
+| menu 20 items | 2.419 | 3.343 | 3.551 | 2461 | 200 | 0 |
+| authenticated fixture | 1.988 | 2.813 | 5.693 | 16 | 0 | 100 |
+RSS 121,229,312 bytes, heap used 33,469,520, event-loop p95 12.354 ms at sample end; not a capacity or hosting sizing claim. No hosted auth/DB measured.
+PG17 job 138870600386 PASS at both scales; reduced synthetic schema and observed hosted index subset, execution buffers (not planning buffers), planner total cost (not ms or money).
+| Query | 2500 orders/400 menu execution ms, buffers | 25000 orders/10000 menu execution ms, buffers | Larger scale planner top cost |
+|---|---|---|---:|
+| Customer history | 0.210, 66 | 1.876, 658 | 1033.64 |
+| Merchant recent | 0.063, 27 | 0.108, 53 | 176.54 |
+| Menu by shop | 0.034, 4 | 0.667, 84 | 209.00 |
+| Ready inbox | 0.037, 5 | 0.096, 27 | 80.61 |
+Customer history sequentially scans all 25k and discards 24,975, menu scans all 10k and discards 9,900. Merchant recent uses existing shop/created index + incremental sort; ready inbox uses existing partial index (bitmap + sort). Prioritize evaluating customer (user_id,created_at DESC,id DESC) and menu (shop_id) indexes locally; compare exact predicates, both current orders/history and keyset, write cost and buffers. No hosted DDL. Browser still running at recording. Default-branch search only: Merchant jspdf appears in Marketing/counterSign/TableTentGenerator and deferred RiderManagement; Gemini variable found in config/docs, no confirmed compiled key. Exact candidate build reachability still needs safe proof.
