@@ -22,10 +22,10 @@ async function service(transport){
 }
 function switchUser(uid){const next={uid,getIdToken:async()=>uid};globalThis.h5cBefore?.(next);globalThis.h5cUser=next;globalThis.h5cObserver?.(next);}
 test('R12 actual Merchant route cooldown shared across accounts, expires without mutations',async t=>{
+ t.mock.timers.enable({apis:['Date'],now:0});
  const {api,requests}=await service(()=>requests.length===1?json({success:false,error:'Rate limited'},429):orders());
  // supply Retry-After on the first actual transport response
  const fetch0=globalThis.fetch;globalThis.fetch=async(...args)=>{const r=await fetch0(...args);if(r.status===429)r.headers.set('Retry-After','90');return r;};
- t.mock.timers.enable({apis:['Date'],now:0});
  await assert.rejects(api.getOrders(),e=>e.status===429);switchUser(B);t.mock.timers.setTime(30000);
  await assert.rejects(api.getOrders(),e=>e.status===429);assert.equal(requests.length,1);
  t.mock.timers.setTime(90000);await api.getOrders();assert.equal(requests.length,2);assert.ok(requests.every(x=>x.method==='GET'));
