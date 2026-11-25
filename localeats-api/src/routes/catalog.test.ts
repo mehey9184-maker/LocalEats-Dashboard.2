@@ -243,3 +243,60 @@ test("Configured empty pilot set cannot accidentally expose approved shops",asyn
    assert.equal((await fetch(base+"/api/v1/catalog/shops/test/menu")).status,404);
  });
 });
+
+test("H4C bounded menu batch verifies publication before a single grouped menu read",async()=>{
+ const calls:string[][]=[];
+ const repo={
+  getApprovedShops:async()=>[],getApprovedShopById:async()=>null,getMenuByShopId:async()=>[],
+  getApprovedShopsByIds:async(ids:string[])=>{calls.push(ids);return [{id:"open",is_active:true},{id:"closed",is_active:false},{id:"empty",is_active:false},{id:"not-requested"}];},
+  getMenusByShopIds:async(ids:string[])=>{calls.push(ids);return [{id:"one",shop_id:"open",price:25},{id:"two",shop_id:"closed",price:20}];},
+ };
+ const app=express();app.use("/api/v1/catalog",makeCatalogRouter(repo,new Set(["open","closed","empty","pending"])));
+ await runWithServer(app,async base=>{
+  const request=await fetch(base+"/api/v1/catalog/menus?ids=open,closed,empty,pending,excluded");
+  assert.equal(request.status,200);
+  const body=await request.json();
+  assert.deepEqual(calls,[["open","closed","empty","pending"],["open","closed","empty"]]);
+  assert.deepEqual(body.menus,[{shop_id:"open",menu_items:[{id:"one",shop_id:"open",price:25}]},
+   {shop_id:"closed",menu_items:[{id:"two",shop_id:"closed",price:20}]},{shop_id:"empty",menu_items:[]}]);
+  for(const ids of ["","open,open","a,b,c,d,e,f,g","open,bad!"]){
+   assert.equal((await fetch(base+"/api/v1/catalog/menus?ids="+encodeURIComponent(ids))).status,400);
+  }
+  assert.equal(calls.length,2,"invalid inputs never query database");
+  assert.deepEqual(await (await fetch(base+"/api/v1/catalog/menus?ids=excluded")).json(),{success:true,menus:[]});
+  assert.equal(calls.length,2,"pilot-excluded inputs never query database");
+ });
+});
+test("H4C batch fails closed on unexpected menu ownership",async()=>{
+ const repo={getApprovedShops:async()=>[],getApprovedShopById:async()=>null,getMenuByShopId:async()=>[],
+  getApprovedShopsByIds:async()=>[{id:"approved"}],getMenusByShopIds:async()=>[{id:"private",shop_id:"other"}]};
+ const app=express();app.use("/api/v1/catalog",makeCatalogRouter(repo,null));
+ await runWithServer(app,async base=>{
+  const response=await fetch(base+"/api/v1/catalog/menus?ids=approved,other");
+  assert.equal(response.status,503);assert.equal((await response.json()).menus,undefined);
+ });
+});
+test("H4C repository applies allowlists, IN predicates, publication and exact-count truncation guard",async()=>{
+ const calls:Array<[string,...unknown[]]>=[];
+ let result:{data:unknown;error:null;count?:number}={data:[{id:"a",is_active:false,effective_is_active:false,availability_revision:0}],error:null};
+ const builder={
+  select(...args:unknown[]){calls.push(["select",...args]);return this;},
+  in(...args:unknown[]){calls.push(["in",...args]);return this;},
+  eq(...args:unknown[]){calls.push(["eq",...args]);return this;},
+  is(...args:unknown[]){calls.push(["is",...args]);return this;},
+  limit(...args:unknown[]){calls.push(["limit",...args]);return this;},
+  then(resolve:(value:typeof result)=>void){resolve(result);}
+ };
+ const repo=new SupabaseCatalogRepository({from(table:string){calls.push(["from",table]);return builder;}});
+ await repo.getApprovedShopsByIds(["a","b"]);
+ assert.ok(calls.some(c=>c[0]==="eq"&&c[1]==="approval_status"&&c[2]==="approved"));
+ assert.ok(calls.some(c=>c[0]==="is"&&c[1]==="archived_at"&&c[2]===null));
+ assert.ok(calls.some(c=>c[0]==="in"&&c[1]==="id"));
+ result={data:[{id:"m",shop_id:"a"}],error:null,count:2};
+ await assert.rejects(repo.getMenusByShopIds(["a"]),/./);
+ result={data:[{id:"m",shop_id:"a"}],error:null,count:1};
+ assert.deepEqual(await repo.getMenusByShopIds(["a"]),result.data);
+ assert.ok(calls.some(c=>c[0]==="in"&&c[1]==="shop_id"));
+ assert.ok(calls.some(c=>c[0]==="limit"&&c[1]===500));
+ assert.ok(calls.filter(c=>c[0]==="select").every(c=>typeof c[1]==="string"&&c[1]!=="*"&&!c[1].includes("owner_id")));
+});

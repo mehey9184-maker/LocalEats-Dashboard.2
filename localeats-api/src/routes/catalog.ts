@@ -8,9 +8,14 @@ const PUBLIC_SHOP_FIELDS = "effective_is_active,availability_revision,availabili
 const PUBLIC_MENU_FIELDS = "id,shop_id,name,price,description,image_url,category,is_available,popularity_score,customizations,created_at";
 
 type CatalogRow = Record<string, unknown>;
-type CatalogResult = {data: unknown; error: unknown};
+type CatalogResult = {data: unknown; error: unknown; count?: number | null};
+const BATCH_MAX_SHOPS=6;
+const BATCH_MAX_MENU_ROWS=500;
+class CatalogBatchTooLarge extends Error {}
 type CatalogQuery = PromiseLike<CatalogResult> & {
-  select(columns: string): CatalogQuery;
+  select(columns: string, options?: {count: "exact"}): CatalogQuery;
+  in(field: string, values: string[]): CatalogQuery;
+  limit(count: number): CatalogQuery;
   eq(field: string, value: unknown): CatalogQuery;
   is(field: string, value: null): CatalogQuery;
   maybeSingle(): PromiseLike<CatalogResult>;
@@ -32,6 +37,8 @@ export interface CatalogRepository {
   getApprovedShops(): Promise<CatalogRow[]>;
   getApprovedShopById(shopId: string): Promise<CatalogRow | null>;
   getMenuByShopId(shopId: string): Promise<CatalogRow[]>;
+  getApprovedShopsByIds?(ids: string[]): Promise<CatalogRow[]>;
+  getMenusByShopIds?(ids: string[]): Promise<CatalogRow[]>;
 }
 
 export class SupabaseCatalogRepository implements CatalogRepository {
@@ -52,6 +59,22 @@ export class SupabaseCatalogRepository implements CatalogRepository {
     if (error) throw error;
     const shop = catalogRow(data);
     return shop ? effectiveShop(shop) : null;
+  }
+  async getApprovedShopsByIds(ids: string[]): Promise<CatalogRow[]> {
+    const {data,error}=await this.from("shops_with_availability").select(PUBLIC_SHOP_FIELDS)
+      .in("id",ids).eq("approval_status","approved").is("archived_at",null);
+    if(error)throw error;
+    return catalogRows(data ?? []).map(effectiveShop);
+  }
+  async getMenusByShopIds(ids: string[]): Promise<CatalogRow[]> {
+    if(ids.length===0)return [];
+    const {data,error,count}=await this.from("menu_items").select(PUBLIC_MENU_FIELDS,{count:"exact"})
+      .in("shop_id",ids).limit(BATCH_MAX_MENU_ROWS);
+    if(error)throw error;
+    const rows=catalogRows(data ?? []);
+    // Never cache or present a silently truncated menu as complete.
+    if(typeof count!=="number" || count!==rows.length || rows.length>BATCH_MAX_MENU_ROWS)throw new CatalogBatchTooLarge("Incomplete or oversized menu batch");
+    return rows;
   }
   async getMenuByShopId(shopId: string): Promise<CatalogRow[]> {
     const { data, error } = await this.from("menu_items")
@@ -116,6 +139,32 @@ export const makeCatalogRouter = (
         success: false,
         error: "Internal Server Error",
       });
+    }
+  });
+
+  // Bounded public read only. The separate detail/menu endpoints remain unchanged.
+  router.get("/menus",async(req:Request,res:Response):Promise<void>=>{
+    const raw=req.query.ids;
+    const ids=typeof raw==="string"?raw.split(","):[];
+    if(ids.length<1 || ids.length>BATCH_MAX_SHOPS || new Set(ids).size!==ids.length ||
+       ids.some(id=>!/^[A-Za-z0-9_-]{1,128}$/.test(id))){
+      res.status(400).json({success:false,code:"INVALID_MENU_BATCH",error:"Invalid shop batch."});return;
+    }
+    if(!repository.getApprovedShopsByIds || !repository.getMenusByShopIds){
+      res.status(404).json({success:false,code:"MENU_BATCH_UNAVAILABLE",error:"Menu batch unavailable."});return;
+    }
+    try{
+      const requested=ids.filter(isPublished);
+      const approved=requested.length?await repository.getApprovedShopsByIds(requested):[];
+      const allowed=requested.filter(id=>approved.some(shop=>shop.id===id));
+      const items=allowed.length?await repository.getMenusByShopIds(allowed):[];
+      // A repository must never return items outside the verified ownership set.
+      if(items.some(item=>typeof item.shop_id!=="string" || !allowed.includes(item.shop_id)))throw new Error("MENU_BATCH_OWNERSHIP");
+      res.json({success:true,menus:allowed.map(shop_id=>({shop_id,menu_items:items.filter(item=>item.shop_id===shop_id)}))});
+    }catch(error){
+      if(error instanceof CatalogBatchTooLarge){res.status(413).json({success:false,code:"MENU_BATCH_TOO_LARGE",error:"Read these shop menus individually."});return;}
+      console.error("Error fetching catalog menu batch");
+      res.status(503).json({success:false,error:"Shop menus could not be loaded."});
     }
   });
 
