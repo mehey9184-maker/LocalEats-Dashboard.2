@@ -7,6 +7,7 @@ import {performance,monitorEventLoopDelay} from 'node:perf_hooks';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {createApiAdmission,DEFAULT_LIMITS} from '../../dist/middleware/apiAdmission.js';
 import {authAdmin} from '../../dist/lib/firebaseAdmin.js';
+import {initializeApp,getApps,deleteApp} from 'firebase-admin/app';
 import {supabaseAdmin} from '../../dist/lib/supabaseAdmin.js';
 import {customerOrderRoutes,merchantOrderRoutes} from '../../dist/routes/orders.js';
 import {pickupNotificationRoutes} from '../../dist/routes/pickupNotifications.js';
@@ -14,6 +15,8 @@ import merchantRoutes from '../../dist/routes/merchant.js';
 const emit=(kind,x)=>console.log('H6B_'+kind+' '+JSON.stringify(x));
 const stat=a=>{const v=[...a].sort((a,b)=>a-b);const q=p=>+v[Math.ceil(v.length*p)-1].toFixed(3);return {p50:q(.5),p95:q(.95),p99:q(.99),max:q(1)}};
 let calls={},auth=0;
+assert.equal(getApps().length,0,'fixture must have no configured provider app');
+const fixtureApp=initializeApp({projectId:'demo-h6b-synthetic-only'},'h6b-no-network');
 const original={from:supabaseAdmin.from,rpc:supabaseAdmin.rpc,verify:authAdmin.verifyIdToken};
 const shops=Array.from({length:100},(_,i)=>({id:'shop-'+i,owner_id:'m-'+i,approval_status:'approved',is_active:true,effective_is_active:true,availability_revision:0,archived_at:null,lat:-26,lng:28}));
 const orders=Array.from({length:2500},(_,i)=>({id:'order-'+i,user_id:'u-'+i,shop_id:'shop-'+i%100,delivery_type:'collection',status:i%5===0?'pending':'collected',payment_status:i%5===0?'unpaid':'paid',delivery_status:'none',revision:i%5===0?0:4,total_price:25,items:[]}));
@@ -75,4 +78,4 @@ try{
   assert.ok(windows.every(w=>w.ok<=600));if(shopCount<=5)assert.ok(windows.every(w=>w.limited===0));if(shopCount===100)assert.ok(windows.every(w=>w.limited>0));
   emit('POLL',{shops:shopCount,foreground,active,virtual_ms:120000,windows,...counts(),provider_sends:0,mutations:0});
  });
-}finally{supabaseAdmin.from=original.from;supabaseAdmin.rpc=original.rpc;authAdmin.verifyIdToken=original.verify}
+}finally{supabaseAdmin.from=original.from;supabaseAdmin.rpc=original.rpc;authAdmin.verifyIdToken=original.verify;await deleteApp(fixtureApp)}
