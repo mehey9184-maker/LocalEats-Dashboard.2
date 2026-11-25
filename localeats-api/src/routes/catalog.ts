@@ -73,7 +73,7 @@ export class SupabaseCatalogRepository implements CatalogRepository {
     if(error)throw error;
     const rows=catalogRows(data ?? []);
     // Never cache or present a silently truncated menu as complete.
-    if(typeof count!=="number" || count!==rows.length || rows.length>BATCH_MAX_MENU_ROWS)throw new CatalogBatchTooLarge();
+    if(typeof count!=="number" || count!==rows.length || rows.length>BATCH_MAX_MENU_ROWS)throw new CatalogBatchTooLarge("Incomplete or oversized menu batch");
     return rows;
   }
   async getMenuByShopId(shopId: string): Promise<CatalogRow[]> {
