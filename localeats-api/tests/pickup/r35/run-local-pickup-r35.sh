@@ -181,3 +181,9 @@ if [[ "${H5E_RESTART_INTEGRITY:-false}" == true ]]; then
  [[ "${H2D1_CONCURRENCY:-false}" == true && "${R36_PICKUP_REPLAY_MODE:-}" == recorded_applied ]] || exit 1
  bash "$here/h5e-restart.SYNTHETIC_ONLY.sh" "$name"
 fi
+
+# H6A bounded workload after all inherited historical and recovery gates.
+if [[ "${H6A_LOAD_BASELINE:-false}" == true ]]; then
+ [[ "${H5E_RESTART_INTEGRITY:-false}" == true && "${H2D1_CONCURRENCY:-false}" == true && "${R36_PICKUP_REPLAY_MODE:-}" == recorded_applied ]] || exit 1
+ bash "$here/h6a-load.SYNTHETIC_ONLY.sh" "$name"
+fi
