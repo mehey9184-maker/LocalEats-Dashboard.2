@@ -175,3 +175,9 @@ if [[ "${H2D1_CONCURRENCY:-false}" == true ]]; then
  assert_query "select count(*) from public.orders" "3"
  bash "$here/h2d1-concurrency.SYNTHETIC_ONLY.sh" "$name"
 fi
+
+# H5E extension: after existing recorded-applied + geography/race gates.
+if [[ "${H5E_RESTART_INTEGRITY:-false}" == true ]]; then
+ [[ "${H2D1_CONCURRENCY:-false}" == true && "${R36_PICKUP_REPLAY_MODE:-}" == recorded_applied ]] || exit 1
+ bash "$here/h5e-restart.SYNTHETIC_ONLY.sh" "$name"
+fi
