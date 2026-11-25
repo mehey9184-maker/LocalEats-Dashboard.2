@@ -49,7 +49,7 @@ export default defineConfig(({mode}) => {
       chunkSizeWarningLimit: 1000,
     },
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      // Private Gemini credentials must never be substituted into a browser bundle.
       'process.env.GOOGLE_MAPS_PLATFORM_KEY': JSON.stringify(env.GOOGLE_MAPS_PLATFORM_KEY || env.VITE_GOOGLE_MAPS_PLATFORM_KEY || ''),
     },
     resolve: {

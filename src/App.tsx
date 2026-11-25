@@ -86,25 +86,26 @@ import {
   MenuItem,
 } from "./types";
 import { LocalEatsLogo } from "./components/LocalEatsLogo";
+import { DeferredModalLoading } from "./components/DeferredModalLoading";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
-import { DashboardOverview } from "./components/DashboardOverview";
-import { ShopProfile } from "./components/ShopProfile";
-import { OrdersManagement } from "./components/OrdersManagement";
-import { MenuManagement } from "./components/MenuManagement";
-import { Coupons } from "./components/Coupons";
-import { Marketing } from "./components/Marketing";
-import { Insights } from "./components/Insights";
-import { PaymentHistory } from "./components/PaymentHistory";
+const DashboardOverview = React.lazy(() => import("./components/DashboardOverview").then(module => ({default:module.DashboardOverview})));
+const ShopProfile = React.lazy(() => import("./components/ShopProfile").then(module => ({default:module.ShopProfile})));
+const OrdersManagement = React.lazy(() => import("./components/OrdersManagement").then(module => ({default:module.OrdersManagement})));
+const MenuManagement = React.lazy(() => import("./components/MenuManagement").then(module => ({default:module.MenuManagement})));
+const Coupons = React.lazy(() => import("./components/Coupons").then(module => ({default:module.Coupons})));
+const Marketing = React.lazy(() => import("./components/Marketing").then(module => ({default:module.Marketing})));
+const Insights = React.lazy(() => import("./components/Insights").then(module => ({default:module.Insights})));
+const PaymentHistory = React.lazy(() => import("./components/PaymentHistory").then(module => ({default:module.PaymentHistory})));
 import {MerchantSubscriptionPlans,parsePlanExpiry} from "./components/MerchantSubscriptionPlans";
 import {SimpleOpeningHours} from "./components/SimpleOpeningHours";
 import {purgeLegacyBillingDraft} from "./services/legacyBillingSafety";
-import { LegalDocsModal } from "./components/LegalDocsModal";
-import { DiagnosticUtilityModal } from "./components/DiagnosticUtilityModal";
+const LegalDocsModal = React.lazy(() => import("./components/LegalDocsModal").then(module => ({default:module.LegalDocsModal})));
+const DiagnosticUtilityModal = React.lazy(() => import("./components/DiagnosticUtilityModal").then(module => ({default:module.DiagnosticUtilityModal})));
 import { ShopDiagnosticPanel } from "./components/ShopDiagnosticPanel";
 import { OnboardingTour } from "./components/OnboardingTour";
 import { InstallAppInvite } from "./components/InstallAppInvite";
 import { appAlreadyInstalled, availableInstallEvent, requestNativeInstall, subscribeToInstallability } from "./services/pwaInstallInvite";
-import { CreateShopOnboarding } from "./components/CreateShopOnboarding";
+const CreateShopOnboarding = React.lazy(() => import("./components/CreateShopOnboarding").then(module => ({default:module.CreateShopOnboarding})));
 import { PendingShopApproval } from "./components/PendingShopApproval";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ConnectivityMonitor } from "./components/ConnectivityMonitor";
@@ -116,7 +117,8 @@ import { Skeleton, DashboardSkeleton } from "./components/ui/Skeleton";
 import { SignIn } from "./components/SignIn";
 import { SignUp } from "./components/SignUp";
 import { VerificationPending } from "./components/VerificationPending";
-import { EditProfile, ProfileData } from "./components/EditProfile";
+import type { ProfileData } from "./components/EditProfile";
+const EditProfile = React.lazy(() => import("./components/EditProfile").then(module => ({default:module.EditProfile})));
 import { NotificationCenterSidePanel } from "./components/NotificationCenterSidePanel";
 import {
   syncShopAvailability,
@@ -277,6 +279,8 @@ function App() {
   // Version Polling for Updates
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
+  const [diagnosticsOpened, setDiagnosticsOpened] = useState(false);
+  const openDiagnostics = () => { setDiagnosticsOpened(true); setIsDiagnosticOpen(true); };
   const [lastCheckTime, setLastCheckTime] = useState<string>("");
   const currentBuildVersion = useRef(19); // Moving to v5.4 tracker
   const topNavScrollRef = useRef<HTMLDivElement>(null);
@@ -1593,10 +1597,12 @@ function App() {
 
   if (user && merchantShopGate.status === "no-shop") {
     return (
+      <React.Suspense fallback={<FirebaseInitializingOverlay message="Loading shop setup..." subtext="Please wait." />}>
       <CreateShopOnboarding
         onCreated={handleCreatedMerchantShop}
         onSignOut={handleSignOut}
       />
+      </React.Suspense>
     );
   }
 
@@ -1638,6 +1644,7 @@ function App() {
     console.log("[Render] editing-profile", { isSessionChecking, isAuthReady, loading, userId: user?.id });
     return (
       <>
+        <React.Suspense fallback={<DashboardSkeleton />}>
         <EditProfile
           onBack={() => setIsEditingProfile(false)}
           onSave={handleSaveProfile}
@@ -1653,6 +1660,7 @@ function App() {
             darkMode: user?.user_metadata?.dark_mode ?? darkMode,
           }}
         />
+        </React.Suspense>
         <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
       </>
     );
@@ -2084,7 +2092,7 @@ function App() {
             <div className="flex items-center gap-1 md:gap-4 shrink-0">
               <ConnectivityMonitor
                 supabase={supabase}
-                onOpenDiagnostics={() => setIsDiagnosticOpen(true)}
+                onOpenDiagnostics={openDiagnostics}
               />
               {currentShop && (
                 <button
@@ -3668,7 +3676,8 @@ function App() {
                 {currentShop && (
                   <>
                     
-                    <ShopProfile
+                    <React.Suspense fallback={<DashboardSkeleton />}>
+              <ShopProfile
                       shop={currentShop}
                     onRefresh={fetchShops}
                     user={user}
@@ -3678,6 +3687,7 @@ function App() {
                     isSuccess={isSaveSuccess}
                     onFinished={() => setActiveTab("dashboard")}
                   />
+              </React.Suspense>
                   </>
                 )}
               </div>
@@ -4170,11 +4180,11 @@ function App() {
           Legal & Privacy (POPIA)
         </button>
       </div>
-      <LegalDocsModal isOpen={showLegal} onClose={() => setShowLegal(false)} />
+      {showLegal && <React.Suspense fallback={<DeferredModalLoading kind="legal" />}><LegalDocsModal isOpen={showLegal} onClose={() => setShowLegal(false)} /></React.Suspense>}
 
       {/* Network & System Diagnostics Trigger Button */}
       <button
-        onClick={() => setIsDiagnosticOpen(true)}
+        onClick={openDiagnostics}
         className={cn(
           "fixed z-[55] right-6 p-3 bg-surface-container-high border border-outline-variant/20 text-on-surface rounded-full shadow-lg hover:shadow-xl hover:bg-surface-container-highest transition-all duration-200 cursor-pointer flex items-center gap-2 group active:scale-95",
           kitchenMode ? "bottom-8" : "bottom-24 md:bottom-8"
@@ -4187,12 +4197,14 @@ function App() {
         <span className="text-xs font-bold pr-1 hidden sm:inline">Diagnostics</span>
       </button>
 
+      {diagnosticsOpened && <React.Suspense fallback={<DeferredModalLoading kind="diagnostics" />}>
       <DiagnosticUtilityModal
         isOpen={isDiagnosticOpen}
         onClose={() => setIsDiagnosticOpen(false)}
         supabase={supabase}
         serviceLoading={serviceLoading}
       />
+      </React.Suspense>}
 
       <SavingOverlay isSaving={isSaving} isSuccess={isSaveSuccess} />
     </div>
