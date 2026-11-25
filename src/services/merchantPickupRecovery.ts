@@ -4,6 +4,11 @@ type Options={identity:()=>string|undefined;enabled:()=>boolean;storage:Pick<Sto
  transport:(order:Order,command:Command,signal:AbortSignal,uid:string)=>Promise<{status:number;data:Record<string,unknown>}>;
  mapOrder:(order:unknown)=>Order;timeoutMs?:number};
 const kinds:Record<string,string>={accept:'accepted',ready:'ready',reject:'merchant_rejected','payment-confirmation':'payment_confirmed',collect:'collected'};
+// Only fresh, explicit contract refusals can resolve a never-previously-uncertain action.
+const terminalCodes:Record<number,ReadonlySet<string>>={400:new Set(["INVALID_REQUEST","INVALID_COMMAND","INVALID_PAYMENT_METHOD","INVALID_CANCELLATION","HANDOVER_CONFIRMATION_REQUIRED"]),403:new Set(["FORBIDDEN"]),404:new Set(["ORDER_NOT_FOUND"]),409:new Set(["ORDER_STATE_CHANGED","INVALID_ORDER_TRANSITION"])};
+function definitiveRefusal(status:number,data:Record<string,unknown>):boolean{
+ return data?.success===false && typeof data.code==="string" && typeof data.error==="string" && !!terminalCodes[status]?.has(data.code);
+}
 const states:Record<string,string[]>={accept:['preparing','ready_for_pickup','collected'],ready:['ready_for_pickup','collected'],reject:['cancelled'],'payment-confirmation':['ready_for_pickup','collected'],collect:['collected']};
 function validCommand(value:unknown):value is Command {
  if(!value || typeof value!=="object" || Array.isArray(value))return false;
@@ -57,7 +62,8 @@ export function createMerchantPickupRecovery(options:Options){
     const {status,data}=await Promise.race([options.transport(order,exact,controller.signal,uid),deadline]);
     if(!unchanged())throw Error('Your session or pending action changed. Refresh before retrying.');
     if(status<200 || status>=300 || data?.success!==true){
-     if([400,403,404,409,422].includes(status))options.storage.removeItem(key);
+     // A later refusal cannot prove an earlier uncertain command never committed.
+     if(!saved && definitiveRefusal(status,data))options.storage.removeItem(key);
      throw Error(typeof data?.error==='string' ? data.error : 'The API did not confirm persistence. Retry previous action.');
     }
     if(!data.order || typeof data.order!=='object' || Array.isArray(data.order))throw Error('The API did not confirm persistence. Retry previous action.');
@@ -78,10 +84,6 @@ export function createMerchantPickupRecovery(options:Options){
      throw Error('The API did not confirm this action. Retry previous action or refresh.');
     if(!unchanged())throw Error('Your session or pending action changed. Refresh before retrying.');
     options.storage.removeItem(key);return confirmed;
-   }catch(error){
-    const status=error && typeof error==='object' && 'status' in error ? Number(error.status) : 0;
-    if(unchanged() && [400,403,404,409,422].includes(status))options.storage.removeItem(key);
-    throw error;
    }finally{clearTimeout(timer);}
   })().finally(()=>running.delete(key));
   running.set(key,request);return request;
