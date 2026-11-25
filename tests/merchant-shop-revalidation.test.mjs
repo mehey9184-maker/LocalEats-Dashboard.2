@@ -10,12 +10,12 @@ const source=readFileSync('src/App.tsx','utf8');
 const tree=ts.createSourceFile('App.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
 const declarations=new Map();let auth;
 function visit(node){
- if(ts.isVariableDeclaration(node) && ['merchantShopRequest','verifiedMerchantUid','acceptAuthoritativeMerchantShop','resolveMerchantShop'].includes(node.name.getText(tree)))
+ if(ts.isVariableDeclaration(node) && ['merchantShopRequest','merchantShopAbort','verifiedMerchantUid','acceptAuthoritativeMerchantShop','resolveMerchantShop'].includes(node.name.getText(tree)))
   declarations.set(node.name.getText(tree),node.parent.parent.getText(tree));
  if(ts.isCallExpression(node) && node.expression.getText(tree)==='onAuthStateChanged')auth=node.arguments[1].getText(tree);
  ts.forEachChild(node,visit);
 }visit(tree);
-assert.equal(declarations.size,4);assert.ok(auth);
+assert.equal(declarations.size,5);assert.ok(auth);
 const compiled=transformSync([...declarations.values(),`const authCallback=${auth};`,`export {authCallback,resolveMerchantShop};`].join('\n'),{loader:'tsx',format:'cjs',target:'es2022'}).code;
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
 function fixture(){
@@ -23,6 +23,7 @@ function fixture(){
  const identity={currentUser:{uid:'A'}};
  const controls={format:async fb=>({id:fb.uid}),read:async()=>({id:'shop-'+identity.currentUser.uid,owner_id:identity.currentUser.uid,approval_status:'approved'})};
  const dependencies={useRef:value=>({current:value}),useCallback:callback=>callback,firebaseAuth:identity,
+  AbortController,captureMerchantReadSession:()=>{const captured=identity.currentUser;return {uid:captured?.uid,current:()=>identity.currentUser===captured};},
   MerchantApi:{getMerchantShop:()=>{apiReads++;return controls.read();}},
   formatFirebaseUserSession:fb=>controls.format(fb),registerVerifiedShopId(){},clearVerifiedShopOwnership(){},clearMerchantShopOperationalCache(){},
   setShops:rows=>shop=rows[0],setOrders(){},setMenuItems(){},setMerchantShopGate:value=>{gate=value;history.push(value.status);},setUser:value=>user=value,
