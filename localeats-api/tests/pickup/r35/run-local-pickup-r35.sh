@@ -187,3 +187,9 @@ if [[ "${H6A_LOAD_BASELINE:-false}" == true ]]; then
  [[ "${H5E_RESTART_INTEGRITY:-false}" == true && "${H2D1_CONCURRENCY:-false}" == true && "${R36_PICKUP_REPLAY_MODE:-}" == recorded_applied ]] || exit 1
  bash "$here/h6a-load.SYNTHETIC_ONLY.sh" "$name"
 fi
+
+# H6B fixed-snapshot trials after the H6A seed and integrity tests.
+if [[ "${H6B_FIXED_LOAD:-false}" == true ]]; then
+ [[ "${H6A_LOAD_BASELINE:-false}" == true ]] || exit 1
+ bash "$here/h6b-fixed-load.SYNTHETIC_ONLY.sh" "$name"
+fi
