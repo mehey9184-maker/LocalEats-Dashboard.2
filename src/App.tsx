@@ -86,6 +86,7 @@ import {
   MenuItem,
 } from "./types";
 import { LocalEatsLogo } from "./components/LocalEatsLogo";
+import { DeferredModalLoading } from "./components/DeferredModalLoading";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
 const DashboardOverview = React.lazy(() => import("./components/DashboardOverview").then(module => ({default:module.DashboardOverview})));
 const ShopProfile = React.lazy(() => import("./components/ShopProfile").then(module => ({default:module.ShopProfile})));
@@ -4179,7 +4180,7 @@ function App() {
           Legal & Privacy (POPIA)
         </button>
       </div>
-      {showLegal && <React.Suspense fallback={<div role="status" className="fixed bottom-12 left-2 z-[9900] rounded-lg bg-surface p-3 text-on-surface">Loading legal information…</div>}><LegalDocsModal isOpen={showLegal} onClose={() => setShowLegal(false)} /></React.Suspense>}
+      {showLegal && <React.Suspense fallback={<DeferredModalLoading kind="legal" />}><LegalDocsModal isOpen={showLegal} onClose={() => setShowLegal(false)} /></React.Suspense>}
 
       {/* Network & System Diagnostics Trigger Button */}
       <button
@@ -4196,7 +4197,7 @@ function App() {
         <span className="text-xs font-bold pr-1 hidden sm:inline">Diagnostics</span>
       </button>
 
-      {diagnosticsOpened && <React.Suspense fallback={<div role="status" className="fixed bottom-24 right-6 z-[55] rounded-lg bg-surface p-3 text-on-surface">Loading diagnostics…</div>}>
+      {diagnosticsOpened && <React.Suspense fallback={<DeferredModalLoading kind="diagnostics" />}>
       <DiagnosticUtilityModal
         isOpen={isDiagnosticOpen}
         onClose={() => setIsDiagnosticOpen(false)}
