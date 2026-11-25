@@ -305,9 +305,10 @@ function App() {
       }
     };
 
-    // once on mount and then every 30s
-    checkVersion();
-    const interval = setInterval(checkVersion, 30000);
+    // Noncritical build metadata, not order or ownership reconciliation.
+    const checkVisibleVersion=()=>{if(document.visibilityState==="visible" && navigator.onLine)void checkVersion();};
+    checkVisibleVersion();
+    const interval = setInterval(checkVisibleVersion, 300000);
     return () => clearInterval(interval);
   }, [dataSaverMode]);
 
