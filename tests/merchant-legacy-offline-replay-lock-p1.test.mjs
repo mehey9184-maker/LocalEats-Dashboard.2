@@ -33,7 +33,7 @@ test("reconnect and service worker recovery only read authoritative API/server s
   assert.doesNotMatch(app,/processOfflineSyncQueue\(/);
   assert.doesNotMatch(app,/import.*processOfflineSyncQueue/);
   assert.match(app,/const reconcileFromServer = \(\) => \{/);
-  assert.match(app,/const reconcileFromServer = \(\) => \{[\s\S]*?void fetchOrders\(\);[\s\S]*?void fetchShops\(\);[\s\S]*?void fetchAllMenuItems\(\);/);
+  assert.match(app,/const reconcileFromServer = \(\) => \{[\s\S]*?void fetchOrders\(true\);[\s\S]*?void fetchShops\(\);[\s\S]*?void fetchAllMenuItems\(\);/);
   assert.match(app,/const handleOnline = \(\) => \{[\s\S]*?reconcileFromServer\(\);/);
   assert.match(app,/event\.data\?\.type === "TRIGGER_OFFLINE_SYNC"\) reconcileFromServer\(\)/);
   assert.doesNotMatch(app,/Network Restored:.*offline operations synchronized/);
@@ -74,7 +74,7 @@ test("Merchant never writes a shop heartbeat on page load, including read-only P
   assert.doesNotMatch(app,/syncHeartbeat|Shop Live Heartbeat & Inactivity Tracker/);
   assert.doesNotMatch(app,/\.update\(\{\s*updated_at:\s*timeNow\s*\}\)/);
   assert.doesNotMatch(app,/Dashboard Inactive for 4\+ Days|online storefront is active and ready for orders/);
-  assert.match(app,/MerchantApi\.getOrders\(\)/);
+  assert.match(app,/MerchantApi\.getOrders\(signal\)/);
   assert.match(app,/MerchantApi\.getMerchantShop\(\)/);
   // Deferred terminal settings now fail closed instead of writing to Firestore.
   assert.doesNotMatch(app,/\.update\(\{\s*(require_terminal_sync|terminal_provider|terminal_serial)\s*:/);
