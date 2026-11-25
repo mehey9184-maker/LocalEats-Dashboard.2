@@ -15,7 +15,7 @@ const emit=(kind,x)=>console.log('H6B_'+kind+' '+JSON.stringify(x));
 const stat=a=>{const v=[...a].sort((a,b)=>a-b);const q=p=>+v[Math.ceil(v.length*p)-1].toFixed(3);return {p50:q(.5),p95:q(.95),p99:q(.99),max:q(1)}};
 let calls={},auth=0;
 const original={from:supabaseAdmin.from,rpc:supabaseAdmin.rpc,verify:authAdmin.verifyIdToken};
-const shops=Array.from({length:100},(_,i)=>({id:'shop-'+i,owner_id:'m-'+i,approval_status:'approved',is_active:true,effective_is_active:true,archived_at:null,lat:-26,lng:28}));
+const shops=Array.from({length:100},(_,i)=>({id:'shop-'+i,owner_id:'m-'+i,approval_status:'approved',is_active:true,effective_is_active:true,availability_revision:0,archived_at:null,lat:-26,lng:28}));
 const orders=Array.from({length:2500},(_,i)=>({id:'order-'+i,user_id:'u-'+i,shop_id:'shop-'+i%100,delivery_type:'collection',status:i%5===0?'pending':'collected',payment_status:i%5===0?'unpaid':'paid',delivery_status:'none',revision:i%5===0?0:4,total_price:25,items:[]}));
 const events=orders.filter(o=>o.status==='collected').map(o=>({id:'event-'+o.id,order_id:o.id,recipient_uid:o.user_id,kind:'ready',occurred_at:'2026-11-25T00:00:00Z'}));
 const inc=k=>calls[k]=(calls[k]||0)+1;
@@ -54,6 +54,15 @@ try{
   assert.equal(countsNow.calls['rpc:pickup_claim_push'],100);
   emit('HTTP',{rep,concurrency,requests:400,elapsed_ms:+elapsed.toFixed(1),rps:+(400000/elapsed).toFixed(2),latency:stat(rows.map(x=>x.ms)),by_route:Object.fromEntries(Object.keys(endpoints).map(k=>[k,stat(rows.filter(x=>x.kind===k).map(x=>x.ms))])),...countsNow,cpu_ms:(usage.user+usage.system)/1000,cpu_one_core_pct:+((usage.user+usage.system)/10/elapsed).toFixed(2),rss_peak_bytes:Math.max(peak,process.memoryUsage().rss),heap_bytes:process.memoryUsage().heapUsed,event_loop_p95_ms:+(delay.percentile(95)/1e6).toFixed(3)});
   }finally{clearInterval(timer);delay.disable()}
+ });
+ // Real-time sustained sub-cap trial: 8 protected requests/s for 65 seconds.
+ await lab(async(request,setNow,counts)=>{
+  const started=performance.now(),cpu=process.cpuUsage(),rows=[];let peak=process.memoryUsage().rss;
+  const timer=setInterval(()=>peak=Math.max(peak,process.memoryUsage().rss),100);
+  try{for(let i=0;i<520;i++){await sleep(Math.max(0,started+i*125-performance.now()));setNow(Math.floor(performance.now()-started));const k=['history','inbox','orders','shop'][i%4];rows.push(await request(k,(i%4<2?'u-':'m-')+Math.floor(i/4)%100));}
+  const elapsed=performance.now()-started,used=process.cpuUsage(cpu);assert.ok(rows.every(r=>r.status===200));assert.equal(counts().auth,520);
+  emit('SUSTAINED',{requests:520,elapsed_ms:+elapsed.toFixed(1),rps:+(520000/elapsed).toFixed(2),latency:stat(rows.map(x=>x.ms)),...counts(),cpu_ms:(used.user+used.system)/1000,rss_peak_bytes:peak,heap_bytes:process.memoryUsage().heapUsed,mutations:0});
+  }finally{clearInterval(timer)}
  });
  // Actual middleware and routes, virtual time 2 exact windows, phase-spread steady polling.
  for(const [shopCount,foreground,active] of [[1,5,1],[5,20,4],[25,100,20],[25,225,79],[100,500,100]])await lab(async(request,setNow,counts)=>{
