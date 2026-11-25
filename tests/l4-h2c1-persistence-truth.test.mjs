@@ -26,7 +26,7 @@ test('browser heartbeat cannot mutate shop timestamps or claim storefront readin
  const app=readFileSync('src/App.tsx','utf8');
  assert.doesNotMatch(app,/syncHeartbeat|Dashboard Inactive for 4\+ Days|\.update\(\{\s*updated_at:\s*timeNow\s*\}\)/);
  assert.match(app,/MerchantApi\.getOrders\(signal\)/);
- assert.match(app,/MerchantApi\.getMerchantShop\(\)/);
+ assert.match(app,/MerchantApi\.getMerchantShop\(controller\.signal\)/);
  assert.match(app,/merchantShopGate\.status/);
  assert.match(src,/legacyOrderWriteError\(\)/);
 });
