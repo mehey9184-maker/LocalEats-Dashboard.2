@@ -87,9 +87,9 @@ import {
 } from "./types";
 import { LocalEatsLogo } from "./components/LocalEatsLogo";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
-import { DashboardOverview } from "./components/DashboardOverview";
+const DashboardOverview = React.lazy(() => import("./components/DashboardOverview").then(module => ({default:module.DashboardOverview})));
 const ShopProfile = React.lazy(() => import("./components/ShopProfile").then(module => ({default:module.ShopProfile})));
-import { OrdersManagement } from "./components/OrdersManagement";
+const OrdersManagement = React.lazy(() => import("./components/OrdersManagement").then(module => ({default:module.OrdersManagement})));
 const MenuManagement = React.lazy(() => import("./components/MenuManagement").then(module => ({default:module.MenuManagement})));
 const Coupons = React.lazy(() => import("./components/Coupons").then(module => ({default:module.Coupons})));
 const Marketing = React.lazy(() => import("./components/Marketing").then(module => ({default:module.Marketing})));
@@ -278,6 +278,8 @@ function App() {
   // Version Polling for Updates
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
+  const [diagnosticsOpened, setDiagnosticsOpened] = useState(false);
+  const openDiagnostics = () => { setDiagnosticsOpened(true); setIsDiagnosticOpen(true); };
   const [lastCheckTime, setLastCheckTime] = useState<string>("");
   const currentBuildVersion = useRef(19); // Moving to v5.4 tracker
   const topNavScrollRef = useRef<HTMLDivElement>(null);
@@ -2089,7 +2091,7 @@ function App() {
             <div className="flex items-center gap-1 md:gap-4 shrink-0">
               <ConnectivityMonitor
                 supabase={supabase}
-                onOpenDiagnostics={() => setIsDiagnosticOpen(true)}
+                onOpenDiagnostics={openDiagnostics}
               />
               {currentShop && (
                 <button
@@ -4181,7 +4183,7 @@ function App() {
 
       {/* Network & System Diagnostics Trigger Button */}
       <button
-        onClick={() => setIsDiagnosticOpen(true)}
+        onClick={openDiagnostics}
         className={cn(
           "fixed z-[55] right-6 p-3 bg-surface-container-high border border-outline-variant/20 text-on-surface rounded-full shadow-lg hover:shadow-xl hover:bg-surface-container-highest transition-all duration-200 cursor-pointer flex items-center gap-2 group active:scale-95",
           kitchenMode ? "bottom-8" : "bottom-24 md:bottom-8"
@@ -4194,7 +4196,7 @@ function App() {
         <span className="text-xs font-bold pr-1 hidden sm:inline">Diagnostics</span>
       </button>
 
-      {isDiagnosticOpen && <React.Suspense fallback={<div role="status" className="fixed bottom-24 right-6 z-[55] rounded-lg bg-surface p-3 text-on-surface">Loading diagnostics…</div>}>
+      {diagnosticsOpened && <React.Suspense fallback={<div role="status" className="fixed bottom-24 right-6 z-[55] rounded-lg bg-surface p-3 text-on-surface">Loading diagnostics…</div>}>
       <DiagnosticUtilityModal
         isOpen={isDiagnosticOpen}
         onClose={() => setIsDiagnosticOpen(false)}
