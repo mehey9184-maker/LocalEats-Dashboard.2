@@ -1,5 +1,6 @@
 import {getApps} from "firebase-admin/app";
 import {getMessaging} from "firebase-admin/messaging";
+import {createProviderBudget} from "../lib/providerDeadline.js";
 
 /** Best-effort wake-up after a committed, first-time pickup creation.
  * The verified merchant API inbox is the durable source of truth; a missing,
@@ -29,12 +30,13 @@ export async function tryMerchantPickupPush(
      order.delivery_type!=="collection" || !order.id || !order.shop_id){
     return {attempted:0,accepted:0};
   }
+  const budget=createProviderBudget(5000);
   try{
-    const owner=await lookup.findOwner(order.shop_id);
+    const owner=await budget.run(()=>lookup.findOwner(order.shop_id));
     if(!owner)return {attempted:0,accepted:0};
-    const tokens=(await lookup.findTokens(owner)).filter(t=>typeof t==="string" && t.length>=20).slice(0,5);
+    const tokens=(await budget.run(()=>lookup.findTokens(owner))).filter(t=>typeof t==="string" && t.length>=20).slice(0,5);
     if(!tokens.length)return {attempted:0,accepted:0};
-    const results=await Promise.allSettled(tokens.map(t=>sender(t,order.id)));
+    const results=await Promise.allSettled(tokens.map(t=>budget.run(()=>sender(t,order.id))));
     const accepted=results.filter(r=>r.status==="fulfilled").length;
     // No order IDs, tokens or customer PII in provider diagnostics.
     if(accepted<tokens.length) console.warn("[pickup-push] Some merchant FCM attempts were not accepted.");
@@ -43,5 +45,5 @@ export async function tryMerchantPickupPush(
     // Never return a fake failure for a successfully persisted pickup order.
     console.warn("[pickup-push] Merchant push unavailable; authoritative inbox remains available.");
     return {attempted:0,accepted:0};
-  }
+  }finally{budget.close();}
 }

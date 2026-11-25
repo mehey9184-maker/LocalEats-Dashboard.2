@@ -1,6 +1,7 @@
 import {beforeFirebaseVerification,afterFirebaseVerification} from "./apiAdmission.js";
 import { Request, Response, NextFunction } from "express";
 import { authAdmin } from "../lib/firebaseAdmin.js";
+import {createProviderBudget,ProviderDeadlineError} from "../lib/providerDeadline.js";
 
 export interface AuthenticatedRequest extends Request {
   authUser?: {
@@ -26,6 +27,7 @@ export const authenticateFirebase = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  let budget:ReturnType<typeof createProviderBudget>|undefined;
   try {
     const token = getFirebaseBearerToken(req.headers.authorization);
     if (token === null) {
@@ -34,7 +36,9 @@ export const authenticateFirebase = async (
     }
 
     if (!beforeFirebaseVerification(res)) return;
-    const decoded = await authAdmin.verifyIdToken(token, true);
+    budget=createProviderBudget(5000);
+    const decoded = await budget.run(()=>authAdmin.verifyIdToken(token, true));
+    budget.close();
     if (!afterFirebaseVerification(res,decoded.uid)) return;
 
     req.authUser = {
@@ -46,8 +50,12 @@ export const authenticateFirebase = async (
     next();
   } catch (error) {
     // Never log token contents or provider error payloads.
-    void error;
+    const code=typeof error==="object" && error!==null ? (error as {code?:unknown}).code:undefined;
+    if(error instanceof ProviderDeadlineError || code==="auth/internal-error" || code==="app/network-error"){
+      res.set("Cache-Control","no-store").set("Retry-After","30").status(503).json({success:false,code:"AUTH_SERVICE_UNAVAILABLE",error:"Authentication temporarily unavailable. Please try again later."});
+      return;
+    }
     console.warn("Firebase authentication rejected");
     res.status(401).json({ success: false, error: "Unauthorized" });
-  }
+  }finally{budget?.close();}
 };
