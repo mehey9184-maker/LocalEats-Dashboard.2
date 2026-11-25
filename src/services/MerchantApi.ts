@@ -1,3 +1,4 @@
+import {createReadBackoff} from "./readBackoff";
 import {createMerchantPickupRecovery} from "./merchantPickupRecovery";
 import {validateMerchantMenu} from "./merchantMenuPolicy";
 import {auth} from "../lib/firebase";
@@ -83,6 +84,10 @@ const pickupRecovery=createMerchantPickupRecovery({
   return {status:response.status,data:await readJsonResponse(response)};
  },
 });
+
+const merchantReadBackoff=createReadBackoff();
+function checkReadBackoff(scope:string){if(merchantReadBackoff.remaining(scope)>0)throw new MerchantApiError("Too many requests. Please try again later.",429);}
+function observeReadBackoff(scope:string,response:Response){merchantReadBackoff.observe(scope,response.status,response.headers?.get("Retry-After")??null);}
 
 export class MerchantApi {
   /** Revoke only this authenticated merchant's device. Never delete another shop's token. */
@@ -194,6 +199,7 @@ export class MerchantApi {
   }
 
   static async getOrders(): Promise<Record<string, unknown>[]> {
+    checkReadBackoff("orders");
     const apiUrl = getApiUrl();
     const headers = await getApiAuthHeaders();
     let response: Response;
@@ -202,6 +208,7 @@ export class MerchantApi {
     } catch {
       throw new MerchantApiError("Unable to reach the LocalEats order service.");
     }
+    observeReadBackoff("orders",response);
     const data = await readJsonResponse(response);
     if (!response.ok) {
       throw new MerchantApiError(
@@ -265,6 +272,7 @@ export class MerchantApi {
    * Throws errors for authentication, authorization, or server failures.
    */
   static async getMerchantShop(): Promise<VerifiedMerchantShop | null> {
+    checkReadBackoff("shop");
     const apiUrl = getApiUrl();
 
     const headers = await getApiAuthHeaders();
@@ -279,6 +287,7 @@ export class MerchantApi {
       throw new MerchantApiError("Unable to reach the LocalEats merchant service.");
     }
 
+    observeReadBackoff("shop",response);
     const data = await readJsonResponse(response);
     if (response.status === 404) {
       if (data.error === "Merchant shop not mapped") {
