@@ -1,7 +1,7 @@
 type Order=Record<string,unknown>;
 type Command={path:string;body:{command_id:string;expected_revision:number;[key:string]:unknown}};
-type Options={identity:()=>string|undefined;enabled:()=>boolean;storage:Pick<Storage,'getItem'|'setItem'|'removeItem'>;
- transport:(order:Order,command:Command,signal:AbortSignal,uid:string)=>Promise<{status:number;data:Record<string,unknown>}>;
+type Options={identity:()=>string|undefined;captureSession:()=>()=>boolean;enabled:()=>boolean;storage:Pick<Storage,'getItem'|'setItem'|'removeItem'>;
+ transport:(order:Order,command:Command,signal:AbortSignal,uid:string,current:()=>boolean)=>Promise<{status:number;data:Record<string,unknown>}>;
  mapOrder:(order:unknown)=>Order;timeoutMs?:number};
 const kinds:Record<string,string>={accept:'accepted',ready:'ready',reject:'merchant_rejected','payment-confirmation':'payment_confirmed',collect:'collected'};
 // Only fresh, explicit contract refusals can resolve a never-previously-uncertain action.
@@ -44,6 +44,8 @@ export function createMerchantPickupRecovery(options:Options){
  const run=async(order:Order,command?:Command):Promise<Order>=>{
   if(!options.enabled())throw Error('Pickup actions are not enabled. No change was saved.');
   const uid=options.identity();if(!uid || !order.id || !order.shop_id || order.delivery_type!=='collection')throw Error('Sign in to the merchant account for this pickup.');
+  const current=options.captureSession();
+  if(!current())throw Error('Your session changed. Retry previous action in your account.');
   const key=`pickup-command:${uid}:${order.id}`;
   const active=running.get(key);if(active)return active;
   let saved:string|null;
@@ -56,10 +58,11 @@ export function createMerchantPickupRecovery(options:Options){
   try{options.storage.setItem(key,serialized);}catch{throw Error('Safe retry storage is unavailable. Enable session storage before changing a pickup.');}
   const request=(async()=>{
    let timer:ReturnType<typeof setTimeout>|undefined;const controller=new AbortController();
-   const unchanged=()=>{try{return options.identity()===uid && options.storage.getItem(key)===serialized;}catch{return false;}};
+   const unchanged=()=>{try{return current() && options.identity()===uid && options.storage.getItem(key)===serialized;}catch{return false;}};
    try{
     const deadline=new Promise<never>((_resolve,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error('The response took too long. The outcome is unconfirmed. Retry previous action.'));},options.timeoutMs??15000);});
-    const {status,data}=await Promise.race([options.transport(order,exact,controller.signal,uid),deadline]);
+    if(!unchanged())throw Error('Your session or pending action changed. Refresh before retrying.');
+    const {status,data}=await Promise.race([options.transport(order,exact,controller.signal,uid,unchanged),deadline]);
     if(!unchanged())throw Error('Your session or pending action changed. Refresh before retrying.');
     if(status<200 || status>=300 || data?.success!==true){
      // A later refusal cannot prove an earlier uncertain command never committed.
