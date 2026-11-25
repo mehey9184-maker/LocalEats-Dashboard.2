@@ -75,7 +75,7 @@ test("Merchant never writes a shop heartbeat on page load, including read-only P
   assert.doesNotMatch(app,/\.update\(\{\s*updated_at:\s*timeNow\s*\}\)/);
   assert.doesNotMatch(app,/Dashboard Inactive for 4\+ Days|online storefront is active and ready for orders/);
   assert.match(app,/MerchantApi\.getOrders\(signal\)/);
-  assert.match(app,/MerchantApi\.getMerchantShop\(\)/);
+  assert.match(app,/MerchantApi\.getMerchantShop\(controller\.signal\)/);
   // Deferred terminal settings now fail closed instead of writing to Firestore.
   assert.doesNotMatch(app,/\.update\(\{\s*(require_terminal_sync|terminal_provider|terminal_serial)\s*:/);
   assert.match(app,/Terminal linking is not active\. No changes were saved/);
