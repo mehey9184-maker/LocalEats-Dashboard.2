@@ -45,7 +45,7 @@ test('R07 push-style wake during old snapshot coalesces without follow-up',async
  report('R07_WAKE',{coalesced:first===wake,transmitted:requests.length,wakeRows:result.rows?.length,followup:requests.length>1});
 });
 test('R08 existing App ownership deadline does not abort underlying transport',async t=>{
- const d=deferred(),{api,requests}=await service(()=>d.promise);
+ const d=deferred(),{api,requests}=await service(()=>d.promise.then(()=>json({success:true,shop:owned})));
  const app=readFileSync(new URL('../../src/App.tsx',import.meta.url),'utf8');
  assert.match(app,/Promise\.race\(\[MerchantApi\.getMerchantShop\(\),new Promise<never>/);
  assert.match(app,/deadline=setTimeout\(\(\)=>reject\(Error\("Shop verification timed out\. Retry verification\."\)\),15000\)/);
@@ -54,7 +54,7 @@ test('R08 existing App ownership deadline does not abort underlying transport',a
  let timer;const outer=Promise.race([api.getMerchantShop(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Shop verification timed out. Retry verification.')),15000);})]).finally(()=>clearTimeout(timer));
  const rejected=assert.rejects(outer,/timed out/);await tick();assert.equal(requests.length,1);t.mock.timers.tick(15000);await rejected;
  const retry=api.getMerchantShop();await tick();report('R08_DEADLINE',{elapsedVirtualMs:15000,transmitted:requests.length,firstSignal:requests[0].signal,overlap:requests.length===2});
- d.resolve(json({success:true,shop:owned}));await retry;
+ d.resolve();await retry;
 });
 test('R08/R07 raw API response after account change, same-scope and switched-scope behavior',async()=>{
  for(const roundTrip of [false,true]){
