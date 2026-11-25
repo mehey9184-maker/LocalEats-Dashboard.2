@@ -1,4 +1,5 @@
 import {createReadBackoff} from "./readBackoff";
+import {boundedMerchantRead,captureMerchantReadSession} from "./merchantReadSession";
 import {createMerchantPickupRecovery} from "./merchantPickupRecovery";
 import {validateMerchantMenu} from "./merchantMenuPolicy";
 import {auth} from "../lib/firebase";
@@ -198,18 +199,23 @@ export class MerchantApi {
     });
   }
 
-  static async getOrders(): Promise<Record<string, unknown>[]> {
+  static async getOrders(outer?:AbortSignal): Promise<Record<string, unknown>[]> {
+    const session=captureMerchantReadSession();
+    return boundedMerchantRead(async(signal,check)=>{
     checkReadBackoff("orders");
     const apiUrl = getApiUrl();
     const headers = await getApiAuthHeaders();
+    check();
     let response: Response;
     try {
-      response = await fetch(`${apiUrl}/api/v1/merchant/orders`, { method: "GET", headers });
+      response = await fetch(`${apiUrl}/api/v1/merchant/orders`, { method: "GET", headers, signal });
     } catch {
       throw new MerchantApiError("Unable to reach the LocalEats order service.");
     }
+    check();
     observeReadBackoff("orders",response);
     const data = await readJsonResponse(response);
+    check();
     if (!response.ok) {
       throw new MerchantApiError(
         typeof data.error === "string" ? data.error : "Unable to load orders.",
@@ -220,6 +226,7 @@ export class MerchantApi {
       throw new MerchantApiError("LocalEats order service returned invalid orders.", response.status);
     }
     return data.orders.map(mapApiOrder);
+    },session,outer);
   }
 
   static hasPendingPickupCommand(order:Record<string,unknown>):boolean {
@@ -271,24 +278,29 @@ export class MerchantApi {
    * Returns null ONLY if the merchant explicitly has no shop (404).
    * Throws errors for authentication, authorization, or server failures.
    */
-  static async getMerchantShop(): Promise<VerifiedMerchantShop | null> {
+  static async getMerchantShop(outer?:AbortSignal): Promise<VerifiedMerchantShop | null> {
+    const session=captureMerchantReadSession();
+    return boundedMerchantRead(async(signal,check,uid)=>{
     checkReadBackoff("shop");
     const apiUrl = getApiUrl();
 
     const headers = await getApiAuthHeaders();
+    check();
     let response: Response;
 
     try {
       response = await fetch(`${apiUrl}/api/v1/merchant/shop`, {
         method: "GET",
-        headers,
+        headers,signal,
       });
     } catch {
       throw new MerchantApiError("Unable to reach the LocalEats merchant service.");
     }
 
+    check();
     observeReadBackoff("shop",response);
     const data = await readJsonResponse(response);
+    check();
     if (response.status === 404) {
       if (data.error === "Merchant shop not mapped") {
         return null;
@@ -308,8 +320,9 @@ export class MerchantApi {
       throw new MerchantApiError("LocalEats merchant service returned an invalid shop.", response.status);
     }
 
-    requireOwnedShop(shop,auth.currentUser?.uid || "");
+    requireOwnedShop(shop,uid);
     return shop as VerifiedMerchantShop;
+    },session,outer);
   }
 
   static async createShop(input: MerchantShopCreateInput): Promise<VerifiedMerchantShop> {

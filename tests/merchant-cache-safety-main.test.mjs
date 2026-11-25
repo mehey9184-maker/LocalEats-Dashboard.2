@@ -11,7 +11,7 @@ test("Merchant orders stay memory-only after authenticated reads", () => {
   assert.match(app,/setOrders\(combinedOrders\)/);
   assert.doesNotMatch(app,/localStorage\.setItem\(["']localeats_cached_orders/);
   assert.doesNotMatch(app,/localStorage\.getItem\(["']localeats_cached_orders/);
-  assert.match(app,/const data = await MerchantApi\.getOrders\(\)/);
+  assert.match(app,/const data = await MerchantApi\.getOrders\(signal\)/);
 });
 
 test("offline screen never promises automatic replay or confirmed orders from cache", () => {

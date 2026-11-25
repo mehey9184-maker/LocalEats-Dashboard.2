@@ -76,9 +76,10 @@ test("the Merchant app recovers on visibility, focus and reconnect, without back
  assert.match(app,/const orderReadCoordinator = useRef\(createMerchantOrderReadCoordinator/);
  assert.match(app,/orderReadCoordinator\.current\.activate\(orderReadScope\)/);
  assert.match(app,/orderReadCoordinator\.current\.activate\(null\)/);
- assert.match(app,/const data = await MerchantApi\.getOrders\(\)/);
+ assert.match(app,/const data = await MerchantApi\.getOrders\(signal\)/);
+ assert.match(app,/canFollowup:\(\)=>session\.current\(\)/);
  assert.match(app,/String\(d\.shop_id\)===orderReadShopId/);
- assert.match(app,/if \(result\.kind === "stale"\) return/);
+ assert.match(app,/if \(!session\.current\(\) \|\| result\.kind === "stale"\) return/);
  assert.match(app,/if \(result\.kind === "failed"\)/);
  assert.match(app,/document\.visibilityState === "visible" && navigator\.onLine/);
  assert.match(app,/setInterval\(refreshVisibleOrders, 15000\)/);
