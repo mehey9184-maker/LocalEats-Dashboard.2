@@ -7,9 +7,9 @@ const order={id:'order',shop_id:'shop',delivery_type:'collection',status:'pendin
 const command={path:'accept',body:{command_id:id,expected_revision:0}};
 const reply=(extra={})=>({status:200,data:{success:true,replayed:false,order:{...order,status:'preparing',revision:1},command_receipt:{command_id:id,order_id:order.id,actor_uid:'merchant',kind:'accepted',revision:1},...extra}});
 function setup(transport=async()=>reply()){
- const saved=new Map();let uid='merchant';
- const api=createMerchantPickupRecovery({identity:()=>uid,enabled:()=>true,storage:{getItem:k=>saved.get(k)??null,setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)},transport,mapOrder:mapApiOrder,timeoutMs:20});
- return {api,saved,account:value=>uid=value};
+ const saved=new Map();let uid='merchant',generation=0;
+ const api=createMerchantPickupRecovery({identity:()=>uid,captureSession:()=>{const ticket=generation;return ()=>ticket===generation;},enabled:()=>true,storage:{getItem:k=>saved.get(k)??null,setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)},transport,mapOrder:mapApiOrder,timeoutMs:20});
+ return {api,saved,account:value=>{uid=value;generation++;}};
 }
 test('confirmed command clears recovery only with matching authenticated receipt',async()=>{
  const f=setup();assert.equal((await f.api.send(order,command)).status,'preparing');assert.equal(f.saved.size,0);
@@ -43,7 +43,7 @@ test('malformed saved routes never reach transport; definitive refusal clears th
 });
 test('unavailable retry storage stops before transport',async()=>{
  let calls=0;
- const api=createMerchantPickupRecovery({identity:()=> 'merchant',enabled:()=>true,mapOrder:mapApiOrder,storage:{getItem:()=>null,setItem:()=>{throw Error('quota');},removeItem:()=>{}},transport:async()=>{calls++;return reply();}});
+ const api=createMerchantPickupRecovery({identity:()=> 'merchant',captureSession:()=>()=>true,enabled:()=>true,mapOrder:mapApiOrder,storage:{getItem:()=>null,setItem:()=>{throw Error('quota');},removeItem:()=>{}},transport:async()=>{calls++;return reply();}});
  await assert.rejects(api.send(order,command),/storage/);assert.equal(calls,0);
 });
 
@@ -75,4 +75,13 @@ test('fresh ambiguous refusal is not authoritative, and retained command can rec
   const f=setup(async()=>{if(refusal instanceof Error)throw refusal;return refusal;});
   await assert.rejects(f.api.send(order,command));assert.equal(f.saved.size,1);
  }
+});
+
+test('account return cannot accept a late receipt; explicit retry preserves original action',async()=>{
+ let resolve,attempt=0;const requests=[];
+ const f=setup(async(_order,body)=>{requests.push(body);return ++attempt===1?new Promise(done=>resolve=done):reply({replayed:true});});
+ const p=f.api.send(order,command);const reject=assert.rejects(p,/session/);
+ f.account('other');f.account('merchant');resolve(reply());await reject;
+ assert.equal(f.saved.size,1);assert.equal(requests.length,1);
+ assert.equal((await f.api.retry(order)).status,'preparing');assert.deepEqual(requests,[command,command]);assert.equal(f.saved.size,0);
 });
