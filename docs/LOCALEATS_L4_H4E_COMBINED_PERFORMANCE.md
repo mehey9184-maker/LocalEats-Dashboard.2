@@ -1,0 +1,16 @@
+# ADR-029 — L4-H4E combined performance acceptance
+Status: started; candidate measurements pending. Date 2026-11-25.
+## Gate
+H4D corrected run 45521196815 10/10 passed: Customer 252/252 + alias 1, Merchant 182/182, API 255+5. Actual runtime predicate and synthetic transport yielded 240→60 idle reads per virtual hour (-75%); active and unknown 240; 90s Retry-After 8 attempts, 2 transmitted, 6 suppressed, resume 90000ms. No mutation replay. See ADR-028.
+## Exact baseline / candidate
+H4A Customer 8e39f6ff8f01ac1ec573b87b16afd67395ad702e; Merchant 130ae5146a749b3cea76e2e94c52b0212231db8a. Accepted H4D Customer 73b756e7a56e5f5823b1f77117776383a61622bb; Merchant/API 7ebebd11305650cf52d3fb91de451943cbc27dd9. No runtime changes in H4E. Same-run cold-shell compare, 3 samples each with existing 390x844/4xCPU/150ms/1.6Mbps profile; root mounted, zero uncaught errors, external hosts and service worker blocked. Existing exact graph and sentinel gates. Add same-run loopback API baseline/candidate comparison using original H4A benchmark (100 measured requests each case, concurrency 5, 10 warmups, mock repository/auth). Compare p95 per case against +10% threshold, do not equate timing noise with production capacity. Report total JS+CSS gzip9 and distinguish install precache from initial transfer.
+## Targets (unchanged)
+- Cold initial JS+CSS <=407000 B Customer, <=582000 B Merchant. H4A 542530 / 894920; latest H4D 340592 / 445592 (37.2% / 50.2% reductions).
+- Stretch total JS+CSS gzip9 <=570000 / 750000 B; assess separately, do not silently waive.
+- Median FCP <=576 / 4086ms, latest H4D 776 / 3136ms. Customer target remains unmet. FCP is shell paint, not ready-to-order.
+- Catalog <=3 HTTP and <=4 repository reads for 4 shops, first card progressive. H4C/H4D actual reader fixture 3 requests, 16ms first/251ms complete, baseline 5 requests. Priority listing + first single (2 repository reads) + remainder batch (2 repository reads) = 5 repository reads; original <=4 DB target therefore NOT met by priority path. Preserve first-card benefit; evaluate separately rather than hide tradeoff.
+- >=50% reduction idle protected polling, active 30s Customer/15s Merchant fallback unchanged, actual fixture 75% reduction Customer; Merchant critical polling unchanged. No whole app traffic claim.
+- >=80% fewer scan rows OR shared buffers for history/menu at synthetic 25k orders/10k menu; history 25000→50, single menu 10000→200, batch 10000→800 scan-node proxy; shared buffers for menu did not improve. Existing parity/security gates, no hosted migration. Index write overhead/locking open.
+- API same runner mock p95 no >10% regression, actual provider/hosted p95 unknown. Historical H4A p95 health 5.233, catalog 3.627, menu 3.343, auth 2.813ms.
+## Guardrails / unresolved
+All existing blockers remain open, including actual mobile data/network, browser lifecycle/account switching and push, installed PWA and update transfer, auth route/chunk recovery, real pickup, DB index rollout/write cost, publication snapshot race, backups/security, Customer FCP and DB fanout target. No deployment, merge, active migration, new dependencies, paid service or UI changes. R0 incremental services. No H5 before H4E review. H4E reports gaps even if CI green.
