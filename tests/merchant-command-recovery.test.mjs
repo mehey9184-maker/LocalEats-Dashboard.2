@@ -37,7 +37,7 @@ test('duplicates share a request, and account changes retain recovery without ap
  await assert.rejects(first,/session/);await assert.rejects(second,/session/);assert.equal(calls,1);assert.equal(f.saved.size,1);
 });
 test('malformed saved routes never reach transport; definitive refusal clears the command',async()=>{
- let calls=0;const f=setup(async()=>{calls++;return {status:409,data:{success:false,error:'Order changed'}};});
+ let calls=0;const f=setup(async()=>{calls++;return {status:409,data:{success:false,code:'ORDER_STATE_CHANGED',error:'Order changed'}};});
  await assert.rejects(f.api.send(order,command),/Order changed/);assert.equal(f.saved.size,0);
  f.saved.set('pickup-command:merchant:order',JSON.stringify({...command,path:'../../anything'}));await assert.rejects(f.api.retry(order),/saved/);assert.equal(calls,1);
 });
@@ -54,4 +54,25 @@ test('rate limited merchant command retains exact consent and does not report sa
  assert.equal(f.api.pendingPath(order),'accept');
  limited=false;assert.equal((await f.api.retry(order)).status,'preparing');
  assert.deepEqual(requests,[command,command]);assert.equal(f.saved.size,0);
+});
+
+test('later ambiguous or explicit terminal refusal cannot discard earlier uncertain command',async()=>{
+ for(const refusal of [
+  {status:409,data:{error:'Unknown gateway response'}},
+  {status:409,data:{success:false,code:'ORDER_STATE_CHANGED',error:'Order changed'}},
+  {status:403,data:{success:false,code:'FORBIDDEN',error:'Denied'}},
+  Object.assign(Error('Invalid JSON'),{status:409})
+ ]){
+  const requests=[];let attempt=0;
+  const f=setup(async(_order,c)=>{requests.push(c);attempt++;if(attempt===1)throw Error('Lost committed response');if(attempt===2){if(refusal instanceof Error)throw refusal;return refusal;}return reply({replayed:true});});
+  await assert.rejects(f.api.send(order,command));const original=[...f.saved.values()][0];assert.ok(original);
+  await assert.rejects(f.api.retry(order));assert.equal([...f.saved.values()][0],original);assert.equal(f.api.pendingPath(order),'accept');
+  assert.equal((await f.api.retry(order)).status,'preparing');assert.deepEqual(requests,[command,command,command]);assert.equal(f.saved.size,0);
+ }
+});
+test('fresh ambiguous refusal is not authoritative, and retained command can recover',async()=>{
+ for(const refusal of [{status:409,data:{error:'Unconfirmed'}},{status:409,data:{success:false,code:'IDEMPOTENCY_CONFLICT',error:'Conflict'}},Object.assign(Error('Bad JSON'),{status:409})]){
+  const f=setup(async()=>{if(refusal instanceof Error)throw refusal;return refusal;});
+  await assert.rejects(f.api.send(order,command));assert.equal(f.saved.size,1);
+ }
 });
