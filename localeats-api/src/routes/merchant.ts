@@ -95,7 +95,7 @@ router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res
   try {
     const uid = req.authUser?.uid;
 
-    if (!uid) {
+    if (!uid || req.authUser?.isAnonymous === true) {
       res.status(401).json({
         success: false,
         error: "Unauthorized",
@@ -335,6 +335,18 @@ router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res
       res.status(500).json({
         success: false,
         error: "Internal Server Error",
+      });
+      return;
+    }
+
+    // A returned row is not proof of a correctly scoped pending shop.
+    if (!newShop || typeof newShop.id !== "string" || !newShop.id.trim() ||
+        newShop.owner_id !== uid || newShop.approval_status !== "pending" ||
+        newShop.is_active !== false || newShop.archived_at !== null) {
+      res.status(503).json({
+        success: false,
+        code: "MERCHANT_SHOP_CREATE_UNCONFIRMED",
+        error: "Shop submission could not be verified. Refresh before trying again.",
       });
       return;
     }
