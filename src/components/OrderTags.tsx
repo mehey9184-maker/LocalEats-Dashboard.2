@@ -42,29 +42,32 @@ type QuickOrderTagsProps = {
 /** Parent owns tag state and persistence; clicks never bubble to the order card. */
 export function QuickOrderTags({ orderId, manualTags, onToggle }: QuickOrderTagsProps) {
   return (
-    <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-outline-variant/10 pt-2 text-[9px]">
-      <span className="text-on-surface-variant/40 font-bold uppercase tracking-wider">Quick Tags:</span>
-      <div className="flex items-center gap-1">
+    <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-outline-variant/10 pt-2 text-[10px]">
+      <span className="text-on-surface-variant font-bold uppercase tracking-wider shrink-0">Quick Tags:</span>
+      <div role="group" aria-label="Quick order tags" className="grid grid-cols-3 gap-[12px] flex-1 min-w-[156px]">
         {(["Rush", "VIP", "Special"] as const).map((tag) => {
           const isActive = manualTags.includes(tag);
           const icons = { Rush: "⚡", VIP: "⭐", Special: "📝" };
           return (
             <button
               key={tag}
+              type="button"
+              aria-pressed={isActive}
+              aria-label={`Toggle ${tag}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onToggle(orderId, tag);
               }}
               title={`Toggle ${tag}`}
               className={cn(
-                "px-1.5 py-0.5 rounded-md font-bold transition-all cursor-pointer select-none text-[8px]",
+                "min-h-[44px] min-w-[44px] px-1 rounded-md font-bold transition-colors cursor-pointer select-none text-[10px] inline-flex items-center justify-center gap-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                 isActive
                   ? tag === "Rush"
-                    ? "bg-rose-500 text-white"
+                    ? "bg-rose-700 text-white"
                     : tag === "VIP"
-                      ? "bg-amber-500 text-white"
-                      : "bg-teal-500 text-white"
-                  : "bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 hover:text-stone-600"
+                      ? "bg-amber-800 text-white"
+                      : "bg-teal-700 text-white"
+                  : "bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-200 hover:text-stone-900 dark:hover:text-white"
               )}
             >
               {icons[tag]} {tag === "Special" ? "Spec" : tag}
