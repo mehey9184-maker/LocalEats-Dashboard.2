@@ -1,4 +1,5 @@
 interface CorsOriginEnvironment {
+  LOCALEATS_PREVIEW_READ_ONLY?: string;
   MERCHANT_DASHBOARD_ORIGIN?: string;
   MERCHANT_DASHBOARD_PREVIEW_HOST_PREFIX?: string;
   MERCHANT_DASHBOARD_PREVIEW_HOST_SUFFIX?: string;
@@ -40,6 +41,11 @@ export const isAllowedOrigin = (
   environment: CorsOriginEnvironment = process.env
 ): boolean => {
   if (origin === undefined) return true;
+  if(environment.LOCALEATS_PREVIEW_READ_ONLY === "true") {
+    // Dedicated isolated Preview has no production or wildcard origin fallback.
+    const allowed=[environment.CUSTOMER_APP_ORIGIN,environment.MERCHANT_DASHBOARD_ORIGIN].map(normalizeExactBrowserOrigin).filter(value=>value!==null && value.startsWith("https://") && !/(^|\.)localeatssa\.co\.za$/i.test(new URL(value).hostname));
+    return allowed.includes(origin);
+  }
   // Both public Customer domains resolve to the same production application.
   // Vercel's apex URL is a valid browser Origin too: rejecting it blocks
   // public catalog preflights even though shop discovery needs no account.
