@@ -36,59 +36,39 @@ const ALLOWED_CREATE_FIELDS = new Set([
 const isValidTime = (value: unknown): value is string =>
   typeof value === "string" && /^([01]\d|2[0-3]):([0-5]\d)$/.test(value.trim());
 
+// The staging availability view deliberately omits ownership. Keep ownership
+// authority in the base table and the database's effective availability in the view.
+// Two independent proof reads cannot make a distributed response atomic: never
+// project private fields from the availability view, and reject changed ownership.
 router.get("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  res.set("Cache-Control", "no-store");
+  const uid=req.authUser?.uid;
+  if(!uid || req.authUser?.isAnonymous === true){res.status(401).json({success:false,error:"Unauthorized"});return;}
+  const unavailable=()=>{res.status(503).json({success:false,code:"AVAILABILITY_SCHEMA_UNAVAILABLE",error:"Shop availability is not activated or could not be loaded."});};
   try {
-    const uid = req.authUser?.uid;
-
-    if (!uid) {
-      res.status(401).json({
-        success: false,
-        error: "Unauthorized",
-      });
-      return;
-    }
-
-    const { data: shops, error } = await supabaseAdmin
-      .from("shops_with_availability")
-      .select("*")
-      .eq("owner_id", uid)
-      .is("archived_at", null);
-
-    if (error) {
-      console.error("Supabase merchant shop query error");
-
-      res.status(503).json({success:false,code:"AVAILABILITY_SCHEMA_UNAVAILABLE",error:"Shop availability is not activated or could not be loaded."});
-      return;
-    }
-
-    if (!shops || shops.length === 0) {
-      res.status(404).json({
-        success: false,
-        error: "Merchant shop not mapped",
-      });
-      return;
-    }
-
-    if (shops.length > 1) {
-      res.status(409).json({
-        success: false,
-        error: "Multiple current shops mapped to merchant",
-      });
-      return;
-    }
-
-    res.status(200).json({
-      success: true,
-      shop: effectiveShop(shops[0]),
-    });
-  } catch {
-    console.error("Error fetching merchant shop");
-
-    res.status(500).json({
-      success: false,
-      error: "Internal Server Error",
-    });
-  }
+    const readOwned=()=>supabaseAdmin.from("shops").select("*").eq("owner_id",uid).is("archived_at",null).limit(2);
+    const first=await readOwned();
+    if(first.error || !Array.isArray(first.data)){unavailable();return;}
+    if(first.data.length===0){res.status(404).json({success:false,error:"Merchant shop not mapped"});return;}
+    if(first.data.length!==1){res.status(409).json({success:false,error:"Multiple current shops mapped to merchant"});return;}
+    const owned=first.data[0];
+    if(typeof owned.id!=="string" || !owned.id || owned.owner_id!==uid || owned.archived_at!==null){unavailable();return;}
+    const fields="id,name,description,story,location,category,logo_url,rating,approval_status,archived_at,opening_time,closing_time,is_active,latitude,longitude,lat,lng,availability_override_until,availability_revision,effective_is_active";
+    const view=await supabaseAdmin.from("shops_with_availability").select(fields).eq("id",owned.id).is("archived_at",null).maybeSingle();
+    const row=view.data;
+    if(view.error || !row || row.id!==owned.id || row.archived_at!==null){unavailable();return;}
+    const last=await readOwned();
+    const current=last.data?.[0];
+    if(last.error || !Array.isArray(last.data) || last.data.length!==1 || !current || current.id!==owned.id || current.owner_id!==uid || current.archived_at!==null ||
+       current.approval_status!==row.approval_status || current.availability_revision!==row.availability_revision || current.is_active!==row.is_active){unavailable();return;}
+    // Only the explicit view projection is returned, with authorized owner-only
+    // fields from the final base-table proof (optional on the staging schema).
+    const shop:Record<string,unknown>={};
+    for(const field of fields.split(","))shop[field]=(row as Record<string,unknown>)[field];
+    shop.owner_id=current.owner_id;
+    for(const field of ["phone","approval_reason","created_at","updated_at"])if(Object.prototype.hasOwnProperty.call(current,field))shop[field]=(current as Record<string,unknown>)[field];
+    res.status(200).json({success:true,shop:effectiveShop(shop)});
+  } catch { unavailable(); }
 });
 
 router.post("/shop", authenticateFirebase, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
