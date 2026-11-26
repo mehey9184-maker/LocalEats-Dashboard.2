@@ -95,22 +95,28 @@ try{
  for(const width of [320,390,768,1366])for(const mode of ['no-preference','reduce']){
   await cdp('Emulation.setDeviceMetricsOverride',{width,height:700,deviceScaleFactor:1,mobile:false});
   await cdp('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:mode},{name:'prefers-color-scheme',value:'light'}]});
-  const capability=await evaluate('({hover:matchMedia("(hover:hover)").matches,fine:matchMedia("(pointer:fine)").matches})');assert.deepEqual(capability,{hover:true,fine:true});console.log('UX04_POINTER_CAPABILITY '+JSON.stringify({width,mode,...capability}));
+  const capability=await evaluate('({hover:matchMedia("(hover:hover)").matches,fine:matchMedia("(pointer:fine)").matches,reduced:matchMedia("(prefers-reduced-motion: reduce)").matches})');assert.deepEqual(capability,{hover:true,fine:true,reduced:mode==="reduce"});console.log('UX04_POINTER_CAPABILITY '+JSON.stringify({width,mode,...capability}));
   const rows={old:[],new:[]};
   for(let trial=0;trial<3;trial++)for(const variant of trial%2?['new','old']:['old','new']){
    await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:1,y:690});
    await evaluate('window.harness.mount('+JSON.stringify(variant)+',false)');await evaluate(settle);await delay(800);
    const before=await state();assert.equal(before.scrollWidth,width);
    const expected=variant==='old'?0.5:mode==='reduce'?0:0.22;const decorExpected=variant==='old'?0.7:mode==='reduce'?0:0.24;
-   assert.equal(parseFloat(before.duration),expected);assert.equal(parseFloat(before.decorDuration),decorExpected);
+   if(variant==='new'&&mode==='reduce'){
+     // transition-none sets transition-property, not transition-duration.
+     assert.equal(before.property,'none',JSON.stringify(before));assert.equal(before.decorProperty,'none',JSON.stringify(before));
+   }else{
+     assert.equal(parseFloat(before.duration),expected);assert.equal(parseFloat(before.decorDuration),decorExpected);
+     assert.notEqual(before.property,'none');assert.notEqual(before.decorProperty,'none');
+   }
    await arm();const x=before.x+before.w/2,y=before.y+before.h/2;
    await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
    const timing=await evaluate('window.uxHoverResult');assert.ok(timing.stable);const hovered=await state();
    const shouldMove=variant==='old'||mode!=='reduce';assert.ok(Math.abs((hovered.y-before.y)-(shouldMove?-4:0))<.2,JSON.stringify({before,hovered}));assert.ok(shouldMove?hovered.decorScale==='1.25':hovered.decorScale==='1'||hovered.decorScale==='none',JSON.stringify(hovered));
-   if(variant==='new'&&mode==='reduce'){assert.ok(timing.frames.every(r=>Math.abs(r.y-before.y)<.2));assert.ok(timing.settledMs<300);}
+   if(variant==='new'&&mode==='reduce'){assert.ok(timing.frames.every(r=>Math.abs(r.y-before.y)<.2&&(r.scale==='none'||r.scale==='1')&&!r.running),JSON.stringify(timing));assert.equal(hovered.property,'none');assert.equal(hovered.decorProperty,'none');assert.ok(timing.settledMs<300);}
    if(trial===0){const png=await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:false,fromSurface:true});writeFileSync(path.join(out,'merchant-'+width+'-'+mode+'-'+variant+'.png'),Buffer.from(png.data,'base64'));}
    await cdp('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});await delay(300);const pressed=await state();
-   if(variant==='new'&&mode==='reduce')assert.ok(pressed.scale==='none'||pressed.scale==='1',JSON.stringify(pressed));
+   if(variant==='new'&&mode==='reduce'){assert.ok(pressed.scale==='none'||pressed.scale==='1',JSON.stringify(pressed));assert.ok(Math.abs(pressed.y-before.y)<.2);assert.equal(pressed.property,'none');assert.ok(await evaluate('!document.querySelector(\'[data-fixture=stats]\').firstElementChild.getAnimations({subtree:true}).some(a=>a.playState===\'running\'||a.pending)'));}
    await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1});assert.equal((await state()).clicks,1);
    rows[variant].push({trial,before,hovered,pressed,timing});
   }
