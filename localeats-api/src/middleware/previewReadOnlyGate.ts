@@ -15,7 +15,10 @@ export const previewReadOnlyGate:RequestHandler=(req,res,next)=>{
   // (writes + sends push). Block both GET and implicit HEAD on that route.
   const sideEffectRead=["GET","HEAD"].includes(method)
     && /^\/api\/v1\/notifications\/?$/i.test(req.path);
-  if(!sideEffectRead && !["POST","PUT","PATCH","DELETE"].includes(method)) {next();return;}
+  // Explicit isolated Preview mode is intentionally narrower than legacy Vercel Preview.
+  const strict=process.env.LOCALEATS_PREVIEW_READ_ONLY === "true";
+  const safePath=/^\/health\/?$|^\/api\/v1\/catalog\/(?:shops(?:\/[A-Za-z0-9_-]{1,128}(?:\/menu)?)?|pickup-shops|menus)\/?$|^\/api\/v1\/merchant\/shop\/?$/i.test(req.path);
+  if(strict ? (["GET","HEAD","OPTIONS"].includes(method) && safePath) : (!sideEffectRead && !["POST","PUT","PATCH","DELETE"].includes(method))) {next();return;}
   res.status(503).set("Cache-Control","no-store").json({
     success:false,
     code:"PREVIEW_READ_ONLY",
