@@ -96,7 +96,7 @@ export function PickupOrderActions({order,onSimulate,compact=false,recoveryOnly=
   {simulated && !compact && <p className="text-[10px] font-bold text-amber-900 dark:text-amber-200">Sample pickup · No real order</p>}
   {!compact && !awaitingHandover && <p className="text-[11px] leading-4 font-semibold text-slate-700 dark:text-zinc-200">Pickup · {status==="collected" ? "Collected" : status==="ready_for_pickup" ? "Ready" : status} · {pickupPaymentLabel(order)}</p>}
   {awaitingHandover && <p role="status" className="text-xs font-bold text-slate-800 dark:text-slate-100">Paid · Awaiting handover</p>}
-  {!compact && <p className="text-xs">{pickupAmountLabel(order)}</p>}
+  {!compact && <p className="text-xs dark:text-zinc-200">{pickupAmountLabel(order)}</p>}
   {!recoveryOnly && needsFollowUp ? <div className="text-xs text-amber-800 dark:text-amber-200 space-y-1">
     <p role="status" className="font-semibold">Ready · unpaid · 30+ min since last status update</p>
     <details>
