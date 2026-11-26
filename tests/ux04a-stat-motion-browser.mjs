@@ -31,7 +31,7 @@ try{
  const binary=['google-chrome','google-chrome-stable','chromium','chromium-browser'].map(name=>{try{return execFileSync('which',[name],{encoding:'utf8'}).trim();}catch{return '';}}).find(Boolean);
  assert.ok(binary,'A preinstalled Chrome/Chromium executable is required; do not skip browser gate');
  console.log('H1D3_BROWSER_VERSION '+execFileSync(binary,['--version'],{encoding:'utf8'}).trim());
- chrome=spawn(binary,['--headless','--disable-gpu','--disable-lcd-text','--font-render-hinting=none','--force-color-profile=srgb','--hide-scrollbars','--no-sandbox','--disable-dev-shm-usage','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:['ignore','ignore','pipe'],detached:true});
+ chrome=spawn(binary,['--headless','--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4','--disable-gpu','--disable-lcd-text','--font-render-hinting=none','--force-color-profile=srgb','--hide-scrollbars','--no-sandbox','--disable-dev-shm-usage','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run','--no-default-browser-check','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:['ignore','ignore','pipe'],detached:true});
  chrome.stderr.on('data',chunk=>{chromeDiagnostics=(chromeDiagnostics+chunk.toString()).slice(-4000);});
  let port;
  for(let n=0;n<450;n++){const file=path.join(profile,'DevToolsActivePort');if(existsSync(file)){port=Number(readFileSync(file,'utf8').split('\n')[0]);if(port)break;}if(chrome.exitCode!==null)throw Error('Chrome exited');await delay(100);}
@@ -95,6 +95,7 @@ try{
  for(const width of [320,390,768,1366])for(const mode of ['no-preference','reduce']){
   await cdp('Emulation.setDeviceMetricsOverride',{width,height:700,deviceScaleFactor:1,mobile:false});
   await cdp('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:mode},{name:'prefers-color-scheme',value:'light'}]});
+  const capability=await evaluate('({hover:matchMedia("(hover:hover)").matches,fine:matchMedia("(pointer:fine)").matches})');assert.deepEqual(capability,{hover:true,fine:true});console.log('UX04_POINTER_CAPABILITY '+JSON.stringify({width,mode,...capability}));
   const rows={old:[],new:[]};
   for(let trial=0;trial<3;trial++)for(const variant of trial%2?['new','old']:['old','new']){
    await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:1,y:690});
