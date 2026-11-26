@@ -102,7 +102,7 @@ const StatCard = React.memo(({
     <div className="absolute -right-4 -bottom-4 p-8 opacity-[0.03] group-hover:opacity-[0.08] group-hover:scale-125 transition-all duration-700 blur-[2px]">
       <Icon size={120} />
     </div>
-    <div className="flex justify-between items-start mb-4 md:mb-6 relative z-10">
+    <div className="flex justify-between items-start mb-3 sm:mb-4 md:mb-6 relative z-10">
       <div className={cn("p-2 md:p-3.5 rounded-2xl shadow-inner", colorClass)}>
         <Icon size={20} className="md:w-6 md:h-6" />
       </div>
