@@ -168,13 +168,13 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
         {/* Close button */}
         <button
           onClick={handleSkip}
-          className="absolute top-4 right-4 p-2 rounded-full text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface dark:hover:bg-surface-container-highest transition-all z-10"
+          className="absolute top-2 right-2 min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface dark:hover:bg-surface-container-highest transition-all z-10"
           aria-label="Skip tour"
         >
           <X size={16} />
         </button>
 
-        <div className="p-4 pt-12 sm:p-6 sm:pt-9 md:p-8 space-y-4 sm:space-y-6 flex-1">
+        <div className="p-4 pt-14 sm:p-6 sm:pt-14 md:p-8 md:pt-14 space-y-4 sm:space-y-6 flex-1">
           {/* Header section with icon, badge & title */}
           <div className="flex items-start gap-4">
             <div className={`p-3.5 rounded-2xl bg-gradient-to-tr ${step.color} text-white shadow-md shrink-0`}>
@@ -220,7 +220,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
         <div className="bg-surface-container-low dark:bg-surface-container-highest/50 px-3 py-3 sm:px-6 sm:py-4 flex flex-wrap items-center justify-between gap-2 border-t border-outline-variant/10">
           <button
             onClick={handleSkip}
-            className="text-xs text-on-surface-variant/70 hover:text-primary font-bold transition-colors select-none"
+            className="min-h-[44px] inline-flex items-center text-xs text-on-surface-variant/70 hover:text-primary font-bold transition-colors select-none"
           >
             Skip Walkthrough
           </button>
@@ -229,7 +229,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
             {!isFirst && (
               <button
                 onClick={handlePrev}
-                className="px-4 py-2 text-xs font-bold font-headline text-on-surface border border-outline-variant/30 rounded-xl hover:bg-surface-container-high transition-all flex items-center gap-1.5 select-none"
+                className="min-h-[44px] px-4 py-2 text-xs font-bold font-headline text-on-surface border border-outline-variant/30 rounded-xl hover:bg-surface-container-high transition-all flex items-center gap-1.5 select-none"
               >
                 <ChevronLeft size={14} /> Back
               </button>
@@ -237,7 +237,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
 
             <button
               onClick={handleNext}
-              className={`px-5 py-2.5 text-xs font-bold font-headline rounded-xl shadow-lg transition-all active:scale-95 flex items-center gap-1.5 select-none ${
+              className={`min-h-[44px] px-5 py-2.5 text-xs font-bold font-headline rounded-xl shadow-lg transition-all active:scale-95 flex items-center gap-1.5 select-none ${
                 isLast
                   ? "bg-primary text-white shadow-primary/20 hover:bg-primary-dark"
                   : "bg-on-surface text-surface dark:bg-white dark:text-black hover:opacity-90"
