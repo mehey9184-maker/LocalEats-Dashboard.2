@@ -47,10 +47,14 @@ test('all four legacy badge renderers have byte-identical HTML for normal, empty
   for(const original of legacyBadges)assert.equal(actual,html(original(tags)));
  }
 });
-test('all four quick-tag renderers have byte-identical HTML for every manual selection',()=>{
+test('all four quick-tag renderers preserve structure, labels and native semantics with scoped UX-only attributes',()=>{
  for(const manualTags of subsets){
   const actual=html(React.createElement(QuickOrderTags,{orderId:'fixture',manualTags,onToggle:()=>{}}));
-  for(const original of legacyQuick)assert.equal(actual,html(original('fixture',manualTags,()=>{})));
+  const normalize=markup=>markup.replace(/ class="[^"]*"/g,'').replace(/ role="group" aria-label="Quick order tags"/g,'').replace(/ type="button" aria-pressed="(?:true|false)" aria-label="Toggle (?:Rush|VIP|Special)"/g,'');
+  for(const original of legacyQuick)assert.equal(normalize(actual),normalize(html(original('fixture',manualTags,()=>{}))));
+  const rendered=buttons(QuickOrderTags({orderId:'fixture',manualTags,onToggle:()=>{}}));
+  assert.deepEqual(rendered.map(b=>b.props['aria-pressed']),['Rush','VIP','Special'].map(t=>manualTags.includes(t)));
+  assert.ok(rendered.every(b=>b.props.type==='button'&&b.props['aria-label']===b.props.title&&b.props.className.includes('min-h-[44px]')&&b.props.className.includes('min-w-[44px]')));
  }
 });
 test('quick tags retain native button order and titles, stop propagation before toggling correct order, no eager writes',()=>{
