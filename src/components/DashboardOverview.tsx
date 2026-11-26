@@ -95,11 +95,11 @@ const StatCard = React.memo(({
   <div 
     onClick={onClick}
     className={cn(
-      "bg-surface-container-lowest p-4 md:p-8 rounded-[2rem] shadow-[0_2px_8px_rgba(15,23,42,0.08),0_6px_18px_rgba(15,23,42,0.04)] border border-outline-variant/10 group hover:shadow-xl hover:shadow-primary/5 hover:-translate-y-1 transition-all duration-500 relative overflow-hidden",
-      onClick && "cursor-pointer active:scale-95"
+      "bg-surface-container-lowest p-4 md:p-8 rounded-[2rem] shadow-[0_2px_8px_rgba(15,23,42,0.08),0_6px_18px_rgba(15,23,42,0.04)] border border-outline-variant/10 group hover:shadow-xl hover:shadow-primary/5 hover:-translate-y-1 transition-[transform,translate,scale,box-shadow] duration-[220ms] motion-reduce:transition-none motion-reduce:hover:translate-y-0 relative overflow-hidden",
+      onClick && "cursor-pointer active:scale-95 motion-reduce:active:scale-100"
     )}
   >
-    <div className="absolute -right-4 -bottom-4 p-8 opacity-[0.03] group-hover:opacity-[0.08] group-hover:scale-125 transition-all duration-700 blur-[2px]">
+    <div className="absolute -right-4 -bottom-4 p-8 opacity-[0.03] group-hover:opacity-[0.08] group-hover:scale-125 transition-[opacity,transform,scale] duration-[240ms] motion-reduce:transition-none motion-reduce:group-hover:scale-100 blur-[2px]">
       <Icon size={120} />
     </div>
     <div className="flex justify-between items-start mb-3 sm:mb-4 md:mb-6 relative z-10">
