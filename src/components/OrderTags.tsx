@@ -60,7 +60,7 @@ export function QuickOrderTags({ orderId, manualTags, onToggle }: QuickOrderTags
               }}
               title={`Toggle ${tag}`}
               className={cn(
-                "min-h-[44px] min-w-[44px] px-1 rounded-md font-bold transition-colors cursor-pointer select-none text-[10px] inline-flex items-center justify-center gap-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                "min-h-[44px] min-w-[44px] px-1 rounded-md font-bold transition-[color,background-color,border-color,filter] duration-100 motion-reduce:transition-none active:brightness-90 cursor-pointer select-none text-[10px] inline-flex items-center justify-center gap-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                 isActive
                   ? tag === "Rush"
                     ? "bg-rose-700 text-white"
