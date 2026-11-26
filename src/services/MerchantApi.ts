@@ -327,8 +327,12 @@ export class MerchantApi {
   }
 
   static async createShop(input: MerchantShopCreateInput): Promise<VerifiedMerchantShop> {
+    const session = captureMerchantReadSession();
+    const uid = session.uid;
+    if (!uid || !session.current()) throw new MerchantApiError("Sign in before submitting a shop for approval.",401);
     const apiUrl = getApiUrl();
     const headers = await getApiAuthHeaders();
+    if (!session.current()) throw new MerchantApiError("Your account changed. Refresh before continuing.");
     let response: Response;
 
     try {
@@ -342,6 +346,7 @@ export class MerchantApi {
     }
 
     const data = await readJsonResponse(response);
+    if (!session.current()) throw new MerchantApiError("Your account changed while submitting the shop. Refresh before continuing.");
     if (!response.ok) {
       throw new MerchantApiError(
         typeof data.error === "string" ? data.error : "Unable to create merchant shop.",
@@ -349,10 +354,12 @@ export class MerchantApi {
       );
     }
 
-    const shop = data.shop || (data as VerifiedMerchantShop);
-    if (!shop || shop.id === null || shop.id === undefined) {
-      throw new MerchantApiError("LocalEats merchant service returned an invalid shop.", response.status);
+    const shop = data.shop;
+    if (response.status !== 201 || data.success !== true || !shop || typeof shop.id !== "string" || !shop.id.trim() ||
+        shop.approval_status !== "pending" || shop.is_active !== false || shop.archived_at !== null) {
+      throw new MerchantApiError("Shop submission did not confirm pending approval. Refresh before continuing.",503);
     }
+    requireOwnedShop(shop,uid);
 
     return shop as VerifiedMerchantShop;
   }

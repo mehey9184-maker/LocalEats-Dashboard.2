@@ -1,0 +1,31 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+const read=p=>readFileSync(new URL("../"+p,import.meta.url),"utf8");
+test("onboarding POST is bounded to a captured session and validates a pending owned receipt",()=>{
+ const s=read("src/services/MerchantApi.ts").split("static async createShop(")[1];
+ assert.ok(s);
+ const capture=s.indexOf("captureMerchantReadSession()");
+ const token=s.indexOf("await getApiAuthHeaders()");
+ const guard=s.indexOf("if (!session.current())",token);
+ const post=s.indexOf('method: "POST"');
+ const parse=s.indexOf("await readJsonResponse");
+ const after=s.indexOf("if (!session.current())",parse);
+ assert.ok(capture>=0&&capture<token&&token<guard&&guard<post&&post<parse&&parse<after);
+ for(const pattern of [/response.status !== 201/,/data.success !== true/,/shop.approval_status !== "pending"/,/shop.is_active !== false/,/shop.archived_at !== null/,/requireOwnedShop\(shop,uid\)/])assert.match(s,pattern);
+ assert.equal((s.match(/method: "POST"/g)||[]).length,1);
+});
+test("onboarding upload, submit and duplicate recovery are scoped without UI changes",()=>{
+ const s=read("src/components/CreateShopOnboarding.tsx");
+ const capture=s.indexOf("const session = captureMerchantReadSession()");
+ const upload=s.indexOf("await uploadImageToCloudinary",capture);
+ const guard=s.indexOf("if (!session.current())",upload);
+ const post=s.indexOf("await MerchantApi.createShop",guard);
+ const receipt=s.indexOf("if (!session.current())",post);
+ const completed=s.indexOf("await onCreated(createdShop",receipt);
+ const recovery=s.indexOf("await MerchantApi.getMerchantShop()",completed);
+ const recoveryGuard=s.indexOf("if (!session.current())",recovery);
+ const recovered=s.indexOf("await onCreated(existingShop",recoveryGuard);
+ assert.ok(capture>=0&&capture<upload&&upload<guard&&guard<post&&post<receipt&&receipt<completed&&completed<recovery&&recovery<recoveryGuard&&recoveryGuard<recovered);
+ assert.equal((s.match(/await MerchantApi.createShop\(/g)||[]).length,1);
+});

@@ -105,3 +105,20 @@ test("Preview barrier sits ahead of every app write route",()=>{
   assert.ok(gate>0);
   assert.ok(gate<legacy && gate<pickup && gate<merchant);
 });
+
+test("Dedicated isolated Preview denies unreviewed reads, mutations and other methods",async()=>{
+ const prior=process.env.LOCALEATS_PREVIEW_READ_ONLY;process.env.LOCALEATS_PREVIEW_READ_ONLY="true";
+ const app=express();let reached=0;app.use(previewReadOnlyGate);app.use((_req,res)=>{reached++;res.json({success:true});});
+ const server=app.listen(0,"127.0.0.1");
+ try{
+  await once(server,"listening");const addr=server.address();if(!addr||typeof addr==="string")throw Error("Missing port");const base="http://127.0.0.1:"+addr.port;
+  for(const path of ["/health","/api/v1/catalog/shops","/api/v1/catalog/pickup-shops","/api/v1/catalog/menus","/api/v1/catalog/shops/shop-A/menu","/api/v1/merchant/shop"]){
+   for(const method of ["GET","HEAD","OPTIONS"])assert.equal((await fetch(base+path,{method})).status,200);
+  }
+  const allowed=reached;
+  for(const path of ["/api/v1/notifications","/api/v1/merchant/orders","/api/v1/orders/history","/api/v1/admin/shops","/api/v1/profiles/me","/health/launch-readiness","/api/v1/catalog/shops/shop-A/unknown","/api/v1/merchant/shop/availability"])
+   for(const method of ["GET","HEAD"])assert.equal((await fetch(base+path,{method})).status,503);
+  for(const method of ["POST","PUT","PATCH","DELETE"])assert.equal((await fetch(base+"/api/v1/merchant/shop",{method})).status,503);
+  assert.equal(reached,allowed);
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));if(prior===undefined)delete process.env.LOCALEATS_PREVIEW_READ_ONLY;else process.env.LOCALEATS_PREVIEW_READ_ONLY=prior;}
+});

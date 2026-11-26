@@ -8,3 +8,10 @@ test("canonical production Customer and explicit Preview origins pass, lookalike
  assert.equal(isAllowedOrigin(undefined,{}),true);
  assert.equal(isAllowedOrigin("https://rider.example.test",{RIDER_APP_ORIGIN:"https://rider.example.test"}),true);
 });
+
+test("Dedicated Preview permits only configured exact non-production HTTPS browser origins",()=>{
+ const e={LOCALEATS_PREVIEW_READ_ONLY:"true",CUSTOMER_APP_ORIGIN:"https://customer.fixture.invalid",MERCHANT_DASHBOARD_ORIGIN:"https://merchant.fixture.invalid",MERCHANT_DASHBOARD_PREVIEW_HOST_PREFIX:"preview-",MERCHANT_DASHBOARD_PREVIEW_HOST_SUFFIX:".fixture.invalid",SUPER_ADMIN_ORIGIN:"https://admin.fixture.invalid"};
+ for(const origin of [e.CUSTOMER_APP_ORIGIN,e.MERCHANT_DASHBOARD_ORIGIN])assert.equal(isAllowedOrigin(origin,e),true);
+ for(const origin of ["https://www.localeatssa.co.za","https://localeatssa.co.za","https://dashboard.localeatssa.co.za","https://preview-other.fixture.invalid",e.SUPER_ADMIN_ORIGIN,"http://customer.fixture.invalid","https://customer.fixture.invalid.evil.invalid"])assert.equal(isAllowedOrigin(origin,e),false);
+ assert.equal(isAllowedOrigin("https://www.localeatssa.co.za",{...e,CUSTOMER_APP_ORIGIN:"https://www.localeatssa.co.za"}),false);
+});

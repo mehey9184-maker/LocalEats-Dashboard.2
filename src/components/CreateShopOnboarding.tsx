@@ -19,6 +19,7 @@ import {
   MerchantShopCreateInput,
 } from "../services/MerchantApi";
 import { Shop } from "../types";
+import { captureMerchantReadSession } from "../services/merchantReadSession";
 import { LeafletMap } from "./LeafletMap";
 
 interface CreateShopOnboardingProps {
@@ -372,9 +373,12 @@ export const CreateShopOnboarding: React.FC<CreateShopOnboardingProps> = ({
 
     setFieldErrors({});
     setErrorMessage("");
+    const session = captureMerchantReadSession();
+    if (!session.current()) { setErrorMessage("Your account changed. Refresh before continuing."); return; }
     setIsCreating(true);
     try {
       const logoUrl = await uploadImageToCloudinary(logoFile);
+      if (!session.current()) throw new MerchantApiError("Your account changed. Refresh before continuing.");
       const payload: MerchantShopCreateInput = {
         name: form.name.trim(),
         category,
@@ -390,11 +394,14 @@ export const CreateShopOnboarding: React.FC<CreateShopOnboardingProps> = ({
       };
 
       const createdShop = await MerchantApi.createShop(payload);
+      if (!session.current()) throw new MerchantApiError("Your account changed. Refresh before continuing.");
       await onCreated(createdShop as Shop);
     } catch (error) {
+      if (!session.current()) { setErrorMessage("Your account changed. Refresh before continuing."); return; }
       if (error instanceof MerchantApiError && error.status === 409) {
         try {
           const existingShop = await MerchantApi.getMerchantShop();
+          if (!session.current()) { setErrorMessage("Your account changed. Refresh before continuing."); return; }
           if (existingShop) {
             await onCreated(existingShop as Shop);
             return;

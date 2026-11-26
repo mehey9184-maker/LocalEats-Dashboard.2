@@ -14,6 +14,9 @@ const CLOUDINARY_FOLDER = "menu-items";
  * @returns The secure HTTPS URL of the uploaded image.
  */
 export async function uploadImageToCloudinary(file: File): Promise<string> {
+  if (import.meta.env.VITE_LOCALEATS_PREVIEW_READ_ONLY === "true" || import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY === "true") {
+    throw new Error("Media uploads are unavailable in this read-only Preview. No file was uploaded.");
+  }
   if (!file) {
     throw new Error("No image file provided for upload.");
   }
