@@ -86,6 +86,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // Web app's Firebase configuration
 // Existing deployments keep the bundled selection. Isolated builds opt in to
 // one complete environment config instead of mixing two Firebase projects.
+const isolatedPreview = import.meta.env.VITE_LOCALEATS_PREVIEW_READ_ONLY === "true";
 const useEnvironmentConfig = import.meta.env.VITE_FIREBASE_CONFIG_SOURCE === "environment";
 const firebaseConfig = useEnvironmentConfig ? {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
@@ -111,8 +112,16 @@ if (useEnvironmentConfig && [firebaseConfig.apiKey, firebaseConfig.authDomain,
   throw new Error("Firebase environment configuration is incomplete.");
 }
 
+if (isolatedPreview && (!useEnvironmentConfig || !import.meta.env.VITE_PREVIEW_FIREBASE_PROJECT_ID ||
+  firebaseConfig.projectId !== import.meta.env.VITE_PREVIEW_FIREBASE_PROJECT_ID ||
+  firebaseConfig.projectId === firebaseConfigData.projectId ||
+  !import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID?.trim())) {
+  throw new Error("Isolated Preview Firebase configuration is incomplete or mismatched.");
+}
+
 // Initialize Firebase App
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+if (isolatedPreview && app.options.projectId !== firebaseConfig.projectId) throw new Error("Existing Firebase app does not match isolated Preview.");
 
 // Initialize Firebase Auth, Firestore & Storage
 export const auth = getAuth(app);
