@@ -49,6 +49,9 @@ try{
   assert.equal(writes.length,0,'Unexpected mutation attempt in isolated fixture');
   assert.deepEqual(pageErrors,[],'Browser exception in '+filename);
   assert.equal(metrics.theme,theme);
+  if(process.env.UX_REQUIRE_FIXES==='true'&&scene.name==='home-loading'){
+    assert.ok(metrics.documentWidth<=width+1,'Loading skeleton horizontal overflow '+JSON.stringify({width,theme,documentWidth:metrics.documentWidth}));
+  }
   await context.close();
  }
  console.log('UX_BASELINE_CAPTURED',JSON.stringify({captures:reports.length,scenes:scenes.map(s=>s.name),source:process.env.UX_AUDIT_SHA}));

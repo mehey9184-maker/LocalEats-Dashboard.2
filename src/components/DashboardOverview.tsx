@@ -608,12 +608,12 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
     return (
       <div className="space-y-12">
         <section className="space-y-4">
-          <div className="flex justify-between items-start">
-            <div className="space-y-2">
-              <Skeleton className="h-10 w-64 md:w-80 rounded-xl" />
-              <Skeleton className="h-4 w-48 md:w-64" />
+          <div className="flex justify-between items-start gap-3 min-w-0">
+            <div className="space-y-2 min-w-0 flex-1">
+              <Skeleton className="h-10 w-full max-w-64 md:max-w-80 rounded-xl" />
+              <Skeleton className="h-4 w-full max-w-48 md:max-w-64" />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 shrink-0">
               <Skeleton className="h-10 w-10 md:w-24 rounded-xl" />
               <Skeleton className="h-10 w-10 md:w-24 rounded-xl" />
               <Skeleton className="h-10 w-10 rounded-xl" />
