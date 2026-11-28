@@ -26,7 +26,7 @@ const plugin={name:'ux-test-only-identity-adapter',enforce:'pre',transform(code,
  adapted++;
  return {code:adapterSource+code,map:null};
 }};
-const server=await createServer({root,server:{host:'127.0.0.1',port:41719,strictPort:true,hmr:false},plugins:[plugin],define:{'import.meta.env.VITE_LOCALEATS_API_URL':JSON.stringify(origin),'import.meta.env.VITE_PICKUP_ORDERING_ENABLED':'"false"','import.meta.env.VITE_PROFILE_WRITES_ENABLED':'"false"'}});
+const server=await createServer({root,server:{host:'127.0.0.1',port:41719,strictPort:true,hmr:false},plugins:[plugin],define:{'import.meta.env.VITE_LOCALEATS_API_URL':JSON.stringify(origin),'import.meta.env.VITE_PICKUP_ORDERING_ENABLED':'"false"','import.meta.env.VITE_PROFILE_WRITES_ENABLED':'"false"','import.meta.env.VITE_MERCHANT_PREVIEW_READ_ONLY':'"true"'}});
 let browser;const results=[];
 try{
  await server.listen();browser=await chromium.launch({headless:true});
@@ -108,7 +108,7 @@ try{
         await capture('home');
         if(width<768){const more=page.getByRole('button',{name:'More',exact:true});await more.scrollIntoViewIfNeeded();await more.click();await page.getByText('More Features',{exact:true}).waitFor();await capture('more');await page.getByRole('button',{name:/Settings Configure/i}).click();}
         else await page.getByRole('button',{name:'Settings',exact:true}).first().click();
-        await page.getByRole('navigation',{name:'Merchant settings sections'}).waitFor({timeout:10000});await capture('settings');
+        await page.getByRole('navigation',{name:'Merchant settings sections'}).waitFor({timeout:10000});await page.getByText('More Features',{exact:true}).waitFor({state:'hidden'});await capture('settings');
       }
       assert.ok(reads.some(r=>r.path==='/api/v1/merchant/shop'&&r.authorized),'Real merchant ownership read not reached');
     }
