@@ -1,5 +1,5 @@
 // Build properly sized square PWA icons from existing approved LocalEats artwork.
-// Uses Node built-ins only; source logo and PWA identity stay unchanged.
+// Uses Node built-ins only; the founder-approved Pin & Plate PNG is the source; PWA identity stays unchanged.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { inflateSync, deflateSync } from 'node:zlib';
 import { join } from 'node:path';
