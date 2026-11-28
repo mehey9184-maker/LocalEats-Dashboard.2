@@ -63,6 +63,7 @@ export const LocalEatsLogo: React.FC<LocalEatsLogoProps> = ({
           fontSize="28"
           letterSpacing="-0.5"
           fill="#000000"
+          className="dark:fill-white"
         >
           Local<tspan fill={`url(#${gradientId})`}>Eats</tspan>
         </text>
