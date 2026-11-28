@@ -1,0 +1,66 @@
+name: UX-01C.1 inherited zero-write regression gate
+on:
+  pull_request:
+    branches: [audit/ux-01c-shell-accessibility-20261128]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  eslint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Root ESLint - report genuine status, never suppress failures
+        run: npm run lint
+  typescript:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Merchant root TypeScript --noEmit
+        run: npx tsc --noEmit --pretty false
+  merchant-live-baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Merchant pickup and availability safety checks
+        run: |
+          npm run test:merchant-pickup
+          npm run test:merchant-marketing
+          node --test tests/merchant-availability.test.cjs
+      - name: Missing image defaults remain truthful and render safely
+        run: node --test tests/default-image-fallback.test.mjs
+      - name: Merchant build
+        run: npm run build
+      - name: API install
+        run: npm ci --no-audit --no-fund
+        working-directory: localeats-api
+      - name: API unit and authority regressions (no external writes)
+        run: npm test
+        working-directory: localeats-api
+        env:
+          PICKUP_WRITES_ENABLED: 'false'
+          RIDER_ACTIVATION_ENABLED: 'false'

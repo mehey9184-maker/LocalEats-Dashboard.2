@@ -1,0 +1,5 @@
+# UX-01C.1 — measured accessibility fixes and actual-entry harness
+
+Input audit 46183370991 / 46183373697 passed; 48 actual component captures, 144 scroll observations, 576 keyboard observations, no writes or exceptions. Customer Home fixture at 320 had one header-covered Location Needed button per theme; not sufficient to change real header. Merchant Minimalist and Advanced measured 27px high, 10px text; apply 44px minimum height, 12px text and keyboard outline. Existing view state and grid preserved.
+
+Paired before/after actual-component browser capture and strict assertions on changed controls; inherited gates retained. Actual App entry harness mounts unmodified entry point on loopback, fresh storage, synthetic local cart only for Customer, no external requests or WebSockets, block non-GET/HEAD and local API routes; no real auth credentials, no GPS. Customer welcome→guest, Merchant signed-out only. This is not full authenticated shell acceptance: synthetic identity/shop adapter remains required. No production changes or merges; R0 and existing blockers preserved. No claim of completed verification until CI and evidence reviewed.
