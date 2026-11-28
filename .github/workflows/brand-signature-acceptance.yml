@@ -1,0 +1,29 @@
+name: Brand-02B isolated acceptance (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main, brand/local-signature-ui-20261128]
+    paths: ['public/**', 'src/components/LocalEatsLogo.tsx', 'vite.config.ts', 'index.html', 'tests/brand-signature*', '.github/workflows/brand-signature-acceptance.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-brand:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.64.1 jsqr@1.4.0
+      - run: node --test tests/brand-signature-v1.test.mjs tests/brand-signature-parity.test.mjs
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/brand-signature-browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: brand-acceptance
+          path: brand-acceptance/
+          if-no-files-found: ignore
