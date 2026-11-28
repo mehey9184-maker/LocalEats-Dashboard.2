@@ -12,16 +12,16 @@ export function OrderTagBadges({ tags }: { tags: string[] }) {
     <div className="flex flex-wrap gap-1 mt-1">
       {tags.map((tag) => {
         const colors: Record<string, string> = {
-          "Rush": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-          "VIP": "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+          "Rush": "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20",
+          "VIP": "bg-amber-500/10 text-amber-800 dark:text-amber-400 border-amber-500/20",
           "Large Order": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
-          "Special": "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
+          "Special": "bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-500/20",
         };
         return (
           <span
             key={tag}
             className={cn(
-              "px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
+              "px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap",
               colors[tag] || "bg-zinc-100 text-zinc-600 border-zinc-200"
             )}
           >
