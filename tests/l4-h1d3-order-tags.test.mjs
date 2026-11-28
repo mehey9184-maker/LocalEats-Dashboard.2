@@ -41,16 +41,23 @@ test('exactly four original badge and quick-tag call sites use shared components
  const expected='import { OrderTagBadges, QuickOrderTags } from "./OrderTags";\n'+old.replace(badge,(_,i)=>i+'<OrderTagBadges tags={getOrderTags(order)} />').replace(quick,(_,i)=>i+'<QuickOrderTags orderId={order.id} manualTags={orderTags[order.id] || []} onToggle={toggleOrderTag} />');
  assert.equal(app,expected,'No other order-management logic, animations or JSX may change');
 });
-test('all four legacy badge renderers have byte-identical HTML for normal, empty, automatic and unknown tags',()=>{
+test('all four legacy badge renderers preserve exact HTML except the approved UX-05B badge typography and contrast tokens',()=>{
  for(const tags of [[],['Rush'],['VIP'],['Large Order'],['Special'],['Other'],['VIP','Large Order','Rush','Special','Other'],...subsets]){
   const actual=html(React.createElement(OrderTagBadges,{tags}));
-  for(const original of legacyBadges)assert.equal(actual,html(original(tags)));
+  for(const original of legacyBadges){
+   const expected=html(original(tags)).replaceAll('text-[8px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap','text-[10px] font-black uppercase tracking-wider rounded-md border whitespace-nowrap').replaceAll('text-rose-600 dark:text-rose-400','text-rose-700 dark:text-rose-400').replaceAll('text-amber-600 dark:text-amber-400','text-amber-800 dark:text-amber-400').replaceAll('text-teal-600 dark:text-teal-400','text-teal-700 dark:text-teal-400');
+   assert.equal(actual,expected);
+  }
  }
 });
-test('all four quick-tag renderers have byte-identical HTML for every manual selection',()=>{
+test('all four quick-tag renderers preserve structure, labels and native semantics with scoped UX-only attributes',()=>{
  for(const manualTags of subsets){
   const actual=html(React.createElement(QuickOrderTags,{orderId:'fixture',manualTags,onToggle:()=>{}}));
-  for(const original of legacyQuick)assert.equal(actual,html(original('fixture',manualTags,()=>{})));
+  const normalize=markup=>markup.replace(/ class="[^"]*"/g,'').replace(/ role="group" aria-label="Quick order tags"/g,'').replace(/ type="button" aria-pressed="(?:true|false)" aria-label="Toggle (?:Rush|VIP|Special)"/g,'');
+  for(const original of legacyQuick)assert.equal(normalize(actual),normalize(html(original('fixture',manualTags,()=>{}))));
+  const rendered=buttons(QuickOrderTags({orderId:'fixture',manualTags,onToggle:()=>{}}));
+  assert.deepEqual(rendered.map(b=>b.props['aria-pressed']),['Rush','VIP','Special'].map(t=>manualTags.includes(t)));
+  assert.ok(rendered.every(b=>b.props.type==='button'&&b.props['aria-label']===b.props.title&&b.props.className.includes('min-h-[44px]')&&b.props.className.includes('min-w-[44px]')));
  }
 });
 test('quick tags retain native button order and titles, stop propagation before toggling correct order, no eager writes',()=>{

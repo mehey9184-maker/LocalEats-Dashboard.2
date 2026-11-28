@@ -8,7 +8,8 @@ const freeze={
  'src/App.tsx': [553,'4d319062'],
  'src/components/ShopProfile.tsx': [114,'34bb018d'],
  // Exception: exact previously approved pickup-first #238 tour blob 7a1b702b9b230d90e51728e53ee763b253acdf5e.
- 'src/components/OnboardingTour.tsx': [23,'1a5c1594'],
+ // UX-02 draft exception: exact touch-target-only tour candidate; release fingerprint unchanged.
+ 'src/components/OnboardingTour.tsx': [23,'4fecbe97'],
  'src/components/MenuManagement.tsx': [107,'6774eb7e'],
  'src/components/Marketing.tsx': [246,'f861fbf'],
  'src/components/OrdersFocusedWorkspace.tsx': [61,'7dde5f4c'],
