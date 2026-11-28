@@ -679,3 +679,7 @@ This is local guidance only: expanding it or calling records no follow-up, sends
 ## Marketing merge deployment boundary — 2026-11-22
 
 The reviewed Marketing/QR branch explicitly disables Git previews in both root and API Vercel configurations. Merchant main remains enabled; API main remains disabled. The existing Merchant release workflow also runs the focused Marketing regression suite. These publication guards do not change environment settings, write flags, API behavior, Customer, Rider or business data.
+
+
+## Brand-02 — LocalEats Pin & Plate adoption (2026-11-28, draft)
+Founder approved Option B for both Customer and Merchant. Replace only the reusable LocalEatsLogo symbol and browser-tab favicon, using the identical five paths and #C2410C from the Brand-01 archive. Preserve component props, existing wordmark, dimensions, containers, theme, navigation and functionality. Inline geometry avoids extra app-shell requests; unique React IDs prevent duplicate SVG clip/gradient identifiers. No changes to merchant uploads, order/payment/API/auth behavior, service workers, installed PWA PNGs, push icons, QR/print assets or Production. Those surfaces require a separate coordinated asset/cache/QR acceptance pass. Static contract: `node --test tests/brand-signature-v1.test.mjs`. Visual and CI acceptance remain required before merge; do not imply a release.
