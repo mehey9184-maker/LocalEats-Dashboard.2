@@ -1,0 +1,53 @@
+name: UX-01A paired visual baseline (NO DEPLOY)
+on:
+  pull_request:
+    branches: [brand/local-signature-parity-20261128]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  capture:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: before
+            ref: 45eb99d93c60efc0bfafcaa866d7a17f829fab28
+          - label: after-brand
+            ref: 0432de69bd2d2f24ebf5a79ceae231860b694eda
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          path: audit
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ matrix.ref }}
+          path: subject
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - working-directory: subject
+        run: npm ci --no-audit --no-fund
+      - working-directory: subject
+        run: npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.64.1
+      - working-directory: subject
+        run: npx playwright install chromium
+      - working-directory: subject
+        env:
+          VITE_PICKUP_ORDERING_ENABLED: 'false'
+          VITE_PROFILE_WRITES_ENABLED: 'false'
+          UX_AUDIT_SHA: ${{ matrix.ref }}
+        run: |
+          cp ../audit/tests/ux-01a-visual-baseline.mjs tests/ux-01a-visual-baseline.mjs
+          node tests/ux-01a-visual-baseline.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ux-01a-${{ matrix.label }}
+          path: subject/ux-audit-evidence/
+          if-no-files-found: error
+          retention-days: 7
