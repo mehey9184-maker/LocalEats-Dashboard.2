@@ -343,6 +343,19 @@ function App() {
     [shops, user],
   );
 
+  const offlineBannerRef = useRef<HTMLDivElement>(null);
+  const [offlineClearance, setOfflineClearance] = useState(0);
+  const showOfflineBanner = Boolean(currentShop && !currentShop.is_active && !kitchenMode);
+  useLayoutEffect(() => {
+    const banner = offlineBannerRef.current;
+    if (!banner) { setOfflineClearance(0); return; }
+    const measure = () => setOfflineClearance(Math.ceil(banner.getBoundingClientRect().bottom) + 16);
+    measure();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    observer?.observe(banner);
+    window.addEventListener("resize", measure);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
+  }, [showOfflineBanner, merchantShopGate.status]);
   const canOfferPwaInstall = Boolean(
     user?.id && currentShop?.id && currentShop.owner_id === user.id &&
     merchantShopGate.status === "ready" && !isSessionChecking && isAuthReady
@@ -2072,7 +2085,7 @@ function App() {
                 className="focus:outline-none cursor-pointer hover:opacity-85 active:scale-95 transition-all duration-200 flex items-center"
                 title="Go to Dashboard"
               >
-                <LocalEatsLogo width={160} height={42} />
+                <LocalEatsLogo width={160} height={42} className="w-[116px] sm:w-[160px] [&>svg]:w-full" />
               </button>
 
             </div>
@@ -2080,12 +2093,12 @@ function App() {
 
 
             {/* Scrollable Tab Container with Arrow Buttons */}
-            <div className="hidden md:flex items-center flex-1 min-w-0 relative mx-2 group">
+            <div className="hidden md:flex items-center flex-1 min-w-0 overflow-hidden relative mx-2 group">
               {/* Left Arrow Button */}
               <button
                 type="button"
                 onClick={() => topNavScrollRef.current?.scrollBy({ left: -160, behavior: 'smooth' })}
-                className="absolute left-0 z-10 w-7 h-7 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
+                className="relative shrink-0 z-10 w-7 h-7 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
                 title="Scroll Tabs Left"
               >
                 <ChevronLeft size={14} className="stroke-[2.5px]" />
@@ -2093,7 +2106,7 @@ function App() {
 
               <nav
                 ref={topNavScrollRef}
-                className="flex-1 flex items-center justify-start gap-2 overflow-x-auto hide-scrollbar px-7 whitespace-nowrap scroll-smooth"
+                className="flex-1 min-w-0 flex items-center justify-start gap-2 overflow-x-auto hide-scrollbar px-1 whitespace-nowrap scroll-smooth"
               >
                 {navItems.map((item) => {
                   const isActive = activeTab === item.id;
@@ -2138,14 +2151,14 @@ function App() {
               <button
                 type="button"
                 onClick={() => topNavScrollRef.current?.scrollBy({ left: 160, behavior: 'smooth' })}
-                className="absolute right-0 z-10 w-7 h-7 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
+                className="relative shrink-0 z-10 w-7 h-7 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-primary dark:hover:text-primary hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all cursor-pointer opacity-30 group-hover:opacity-100 active:scale-90"
                 title="Scroll Tabs Right"
               >
                 <ChevronRight size={14} className="stroke-[2.5px]" />
               </button>
             </div>
 
-            <div className="flex items-center gap-1 md:gap-4 shrink-0">
+            <div className="flex items-center gap-1 md:gap-2 xl:gap-4 shrink-0">
               <ConnectivityMonitor
                 supabase={supabase}
                 onOpenDiagnostics={() => setIsDiagnosticOpen(true)}
@@ -2180,6 +2193,8 @@ function App() {
                       toast.error(typeof error === "string" ? error : "Failed to update shop status");
                     }
                   }}
+                  aria-label={currentShop.is_active ? (pickupOrderingEnabled() ? "Shop available, pickup pilot" : "Shop available, pickup checkout disabled") : "Shop unavailable"}
+                  title={currentShop.is_active ? (pickupOrderingEnabled() ? "Shop available · Pickup pilot" : "Shop available · Pickup checkout disabled") : "Shop unavailable"}
                   className={cn(
                     "hidden sm:flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs font-bold transition-all border",
                     currentShop.is_active
@@ -2196,10 +2211,10 @@ function App() {
                         : "bg-error",
                     )}
                   />
-                  <span className="hidden xs:inline">
+                  <span className="inline">
                     {currentShop.is_active ? "Open" : "Closed"}
                   </span>
-                  <span className="hidden sm:inline ml-1 opacity-70">
+                  <span className="hidden xl:inline ml-1 opacity-70">
                     {currentShop.is_active ? pickupOrderingEnabled() ? "• Shop available · Pickup pilot" : "• Shop available · Pickup checkout disabled" : "• Shop unavailable"}
                   </span>
                 </button>
@@ -2281,7 +2296,7 @@ function App() {
       )}
 
       {currentShop && !currentShop.is_active && !kitchenMode && (
-        <div className="fixed top-16 left-0 w-full bg-error/95 backdrop-blur-md text-white py-2 px-4 z-40 flex flex-wrap items-center justify-center gap-3 shadow-md border-b border-error shadow-error/20">
+        <div ref={offlineBannerRef} data-testid="merchant-offline-banner" className="fixed top-16 left-0 w-full bg-error/95 backdrop-blur-md text-white py-2 px-4 z-40 flex flex-wrap items-center justify-center gap-3 shadow-md border-b border-error shadow-error/20">
            <div className="flex items-center gap-2 font-black uppercase tracking-widest text-[10px] md:text-xs">
              <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white animate-pulse" />
              Store Offline - Not Receiving Orders
@@ -2319,9 +2334,10 @@ function App() {
       )}
 
       <main
+        style={showOfflineBanner ? { "--merchant-offline-clearance": `${offlineClearance}px` } as React.CSSProperties : undefined}
         className={cn(
           "px-4 md:px-6 max-w-7xl mx-auto",
-          kitchenMode ? "pt-6 pb-6" : (currentShop && !currentShop.is_active) ? "pt-28 md:pt-32 pb-32" : "pt-20 md:pt-24 pb-32",
+          kitchenMode ? "pt-6 pb-6" : (currentShop && !currentShop.is_active) ? "pt-[max(7rem,var(--merchant-offline-clearance,0px))] md:pt-[max(8rem,var(--merchant-offline-clearance,0px))] pb-32" : "pt-20 md:pt-24 pb-32",
         )}
       >
         <div className="w-full">
