@@ -691,3 +691,7 @@ This is stacked on Brand-02A, not on main. Both apps use the founder-selected fi
 
 ### Brand-02B acceptance evidence
 Run 46181372686 passed isolated browser gate: six responsive light/dark component checks, ten QR decodes to synthetic URL, four PDF exports (generation only), six cached assets byte lengths stable offline, private test endpoint unavailable offline. Printed QR and physical installed icon/push remain unverified. Full inherited zero-write regression rerun on stacked head required.
+
+
+## UX-01B measured visual defects (2026-11-28; draft)
+UX-01A audit #282: Customer 46182533720, Merchant 46182536825 passed 4 capture jobs and produced 96 screenshots. All metrics inspected across original and branded variants. Merchant loading skeleton measured 408px at 320 and 390 in both themes. Constrain title skeletons to remaining flex width and keep three action placeholders fixed, preserving grid, layout, and state. Test workflow captures same fixture before and after; strict after assertions for measured defects. Remaining target-size candidates and full shell overlap require independent evidence; no blanket compliance claim. No Production, merge, security, live data or paid resources.
