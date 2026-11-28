@@ -921,7 +921,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   toast.success("Switched to clean Minimalist view");
                 }}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer",
+                  "min-h-[44px] px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                   layoutMode === "compact"
                     ? "bg-primary text-white shadow-sm"
                     : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
@@ -937,7 +937,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = React.memo(({
                   toast.success("Switched to Advanced Analytics view");
                 }}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer",
+                  "min-h-[44px] px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                   layoutMode === "advanced"
                     ? "bg-primary text-white shadow-sm"
                     : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"

@@ -1,0 +1,77 @@
+name: UX-01C.1 paired accessibility and real entry (NO DEPLOY)
+on:
+  pull_request:
+    branches: [audit/ux-01c-shell-accessibility-20261128]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  paired:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: before
+            ref: faa4c3e4b519ed58b5a03a9df0e3aa48742a2287
+          - label: after
+            ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          path: audit
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ matrix.ref }}
+          path: subject
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - working-directory: subject
+        run: npm ci --no-audit --no-fund
+      - working-directory: subject
+        run: npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.64.1
+      - working-directory: subject
+        run: npx playwright install chromium
+      - working-directory: subject
+        env:
+          VITE_PICKUP_ORDERING_ENABLED: 'false'
+          VITE_PROFILE_WRITES_ENABLED: 'false'
+          UX_AUDIT_SHA: ${{ matrix.ref }}
+          UX_REQUIRE_FIXES: 'true'
+          UX_REQUIRE_C1: ${{ matrix.label == 'after' }}
+        run: |
+          cp ../audit/tests/ux-01c1-paired.mjs tests/ux-01c1-paired.mjs
+          node tests/ux-01c1-paired.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ux-01c1-${{ matrix.label }}
+          path: subject/ux-audit-evidence/
+          if-no-files-found: error
+  actual-entry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.64.1
+      - run: npx playwright install chromium
+      - run: node tests/ux-01c1-actual-entry.mjs
+        env:
+          VITE_PICKUP_ORDERING_ENABLED: 'false'
+          VITE_PROFILE_WRITES_ENABLED: 'false'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ux-01c1-actual-entry
+          path: ux-full-shell-evidence/
+          if-no-files-found: warn
