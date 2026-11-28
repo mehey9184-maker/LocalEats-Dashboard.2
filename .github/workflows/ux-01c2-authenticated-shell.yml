@@ -1,0 +1,31 @@
+name: UX-01C.2 isolated authenticated shell (NO DEPLOY)
+on:
+  pull_request:
+    branches: [refine/ux-01c1-accessibility-shell-20261128]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  shell:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.64.1
+      - run: npx playwright install chromium
+      - run: node tests/ux-01c2-authenticated-shell.mjs
+        env:
+          VITE_PICKUP_ORDERING_ENABLED: 'false'
+          VITE_PROFILE_WRITES_ENABLED: 'false'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ux-01c2-authenticated-shell
+          path: ux-authenticated-shell-evidence/
+          if-no-files-found: warn
